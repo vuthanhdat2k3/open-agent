@@ -1,0 +1,202 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Refined light theme — airy, high-contrast neutral base with a single emerald accent */
+    --background: 210 24% 98%;
+    --foreground: 222 30% 12%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 30% 12%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 30% 12%;
+    --primary: 152 55% 38%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 16% 94%;
+    --secondary-foreground: 222 30% 18%;
+    --muted: 210 16% 95%;
+    --muted-foreground: 215 14% 42%;
+    --accent: 210 16% 93%;
+    --accent-foreground: 222 30% 18%;
+    --destructive: 0 72% 48%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 214 20% 88%;
+    --input: 214 20% 86%;
+    --ring: 152 55% 42%;
+    --success: 142 64% 38%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 45%;
+    --warning-foreground: 0 0% 100%;
+    --info: 199 89% 44%;
+    --info-foreground: 0 0% 100%;
+    --radius: 0.75rem;
+  }
+
+  .dark {
+    /* Refined dark theme — deep "ink" surface, elevated cards, desaturated emerald */
+    --background: 224 28% 6%;
+    --foreground: 210 30% 96%;
+    --card: 224 24% 9%;
+    --card-foreground: 210 30% 96%;
+    --popover: 224 24% 10%;
+    --popover-foreground: 210 30% 96%;
+    --primary: 152 52% 45%;
+    --primary-foreground: 224 30% 8%;
+    --secondary: 220 20% 16%;
+    --secondary-foreground: 210 30% 96%;
+    --muted: 220 18% 14%;
+    --muted-foreground: 215 16% 62%;
+    --accent: 220 20% 17%;
+    --accent-foreground: 210 30% 96%;
+    --destructive: 0 70% 52%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 18% 18%;
+    --input: 220 18% 21%;
+    --ring: 152 52% 50%;
+    --success: 142 60% 45%;
+    --success-foreground: 224 30% 8%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 224 30% 8%;
+    --info: 199 89% 52%;
+    --info-foreground: 224 30% 8%;
+  }
+}
+
+@layer base {
+  * {
+    border-color: hsl(var(--border));
+  }
+
+  html {
+    color-scheme: light;
+    /* Smooth, spring-like easing used across the app for coherent motion */
+    --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  html.dark {
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-family: var(--font-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: "cv11", "ss01";
+  }
+
+  ::selection {
+    background-color: hsl(var(--primary) / 0.28);
+  }
+
+  *:focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
+
+  /* Ambient depth — a soft top-down light + faint emerald bloom, fixed and
+     pointer-transparent so it never repaints on scroll. Dark mode only. */
+  .dark body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(60rem 40rem at 78% -10%, hsl(var(--primary) / 0.10), transparent 60%),
+      radial-gradient(50rem 50rem at -10% 110%, hsl(var(--info) / 0.05), transparent 55%);
+  }
+
+  /* Scrollbars */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--border));
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--muted-foreground) / 0.5);
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@layer components {
+  /* Card hover lift used across the app for tactile depth */
+  .card-lift {
+    transition:
+      transform 0.35s var(--ease-out-expo),
+      box-shadow 0.35s var(--ease-out-expo),
+      border-color 0.35s var(--ease-out-expo);
+  }
+  .card-lift:hover {
+    transform: translateY(-2px);
+  }
+}
+
+@layer utilities {
+  /* Shimmer skeleton (kept from prior design) */
+  .shimmer {
+    background: linear-gradient(
+      90deg,
+      hsl(var(--muted)) 0%,
+      hsl(var(--muted-foreground) / 0.18) 50%,
+      hsl(var(--muted)) 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.4s ease-in-out infinite;
+  }
+  @keyframes shimmer {
+    0% {
+      background-position: 200% 0;
+    }
+    100% {
+      background-position: -200% 0;
+    }
+  }
+
+  /* Staggered waterfall reveal — children animate in sequence.
+     Pair with `animate-slide-up` on each child (or just drop them in a
+     `.stagger` parent and they inherit). Delays capped at 12 items. */
+  .stagger > * {
+    animation: slide-up 0.5s var(--ease-out-expo) both;
+  }
+  .stagger > *:nth-child(1) { animation-delay: 0ms; }
+  .stagger > *:nth-child(2) { animation-delay: 50ms; }
+  .stagger > *:nth-child(3) { animation-delay: 100ms; }
+  .stagger > *:nth-child(4) { animation-delay: 150ms; }
+  .stagger > *:nth-child(5) { animation-delay: 200ms; }
+  .stagger > *:nth-child(6) { animation-delay: 250ms; }
+  .stagger > *:nth-child(7) { animation-delay: 300ms; }
+  .stagger > *:nth-child(8) { animation-delay: 350ms; }
+  .stagger > *:nth-child(9) { animation-delay: 400ms; }
+  .stagger > *:nth-child(10) { animation-delay: 450ms; }
+  .stagger > *:nth-child(11) { animation-delay: 500ms; }
+  .stagger > *:nth-child(12) { animation-delay: 550ms; }
+
+  /* Subtle grain-free noise is intentionally omitted; keep surfaces clean. */
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

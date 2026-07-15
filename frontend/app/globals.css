@@ -1,0 +1,328 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Refined light theme — airy, high-contrast neutral base with a single emerald accent */
+    --background: 210 24% 98%;
+    --foreground: 222 30% 12%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 30% 12%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 30% 12%;
+    --primary: 152 55% 38%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 16% 94%;
+    --secondary-foreground: 222 30% 18%;
+    --muted: 210 16% 95%;
+    --muted-foreground: 215 14% 42%;
+    --accent: 210 16% 93%;
+    --accent-foreground: 222 30% 18%;
+    --destructive: 0 72% 48%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 214 20% 88%;
+    --input: 214 20% 86%;
+    --ring: 152 55% 42%;
+    --success: 142 64% 38%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 45%;
+    --warning-foreground: 0 0% 100%;
+    --info: 199 89% 44%;
+    --info-foreground: 0 0% 100%;
+    --radius: 0.75rem;
+  }
+
+  .dark {
+    /* Refined dark theme — deep "ink" surface, elevated cards, desaturated emerald */
+    --background: 224 28% 6%;
+    --foreground: 210 30% 96%;
+    --card: 224 24% 9%;
+    --card-foreground: 210 30% 96%;
+    --popover: 224 24% 10%;
+    --popover-foreground: 210 30% 96%;
+    --primary: 152 52% 45%;
+    --primary-foreground: 224 30% 8%;
+    --secondary: 220 20% 16%;
+    --secondary-foreground: 210 30% 96%;
+    --muted: 220 18% 14%;
+    --muted-foreground: 215 16% 62%;
+    --accent: 220 20% 17%;
+    --accent-foreground: 210 30% 96%;
+    --destructive: 0 70% 52%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 18% 18%;
+    --input: 220 18% 21%;
+    --ring: 152 52% 50%;
+    --success: 142 60% 45%;
+    --success-foreground: 224 30% 8%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 224 30% 8%;
+    --info: 199 89% 52%;
+    --info-foreground: 224 30% 8%;
+  }
+}
+
+@layer base {
+  * {
+    border-color: hsl(var(--border));
+  }
+
+  html {
+    color-scheme: light;
+    /* Smooth, spring-like easing used across the app for coherent motion */
+    --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  html.dark {
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-family: var(--font-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: "cv11", "ss01";
+    position: relative;
+  }
+
+  ::selection {
+    background-color: hsl(var(--primary) / 0.28);
+  }
+
+  *:focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
+
+  /* Ambient depth — a soft top-down light + faint emerald bloom, fixed and
+     pointer-transparent so it never repaints on scroll. Dark mode only. */
+  .dark body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -2;
+    pointer-events: none;
+    background:
+      radial-gradient(60rem 40rem at 78% -10%, hsl(var(--primary) / 0.08), transparent 60%),
+      radial-gradient(50rem 50rem at -10% 110%, hsl(var(--info) / 0.04), transparent 55%);
+  }
+
+  /* Dot Grid Pattern */
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background-image: radial-gradient(hsl(var(--foreground) / 0.02) 1px, transparent 1px);
+    background-size: 24px 24px;
+    opacity: 0.8;
+  }
+  
+  .dark body::after {
+    background-image: radial-gradient(hsl(var(--foreground) / 0.04) 1px, transparent 1px);
+  }
+
+  /* Scrollbars */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--border));
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--muted-foreground) / 0.5);
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@layer components {
+  /* Card hover lift used across the app for tactile depth */
+  .card-lift {
+    transition:
+      transform 0.3s var(--ease-out-expo),
+      box-shadow 0.3s var(--ease-out-expo),
+      border-color 0.3s var(--ease-out-expo);
+  }
+  .card-lift:hover {
+    transform: translateY(-2px);
+    border-color: hsl(var(--primary) / 0.4);
+    box-shadow: 
+      0 4px 20px -10px hsl(var(--primary) / 0.2),
+      0 1px 2px hsl(var(--foreground) / 0.02),
+      0 8px 24px -12px hsl(var(--foreground) / 0.08);
+  }
+  
+  /* Tactile state for active interactive elements */
+  .active-tactile:active {
+    transform: scale(0.98);
+  }
+}
+
+@layer utilities {
+  /* Shimmer skeleton (kept from prior design) */
+  .shimmer {
+    background: linear-gradient(
+      90deg,
+      hsl(var(--muted)) 0%,
+      hsl(var(--muted-foreground) / 0.18) 50%,
+      hsl(var(--muted)) 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.4s ease-in-out infinite;
+  }
+  @keyframes shimmer {
+    0% {
+      background-position: 200% 0;
+    }
+    100% {
+      background-position: -200% 0;
+    }
+  }
+
+  /* Staggered waterfall reveal — children animate in sequence. */
+  .stagger > * {
+    animation: slide-up 0.5s var(--ease-out-expo) both;
+  }
+  .stagger > *:nth-child(1) { animation-delay: 0ms; }
+  .stagger > *:nth-child(2) { animation-delay: 40ms; }
+  .stagger > *:nth-child(3) { animation-delay: 80ms; }
+  .stagger > *:nth-child(4) { animation-delay: 120ms; }
+  .stagger > *:nth-child(5) { animation-delay: 160ms; }
+  .stagger > *:nth-child(6) { animation-delay: 200ms; }
+  .stagger > *:nth-child(7) { animation-delay: 240ms; }
+  .stagger > *:nth-child(8) { animation-delay: 280ms; }
+  .stagger > *:nth-child(9) { animation-delay: 320ms; }
+  .stagger > *:nth-child(10) { animation-delay: 360ms; }
+
+  /* Scale-in entry animation for modals, empty states, etc. */
+  @keyframes scale-in {
+    from { opacity: 0; transform: scale(0.94); }
+    to   { opacity: 1; transform: scale(1); }
+  }
+  .animate-scale-in {
+    animation: scale-in 0.35s var(--ease-out-expo) both;
+  }
+
+  /* Soft pulse for connection port targets */
+  @keyframes pulse-soft {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50%       { opacity: 0.6; transform: scale(1.25); }
+  }
+  .animate-pulse-soft {
+    animation: pulse-soft 1.2s ease-in-out infinite;
+  }
+
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ── Highlight.js syntax theme (light) ── */
+.hljs {
+  color: hsl(222 30% 18%);
+  background: transparent;
+}
+.hljs-comment, .hljs-quote       { color: hsl(215 14% 52%); font-style: italic; }
+.hljs-keyword, .hljs-selector-tag,
+.hljs-addition                    { color: hsl(152 55% 32%); font-weight: 600; }
+.hljs-number, .hljs-string,
+.hljs-meta .hljs-meta-string,
+.hljs-literal, .hljs-doctag,
+.hljs-regexp                      { color: hsl(199 80% 38%); }
+.hljs-title, .hljs-section,
+.hljs-name, .hljs-selector-id,
+.hljs-selector-class              { color: hsl(260 55% 50%); font-weight: 600; }
+.hljs-attribute, .hljs-attr,
+.hljs-variable, .hljs-template-variable,
+.hljs-class .hljs-title,
+.hljs-type                        { color: hsl(30 80% 42%); }
+.hljs-symbol, .hljs-bullet,
+.hljs-subst, .hljs-meta,
+.hljs-meta .hljs-keyword,
+.hljs-selector-attr,
+.hljs-selector-pseudo,
+.hljs-link                        { color: hsl(330 60% 45%); }
+.hljs-built_in, .hljs-deletion    { color: hsl(0 60% 45%); }
+.hljs-formula                     { background: hsl(210 16% 93%); }
+.hljs-emphasis                    { font-style: italic; }
+.hljs-strong                      { font-weight: 700; }
+
+/* ── Highlight.js syntax theme (dark) ── */
+.dark .hljs {
+  color: hsl(210 25% 88%);
+  background: transparent;
+}
+.dark .hljs-comment, .dark .hljs-quote       { color: hsl(215 16% 52%); font-style: italic; }
+.dark .hljs-keyword, .dark .hljs-selector-tag,
+.dark .hljs-addition                          { color: hsl(152 52% 58%); font-weight: 600; }
+.dark .hljs-number, .dark .hljs-string,
+.dark .hljs-meta .hljs-meta-string,
+.dark .hljs-literal, .dark .hljs-doctag,
+.dark .hljs-regexp                            { color: hsl(199 80% 65%); }
+.dark .hljs-title, .dark .hljs-section,
+.dark .hljs-name, .dark .hljs-selector-id,
+.dark .hljs-selector-class                    { color: hsl(260 70% 75%); font-weight: 600; }
+.dark .hljs-attribute, .dark .hljs-attr,
+.dark .hljs-variable, .dark .hljs-template-variable,
+.dark .hljs-class .hljs-title,
+.dark .hljs-type                              { color: hsl(30 80% 65%); }
+.dark .hljs-symbol, .dark .hljs-bullet,
+.dark .hljs-subst, .dark .hljs-meta,
+.dark .hljs-meta .hljs-keyword,
+.dark .hljs-selector-attr,
+.dark .hljs-selector-pseudo,
+.dark .hljs-link                              { color: hsl(330 60% 72%); }
+.dark .hljs-built_in, .dark .hljs-deletion   { color: hsl(0 60% 65%); }
+.dark .hljs-formula                           { background: hsl(220 18% 16%); }
+
+/* ── KaTeX formula overrides ── */
+/* Inline formula: inherit font-size from context */
+.katex { font-size: 1.05em; }
+
+/* Block formula ($$...$$): centered, with spacing */
+.katex-display {
+  margin: 0.75rem 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.5rem 0;
+}
+.katex-display > .katex {
+  display: block;
+  text-align: center;
+}
+
+/* Light mode formula color */
+.katex, .katex * { color: hsl(222 30% 14%); }
+
+/* Dark mode formula color */
+.dark .katex,
+.dark .katex * { color: hsl(210 25% 90%); }
+
+/* Formula block background (dark) */
+.dark .katex-display {
+  background: transparent;
+}
