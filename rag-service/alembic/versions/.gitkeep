@@ -1,0 +1,2 @@
+# Alembic migration revisions live here. The service also creates its schema at
+# startup via rag_service.db.base.init_db, so this directory may start empty.

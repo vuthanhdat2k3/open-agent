@@ -1,0 +1,39 @@
+# --- Python bytecode / caches ---
+__pycache__/
+*.py[cod]
+*$py.class
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# --- Virtual environments ---
+.venv/
+venv/
+env/
+
+# --- Packaging / build artifacts ---
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# --- Runtime state (generated on first run) ---
+rag.db
+data/
+*.sqlite
+*.sqlite3
+
+# --- Secrets / local config ---
+.env
+.env.*
+!.env.example
+
+# --- Test / coverage output ---
+.coverage
+coverage*
+htmlcov/
+
+# --- Misc runtime logs ---
+*.log
+boot.log
+boot.err

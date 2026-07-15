@@ -1,0 +1,91 @@
+[project]
+name = "rag-service"
+version = "1.0.0"
+description = "Standalone RAG microservice: hybrid BM25 + semantic retrieval exposed via MCP and a REST admin API."
+requires-python = ">=3.10"
+readme = "README.md"
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "pydantic>=2.6",
+    "pydantic-settings>=2.2",
+    "sqlalchemy[asyncio]>=2.0",
+    "aiosqlite>=0.19",
+    "alembic>=1.13",
+    "structlog>=24.0",
+    "mcp>=1.0",
+    "rank-bm25>=0.2.2",
+    "qdrant-client>=1.7",
+    "httpx>=0.26",
+    "numpy>=1.24",
+    "beautifulsoup4>=4.12",
+    "markdownify>=0.11",
+    "python-frontmatter>=1.1",
+    "chardet>=5.0",
+]
+
+[project.optional-dependencies]
+openai = ["openai>=1.14"]
+parsers = [
+    "pypdf2>=3.0",
+    "pdfminer.six>=20221105",
+    "python-docx>=1.1",
+    "markdownify>=0.11",
+    "chardet>=5.0",
+    "python-frontmatter>=1.1",
+    "beautifulsoup4>=4.12",
+]
+sentence-transformers = ["sentence-transformers>=2.6"]
+bm25-redis = ["redis[asyncio]>=5.0"]
+graph-networkx = ["networkx>=3.2"]
+graph-neo4j = ["neo4j>=5.17"]
+task-queue = ["arq>=0.25"]
+metrics = ["prometheus-fastapi-instrumentator>=6.0"]
+pyvi = ["pyvi>=0.1.1"]
+all = [
+    "openai>=1.14",
+    "pypdf2>=3.0",
+    "pdfminer.six>=20221105",
+    "python-docx>=1.1",
+    "markdownify>=0.11",
+    "chardet>=5.0",
+    "python-frontmatter>=1.1",
+    "beautifulsoup4>=4.12",
+    "sentence-transformers>=2.6",
+    "redis[asyncio]>=5.0",
+    "networkx>=3.2",
+    "neo4j>=5.17",
+    "arq>=0.25",
+    "prometheus-fastapi-instrumentator>=6.0",
+    "pyvi>=0.1.1",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=4.1",
+    "httpx>=0.26",
+    "respx>=0.20",
+    "ruff>=0.3",
+    "mypy>=1.9",
+    "rich>=13.0",
+]
+
+[project.scripts]
+rag-service = "rag_service.main:main"
+rag-service-mcp = "rag_service.mcp_server.transport.stdio:main"
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["rag_service*"]
