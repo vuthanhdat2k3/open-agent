@@ -1,0 +1,20 @@
+# Drive MCP server (Google Drive -> open-agent) as a container running the SSE transport.
+#
+# Secrets are mounted read-only from the host; they are never baked into the image.
+# Generate them first on the host: run `python auth.py` (creates token.json).
+services:
+  drive-mcp:
+    build: .
+    image: open-agent-drive-mcp:latest
+    ports:
+      - "8001:8001"
+    environment:
+      MCP_TRANSPORT: sse
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: 8001
+      GOOGLE_CREDENTIALS_PATH: /app/credentials.json
+      GOOGLE_TOKEN_PATH: /app/token.json
+    volumes:
+      - ./credentials.json:/app/credentials.json:ro
+      - ./token.json:/app/token.json:ro
+    restart: unless-stopped
