@@ -165,6 +165,51 @@ async def _rag_ingest_text(
         return f"Ingest error: {type(e).__name__}: {e}"
 
 
+async def _rag_ingest_file(
+    filename: str,
+    content_base64: str,
+    collection: str = "default",
+    tags: list[str] | None = None,
+    chunk_size: int = 800,
+    chunk_overlap: int = 150,
+    enable_graph: bool = False,
+) -> str:
+    try:
+        import base64
+
+        from rag_service.services.collection_service import CollectionService
+        from rag_service.services.ingest_service import IngestService
+
+        file_bytes = base64.b64decode(content_base64)
+        async with _session() as (session, comp):
+            cs = CollectionService(session, comp)
+            existing = await cs.get_collection(collection)
+            if existing is None:
+                await cs.create_collection(collection)
+            svc = IngestService(session, comp)
+            result = await svc.ingest_file(
+                file_bytes,
+                filename,
+                collection,
+                tags=tags,
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap,
+                chunker=None,
+                enable_graph=enable_graph,
+                force=True,
+            )
+        return (
+            f"Ingested: {filename}\n"
+            f"  Document ID: {result['document_id']}\n"
+            f"  Chunks created: {result['chunk_count']}\n"
+            f"  Collection: {result['collection']}\n"
+            f"  Status: {result['status']}"
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.exception("rag_ingest_file_failed", error=str(e))
+        return f"Ingest error: {type(e).__name__}: {e}"
+
+
 async def _rag_list_collections() -> str:
     try:
         from rag_service.services.collection_service import CollectionService
@@ -270,6 +315,20 @@ def _create_fastmcp_server() -> FastMCP:
         )
 
     @mcp.tool()
+    async def rag_ingest_file(
+        filename: str,
+        content_base64: str,
+        collection: str = "default",
+        tags: list[str] | None = None,
+        chunk_size: int = 800,
+        chunk_overlap: int = 150,
+        enable_graph: bool = False,
+    ) -> str:
+        return await _rag_ingest_file(
+            filename, content_base64, collection, tags, chunk_size, chunk_overlap, enable_graph
+        )
+
+    @mcp.tool()
     async def rag_list_collections() -> str:
         return await _rag_list_collections()
 
@@ -342,6 +401,23 @@ def _create_low_level_server() -> Any:  # pragma: no cover - fallback path
             },
         ),
         Tool(
+            name="rag_ingest_file",
+            description="Ingest an uploaded file (base64) into a collection. Extension selects the parser (pdf/docx/md/html/txt/...).",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "filename": {"type": "string"},
+                    "content_base64": {"type": "string"},
+                    "collection": {"type": "string", "default": "default"},
+                    "tags": {"type": "array", "items": {"type": "string"}},
+                    "chunk_size": {"type": "integer", "default": 800},
+                    "chunk_overlap": {"type": "integer", "default": 150},
+                    "enable_graph": {"type": "boolean", "default": False},
+                },
+                "required": ["filename", "content_base64"],
+            },
+        ),
+        Tool(
             name="rag_list_collections",
             description="List all collections.",
             inputSchema={"type": "object", "properties": {}},
@@ -364,6 +440,7 @@ def _create_low_level_server() -> Any:  # pragma: no cover - fallback path
         "rag_search": _rag_search,
         "rag_ingest_url": _rag_ingest_url,
         "rag_ingest_text": _rag_ingest_text,
+        "rag_ingest_file": _rag_ingest_file,
         "rag_list_collections": _rag_list_collections,
         "rag_delete_document": _rag_delete_document,
     }

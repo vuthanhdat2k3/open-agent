@@ -41,24 +41,23 @@ class PDFParser(Parser):
                     logger.warning("pypdf failed on a page: %s", exc)
                     pages.append("")
 
-            low_text = sum(1 for p in pages if len(p.strip()) < 30)
-            if low_text and low_text >= len(pages) / 2:
-                try:
-                    from pdfminer.high_level import extract_text
-
-                    text = extract_text(io.BytesIO(source))
-                    if text and text.strip():
-                        pages = [text]
-                except Exception as exc:  # pragma: no cover - optional dep
-                    logger.warning("pdfminer fallback unavailable: %s", exc)
-
             page_count = len(reader.pages)
             info = reader.metadata or {}
             metadata = _build_metadata(info, page_count)
-        except ImportError as exc:
-            raise ParseError(
-                "PDF parsing requires 'pypdf' or 'pdfminer.six' to be installed"
-            ) from exc
+        except ImportError:
+            try:
+                import io
+
+                from pdfminer.high_level import extract_text
+
+                text = extract_text(io.BytesIO(source)) or ""
+                pages = [text] if text.strip() else []
+                page_count = len(pages)
+                metadata = {"page_count": page_count}
+            except ImportError as exc:
+                raise ParseError(
+                    "PDF parsing requires 'pypdf' or 'pdfminer.six' to be installed"
+                ) from exc
 
         body = ""
         for idx, page_text in enumerate(pages, start=1):
