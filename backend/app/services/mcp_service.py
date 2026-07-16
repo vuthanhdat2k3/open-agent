@@ -45,22 +45,33 @@ class McpService:
             return {"ok": False, "message": "server not found"}
         try:
             mgr = get_mcp_manager()
+            await mgr.disconnect(id)
             await mgr.connect(srv)
             tools = await mgr.get(srv).list_tools()
-            await self.repo.replace_tools(id, tools)
+            # Commit status before replace_tools(): the latter deletes old
+            # McpTool rows, which would collide with db.add(srv) on the stale
+            # srv.tools relationship and raise InvalidRequestError.
             srv.connection_status = "connected"
             self.db.add(srv)
             await self.db.commit()
+            await self.db.refresh(srv)
+            await self.repo.replace_tools(id, tools)
             return {
                 "ok": True,
                 "message": f"connected, {len(tools)} tools",
                 "tool_count": len(tools),
             }
         except Exception as e:  # noqa: BLE001
-            srv.connection_status = "error"
-            self.db.add(srv)
-            await self.db.commit()
+            await self._set_status(id, "error")
             return {"ok": False, "message": f"error: {e}"}
+
+    async def _set_status(self, id: str, status: str) -> None:
+        from sqlalchemy import update
+
+        await self.db.execute(
+            update(McpServer).where(McpServer.id == id).values(connection_status=status)
+        )
+        await self.db.commit()
 
     async def disconnect(self, id: str) -> dict:
         await get_mcp_manager().disconnect(id)

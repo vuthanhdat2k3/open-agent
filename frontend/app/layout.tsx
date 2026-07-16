@@ -12,6 +12,7 @@ import type {
   Model,
   Provider,
   Session,
+  UploadedFile,
   UsageSummary,
   Workflow as WorkflowT,
 } from "@/types";
@@ -27,6 +28,7 @@ import {
   Plug,
   Workflow,
   MessageSquare,
+  FileUp,
   Bug,
   Menu,
   PanelLeftClose,
@@ -57,6 +59,7 @@ const navItems: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/models", label: "Models", icon: Cpu },
   { href: "/agents", label: "Agents", icon: Bot },
   { href: "/mcp", label: "MCP", icon: Plug },
+  { href: "/files", label: "Files", icon: FileUp },
   { href: "/workflows", label: "Workflows", icon: Workflow },
   { href: "/chat", label: "Chat", icon: MessageSquare },
   { href: "/debug", label: "Debug", icon: Bug },
@@ -89,6 +92,7 @@ const tabQueries: Record<string, PrefetchSpec[]> = {
     { queryKey: ["debug-sessions"], queryFn: () => api.get<Session[]>("/api/debug/sessions") },
     { queryKey: ["usage"], queryFn: () => api.get<UsageSummary[]>("/api/debug/usage") },
   ],
+  "/files": [{ queryKey: ["files"], queryFn: () => api.get<UploadedFile[]>("/api/files") }],
 };
 
 function prefetchTab(qc: QueryClient, href: string) {

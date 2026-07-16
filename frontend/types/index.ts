@@ -124,3 +124,21 @@ export interface UsageSummary {
   latency_ms: number;
   calls: number;
 }
+
+export interface UploadedFile {
+  id: string;
+  original_name: string;
+  content_type: string;
+  size: number;
+  status: "uploaded" | "ingesting" | "ingested" | "error";
+  collection: string | null;
+  error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface IngestResult {
+  ok: boolean;
+  result: string;
+  document_id: string | null;
+}

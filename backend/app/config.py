@@ -30,6 +30,14 @@ class Settings(BaseSettings):
     # Local filesystem sandbox for read_attachment
     workspace_dir: str = "./workspace"
 
+    upload_dir: str = "data/uploads"
+    max_upload_size: int = 25 * 1024 * 1024
+    rag_mcp_server_name: str = "rag"
+    allowed_extensions: list[str] = [
+        ".pdf", ".txt", ".md", ".csv", ".json",
+        ".docx", ".html", ".htm", ".py", ".yaml", ".yml",
+    ]
+
     log_level: str = "INFO"
 
 

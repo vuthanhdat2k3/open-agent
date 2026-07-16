@@ -1,4 +1,5 @@
 from app.models.agent import Agent
+from app.models.files import UploadedFile
 from app.models.mcp import McpServer, McpTool
 from app.models.message import Message
 from app.models.model import Model
@@ -16,6 +17,7 @@ __all__ = [
     "Model",
     "Provider",
     "Session",
+    "UploadedFile",
     "UsageEvent",
     "Workflow",
     "AgentMemory",

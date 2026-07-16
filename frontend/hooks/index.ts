@@ -5,11 +5,13 @@ import { api } from "@/lib/api";
 import type {
   Agent,
   AgentToolInfo,
+  IngestResult,
   McpServer,
   Message,
   Model,
   Provider,
   Session,
+  UploadedFile,
   UsageSummary,
   Workflow,
 } from "@/types";
@@ -184,5 +186,49 @@ export function useSessionTree(sessionId: string | null) {
     queryKey: ["tree", sessionId],
     enabled: !!sessionId,
     queryFn: () => api.get<any>(`/api/debug/sessions/${sessionId}`),
+  });
+}
+
+export function useFiles() {
+  return useQuery({
+    queryKey: ["files"],
+    queryFn: () => api.get<UploadedFile[]>("/api/files"),
+  });
+}
+export function useUploadFile() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (file: File) => {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch("/api/files/upload", { method: "POST", body: form });
+      if (!res.ok) {
+        let detail = res.statusText;
+        try {
+          const j = await res.json();
+          detail = (j && j.detail) || detail;
+        } catch {
+          // ignore parse errors
+        }
+        throw new Error(detail);
+      }
+      return (await res.json()) as UploadedFile;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["files"] }),
+  });
+}
+export function useDeleteFile() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.delete(`/api/files/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["files"] }),
+  });
+}
+export function useIngestFile() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: any }) =>
+      api.post<IngestResult>(`/api/files/${id}/ingest`, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["files"] }),
   });
 }
