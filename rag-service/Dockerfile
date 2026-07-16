@@ -20,11 +20,11 @@ COPY scripts ./scripts
 COPY alembic ./alembic
 COPY alembic.ini ./alembic.ini
 
-# Install runtime + lightweight optional backends (parsers, openai, redis, networkx).
-# sentence-transformers (heavy / pulls torch) is intentionally omitted; add the
-# `sentence-transformers` extra if you need local semantic embeddings.
+# Install runtime + optional backends. sentence-transformers (local semantic
+# embeddings, e.g. BAAI/bge-m3) pulls torch and is included so the image can
+# serve real semantic retrieval without an external embedding API.
 RUN pip install --upgrade pip && \
-    pip install ".[parsers,openai,bm25-redis,graph-networkx]"
+    pip install ".[parsers,openai,bm25-redis,graph-networkx,sentence-transformers]"
 
 # Container defaults: run fully offline out of the box.
 ENV RAG_ENV=production \

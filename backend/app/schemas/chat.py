@@ -37,6 +37,7 @@ class SessionOut(BaseModel):
 
 class ChatStreamEvent(BaseModel):
     # message_start | token | tool_call | tool_result | message_done | error
+    # retry | self_correct (self-correction loop)
     event: str
     data: dict[str, Any] = {}
 

@@ -1,4 +1,5 @@
 from collections.abc import AsyncGenerator
+import asyncio
 
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
@@ -24,9 +25,37 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def init_db() -> None:
-    """Create tables (dev). Alembic migrations are the production path."""
-    # Import models so they register on Base.metadata
-    from app import models  # noqa: F401
+    """Apply database schema via Alembic (production path).
 
+    For an existing database this runs pending migrations (e.g. restructuring
+    agent_memories) without data loss. For a brand-new, empty database we
+    bootstrap via create_all once, then stamp it at the current head so future
+    `alembic upgrade` calls apply incrementally.
+    """
+    from app import models  # noqa: F401  (register models on Base.metadata)
+    from sqlalchemy import text as _text
+
+    # Detect whether this is a fresh database.
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+        result = await conn.execute(
+            _text(
+                "SELECT name FROM sqlite_master "
+                "WHERE type='table' AND name='agents'"
+            )
+        )
+        has_agents = result.first() is not None
+
+    # Import alembic late to avoid import cost when not needed.
+    from alembic import command
+    from alembic.config import Config
+
+    cfg = Config("alembic.ini")
+    cfg.set_main_option("script_location", "alembic")
+
+    if not has_agents:
+        # Fresh DB: create everything from models, then stamp at head.
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        await asyncio.to_thread(command.stamp, cfg, "head")
+    else:
+        await asyncio.to_thread(command.upgrade, cfg, "head")

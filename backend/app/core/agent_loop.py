@@ -22,6 +22,40 @@ from app.schemas.chat import AgentLoopResult
 
 settings = get_settings()
 
+# Auto-injected into every agent's system prompt so the model is explicitly
+# told how to use the structured memory tools. The tool schemas are provided
+# by the builder; this instructs the model on the REQUIRED schema so it never
+# invents free-form keys (the root cause of duplicate memory rows).
+MEMORY_DIRECTIVE = (
+    "Memory behavior (structured, mandatory schema):\n"
+    "- Store user facts with `save_memory` using a fixed schema: "
+    "memory_type in {profile, preference, project, goal, skill, relationship, "
+    "history, fact} and a canonical attribute. The user's name MUST be saved as "
+    "memory_type='profile', attribute='name'. Never invent custom keys.\n"
+    "- Aliases are normalized automatically (full_name, formal_name, "
+    "display_name, username all become profile.name), so just pass the closest "
+    "attribute and the backend folds it correctly. Writes UPSERT — repeating a "
+    "fact updates it, it never creates duplicates.\n"
+    "- Before answering any question about the user (name, preferences, goals, "
+    "context), call `call_memory` to recall what you know. To get the user's "
+    "name, call `call_memory(memory_type='profile')`.\n"
+)
+
+# Injected only when the agent is registered with RAG tools. Tells the model to
+# consult the knowledge base before answering factual questions, instead of
+# relying solely on parametric memory.
+RAG_DIRECTIVE = (
+    "Retrieval behavior (RAG):\n"
+    "- When the user asks a factual or document-based question that could be "
+    "answered by ingested sources (technical specs, project docs, past notes, "
+    "code references), call `rag_search` with a concise query BEFORE answering "
+    "from prior knowledge.\n"
+    "- If the knowledge base is empty or the results are off-topic, say so "
+    "plainly and offer to ingest the source via rag_ingest_url / rag_ingest_text "
+    "/ rag_ingest_file (or list what's available with rag_list_collections).\n"
+    "- Do not claim knowledge you did not retrieve or were not told.\n"
+)
+
 
 def _estimate_tokens(text: str) -> int:
     return max(1, len(text) // 4)
@@ -42,6 +76,21 @@ async def _build_specs(agent: Agent, db: AsyncSession) -> list[Any]:
 
 def _to_openai_message(m: Message) -> dict[str, Any]:
     return {"role": m.role, "content": m.content}
+
+
+def _is_tool_failure(name: str, result: str) -> bool:
+    """A tool result counts as a failure if it is an explicit error or a
+    non-zero exit (run_code / run_shell append '[exit code: N]')."""
+    r = result or ""
+    if r.startswith("error:"):
+        return True
+    if "[exit code: " in r:
+        try:
+            code = int(r.rsplit("[exit code: ", 1)[1].rstrip("]").strip())
+            return code != 0
+        except (ValueError, IndexError):
+            return False
+    return False
 
 
 async def _persist(
@@ -90,8 +139,40 @@ async def _agent_stream(
         yield {"event": "error", "data": {"message": str(e)}}
         return
 
+    base_prompt = agent.system_prompt or ""
+
+    ctx = ToolContext(
+        db=db,
+        depth=depth,
+        workspace_dir=settings.workspace_dir,
+        mcp_manager=get_mcp_manager(),
+        agent_id=agent.id,
+        session_id=session_id,
+    )
+
+    specs = await _build_specs(agent, db)
+    tool_schemas = (
+        [tool_to_openai_schema(s) for s in specs] if specs else None
+    )
+    tool_by_name = {s.name: s for s in specs}
+
+    # Auto-inject behavioral directives ONLY for tools the agent actually has
+    # registered, so unused agents aren't burdened with irrelevant instructions.
+    directives: list[str] = []
+    if {"save_memory", "call_memory"} & tool_by_name.keys():
+        directives.append(MEMORY_DIRECTIVE)
+    if "rag_search" in tool_by_name:
+        directives.append(RAG_DIRECTIVE)
+
+    system_parts = [base_prompt] if base_prompt else []
+    system_parts.extend(directives)
+    system_prompt = "\n\n".join(system_parts)
+
+    # Build messages: system prompt first, then conversation history, then current user message.
+    # NOTE: previously messages was built before system_prompt and then overwritten here —
+    # that caused history + user message to be lost entirely.
     messages: list[dict[str, Any]] = [
-        {"role": "system", "content": agent.system_prompt or ""}
+        {"role": "system", "content": system_prompt}
     ]
     if session_id:
         res = await db.execute(
@@ -114,25 +195,12 @@ async def _agent_stream(
     if session_id:
         await _persist(db, session_id, "user", message, {})
 
-    ctx = ToolContext(
-        db=db,
-        depth=depth,
-        workspace_dir=settings.workspace_dir,
-        mcp_manager=get_mcp_manager(),
-        agent_id=agent.id,
-        session_id=session_id,
-    )
-
-    specs = await _build_specs(agent, db)
-    tool_schemas = (
-        [tool_to_openai_schema(s) for s in specs] if specs else None
-    )
-    tool_by_name = {s.name: s for s in specs}
-
     start = time.monotonic()
     yield {"event": "message_start", "data": {}}
 
     tool_calls_log: list[dict[str, Any]] = []
+    consecutive_failures = 0
+    max_retries = max(1, min(settings.sandbox_max_retries, agent.max_iterations))
 
     for _ in range(agent.max_iterations):
         content_parts: list[str] = []
@@ -159,6 +227,8 @@ async def _agent_stream(
 
         if tc_map:
             openai_tcs = []
+            iter_failures = 0
+            iter_results: list[dict[str, str]] = []
             for entry in tc_map.values():
                 openai_tcs.append(
                     {
@@ -200,6 +270,49 @@ async def _agent_stream(
                         "role": "tool",
                         "tool_call_id": entry["id"],
                         "content": str(result),
+                    }
+                )
+                if _is_tool_failure(name, result):
+                    iter_failures += 1
+                    consecutive_failures += 1
+                else:
+                    consecutive_failures = 0
+                iter_results.append({"name": name, "result": str(result)})
+            if iter_failures > 0 and consecutive_failures < max_retries:
+                yield {"event": "retry", "data": {"attempt": consecutive_failures, "max": max_retries}}
+                yield {
+                    "event": "self_correct",
+                    "data": {"status": "retrying", "failures": consecutive_failures},
+                }
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            "The previous tool call(s) failed. Errors:\n"
+                            + "\n".join(
+                                f"- {r['name']}: {r['result'][:500]}"
+                                for r in iter_results
+                                if _is_tool_failure(r["name"], r["result"])
+                            )
+                            + "\nAnalyze the error, fix the cause (arguments or code), "
+                            "and retry. Do not repeat the same mistake."
+                        ),
+                    }
+                )
+            elif iter_failures > 0:
+                yield {
+                    "event": "self_correct",
+                    "data": {"status": "circuit_breaker", "failures": consecutive_failures},
+                }
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            "Tool calls have failed repeatedly and the retry limit is "
+                            "reached. Stop retrying the same approach; provide a final "
+                            "answer explaining the problem, or try a genuinely different "
+                            "approach if one exists."
+                        ),
                     }
                 )
             continue

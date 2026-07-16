@@ -19,14 +19,22 @@ services:
       - "8101:8101"   # MCP SSE server  (http://localhost:8101/sse)
     environment:
       RAG_ENV: production
-      RAG_VECTOR_STORE: memory        # -> "qdrant" when qdrant service is enabled
-      RAG_BM25_BACKEND: memory        # -> "redis"  when redis service is enabled
-      RAG_EMBEDDER: simple            # -> "openai" with RAG_OPENAI_API_KEY set
+      RAG_VECTOR_STORE: qdrant         # real vector DB (persistent)
+      RAG_QDRANT_URL: http://qdrant:6333
+      RAG_QDRANT_ON_DISK: "true"       # mmap vectors to disk for scale
+      RAG_BM25_BACKEND: memory         # -> "redis"  when redis service is enabled
+      RAG_EMBEDDER: sentence_transformers   # local semantic embeddings
+      RAG_ST_MODEL: BAAI/bge-m3               # 1024-dim multilingual embedding
       RAG_MCP_TRANSPORT: both
-      # RAG_OPENAI_API_KEY: sk-...     # enable real embeddings (openai extra installed)
-      # RAG_QDRANT_URL: http://qdrant:6333
+      # RAG_OPENAI_API_KEY: sk-...     # enable real semantic embeddings (openai extra installed)
       # RAG_REDIS_URL: redis://redis:6379
     restart: unless-stopped
+    depends_on:
+      - qdrant
+    volumes:
+      # Persist downloaded embedding models (e.g. BAAI/bge-m3) across
+      # container recreates so they are not re-downloaded from HuggingFace.
+      - hf-cache:/root/.cache/huggingface
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8100/api/v1/health').status==200 else 1)"]
       interval: 30s
@@ -38,12 +46,12 @@ services:
     #   - rag-data:/app/data
     #   - ./rag.db:/app/rag.db
 
-  # Optional: real vector store. Enable, then set RAG_VECTOR_STORE=qdrant above.
-  # qdrant:
-  #   image: qdrant/qdrant:latest
-  #   ports: ["6333:6333"]
-  #   volumes: ["qdrant-data:/qdrant/storage"]
-  #   restart: unless-stopped
+  # Real vector store. RAG_VECTOR_STORE above is set to "qdrant".
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports: ["6333:6333"]
+    volumes: ["qdrant-data:/qdrant/storage"]
+    restart: unless-stopped
 
   # Optional: Redis-backed BM25. Enable, then set RAG_BM25_BACKEND=redis above.
   # redis:
@@ -51,6 +59,7 @@ services:
   #   ports: ["6379:6379"]
   #   restart: unless-stopped
 
-# volumes:
-#   rag-data:
-#   qdrant-data:
+volumes:
+  rag-data:
+  qdrant-data: {}
+  hf-cache: {}

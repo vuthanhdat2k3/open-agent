@@ -2,3 +2,4 @@
 # Any `from app.core.tools.registry import ...` transitively runs this and
 # populates BUILTIN_TOOLS at startup.
 from app.core.tools import builtins  # noqa: F401
+from app.core.tools import sandbox  # noqa: F401
