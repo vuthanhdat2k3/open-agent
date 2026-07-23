@@ -38,7 +38,7 @@ async def _run_shell(args: dict[str, Any], ctx: ToolContext) -> str:
             stderr=asyncio.subprocess.STDOUT,
         )
         out, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         return f"error: command timed out after {timeout}s"
     except Exception as e:  # noqa: BLE001
         return f"error executing command: {e}"

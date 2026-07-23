@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Literal, Optional
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -9,7 +9,7 @@ ChatRole = Literal["user", "assistant", "system", "tool"]
 class ChatRequest(BaseModel):
     agent_id: str
     message: str
-    session_id: Optional[str] = None
+    session_id: str | None = None
     stream: bool = True
 
 

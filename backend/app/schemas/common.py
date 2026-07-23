@@ -1,11 +1,10 @@
-from typing import Any, Optional
 
 from pydantic import BaseModel
 
 
 class ErrorResponse(BaseModel):
     detail: str
-    code: Optional[str] = None
+    code: str | None = None
 
 
 class HealthResponse(BaseModel):

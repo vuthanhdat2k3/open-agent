@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, ConfigDict
 
@@ -18,12 +17,12 @@ class ProviderCreate(ProviderBase):
 
 
 class ProviderUpdate(BaseModel):
-    key: Optional[str] = None
-    name: Optional[str] = None
-    base_url: Optional[str] = None
-    api_key: Optional[str] = None
-    env_var: Optional[str] = None
-    is_default: Optional[bool] = None
+    key: str | None = None
+    name: str | None = None
+    base_url: str | None = None
+    api_key: str | None = None
+    env_var: str | None = None
+    is_default: bool | None = None
 
 
 class ProviderOut(ProviderBase):

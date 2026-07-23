@@ -1,6 +1,5 @@
 from app.core.tools.types import ToolSpec
 
-
 # name -> spec. Populated by app.core.tools.builtins on import.
 BUILTIN_TOOLS: dict[str, ToolSpec] = {}
 

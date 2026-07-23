@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, ConfigDict
 
@@ -12,8 +11,8 @@ class UploadedFileOut(BaseModel):
     content_type: str
     size: int
     status: str
-    collection: Optional[str] = None
-    error: Optional[str] = None
+    collection: str | None = None
+    error: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -28,4 +27,4 @@ class IngestRequest(BaseModel):
 class IngestResult(BaseModel):
     ok: bool
     result: str
-    document_id: Optional[str] = None
+    document_id: str | None = None

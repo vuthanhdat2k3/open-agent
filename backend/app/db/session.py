@@ -1,16 +1,14 @@
-from collections.abc import AsyncGenerator
 import asyncio
+from collections.abc import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
-from sqlalchemy.orm import DeclarativeBase
 
 from app.config import get_settings
 from app.db.base import Base
-
 
 settings = get_settings()
 
@@ -32,8 +30,9 @@ async def init_db() -> None:
     bootstrap via create_all once, then stamp it at the current head so future
     `alembic upgrade` calls apply incrementally.
     """
-    from app import models  # noqa: F401  (register models on Base.metadata)
     from sqlalchemy import text as _text
+
+    from app import models  # noqa: F401  (register models on Base.metadata)
 
     # Detect whether this is a fresh database.
     async with engine.begin() as conn:
@@ -46,8 +45,9 @@ async def init_db() -> None:
         has_agents = result.first() is not None
 
     # Import alembic late to avoid import cost when not needed.
-    from alembic import command
     from alembic.config import Config
+
+    from alembic import command
 
     cfg = Config("alembic.ini")
     cfg.set_main_option("script_location", "alembic")

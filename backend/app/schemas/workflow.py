@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Literal, Optional
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -11,7 +11,7 @@ class GraphNode(BaseModel):
     id: str
     kind: NodeKind
     label: str = ""
-    agent_id: Optional[str] = None  # for kind == "agent"
+    agent_id: str | None = None  # for kind == "agent"
     merge_mode: MergeMode = "all"   # for kind == "merge"
     config: dict[str, Any] = {}
 
@@ -19,7 +19,7 @@ class GraphNode(BaseModel):
 class GraphEdge(BaseModel):
     from_: str
     to: str
-    condition: Optional[str] = None  # optional guard expression
+    condition: str | None = None  # optional guard expression
 
 
 class WorkflowGraph(BaseModel):
@@ -38,9 +38,9 @@ class WorkflowCreate(WorkflowBase):
 
 
 class WorkflowUpdate(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
-    graph: Optional[WorkflowGraph] = None
+    name: str | None = None
+    description: str | None = None
+    graph: WorkflowGraph | None = None
 
 
 class WorkflowOut(WorkflowBase):
@@ -58,5 +58,5 @@ class RunWorkflowRequest(BaseModel):
 
 class WorkflowRunEvent(BaseModel):
     event: str  # "node_start" | "node_done" | "node_error" | "edge" | "done" | "error"
-    node_id: Optional[str] = None
+    node_id: str | None = None
     data: dict[str, Any] = {}

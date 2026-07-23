@@ -88,7 +88,7 @@ async def _run_code(args: dict[str, Any], ctx: ToolContext) -> str:
         )
         try:
             out, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             proc.kill()
             await proc.wait()
             return f"error: sandbox timed out after {timeout}s [exit code: -1]"
