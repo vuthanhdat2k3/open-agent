@@ -22,6 +22,11 @@ dependencies = [
     "httpx>=0.27",
     # MCP client
     "mcp>=1.0",
+    # Auth / Security
+    "pyjwt>=2.8",
+    "argon2-cffi>=23.1",
+    "authlib>=1.3",
+    "email-validator>=2.0",
     # Config / validation
     "python-dotenv>=1.0",
     # Misc
