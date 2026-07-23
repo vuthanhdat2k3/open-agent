@@ -47,3 +47,5 @@ class AgentLoopResult(BaseModel):
     tool_calls: list[dict[str, Any]] = []
     usage: dict[str, Any] = {}
     latency_ms: int = 0
+    cost_usd: float = 0.0
+    error: str | None = None

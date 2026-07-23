@@ -31,6 +31,7 @@ dependencies = [
     "email-validator>=2.0",
     "simpleeval>=0.9.13",
     "jsonschema>=4.22",
+    "regex>=2024.11",
     "arq>=0.26",
     "redis>=5.0",
     "structlog>=26.1",

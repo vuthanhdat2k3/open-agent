@@ -6,6 +6,7 @@ from app.api.v1.routes import (
     auth,
     chat,
     debug,
+    evaluations,
     files,
     mcp,
     models,
@@ -26,5 +27,6 @@ api_router.include_router(mcp.router)
 api_router.include_router(workflows.router)
 api_router.include_router(chat.router)
 api_router.include_router(debug.router)
+api_router.include_router(evaluations.router)
 api_router.include_router(files.router)
 api_router.include_router(sessions.router)
