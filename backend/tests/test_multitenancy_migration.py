@@ -205,7 +205,7 @@ def test_multitenancy_migration_backfill(tmp_path: Path) -> None:
 
     # 4. Assert migrations and backfill
     engine = create_engine(sync_url)
-    with engine.connect() as conn:
+    with engine.begin() as conn:
         orgs = conn.execute(text("SELECT id, name, slug FROM organizations")).fetchall()
         assert len(orgs) == 1
         assert orgs[0][0] == "default-org-id"
@@ -227,5 +227,31 @@ def test_multitenancy_migration_backfill(tmp_path: Path) -> None:
         assert len(agents) == 1
         assert agents[0][0] == "a1"
         assert agents[0][2] == "default-org-id"
+
+        # 5. Assert composite unique constraint per-tenant on migrated DB:
+        # Create a second organization and insert an agent & provider with identical name/key
+        conn.execute(
+            text(
+                "INSERT INTO organizations (id, name, slug, created_at) "
+                "VALUES ('org-2', 'Org 2', 'org-2', '2026-01-01')"
+            )
+        )
+        conn.execute(
+            text(
+                "INSERT INTO providers (id, org_id, key, name, base_url, api_key, env_var, is_default, created_at, updated_at) "
+                "VALUES ('p2', 'org-2', 'openai', 'OpenAI', 'http://api2', '', '', 0, '2026-01-01', '2026-01-01')"
+            )
+        )
+        conn.execute(
+            text(
+                "INSERT INTO agents (id, org_id, name, description, system_prompt, model_id, tools, max_iterations, temperature, created_at, updated_at) "
+                "VALUES ('a2', 'org-2', 'Legacy Agent', 'Agent in Org 2', 'Prompt', 'm1', '[]', 10, 0.7, '2026-01-01', '2026-01-01')"
+            )
+        )
+
+        agents_org2 = conn.execute(text("SELECT id, name, org_id FROM agents WHERE org_id = 'org-2'")).fetchall()
+        assert len(agents_org2) == 1
+        assert agents_org2[0][0] == "a2"
+        assert agents_org2[0][1] == "Legacy Agent"
 
     engine.dispose()
