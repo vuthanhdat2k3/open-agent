@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any, AsyncIterator, Optional
+from collections.abc import AsyncIterator
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -44,7 +45,6 @@ async def run_workflow_events(
             "data": {"message": "workflow must have exactly one input node"},
         }
         return
-    input_id = input_nodes[0]["id"]
 
     status: dict[str, str] = {n["id"]: "pending" for n in nodes}
     outputs: dict[str, str] = {}
@@ -137,8 +137,7 @@ async def run_workflow_events(
             tasks[n["id"]] = asyncio.create_task(run_node(n))
 
         results = await asyncio.gather(*tasks.values(), return_exceptions=True)
-        for nid, res in zip(tasks.keys(), results):
-            node = node_by_id[nid]
+        for nid, res in zip(tasks.keys(), results, strict=False):
             if isinstance(res, Exception):
                 status[nid] = "error"
                 error_flag = True

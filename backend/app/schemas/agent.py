@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, ConfigDict
 
@@ -19,13 +18,13 @@ class AgentCreate(AgentBase):
 
 
 class AgentUpdate(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
-    system_prompt: Optional[str] = None
-    model_id: Optional[str] = None
-    tools: Optional[list[str]] = None
-    max_iterations: Optional[int] = None
-    temperature: Optional[float] = None
+    name: str | None = None
+    description: str | None = None
+    system_prompt: str | None = None
+    model_id: str | None = None
+    tools: list[str] | None = None
+    max_iterations: int | None = None
+    temperature: float | None = None
 
 
 class AgentToolInfo(BaseModel):

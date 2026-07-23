@@ -32,9 +32,9 @@ class AgentService:
         return await self.repo.get(id)
 
     async def list_available_tools(self) -> list[dict]:
-        from app.core.tools.registry import list_tools
         from sqlalchemy import select
 
+        from app.core.tools.registry import list_tools
         from app.models.mcp import McpTool
 
         seen: set[str] = set()

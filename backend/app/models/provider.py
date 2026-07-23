@@ -1,7 +1,13 @@
-from sqlalchemy import Boolean, DateTime, String, Text, UniqueConstraint
+from typing import TYPE_CHECKING
+
+from sqlalchemy import Boolean, DateTime, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, gen_id, utc_now
+
+if TYPE_CHECKING:
+    from app.models.model import Model
+
 
 
 class Provider(Base):

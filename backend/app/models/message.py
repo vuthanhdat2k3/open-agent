@@ -1,5 +1,4 @@
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
-from sqlalchemy import JSON
+from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, gen_id, utc_now

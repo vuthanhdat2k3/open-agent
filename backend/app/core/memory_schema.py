@@ -12,7 +12,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-
 # Canonical memory types. Stored verbatim in `memory_type`.
 MEMORY_TYPES: set[str] = {
     "profile",

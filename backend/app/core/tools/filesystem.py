@@ -23,7 +23,7 @@ BINARY_EXTS = {
 }
 
 
-def _write_file(args: dict[str, Any], ctx: ToolContext) -> str:
+async def _write_file(args: dict[str, Any], ctx: ToolContext) -> str:
     path = args.get("path", "")
     content = args.get("content", "")
     if not path:
@@ -41,7 +41,7 @@ def _write_file(args: dict[str, Any], ctx: ToolContext) -> str:
     return f"wrote {len(str(content))} chars to {path}"
 
 
-def _list_dir(args: dict[str, Any], ctx: ToolContext) -> str:
+async def _list_dir(args: dict[str, Any], ctx: ToolContext) -> str:
     path = args.get("path", "") or "."
     target = safe_resolve(ctx.workspace_dir, path)
     if target is None:
@@ -73,7 +73,7 @@ def _list_dir(args: dict[str, Any], ctx: ToolContext) -> str:
     return "\n".join(lines)
 
 
-def _search_files(args: dict[str, Any], ctx: ToolContext) -> str:
+async def _search_files(args: dict[str, Any], ctx: ToolContext) -> str:
     pattern = args.get("pattern", "")
     glob = args.get("glob", "**/*")
     max_results = int(args.get("max_results", MAX_GREP_RESULTS))

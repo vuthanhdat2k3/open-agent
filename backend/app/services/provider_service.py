@@ -4,9 +4,9 @@ import time
 
 import httpx
 
+from app.core.llm import resolve_api_key
 from app.models.provider import Provider
 from app.repositories.provider_repo import ProviderRepository
-from app.core.llm import resolve_api_key
 
 
 class ProviderService:

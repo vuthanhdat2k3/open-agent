@@ -2,9 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from app.core.tools.paths import safe_resolve
-from app.core.tools.registry import list_tools, get_tool
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+import app.models  # noqa: F401
+from app.core.tools.registry import get_tool, list_tools
 from app.core.tools.types import ToolContext
+from app.db.base import Base
 
 
 def _ctx(workspace_dir: str) -> ToolContext:
@@ -65,14 +68,22 @@ async def test_all_builtins_registered() -> None:
 
 
 async def test_save_and_call_memory() -> None:
-    ctx = _ctx("/tmp")
-    await get_tool("save_memory").run({"key": "name", "value": "Dat"}, ctx)
-    await get_tool("save_memory").run(
-        {"key": "preferred_language", "value": "Python"}, ctx
-    )
-    res = await get_tool("call_memory").run({"query": "python"}, ctx)
-    assert "Python" in res and "preferred_language" in res
-    res2 = await get_tool("call_memory").run({"key": "name"}, ctx)
-    assert "Dat" in res2
-    res3 = await get_tool("call_memory").run({}, ctx)
-    assert "Dat" in res3 and "Python" in res3
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with session_factory() as session:
+        ctx = ToolContext(db=session, agent_id="agent-1", workspace_dir="/tmp")
+        await get_tool("save_memory").run(
+            {"memory_type": "profile", "attribute": "name", "value": "Dat"}, ctx
+        )
+        await get_tool("save_memory").run(
+            {"memory_type": "preference", "attribute": "preferred_language", "value": "Python"}, ctx
+        )
+        res = await get_tool("call_memory").run({"query": "python"}, ctx)
+        assert "Python" in res and "language" in res
+        res2 = await get_tool("call_memory").run({"attribute": "name"}, ctx)
+        assert "Dat" in res2
+        res3 = await get_tool("call_memory").run({}, ctx)
+        assert "Dat" in res3 and "Python" in res3
+    await engine.dispose()

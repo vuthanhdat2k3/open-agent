@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -22,14 +22,14 @@ class ModelCreate(ModelBase):
 
 
 class ModelUpdate(BaseModel):
-    provider_id: Optional[str] = None
-    name: Optional[str] = None
-    display_name: Optional[str] = None
-    tier: Optional[Tier] = None
-    context_window: Optional[int] = None
-    input_cost_per_1k: Optional[float] = None
-    output_cost_per_1k: Optional[float] = None
-    active: Optional[bool] = None
+    provider_id: str | None = None
+    name: str | None = None
+    display_name: str | None = None
+    tier: Tier | None = None
+    context_window: int | None = None
+    input_cost_per_1k: float | None = None
+    output_cost_per_1k: float | None = None
+    active: bool | None = None
 
 
 class ModelOut(ModelBase):
