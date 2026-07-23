@@ -17,9 +17,31 @@ MAX_GREP_CHARS = 50_000
 SKIP_DIRS = {".git", "__pycache__", ".venv", "node_modules", ".codegraph", ".omo"}
 # Binary extensions we skip to avoid garbage matches / slow reads.
 BINARY_EXTS = {
-    ".png", ".jpg", ".jpeg", ".gif", ".ico", ".pdf", ".zip", ".gz", ".tar",
-    ".tgz", ".exe", ".dll", ".so", ".dylib", ".woff", ".woff2", ".ttf",
-    ".eot", ".mp4", ".mp3", ".wav", ".bin", ".pyc", ".db", ".sqlite",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".ico",
+    ".pdf",
+    ".zip",
+    ".gz",
+    ".tar",
+    ".tgz",
+    ".exe",
+    ".dll",
+    ".so",
+    ".dylib",
+    ".woff",
+    ".woff2",
+    ".ttf",
+    ".eot",
+    ".mp4",
+    ".mp3",
+    ".wav",
+    ".bin",
+    ".pyc",
+    ".db",
+    ".sqlite",
 }
 
 
@@ -51,9 +73,7 @@ async def _list_dir(args: dict[str, Any], ctx: ToolContext) -> str:
     if target.is_file():
         target = target.parent
     try:
-        entries = sorted(
-            target.iterdir(), key=lambda p: (p.is_file(), p.name.lower())
-        )
+        entries = sorted(target.iterdir(), key=lambda p: (p.is_file(), p.name.lower()))
     except Exception as e:  # noqa: BLE001
         return f"error listing directory: {e}"
     lines: list[str] = []

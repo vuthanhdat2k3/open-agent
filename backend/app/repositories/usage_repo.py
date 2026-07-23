@@ -1,3 +1,5 @@
+from sqlalchemy import func, select
+
 from app.models.usage import UsageEvent
 from app.repositories.base import BaseRepository
 
@@ -6,9 +8,7 @@ class UsageRepository(BaseRepository[UsageEvent]):
     def __init__(self, db):
         super().__init__(UsageEvent, db)
 
-    async def summary(self) -> list[dict]:
-        from sqlalchemy import func, select
-
+    async def summary(self, org_id: str) -> list[dict]:
         res = await self.db.execute(
             select(
                 UsageEvent.agent_name,
@@ -18,7 +18,9 @@ class UsageRepository(BaseRepository[UsageEvent]):
                 func.sum(UsageEvent.cost_usd).label("cost_usd"),
                 func.sum(UsageEvent.latency_ms).label("latency_ms"),
                 func.count(UsageEvent.id).label("calls"),
-            ).group_by(UsageEvent.agent_name, UsageEvent.model_name)
+            )
+            .where(UsageEvent.org_id == org_id)
+            .group_by(UsageEvent.agent_name, UsageEvent.model_name)
         )
         rows = res.all()
         return [
@@ -34,11 +36,10 @@ class UsageRepository(BaseRepository[UsageEvent]):
             for r in rows
         ]
 
-    async def recent(self, limit: int = 50) -> list[UsageEvent]:
-        from sqlalchemy import select
-
+    async def recent(self, org_id: str, limit: int = 50) -> list[UsageEvent]:
         res = await self.db.execute(
             select(UsageEvent)
+            .where(UsageEvent.org_id == org_id)
             .order_by(UsageEvent.created_at.desc())
             .limit(limit)
         )

@@ -60,7 +60,7 @@ async def _run_code(args: dict[str, Any], ctx: ToolContext) -> str:
         )
 
     image, cmd = _LANG_IMAGES[language]
-    filename = args.get("filename") or f"script.{ 'py' if language == 'python' else 'sh' }"
+    filename = args.get("filename") or f"script.{'py' if language == 'python' else 'sh'}"
 
     work_root = Path(ctx.workspace_dir).resolve() / ".sandbox"
     work_root.mkdir(parents=True, exist_ok=True)
@@ -71,13 +71,22 @@ async def _run_code(args: dict[str, Any], ctx: ToolContext) -> str:
 
     network = "none" if not settings.sandbox_allow_network else "bridge"
     docker_args = [
-        "docker", "run", "--rm",
-        "--network", network,
-        "--memory", settings.sandbox_memory,
-        "--cpus", str(settings.sandbox_cpus),
-        "-v", f"{run_dir}:/work:rw",
-        "-w", "/work",
-        image, cmd, filename,
+        "docker",
+        "run",
+        "--rm",
+        "--network",
+        network,
+        "--memory",
+        settings.sandbox_memory,
+        "--cpus",
+        str(settings.sandbox_cpus),
+        "-v",
+        f"{run_dir}:/work:rw",
+        "-w",
+        "/work",
+        image,
+        cmd,
+        filename,
     ]
 
     try:

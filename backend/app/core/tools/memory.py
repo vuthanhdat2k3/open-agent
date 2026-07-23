@@ -32,9 +32,7 @@ async def _save_memory(args: dict[str, Any], ctx: ToolContext) -> str:
     except MemorySchemaError as e:
         return f"error: {e}"
 
-    meta = to_metadata_dict(
-        args.get("conversation_id"), args.get("message_id")
-    )
+    meta = to_metadata_dict(args.get("conversation_id"), args.get("message_id"))
 
     db = ctx.db
     res = await db.execute(
@@ -55,8 +53,19 @@ async def _save_memory(args: dict[str, Any], ctx: ToolContext) -> str:
             existing.meta = meta
         existing.updated_at = datetime.now(timezone.utc)
     else:
+        org_id = ctx.org_id
+        if not org_id and ctx.agent_id:
+            from app.models.agent import Agent
+
+            res_agent = await db.execute(select(Agent.org_id).where(Agent.id == ctx.agent_id))
+            org_id = res_agent.scalar_one_or_none()
+        if not org_id:
+            org_id = "default-org-id"
+
         db.add(
             AgentMemory(
+                org_id=org_id,
+                created_by_user_id=ctx.user_id,
                 agent_id=ctx.agent_id,
                 owner_type=DEFAULT_OWNER_TYPE,
                 memory_type=norm.memory_type,
@@ -103,11 +112,7 @@ async def _call_memory(args: dict[str, Any], ctx: ToolContext) -> str:
         return "(no user memory stored yet)"
 
     if query:
-        matches = [
-            m
-            for m in memories
-            if query in m.attribute.lower() or query in m.value.lower()
-        ]
+        matches = [m for m in memories if query in m.attribute.lower() or query in m.value.lower()]
         if not matches:
             return f"no memory found for '{query}'"
         memories = matches
@@ -123,8 +128,7 @@ async def _call_memory(args: dict[str, Any], ctx: ToolContext) -> str:
         grouped.setdefault(m.memory_type, []).append(f"{m.attribute}: {m.value}")
     await db.commit()
     return "\n".join(
-        f"{mtype}:\n" + "\n".join(f"  {line}" for line in lines)
-        for mtype, lines in grouped.items()
+        f"{mtype}:\n" + "\n".join(f"  {line}" for line in lines) for mtype, lines in grouped.items()
     )
 
 

@@ -14,37 +14,40 @@ class ProviderService:
         self.repo = ProviderRepository(db)
         self.db = db
 
-    async def create(self, data: dict) -> Provider:
+    async def create(self, org_id: str, data: dict, user_id: str | None = None) -> Provider:
         if data.get("is_default"):
-            existing = await self.repo.get_default()
+            existing = await self.repo.get_default(org_id)
             if existing:
                 existing.is_default = False
                 self.db.add(existing)
+        data["org_id"] = org_id
+        if user_id:
+            data["created_by_user_id"] = user_id
         prov = Provider(**data)
         return await self.repo.create(prov)
 
-    async def update(self, id: str, data: dict) -> Provider:
-        prov = await self.repo.get(id)
+    async def update(self, org_id: str, id: str, data: dict) -> Provider:
+        prov = await self.repo.get(org_id, id)
         if prov is None:
             raise ValueError("provider not found")
         if data.get("is_default"):
-            existing = await self.repo.get_default()
+            existing = await self.repo.get_default(org_id)
             if existing and existing.id != id:
                 existing.is_default = False
                 self.db.add(existing)
         return await self.repo.update(prov, data)
 
-    async def delete(self, id: str) -> bool:
-        return await self.repo.delete(id)
+    async def delete(self, org_id: str, id: str) -> bool:
+        return await self.repo.delete(org_id, id)
 
-    async def list(self) -> list[Provider]:
-        return await self.repo.list_all()
+    async def list(self, org_id: str) -> list[Provider]:
+        return await self.repo.list_all(org_id)
 
-    async def get(self, id: str) -> Provider | None:
-        return await self.repo.get(id)
+    async def get(self, org_id: str, id: str) -> Provider | None:
+        return await self.repo.get(org_id, id)
 
-    async def test_connection(self, id: str) -> dict:
-        prov = await self.repo.get(id)
+    async def test_connection(self, org_id: str, id: str) -> dict:
+        prov = await self.repo.get(org_id, id)
         if prov is None:
             return {"ok": False, "message": "provider not found", "latency_ms": 0, "model_count": 0}
         try:
@@ -60,9 +63,7 @@ class ProviderService:
         start = time.monotonic()
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
-                resp = await client.get(
-                    url, headers={"Authorization": f"Bearer {api_key}"}
-                )
+                resp = await client.get(url, headers={"Authorization": f"Bearer {api_key}"})
             elapsed = int((time.monotonic() - start) * 1000)
             if resp.status_code != 200:
                 return {

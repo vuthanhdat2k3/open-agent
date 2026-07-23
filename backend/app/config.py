@@ -1,13 +1,10 @@
-
 from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(
-        env_prefix="OPENAGENT_", env_file=".env", extra="ignore"
-    )
+    model_config = SettingsConfigDict(env_prefix="OPENAGENT_", env_file=".env", extra="ignore")
 
     host: str = "127.0.0.1"
     port: int = 8000
@@ -40,8 +37,17 @@ class Settings(BaseSettings):
     max_upload_size: int = 25 * 1024 * 1024
     rag_mcp_server_name: str = "rag"
     allowed_extensions: list[str] = [
-        ".pdf", ".txt", ".md", ".csv", ".json",
-        ".docx", ".html", ".htm", ".py", ".yaml", ".yml",
+        ".pdf",
+        ".txt",
+        ".md",
+        ".csv",
+        ".json",
+        ".docx",
+        ".html",
+        ".htm",
+        ".py",
+        ".yaml",
+        ".yml",
     ]
 
     log_level: str = "INFO"

@@ -48,12 +48,8 @@ async def _web_fetch(args: dict[str, Any], ctx: ToolContext) -> str:
     if not url:
         return "error: missing 'url'"
     try:
-        async with httpx.AsyncClient(
-            timeout=30.0, follow_redirects=True
-        ) as client:
-            resp = await client.get(
-                url, headers={"User-Agent": "OpenAgent/0.1"}
-            )
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+            resp = await client.get(url, headers={"User-Agent": "OpenAgent/0.1"})
         text = resp.text
     except Exception as e:  # noqa: BLE001
         return f"error fetching url: {e}"
@@ -78,15 +74,31 @@ async def _memory_store(args: dict[str, Any], ctx: ToolContext) -> str:
     db = ctx.db
     res = await db.execute(
         select(SessionMemory).where(
-            SessionMemory.session_id == ctx.session_id,
-            SessionMemory.key == key
+            SessionMemory.session_id == ctx.session_id, SessionMemory.key == key
         )
     )
     existing = res.scalar_one_or_none()
     if existing:
         existing.value = str(value)
     else:
-        db.add(SessionMemory(session_id=ctx.session_id, key=key, value=str(value)))
+        org_id = ctx.org_id
+        if not org_id and ctx.session_id:
+            from app.models.session import Session
+
+            res_sess = await db.execute(select(Session.org_id).where(Session.id == ctx.session_id))
+            org_id = res_sess.scalar_one_or_none()
+        if not org_id:
+            org_id = "default-org-id"
+
+        db.add(
+            SessionMemory(
+                org_id=org_id,
+                created_by_user_id=ctx.user_id,
+                session_id=ctx.session_id,
+                key=key,
+                value=str(value),
+            )
+        )
     await db.commit()
     return f"stored key '{key}'"
 
@@ -105,8 +117,7 @@ async def _memory_recall(args: dict[str, Any], ctx: ToolContext) -> str:
     db = ctx.db
     res = await db.execute(
         select(SessionMemory).where(
-            SessionMemory.session_id == ctx.session_id,
-            SessionMemory.key == key
+            SessionMemory.session_id == ctx.session_id, SessionMemory.key == key
         )
     )
     existing = res.scalar_one_or_none()
@@ -136,9 +147,7 @@ async def _call_agent(args: dict[str, Any], ctx: ToolContext) -> str:
     agent = result.scalar_one_or_none()
     if agent is None:
         return f"error: agent '{target_agent_id}' not found"
-    loop_result = await run_agent_loop(
-        agent, instruction, ctx.db, depth=ctx.depth + 1
-    )
+    loop_result = await run_agent_loop(agent, instruction, ctx.db, depth=ctx.depth + 1)
     return loop_result.content
 
 
@@ -163,9 +172,7 @@ register(
         description="Fetch a URL and return its text content.",
         input_schema={
             "type": "object",
-            "properties": {
-                "url": {"type": "string", "description": "Full URL to fetch"}
-            },
+            "properties": {"url": {"type": "string", "description": "Full URL to fetch"}},
             "required": ["url"],
         },
         run=_web_fetch,
@@ -205,8 +212,7 @@ register(
     ToolSpec(
         name="call_agent",
         description=(
-            "Delegate a task to another configured agent by id. "
-            "Returns that agent's final answer."
+            "Delegate a task to another configured agent by id. Returns that agent's final answer."
         ),
         input_schema={
             "type": "object",

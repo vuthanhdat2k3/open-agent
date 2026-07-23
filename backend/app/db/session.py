@@ -37,10 +37,7 @@ async def init_db() -> None:
     # Detect whether this is a fresh database.
     async with engine.begin() as conn:
         result = await conn.execute(
-            _text(
-                "SELECT name FROM sqlite_master "
-                "WHERE type='table' AND name='agents'"
-            )
+            _text("SELECT name FROM sqlite_master WHERE type='table' AND name='agents'")
         )
         has_agents = result.first() is not None
 

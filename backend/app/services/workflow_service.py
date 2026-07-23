@@ -8,26 +8,29 @@ class WorkflowService:
     def __init__(self, db):
         self.repo = WorkflowRepository(db)
 
-    async def create(self, data: dict) -> Workflow:
+    async def create(self, org_id: str, data: dict, user_id: str | None = None) -> Workflow:
         self.validate_graph(data.get("graph", {}))
+        data["org_id"] = org_id
+        if user_id:
+            data["created_by_user_id"] = user_id
         return await self.repo.create(Workflow(**data))
 
-    async def update(self, id: str, data: dict) -> Workflow:
-        wf = await self.repo.get(id)
+    async def update(self, org_id: str, id: str, data: dict) -> Workflow:
+        wf = await self.repo.get(org_id, id)
         if wf is None:
             raise ValueError("workflow not found")
         if "graph" in data:
             self.validate_graph(data["graph"])
         return await self.repo.update(wf, data)
 
-    async def delete(self, id: str) -> bool:
-        return await self.repo.delete(id)
+    async def delete(self, org_id: str, id: str) -> bool:
+        return await self.repo.delete(org_id, id)
 
-    async def list(self) -> list[Workflow]:
-        return await self.repo.list()
+    async def list(self, org_id: str) -> list[Workflow]:
+        return await self.repo.list(org_id)
 
-    async def get(self, id: str) -> Workflow | None:
-        return await self.repo.get(id)
+    async def get(self, org_id: str, id: str) -> Workflow | None:
+        return await self.repo.get(org_id, id)
 
     @staticmethod
     def validate_graph(graph: dict) -> None:

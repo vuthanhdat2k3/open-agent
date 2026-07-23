@@ -18,6 +18,8 @@ class ToolContext:
     mcp_manager: Any | None = None
     agent_id: str | None = None
     session_id: str | None = None
+    org_id: str | None = None
+    user_id: str | None = None
 
 
 @dataclass
