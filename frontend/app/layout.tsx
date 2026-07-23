@@ -30,6 +30,7 @@ import {
   MessageSquare,
   FileUp,
   Bug,
+  FlaskConical,
   ShieldCheck,
   Users,
   Menu,
@@ -67,6 +68,7 @@ const navItems: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/workflows", label: "Workflows", icon: Workflow },
   { href: "/chat", label: "Chat", icon: MessageSquare },
   { href: "/approvals", label: "Approvals", icon: ShieldCheck },
+  { href: "/evaluations", label: "Evaluations", icon: FlaskConical },
   { href: "/settings/members", label: "Members", icon: Users },
   { href: "/debug", label: "Debug", icon: Bug },
 ];

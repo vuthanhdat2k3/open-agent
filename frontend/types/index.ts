@@ -68,6 +68,85 @@ export interface AgentRelease {
   published_at: string | null;
 }
 
+export interface EvaluationCase {
+  id: string;
+  suite_id: string;
+  input: string;
+  expected_output: string | null;
+  required_substrings: string[];
+  expected_tools: string[];
+  forbidden_patterns: string[];
+  max_latency_ms: number | null;
+  max_cost_usd: number | null;
+  metadata: Record<string, unknown>;
+  ordinal: number;
+  added_in_version: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EvaluationSuite {
+  id: string;
+  name: string;
+  description: string;
+  agent_id: string;
+  dataset_version: number;
+  created_by_user_id: string | null;
+  created_at: string;
+  updated_at: string;
+  cases: EvaluationCase[];
+}
+
+export interface EvaluationRun {
+  id: string;
+  suite_id: string;
+  agent_release_id: string;
+  baseline_run_id: string | null;
+  dataset_version: number;
+  execution_mode: "live" | "recorded";
+  status: "running" | "completed" | "failed";
+  total_cases: number;
+  passed_cases: number;
+  pass_rate: number;
+  average_latency_ms: number;
+  total_cost_usd: number;
+  created_at: string;
+  completed_at: string | null;
+}
+
+export interface EvaluationCaseInput {
+  input: string;
+  expected_output?: string | null;
+  required_substrings?: string[];
+  expected_tools?: string[];
+  forbidden_patterns?: string[];
+  max_latency_ms?: number | null;
+  max_cost_usd?: number | null;
+  metadata?: Record<string, unknown>;
+}
+
+export interface EvaluationSuiteInput {
+  name: string;
+  description?: string;
+  agent_id: string;
+  cases?: EvaluationCaseInput[];
+}
+
+export interface RecordedEvaluationOutput {
+  case_id: string;
+  output: string;
+  observed_tools?: string[];
+  latency_ms?: number;
+  cost_usd?: number;
+}
+
+export interface EvaluationRunInput {
+  agent_release_id: string;
+  baseline_run_id?: string | null;
+  execution_mode: "live" | "recorded";
+  recorded_outputs?: RecordedEvaluationOutput[];
+}
+
 export interface AgentToolInfo {
   name: string;
   description: string;
