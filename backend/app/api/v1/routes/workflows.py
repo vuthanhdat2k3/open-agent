@@ -1,10 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.sse import format_sse
 from app.core.workflow.engine import run_workflow
 from app.dependencies import get_current_org_id, get_db, require_permission
+from app.models.workflow_node_run import WorkflowNodeRun
+from app.models.workflow_run import WorkflowRun
 from app.schemas.workflow import (
     RunWorkflowRequest,
     WorkflowCreate,
@@ -85,11 +88,56 @@ async def run_workflow_endpoint(
     if wf is None:
         raise HTTPException(404, "workflow not found")
     if not body.stream:
-        output, log = await run_workflow(wf, body.input, db, stream=False)
-        return {"output": output, "events": log}
+        output, log, workflow_run_id = await run_workflow(wf, body.input, db, stream=False)
+        return {"workflow_run_id": workflow_run_id, "output": output, "events": log}
 
     async def gen():
-        async for ev in run_workflow(wf, body.input, db, stream=True):
+        async for ev in await run_workflow(wf, body.input, db, stream=True):
             yield format_sse(ev)
 
     return StreamingResponse(gen(), media_type="text/event-stream")
+
+
+@router.get("/runs/{run_id}", dependencies=[Depends(require_permission("workflows:read"))])
+async def get_workflow_run(
+    run_id: str,
+    org_id: str = Depends(get_current_org_id),
+    db: AsyncSession = Depends(get_db),
+):
+    res = await db.execute(
+        select(WorkflowRun).where(WorkflowRun.id == run_id, WorkflowRun.org_id == org_id)
+    )
+    run = res.scalar_one_or_none()
+    if run is None:
+        raise HTTPException(404, "workflow run not found")
+    node_res = await db.execute(
+        select(WorkflowNodeRun)
+        .where(WorkflowNodeRun.workflow_run_id == run.id)
+        .order_by(WorkflowNodeRun.started_at, WorkflowNodeRun.attempt)
+    )
+    nodes = list(node_res.scalars().all())
+    return {
+        "id": run.id,
+        "org_id": run.org_id,
+        "workflow_id": run.workflow_id,
+        "status": run.status,
+        "input": run.input,
+        "output": run.output,
+        "error": run.error,
+        "started_at": run.started_at,
+        "finished_at": run.finished_at,
+        "nodes": [
+            {
+                "id": node.id,
+                "node_id": node.node_id,
+                "status": node.status,
+                "attempt": node.attempt,
+                "input": node.input,
+                "output": node.output,
+                "error": node.error,
+                "started_at": node.started_at,
+                "finished_at": node.finished_at,
+            }
+            for node in nodes
+        ],
+    }
