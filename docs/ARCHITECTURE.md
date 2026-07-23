@@ -10,6 +10,10 @@ the useful core, make it hackable and scalable for one person.
 
 ---
 
+> This document describes the original v1/single-user architecture. For the
+> current multi-user AgentOS v2 architecture, use
+> `docs/agentos-v2/ARCHITECTURE.md`.
+
 ## 1. Design Principles
 
 1. **Layered backend for maintainability & scale**
