@@ -2,18 +2,25 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { getAccessToken } from "@/lib/auth";
 import type {
   Agent,
   AgentToolInfo,
+  ApiKey,
+  ApiKeyCreateResponse,
+  ApprovalRequest,
   IngestResult,
   McpServer,
   Message,
   Model,
+  OrgMember,
   Provider,
   Session,
+  TaskTree,
   UploadedFile,
   UsageSummary,
   Workflow,
+  WorkflowRunDetail,
 } from "@/types";
 
 export function useProviders(enabled: boolean = true) {
@@ -201,7 +208,13 @@ export function useUploadFile() {
     mutationFn: async (file: File) => {
       const form = new FormData();
       form.append("file", file);
-      const res = await fetch("/api/files/upload", { method: "POST", body: form });
+      const token = getAccessToken();
+      const res = await fetch("/api/files/upload", {
+        method: "POST",
+        body: form,
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        credentials: "include",
+      });
       if (!res.ok) {
         let detail = res.statusText;
         try {
@@ -230,5 +243,103 @@ export function useIngestFile() {
     mutationFn: ({ id, body }: { id: string; body: any }) =>
       api.post<IngestResult>(`/api/files/${id}/ingest`, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["files"] }),
+  });
+}
+
+export function useMe(enabled: boolean = true) {
+  return useQuery({
+    queryKey: ["me"],
+    queryFn: () =>
+      api.get<{
+        id: string;
+        email: string;
+        display_name: string;
+        memberships: Array<{ org_id: string; org_name: string; role: string }>;
+      }>("/api/auth/me"),
+    enabled,
+  });
+}
+
+export function useMembers(orgId?: string) {
+  return useQuery({
+    queryKey: ["members", orgId],
+    enabled: !!orgId,
+    queryFn: () => api.get<OrgMember[]>(`/api/orgs/${orgId}/members`),
+  });
+}
+
+export function useInviteMember(orgId?: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { email: string; role: string }) =>
+      api.post<OrgMember>(`/api/orgs/${orgId}/members`, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["members", orgId] }),
+  });
+}
+
+export function useRemoveMember(orgId?: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) => api.delete(`/api/orgs/${orgId}/members/${userId}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["members", orgId] }),
+  });
+}
+
+export function useApiKeys(orgId?: string) {
+  return useQuery({
+    queryKey: ["api-keys", orgId],
+    enabled: !!orgId,
+    queryFn: () => api.get<ApiKey[]>(`/api/orgs/${orgId}/api-keys`),
+  });
+}
+
+export function useCreateApiKey(orgId?: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { name: string; expires_days?: number | null }) =>
+      api.post<ApiKeyCreateResponse>(`/api/orgs/${orgId}/api-keys`, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["api-keys", orgId] }),
+  });
+}
+
+export function useRevokeApiKey(orgId?: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (keyId: string) => api.delete(`/api/orgs/${orgId}/api-keys/${keyId}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["api-keys", orgId] }),
+  });
+}
+
+export function useApprovals(enabled: boolean = true) {
+  return useQuery({
+    queryKey: ["approvals"],
+    queryFn: () => api.get<ApprovalRequest[]>("/api/approvals"),
+    refetchInterval: 15000,
+    enabled,
+  });
+}
+
+export function useDecideApproval() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, decision, reason }: { id: string; decision: "approved" | "rejected"; reason: string }) =>
+      api.post<ApprovalRequest>(`/api/approvals/${id}/decide`, { decision, reason }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["approvals"] }),
+  });
+}
+
+export function useTaskTree(rootRunId: string | null) {
+  return useQuery({
+    queryKey: ["task-tree", rootRunId],
+    enabled: !!rootRunId,
+    queryFn: () => api.get<TaskTree>(`/api/debug/tasks/${rootRunId}`),
+  });
+}
+
+export function useWorkflowRun(runId: string | null) {
+  return useQuery({
+    queryKey: ["workflow-run", runId],
+    enabled: !!runId,
+    queryFn: () => api.get<WorkflowRunDetail>(`/api/workflows/runs/${runId}`),
   });
 }
