@@ -40,3 +40,9 @@ async def health():
 @app.get("/api/health", response_model=HealthResponse)
 async def api_health():
     return HealthResponse()
+
+
+@app.get("/healthz")
+async def healthz():
+    return {"status": "ok"}
+
