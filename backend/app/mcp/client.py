@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import json
-from typing import Any, Optional
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -86,11 +85,11 @@ class McpClient:
             return
         try:
             await conn["session"].__aexit__(None, None, None)
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001, SIM105
             pass
         try:
             await conn["ctx"].__aexit__(None, None, None)
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001, SIM105
             pass
 
 
@@ -143,7 +142,7 @@ def _make_mcp_run(server_id: str, tool_name: str):
     return _run
 
 
-async def build_mcp_tool_spec(name: str, db: AsyncSession) -> Optional[ToolSpec]:
+async def build_mcp_tool_spec(name: str, db: AsyncSession) -> ToolSpec | None:
     res = await db.execute(
         select(McpTool).where(McpTool.name == name, McpTool.enabled.is_(True))
     )

@@ -1,6 +1,11 @@
+from __future__ import annotations
+
 import os
-import time
-from typing import Any, AsyncIterator, Optional
+from collections.abc import AsyncIterator
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from app.models.provider import Provider
 
 from openai import AsyncOpenAI
 
@@ -9,7 +14,7 @@ from app.config import get_settings
 settings = get_settings()
 
 
-def resolve_api_key(provider: "Provider") -> str:
+def resolve_api_key(provider: Provider) -> str:
     """Return the API key for a provider.
 
     Uses the directly-stored ``api_key`` first; falls back to the environment
@@ -38,7 +43,7 @@ class LLMClient:
     async def complete(
         self,
         messages: list[dict[str, Any]],
-        tools: Optional[list[dict[str, Any]]] = None,
+        tools: list[dict[str, Any]] | None = None,
         temperature: float = 0.7,
     ) -> tuple[str, dict[str, int], list[dict[str, Any]]]:
         """Non-streaming completion. Returns (content, usage, tool_calls)."""
@@ -71,7 +76,7 @@ class LLMClient:
     async def stream(
         self,
         messages: list[dict[str, Any]],
-        tools: Optional[list[dict[str, Any]]] = None,
+        tools: list[dict[str, Any]] | None = None,
         temperature: float = 0.7,
     ) -> AsyncIterator[dict[str, Any]]:
         """Streaming completion. Yields dicts:
