@@ -41,8 +41,31 @@ export interface Agent {
   max_iterations: number;
   temperature: number;
   kind: "worker" | "orchestrator";
+  active_release_id: string | null;
+  latest_release_number: number;
   created_at: string;
   updated_at: string;
+}
+
+export interface AgentRelease {
+  id: string;
+  agent_id: string;
+  version: number;
+  status: "draft" | "published" | "archived";
+  description: string;
+  system_prompt: string;
+  model_id: string;
+  tools: string[];
+  allowed_risk_tiers: string[];
+  kind: "worker" | "orchestrator";
+  max_iterations: number;
+  temperature: number;
+  change_note: string;
+  config_hash: string;
+  created_by_user_id: string | null;
+  published_by_user_id: string | null;
+  created_at: string;
+  published_at: string | null;
 }
 
 export interface AgentToolInfo {
