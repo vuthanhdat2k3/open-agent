@@ -35,6 +35,7 @@ PERMISSIONS: dict[Role, set[str]] = {
         "sessions:*",
         "usage:read",
         "audit:read",
+        "approvals:read",
         "approvals:decide",
     },
     Role.developer: {

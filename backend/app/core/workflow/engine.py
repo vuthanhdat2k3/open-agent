@@ -4,10 +4,13 @@ import asyncio
 from collections.abc import AsyncIterator
 from typing import Any
 
+from simpleeval import simple_eval
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
+from app.core.guardrails.approval import request_approval
+from app.core.guardrails.budget import BudgetTracker, RunBudget
 from app.core.tools.registry import BUILTIN_TOOLS
 from app.core.tools.types import ToolContext
 from app.mcp.client import build_mcp_tool_spec
@@ -16,9 +19,15 @@ from app.models.agent import Agent
 
 def _eval_condition(cond: str, output: str) -> bool:
     try:
-        return bool(eval(cond, {"__builtins__": {}}, {"output": output}))
+        return bool(simple_eval(cond, names={"output": output}, functions={}))
     except Exception:  # noqa: BLE001
-        return True
+        return False
+
+
+class WorkflowWaitingApproval(RuntimeError):
+    def __init__(self, approval_id: str) -> None:
+        super().__init__("workflow waiting for approval")
+        self.approval_id = approval_id
 
 
 async def run_workflow_events(
@@ -49,6 +58,15 @@ async def run_workflow_events(
     status: dict[str, str] = {n["id"]: "pending" for n in nodes}
     outputs: dict[str, str] = {}
     active_edges: set[Any] = set()
+    settings = get_settings()
+    budget = BudgetTracker(
+        RunBudget(
+            max_tool_calls=settings.budget_max_tool_calls,
+            max_cost_usd=settings.budget_max_cost_usd,
+            max_wall_seconds=settings.budget_max_wall_seconds,
+            max_repeated_call=settings.budget_max_repeated_call,
+        )
+    )
 
     async def run_node(node: dict[str, Any]) -> str:
         kind = node["kind"]
@@ -78,14 +96,30 @@ async def run_workflow_events(
                 spec = await build_mcp_tool_spec(tool_name, db, org_id=workflow.org_id)
             if spec is None:
                 raise RuntimeError(f"tool '{tool_name}' not found")
+            budget_reason = budget.record_call(tool_name, args)
+            if budget_reason:
+                raise RuntimeError(f"workflow budget exceeded: {budget_reason}")
             ctx = ToolContext(
                 db=db,
                 depth=0,
-                workspace_dir=get_settings().workspace_dir,
+                workspace_dir=settings.workspace_dir,
                 org_id=workflow.org_id,
                 user_id=workflow.created_by_user_id,
             )
             return await spec.run(args, ctx)
+        if kind == "approval":
+            cfg = node.get("config", {}) or {}
+            approval = await request_approval(
+                db,
+                org_id=workflow.org_id,
+                run_type="workflow",
+                run_id=workflow.id,
+                node_id=node["id"],
+                tool_name=cfg.get("tool_name"),
+                args_snapshot=cfg,
+                requested_by=workflow.created_by_user_id,
+            )
+            raise WorkflowWaitingApproval(approval.id)
         if kind == "agent":
             agent_id = node.get("agent_id")
             if not agent_id:
@@ -142,6 +176,13 @@ async def run_workflow_events(
 
         results = await asyncio.gather(*tasks.values(), return_exceptions=True)
         for nid, res in zip(tasks.keys(), results, strict=False):
+            if isinstance(res, WorkflowWaitingApproval):
+                status[nid] = "waiting_approval"
+                yield {
+                    "event": "approval_required",
+                    "data": {"node_id": nid, "approval_id": res.approval_id},
+                }
+                return
             if isinstance(res, Exception):
                 status[nid] = "error"
                 error_flag = True
