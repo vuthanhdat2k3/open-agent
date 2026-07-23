@@ -45,6 +45,21 @@ class OrgMemberOut(BaseModel):
     created_at: datetime
 
 
+async def _ensure_user_belongs_to_org(
+    db: AsyncSession, user_id: str, org_id: str
+) -> Membership:
+    res = await db.execute(
+        select(Membership).where(Membership.org_id == org_id, Membership.user_id == user_id)
+    )
+    membership = res.scalar_one_or_none()
+    if not membership:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User does not belong to this organization",
+        )
+    return membership
+
+
 @router.post("", response_model=OrgOut, status_code=status.HTTP_201_CREATED)
 async def create_org(
     body: OrgCreateRequest,
@@ -69,6 +84,7 @@ async def list_org_members(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    await _ensure_user_belongs_to_org(db, current_user.id, id)
     res = await db.execute(
         select(Membership, User)
         .join(User, Membership.user_id == User.id)
@@ -94,6 +110,7 @@ async def add_org_member(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    await _ensure_user_belongs_to_org(db, current_user.id, id)
     res_u = await db.execute(select(User).where(User.email == body.email.lower()))
     invited_user = res_u.scalar_one_or_none()
     if not invited_user:
@@ -134,6 +151,7 @@ async def remove_org_member(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    await _ensure_user_belongs_to_org(db, current_user.id, id)
     res_mem = await db.execute(
         select(Membership).where(Membership.org_id == id, Membership.user_id == user_id)
     )
@@ -153,6 +171,7 @@ async def create_api_key_endpoint(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    await _ensure_user_belongs_to_org(db, current_user.id, id)
     full_key, key_prefix, key_hash = generate_api_key()
     expires_at = None
     if body.expires_days:
@@ -182,6 +201,7 @@ async def list_api_keys(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    await _ensure_user_belongs_to_org(db, current_user.id, id)
     res = await db.execute(
         select(ApiKey)
         .where(ApiKey.org_id == id, ApiKey.revoked_at.is_(None))
@@ -197,6 +217,7 @@ async def revoke_api_key(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    await _ensure_user_belongs_to_org(db, current_user.id, id)
     res = await db.execute(
         select(ApiKey).where(ApiKey.id == key_id, ApiKey.org_id == id)
     )

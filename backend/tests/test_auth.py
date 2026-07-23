@@ -70,6 +70,13 @@ def test_register_login_me(client: TestClient) -> None:
     assert me_data["memberships"][0]["role"] == "owner"
 
 
+def test_unauthenticated_request_returns_401(client: TestClient) -> None:
+    client.cookies.clear()
+    # Attempting to access protected endpoint without token must return 401
+    resp = client.get("/api/auth/me")
+    assert resp.status_code == 401
+
+
 def test_login_wrong_password_401(client: TestClient) -> None:
     client.post(
         "/api/auth/register",
@@ -106,6 +113,37 @@ def test_refresh_rotation_rejects_old_token(client: TestClient) -> None:
     client.cookies.clear()
     refresh_resp2 = client.post("/api/auth/refresh", cookies={"refresh_token": old_refresh_cookie})
     assert refresh_resp2.status_code == 401
+
+
+def test_org_membership_isolation_403(client: TestClient) -> None:
+    # Register User 1 & Org 1
+    reg1 = client.post(
+        "/api/auth/register",
+        json={"email": "user1@example.com", "password": "Password123!", "org_name": "Org 1"},
+    )
+    token1 = reg1.json()["access_token"]
+    me1 = client.get("/api/auth/me", headers={"Authorization": f"Bearer {token1}"})
+    org1_id = me1.json()["memberships"][0]["org_id"]
+
+    # Register User 2 & Org 2
+    reg2 = client.post(
+        "/api/auth/register",
+        json={"email": "user2@example.com", "password": "Password123!", "org_name": "Org 2"},
+    )
+    token2 = reg2.json()["access_token"]
+
+    # User 2 tries to access Org 1 members / api-keys -> MUST RETURN 403
+    resp_members = client.get(
+        f"/api/orgs/{org1_id}/members",
+        headers={"Authorization": f"Bearer {token2}"},
+    )
+    assert resp_members.status_code == 403
+
+    resp_keys = client.get(
+        f"/api/orgs/{org1_id}/api-keys",
+        headers={"Authorization": f"Bearer {token2}"},
+    )
+    assert resp_keys.status_code == 403
 
 
 def test_api_key_full_value_shown_once(client: TestClient) -> None:
@@ -145,3 +183,26 @@ def test_api_key_full_value_shown_once(client: TestClient) -> None:
     me_via_key = client.get("/api/auth/me", headers={"X-API-Key": secret_key})
     assert me_via_key.status_code == 200
     assert me_via_key.json()["email"] == "dave@example.com"
+
+
+def test_expired_api_key_returns_401(client: TestClient) -> None:
+    # Register & Create Expired API Key (-1 days)
+    reg_resp = client.post(
+        "/api/auth/register",
+        json={"email": "eve@example.com", "password": "Password123!"},
+    )
+    token = reg_resp.json()["access_token"]
+    me_resp = client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+    org_id = me_resp.json()["memberships"][0]["org_id"]
+
+    create_key_resp = client.post(
+        f"/api/orgs/{org_id}/api-keys",
+        json={"name": "Expired Key", "expires_days": -1},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert create_key_resp.status_code == 201
+    expired_key = create_key_resp.json()["secret_key"]
+
+    # Using expired key MUST return 401
+    me_via_expired_key = client.get("/api/auth/me", headers={"X-API-Key": expired_key})
+    assert me_via_expired_key.status_code == 401

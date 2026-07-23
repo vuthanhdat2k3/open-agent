@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from fastapi import Depends, Header, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
@@ -35,7 +37,9 @@ async def get_current_user(
             user_id = payload.get("sub")
             org_id = payload.get("org_id")
             if user_id:
-                res = await db.execute(select(User).where(User.id == user_id, User.is_active.is_(True)))
+                res = await db.execute(
+                    select(User).where(User.id == user_id, User.is_active.is_(True))
+                )
                 user = res.scalar_one_or_none()
                 if user:
                     request.state.user_id = user.id
@@ -48,23 +52,40 @@ async def get_current_user(
     if x_api_key:
         key_hash = hash_api_key(x_api_key)
         res = await db.execute(
-            select(ApiKey).where(ApiKey.key_hash == key_hash, ApiKey.revoked_at.is_(None))
+            select(ApiKey).where(
+                ApiKey.key_hash == key_hash,
+                ApiKey.revoked_at.is_(None),
+            )
         )
         api_key_obj = res.scalar_one_or_none()
         if api_key_obj:
+            now = datetime.now(timezone.utc)
+            if api_key_obj.expires_at is not None:
+                exp = api_key_obj.expires_at
+                if exp.tzinfo is None:
+                    exp = exp.replace(tzinfo=timezone.utc)
+                if exp < now:
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="API key expired",
+                        headers={"WWW-Authenticate": "Bearer"},
+                    )
+
             request.state.org_id = api_key_obj.org_id
             request.state.user_id = api_key_obj.created_by_user_id
             if api_key_obj.created_by_user_id:
                 res_u = await db.execute(
-                    select(User).where(User.id == api_key_obj.created_by_user_id)
+                    select(User).where(
+                        User.id == api_key_obj.created_by_user_id, User.is_active.is_(True)
+                    )
                 )
                 user = res_u.scalar_one_or_none()
                 if user:
                     return user
 
-    # 3. Machine / Dev mode fallback
+    # 3. Global OPENAGENT_API_KEY machine fallback (only if settings.api_key is set and matches)
     settings = get_settings()
-    if not settings.api_key or x_api_key == settings.api_key:
+    if settings.api_key and x_api_key == settings.api_key:
         res_admin = await db.execute(select(User).limit(1))
         admin_user = res_admin.scalar_one_or_none()
         if admin_user:
