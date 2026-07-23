@@ -1,8 +1,7 @@
-from datetime import datetime, timezone
-import uuid
+
+from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from functools import lru_cache
 
 
 class Settings(BaseSettings):
@@ -23,9 +22,6 @@ class Settings(BaseSettings):
     # Workflow / agent-loop tuning
     max_agent_depth: int = 5
     max_iterations: int = 12
-    loop_warn: int = 3
-    loop_block: int = 5
-    loop_circuit: int = 30
 
     # Local filesystem sandbox for read_attachment
     workspace_dir: str = "./workspace"
