@@ -15,13 +15,15 @@ from app.core.guardrails.budget import BudgetTracker, RunBudget
 from app.core.guardrails.injection import wrap_untrusted_if_flagged
 from app.core.guardrails.secrets import scan_and_redact
 from app.core.llm import LLMClient, resolve_api_key
-from app.core.tools.registry import BUILTIN_TOOLS
+from app.core.tools.registry import BUILTIN_TOOLS, execute_tool_call
 from app.core.tools.types import ToolContext, tool_to_openai_schema
+from app.db.base import gen_id, utc_now
 from app.mcp.client import build_mcp_tool_spec, get_mcp_manager
 from app.models.agent import Agent
 from app.models.message import Message
 from app.models.model import Model
 from app.models.provider import Provider
+from app.models.task import Task
 from app.models.usage import UsageEvent
 from app.schemas.chat import AgentLoopResult
 
@@ -60,6 +62,14 @@ RAG_DIRECTIVE = (
     "plainly and offer to ingest the source via rag_ingest_url / rag_ingest_text "
     "/ rag_ingest_file (or list what's available with rag_list_collections).\n"
     "- Do not claim knowledge you did not retrieve or were not told.\n"
+)
+
+ORCHESTRATOR_SYSTEM_SUFFIX = (
+    "Orchestrator behavior:\n"
+    "- Break the user's goal into clear sub-tasks when delegation helps.\n"
+    "- Use `call_agent` to delegate work to suitable worker agents. You may call it "
+    "multiple times, including multiple tool calls in one turn when tasks can run independently.\n"
+    "- Synthesize subagent results into one concise final answer."
 )
 
 
@@ -127,26 +137,69 @@ async def _persist(
     await db.commit()
 
 
+async def _finish_task(
+    db: AsyncSession,
+    task: Task | None,
+    *,
+    status: str,
+    result: str | None = None,
+    cost_usd: float = 0.0,
+    token_usage: dict[str, Any] | None = None,
+) -> None:
+    if task is None:
+        return
+    task.status = status
+    task.result = result
+    task.cost_usd = cost_usd
+    task.token_usage = token_usage or {}
+    task.finished_at = utc_now()
+    await db.commit()
+
+
 async def _agent_stream(
     agent: Agent,
     message: str,
     db: AsyncSession,
     depth: int,
     session_id: str | None,
+    current_task_id: str | None = None,
+    root_run_id: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
+    root_task: Task | None = None
+    if current_task_id is None:
+        resolved_root_run_id = root_run_id or session_id or gen_id()
+        root_task = Task(
+            org_id=agent.org_id,
+            parent_task_id=None,
+            root_run_id=resolved_root_run_id,
+            agent_id=agent.id,
+            goal=message,
+            status="running",
+            depth=depth,
+            started_at=utc_now(),
+        )
+        db.add(root_task)
+        await db.commit()
+        await db.refresh(root_task)
+        current_task_id = root_task.id
+        root_run_id = root_task.root_run_id
+
     res = await db.execute(select(Model).where(Model.id == agent.model_id))
     model = res.scalar_one_or_none()
     if model is None:
+        await _finish_task(db, root_task, status="failed", result=f"model {agent.model_id} not found")
         yield {"event": "error", "data": {"message": f"model {agent.model_id} not found"}}
         return
     res = await db.execute(select(Provider).where(Provider.id == model.provider_id))
     provider = res.scalar_one_or_none()
     if provider is None:
+        await _finish_task(db, root_task, status="failed", result="provider not found for model")
         yield {"event": "error", "data": {"message": "provider not found for model"}}
         return
     try:
         llm = LLMClient(provider.base_url, resolve_api_key(provider), model.name)
     except RuntimeError as e:
+        await _finish_task(db, root_task, status="failed", result=str(e))
         yield {"event": "error", "data": {"message": str(e)}}
         return
 
@@ -161,6 +214,8 @@ async def _agent_stream(
         session_id=session_id,
         org_id=agent.org_id,
         user_id=agent.created_by_user_id,
+        current_task_id=current_task_id,
+        root_run_id=root_run_id or session_id or current_task_id,
     )
 
     specs = await _build_specs(agent, db)
@@ -174,6 +229,8 @@ async def _agent_stream(
         directives.append(MEMORY_DIRECTIVE)
     if "rag_search" in tool_by_name:
         directives.append(RAG_DIRECTIVE)
+    if agent.kind == "orchestrator":
+        directives.append(ORCHESTRATOR_SYSTEM_SUFFIX)
 
     system_parts = [base_prompt] if base_prompt else []
     system_parts.extend(directives)
@@ -290,6 +347,7 @@ async def _agent_stream(
                                 "content": result,
                             }
                         )
+                        await _finish_task(db, root_task, status="failed", result=result)
                         return
                     # Layer 1: risk-tier capability gate
                     if spec.risk_tier.value not in agent.allowed_risk_tiers:
@@ -316,10 +374,16 @@ async def _agent_stream(
                                 "run_id": session_id,
                             },
                         }
+                        await _finish_task(
+                            db,
+                            root_task,
+                            status="waiting_approval",
+                            result=f"approval required for tool '{name}'",
+                        )
                         return
                     else:
                         try:
-                            result = await spec.run(args, ctx)
+                            result = await execute_tool_call(spec, args, ctx)
                         except Exception as e:  # noqa: BLE001
                             result = f"error executing tool: {e}"
                 if name in UNTRUSTED_TOOL_SOURCES:
@@ -438,8 +502,22 @@ async def _agent_stream(
             )
         )
         await db.commit()
+        await _finish_task(
+            db,
+            root_task,
+            status="succeeded",
+            result=final,
+            cost_usd=cost,
+            token_usage=usage,
+        )
         return
 
+    await _finish_task(
+        db,
+        root_task,
+        status="failed",
+        result=f"max iterations ({agent.max_iterations}) exceeded",
+    )
     yield {
         "event": "error",
         "data": {"message": f"max iterations ({agent.max_iterations}) exceeded"},
@@ -462,12 +540,22 @@ async def run_agent_loop(
     db: AsyncSession,
     depth: int = 0,
     session_id: str | None = None,
+    current_task_id: str | None = None,
+    root_run_id: str | None = None,
 ) -> AgentLoopResult:
     content = ""
     usage: dict[str, Any] = {"input_tokens": 0, "output_tokens": 0}
     tool_calls: list[dict[str, Any]] = []
     latency_ms = 0
-    async for ev in _agent_stream(agent, message, db, depth, session_id):
+    async for ev in _agent_stream(
+        agent,
+        message,
+        db,
+        depth,
+        session_id,
+        current_task_id=current_task_id,
+        root_run_id=root_run_id,
+    ):
         if ev["event"] == "message_done":
             data = ev["data"]
             content = data["content"]

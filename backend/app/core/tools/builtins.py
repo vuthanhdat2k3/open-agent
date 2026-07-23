@@ -142,13 +142,52 @@ async def _call_agent(args: dict[str, Any], ctx: ToolContext) -> str:
     from sqlalchemy import select
 
     from app.core.agent_loop import run_agent_loop
+    from app.db.base import utc_now
     from app.models.agent import Agent
+    from app.models.task import Task
 
-    result = await ctx.db.execute(select(Agent).where(Agent.id == target_agent_id))
+    result = await ctx.db.execute(
+        select(Agent).where(Agent.id == target_agent_id, Agent.org_id == ctx.org_id)
+    )
     agent = result.scalar_one_or_none()
     if agent is None:
         return f"error: agent '{target_agent_id}' not found"
-    loop_result = await run_agent_loop(agent, instruction, ctx.db, depth=ctx.depth + 1)
+
+    task = Task(
+        org_id=agent.org_id,
+        parent_task_id=ctx.current_task_id,
+        root_run_id=ctx.root_run_id or ctx.session_id or ctx.current_task_id or agent.id,
+        agent_id=agent.id,
+        goal=instruction,
+        status="running",
+        depth=ctx.depth + 1,
+        started_at=utc_now(),
+    )
+    ctx.db.add(task)
+    await ctx.db.commit()
+    await ctx.db.refresh(task)
+
+    try:
+        loop_result = await run_agent_loop(
+            agent,
+            instruction,
+            ctx.db,
+            depth=ctx.depth + 1,
+            current_task_id=task.id,
+            root_run_id=task.root_run_id,
+        )
+    except Exception as exc:  # noqa: BLE001
+        task.status = "failed"
+        task.result = str(exc)
+        task.finished_at = utc_now()
+        await ctx.db.commit()
+        return f"error: subagent failed: {exc}"
+
+    task.status = "succeeded"
+    task.result = loop_result.content
+    task.token_usage = loop_result.usage
+    task.finished_at = utc_now()
+    await ctx.db.commit()
     return loop_result.content
 
 

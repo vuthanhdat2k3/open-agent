@@ -23,6 +23,7 @@ class Agent(Base):
     allowed_risk_tiers: Mapped[list[str]] = mapped_column(
         JSON, default=lambda: ["safe", "read"]
     )
+    kind: Mapped[str] = mapped_column(String(32), default="worker", nullable=False)
     max_iterations: Mapped[int] = mapped_column(Integer, default=12)
     temperature: Mapped[float] = mapped_column(Float, default=0.7)
 
