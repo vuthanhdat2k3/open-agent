@@ -503,4 +503,4 @@ class TestToolCapabilityGate:
         # the update endpoint allows overrides — verify the new value stuck
         updated = get_resp.json()
         # We only sent allowed_risk_tiers; verify it's applied
-        assert "allowed_risk_tiers" in updated
+        assert updated.get("allowed_risk_tiers") == ["write"]
