@@ -8,9 +8,13 @@ class Message(Base):
     __tablename__ = "messages"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=gen_id)
-    session_id: Mapped[str] = mapped_column(
-        ForeignKey("sessions.id"), nullable=False
+    org_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
     )
+    created_by_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    session_id: Mapped[str] = mapped_column(ForeignKey("sessions.id"), nullable=False)
     # "user" | "assistant" | "tool_call" | "tool_result"
     role: Mapped[str] = mapped_column(String(32), nullable=False)
     content: Mapped[str] = mapped_column(Text, default="")

@@ -48,9 +48,7 @@ class McpClient:
                 await session.initialize()
                 self._conn = {"ctx": ctx, "session": session}
         except ImportError as e:  # pragma: no cover
-            raise RuntimeError(
-                "mcp package not installed; cannot connect to MCP servers"
-            ) from e
+            raise RuntimeError("mcp package not installed; cannot connect to MCP servers") from e
 
     async def list_tools(self) -> list[dict[str, Any]]:
         await self.connect()
@@ -128,9 +126,7 @@ def get_mcp_manager() -> McpManager:
 
 def _make_mcp_run(server_id: str, tool_name: str):
     async def _run(args: dict[str, Any], ctx: ToolContext) -> str:
-        res = await ctx.db.execute(
-            select(McpServer).where(McpServer.id == server_id)
-        )
+        res = await ctx.db.execute(select(McpServer).where(McpServer.id == server_id))
         server = res.scalar_one_or_none()
         if server is None:
             return "error: mcp server not found"
@@ -143,9 +139,7 @@ def _make_mcp_run(server_id: str, tool_name: str):
 
 
 async def build_mcp_tool_spec(name: str, db: AsyncSession) -> ToolSpec | None:
-    res = await db.execute(
-        select(McpTool).where(McpTool.name == name, McpTool.enabled.is_(True))
-    )
+    res = await db.execute(select(McpTool).where(McpTool.name == name, McpTool.enabled.is_(True)))
     tool = res.scalar_one_or_none()
     if tool is None:
         return None

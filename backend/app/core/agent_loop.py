@@ -101,9 +101,7 @@ async def _persist(
     content: str,
     meta: dict[str, Any],
 ) -> None:
-    res = await db.execute(
-        select(Message).where(Message.session_id == session_id)
-    )
+    res = await db.execute(select(Message).where(Message.session_id == session_id))
     count = len(res.scalars().all())
     db.add(
         Message(
@@ -149,12 +147,12 @@ async def _agent_stream(
         mcp_manager=get_mcp_manager(),
         agent_id=agent.id,
         session_id=session_id,
+        org_id=agent.org_id,
+        user_id=agent.created_by_user_id,
     )
 
     specs = await _build_specs(agent, db)
-    tool_schemas = (
-        [tool_to_openai_schema(s) for s in specs] if specs else None
-    )
+    tool_schemas = [tool_to_openai_schema(s) for s in specs] if specs else None
     tool_by_name = {s.name: s for s in specs}
 
     # Auto-inject behavioral directives ONLY for tools the agent actually has
@@ -172,21 +170,15 @@ async def _agent_stream(
     # Build messages: system prompt first, then conversation history, then current user message.
     # NOTE: previously messages was built before system_prompt and then overwritten here —
     # that caused history + user message to be lost entirely.
-    messages: list[dict[str, Any]] = [
-        {"role": "system", "content": system_prompt}
-    ]
+    messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
     if session_id:
         res = await db.execute(
-            select(Message)
-            .where(Message.session_id == session_id)
-            .order_by(Message.position)
+            select(Message).where(Message.session_id == session_id).order_by(Message.position)
         )
         hist = res.scalars().all()
         if len(hist) > 20:
             # Compact older messages via LLM summarization to save context tokens
-            compacted = await compact_session(
-                session_id, db, model, provider, keep_last=8
-            )
+            compacted = await compact_session(session_id, db, model, provider, keep_last=8)
             messages.append({"role": "system", "content": f"[Conversation context]\n{compacted}"})
         else:
             for m in hist:
@@ -207,18 +199,14 @@ async def _agent_stream(
         content_parts: list[str] = []
         tc_map: dict[int, dict[str, Any]] = {}
 
-        async for ev in llm.stream(
-            messages, tools=tool_schemas, temperature=agent.temperature
-        ):
+        async for ev in llm.stream(messages, tools=tool_schemas, temperature=agent.temperature):
             if ev["type"] == "content":
                 content_parts.append(ev["text"])
                 yield {"event": "token", "data": {"content": ev["text"]}}
             elif ev["type"] == "tool_calls":
                 for tc in ev["tool_calls"]:
                     idx = tc.index
-                    entry = tc_map.setdefault(
-                        idx, {"id": None, "name": "", "arguments": ""}
-                    )
+                    entry = tc_map.setdefault(idx, {"id": None, "name": "", "arguments": ""})
                     if tc.id:
                         entry["id"] = tc.id
                     if tc.function and tc.function.name:
@@ -241,9 +229,7 @@ async def _agent_stream(
                         },
                     }
                 )
-            messages.append(
-                {"role": "assistant", "content": None, "tool_calls": openai_tcs}
-            )
+            messages.append({"role": "assistant", "content": None, "tool_calls": openai_tcs})
             for entry in tc_map.values():
                 name = entry["name"]
                 try:
@@ -263,9 +249,7 @@ async def _agent_stream(
                     "event": "tool_result",
                     "data": {"name": name, "result": str(result)},
                 }
-                tool_calls_log.append(
-                    {"name": name, "arguments": args, "result": str(result)}
-                )
+                tool_calls_log.append({"name": name, "arguments": args, "result": str(result)})
                 messages.append(
                     {
                         "role": "tool",
@@ -280,7 +264,10 @@ async def _agent_stream(
                     consecutive_failures = 0
                 iter_results.append({"name": name, "result": str(result)})
             if iter_failures > 0 and consecutive_failures < max_retries:
-                yield {"event": "retry", "data": {"attempt": consecutive_failures, "max": max_retries}}
+                yield {
+                    "event": "retry",
+                    "data": {"attempt": consecutive_failures, "max": max_retries},
+                }
                 yield {
                     "event": "self_correct",
                     "data": {"status": "retrying", "failures": consecutive_failures},
@@ -323,9 +310,7 @@ async def _agent_stream(
         elapsed = int((time.monotonic() - start) * 1000)
         in_tok = _estimate_tokens(json.dumps(messages, ensure_ascii=False))
         out_tok = _estimate_tokens(final)
-        cost = LLMClient.estimate_cost(
-            model, {"input_tokens": in_tok, "output_tokens": out_tok}
-        )
+        cost = LLMClient.estimate_cost(model, {"input_tokens": in_tok, "output_tokens": out_tok})
         usage = {"input_tokens": in_tok, "output_tokens": out_tok}
         model_label = model.display_name or model.name
         yield {

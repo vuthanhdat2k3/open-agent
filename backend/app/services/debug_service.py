@@ -16,22 +16,16 @@ class DebugService:
         self.db = db
 
     async def list_sessions(self) -> list[Session]:
-        res = await self.db.execute(
-            select(Session).order_by(Session.updated_at.desc())
-        )
+        res = await self.db.execute(select(Session).order_by(Session.updated_at.desc()))
         return list(res.scalars().all())
 
     async def get_session_tree(self, session_id: str) -> dict[str, Any]:
-        res = await self.db.execute(
-            select(Session).where(Session.id == session_id)
-        )
+        res = await self.db.execute(select(Session).where(Session.id == session_id))
         session = res.scalar_one_or_none()
         if session is None:
             raise ValueError("session not found")
         res = await self.db.execute(
-            select(Message)
-            .where(Message.session_id == session_id)
-            .order_by(Message.position)
+            select(Message).where(Message.session_id == session_id).order_by(Message.position)
         )
         messages = [
             {

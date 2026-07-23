@@ -106,6 +106,6 @@ class LLMClient:
     def estimate_cost(model_row: Any, usage: dict[str, int]) -> float:
         inp = usage.get("input_tokens", 0)
         out = usage.get("output_tokens", 0)
-        return (inp / 1000.0) * float(
-            getattr(model_row, "input_cost_per_1k", 0) or 0
-        ) + (out / 1000.0) * float(getattr(model_row, "output_cost_per_1k", 0) or 0)
+        return (inp / 1000.0) * float(getattr(model_row, "input_cost_per_1k", 0) or 0) + (
+            out / 1000.0
+        ) * float(getattr(model_row, "output_cost_per_1k", 0) or 0)

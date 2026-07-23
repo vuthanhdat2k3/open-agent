@@ -8,6 +8,12 @@ class McpServer(Base):
     __tablename__ = "mcp_servers"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=gen_id)
+    org_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    created_by_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     name: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
     transport: Mapped[str] = mapped_column(String(32), default="stdio", nullable=False)
     command: Mapped[str] = mapped_column(String(512), default="")
@@ -18,9 +24,7 @@ class McpServer(Base):
     connection_status: Mapped[str] = mapped_column(String(32), default="disconnected")
 
     created_at: Mapped["utc_now"] = mapped_column(DateTime, default=utc_now)
-    updated_at: Mapped["utc_now"] = mapped_column(
-        DateTime, default=utc_now, onupdate=utc_now
-    )
+    updated_at: Mapped["utc_now"] = mapped_column(DateTime, default=utc_now, onupdate=utc_now)
 
     tools: Mapped[list["McpTool"]] = relationship(
         back_populates="server", cascade="all, delete-orphan"
@@ -31,9 +35,7 @@ class McpTool(Base):
     __tablename__ = "mcp_tools"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=gen_id)
-    server_id: Mapped[str] = mapped_column(
-        ForeignKey("mcp_servers.id"), nullable=False
-    )
+    server_id: Mapped[str] = mapped_column(ForeignKey("mcp_servers.id"), nullable=False)
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     description: Mapped[str] = mapped_column(Text, default="")
     input_schema: Mapped[dict] = mapped_column(JSON, default=dict)

@@ -13,13 +13,20 @@ class BaseRepository(Generic[ModelType]):
         self.model = model
         self.db = db
 
-    async def get(self, id: str) -> ModelType | None:
-        res = await self.db.execute(select(self.model).where(self.model.id == id))
+    async def get(self, org_id: str, id: str) -> ModelType | None:
+        if not org_id:
+            raise TypeError("org_id is required")
+        res = await self.db.execute(
+            select(self.model).where(self.model.id == id, self.model.org_id == org_id)
+        )
         return res.scalar_one_or_none()
 
-    async def list(self, limit: int = 100, offset: int = 0) -> list[ModelType]:
+    async def list(self, org_id: str, limit: int = 100, offset: int = 0) -> list[ModelType]:
+        if not org_id:
+            raise TypeError("org_id is required")
         res = await self.db.execute(
             select(self.model)
+            .where(self.model.org_id == org_id)
             .order_by(self.model.created_at.desc())
             .limit(limit)
             .offset(offset)
@@ -27,6 +34,8 @@ class BaseRepository(Generic[ModelType]):
         return list(res.scalars().all())
 
     async def create(self, obj: ModelType) -> ModelType:
+        if hasattr(obj, "org_id") and not getattr(obj, "org_id", None):
+            raise TypeError("obj.org_id must be set before creating")
         self.db.add(obj)
         await self.db.commit()
         await self.db.refresh(obj)
@@ -40,8 +49,8 @@ class BaseRepository(Generic[ModelType]):
         await self.db.refresh(obj)
         return obj
 
-    async def delete(self, id: str) -> bool:
-        obj = await self.get(id)
+    async def delete(self, org_id: str, id: str) -> bool:
+        obj = await self.get(org_id, id)
         if obj is None:
             return False
         await self.db.delete(obj)

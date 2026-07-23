@@ -43,13 +43,9 @@ async def get_workflow(id: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.put("/{id}", response_model=WorkflowOut)
-async def update_workflow(
-    id: str, body: WorkflowUpdate, db: AsyncSession = Depends(get_db)
-):
+async def update_workflow(id: str, body: WorkflowUpdate, db: AsyncSession = Depends(get_db)):
     try:
-        return await WorkflowService(db).update(
-            id, body.model_dump(exclude_unset=True)
-        )
+        return await WorkflowService(db).update(id, body.model_dump(exclude_unset=True))
     except ValueError as e:
         raise HTTPException(404, str(e))
 

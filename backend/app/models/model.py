@@ -9,17 +9,18 @@ if TYPE_CHECKING:
     from app.models.provider import Provider
 
 
-
 class Model(Base):
     __tablename__ = "models"
-    __table_args__ = (
-        UniqueConstraint("provider_id", "name", name="uq_models_provider_name"),
-    )
+    __table_args__ = (UniqueConstraint("provider_id", "name", name="uq_models_provider_name"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=gen_id)
-    provider_id: Mapped[str] = mapped_column(
-        ForeignKey("providers.id"), nullable=False
+    org_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
     )
+    created_by_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    provider_id: Mapped[str] = mapped_column(ForeignKey("providers.id"), nullable=False)
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     display_name: Mapped[str] = mapped_column(String(128), nullable=False)
     tier: Mapped[str] = mapped_column(String(32), default="balanced", nullable=False)

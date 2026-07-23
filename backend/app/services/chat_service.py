@@ -15,40 +15,48 @@ class ChatService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def _load_agent(self, agent_id: str) -> Agent:
-        res = await self.db.execute(select(Agent).where(Agent.id == agent_id))
+    async def _load_agent(self, org_id: str, agent_id: str) -> Agent:
+        res = await self.db.execute(
+            select(Agent).where(Agent.id == agent_id, Agent.org_id == org_id)
+        )
         agent = res.scalar_one_or_none()
         if agent is None:
             raise ValueError("agent not found")
         return agent
 
-    async def ensure_session(self, request: ChatRequest) -> Session:
+    async def ensure_session(
+        self, org_id: str, request: ChatRequest, user_id: str | None = None
+    ) -> Session:
         if request.session_id:
             res = await self.db.execute(
-                select(Session).where(Session.id == request.session_id)
+                select(Session).where(Session.id == request.session_id, Session.org_id == org_id)
             )
             s = res.scalar_one_or_none()
             if s is not None:
                 return s
-        await self._load_agent(request.agent_id)
-        raw = " ".join(request.message.split())  # collapse whitespace/newlines
+        await self._load_agent(org_id, request.agent_id)
+        raw = " ".join(request.message.split())
         title = (raw[:72] + "…") if len(raw) > 72 else raw
         title = title[:1].upper() + title[1:] if title else "New session"
-        s = Session(agent_id=request.agent_id, title=title)
+        s = Session(
+            org_id=org_id, created_by_user_id=user_id, agent_id=request.agent_id, title=title
+        )
         self.db.add(s)
         await self.db.commit()
         await self.db.refresh(s)
         return s
 
     async def stream(
-        self, request: ChatRequest
+        self, org_id: str, request: ChatRequest, user_id: str | None = None
     ) -> AsyncIterator[dict]:
-        agent = await self._load_agent(request.agent_id)
-        session = await self.ensure_session(request)
+        agent = await self._load_agent(org_id, request.agent_id)
+        session = await self.ensure_session(org_id, request, user_id)
         async for ev in stream_agent(agent, request.message, self.db, session.id):
             yield ev
 
-    async def run(self, request: ChatRequest) -> AgentLoopResult:
-        agent = await self._load_agent(request.agent_id)
-        session = await self.ensure_session(request)
+    async def run(
+        self, org_id: str, request: ChatRequest, user_id: str | None = None
+    ) -> AgentLoopResult:
+        agent = await self._load_agent(org_id, request.agent_id)
+        session = await self.ensure_session(org_id, request, user_id)
         return await run_agent_loop(agent, request.message, self.db, session_id=session.id)

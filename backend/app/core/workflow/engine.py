@@ -52,9 +52,7 @@ async def run_workflow_events(
 
     async def run_node(node: dict[str, Any]) -> str:
         kind = node["kind"]
-        incoming = [
-            e for e in edges_to[node["id"]] if e in active_edges
-        ]
+        incoming = [e for e in edges_to[node["id"]] if e in active_edges]
         inputs = {e["from_"]: outputs.get(e["from_"], "") for e in incoming}
 
         if kind == "input":
@@ -80,9 +78,7 @@ async def run_workflow_events(
                 spec = await build_mcp_tool_spec(tool_name, db)
             if spec is None:
                 raise RuntimeError(f"tool '{tool_name}' not found")
-            ctx = ToolContext(
-                db=db, depth=0, workspace_dir=get_settings().workspace_dir
-            )
+            ctx = ToolContext(db=db, depth=0, workspace_dir=get_settings().workspace_dir)
             return await spec.run(args, ctx)
         if kind == "agent":
             agent_id = node.get("agent_id")

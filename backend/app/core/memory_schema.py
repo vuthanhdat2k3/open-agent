@@ -129,13 +129,10 @@ def normalize(
         mtype_raw, attr_raw = ALIASES[attr_raw]
 
     if not mtype_raw:
-        raise MemorySchemaError(
-            "memory_type is required (e.g. 'profile', 'preference')"
-        )
+        raise MemorySchemaError("memory_type is required (e.g. 'profile', 'preference')")
     if mtype_raw not in MEMORY_TYPES:
         raise MemorySchemaError(
-            f"unknown memory_type '{mtype_raw}'. "
-            f"allowed: {sorted(MEMORY_TYPES)}"
+            f"unknown memory_type '{mtype_raw}'. allowed: {sorted(MEMORY_TYPES)}"
         )
     if not attr_raw:
         raise MemorySchemaError("attribute is required")

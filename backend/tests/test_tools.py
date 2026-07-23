@@ -26,17 +26,13 @@ async def test_write_list_search(tmp_path: Path) -> None:
     listing = await get_tool("list_dir").run({"path": "a"}, ctx)
     assert "b.txt" in listing
 
-    found = await get_tool("search_files").run(
-        {"pattern": "foo", "glob": "**/*.txt"}, ctx
-    )
+    found = await get_tool("search_files").run({"pattern": "foo", "glob": "**/*.txt"}, ctx)
     assert "b.txt" in found and "foo bar" in found
 
 
 async def test_sandbox_rejects_traversal(tmp_path: Path) -> None:
     ctx = _ctx(str(tmp_path))
-    res = await get_tool("write_file").run(
-        {"path": "../../evil.txt", "content": "x"}, ctx
-    )
+    res = await get_tool("write_file").run({"path": "../../evil.txt", "content": "x"}, ctx)
     assert "escapes" in res
     assert not (tmp_path.parent / "evil.txt").exists()
 
@@ -87,4 +83,3 @@ async def test_save_and_call_memory() -> None:
         res3 = await get_tool("call_memory").run({}, ctx)
         assert "Dat" in res3 and "Python" in res3
     await engine.dispose()
-
