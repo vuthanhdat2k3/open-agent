@@ -1,6 +1,7 @@
 from app.models.agent import Agent
 from app.models.api_key import ApiKey
 from app.models.approval_request import ApprovalRequest
+from app.models.audit_log import AuditLog
 from app.models.files import UploadedFile
 from app.models.mcp import McpServer, McpTool
 from app.models.membership import Membership
@@ -24,6 +25,7 @@ __all__ = [
     "Agent",
     "ApiKey",
     "ApprovalRequest",
+    "AuditLog",
     "McpServer",
     "McpTool",
     "Membership",

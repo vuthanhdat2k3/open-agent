@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth.api_key import generate_api_key
+from app.core.observability.audit import log_action
 from app.db.session import get_db
 from app.dependencies import get_current_user, require_permission
 from app.models.api_key import ApiKey
@@ -134,6 +135,15 @@ async def add_org_member(
     db.add(mem)
     await db.commit()
     await db.refresh(mem)
+    await log_action(
+        db,
+        org_id=id,
+        actor_user_id=current_user.id,
+        action="membership.added",
+        resource_type="membership",
+        resource_id=mem.id,
+        metadata={"user_id": invited_user.id, "role": str(mem.role)},
+    )
 
     return OrgMemberOut(
         user_id=invited_user.id,
@@ -161,6 +171,14 @@ async def remove_org_member(
 
     await db.delete(mem)
     await db.commit()
+    await log_action(
+        db,
+        org_id=id,
+        actor_user_id=current_user.id,
+        action="membership.removed",
+        resource_type="membership",
+        resource_id=user_id,
+    )
     return {"ok": True}
 
 
@@ -188,6 +206,15 @@ async def create_api_key_endpoint(
     db.add(api_key_obj)
     await db.commit()
     await db.refresh(api_key_obj)
+    await log_action(
+        db,
+        org_id=id,
+        actor_user_id=current_user.id,
+        action="api_key.created",
+        resource_type="api_key",
+        resource_id=api_key_obj.id,
+        metadata={"name": api_key_obj.name, "key_prefix": api_key_obj.key_prefix},
+    )
 
     return ApiKeyCreateResponse(
         api_key=ApiKeyOut.model_validate(api_key_obj),
@@ -227,4 +254,13 @@ async def revoke_api_key(
 
     key_obj.revoked_at = datetime.now(timezone.utc)
     await db.commit()
+    await log_action(
+        db,
+        org_id=id,
+        actor_user_id=current_user.id,
+        action="api_key.revoked",
+        resource_type="api_key",
+        resource_id=key_obj.id,
+        metadata={"name": key_obj.name, "key_prefix": key_obj.key_prefix},
+    )
     return {"ok": True}

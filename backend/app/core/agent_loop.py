@@ -15,6 +15,9 @@ from app.core.guardrails.budget import BudgetTracker, RunBudget
 from app.core.guardrails.injection import wrap_untrusted_if_flagged
 from app.core.guardrails.secrets import scan_and_redact
 from app.core.llm import LLMClient, resolve_api_key
+from app.core.observability.audit import log_action
+from app.core.observability.metrics import agent_run_cost_usd_total, tool_calls_total
+from app.core.observability.tracing import get_tracer
 from app.core.tools.registry import BUILTIN_TOOLS, execute_tool_call
 from app.core.tools.types import ToolContext, tool_to_openai_schema
 from app.db.base import gen_id, utc_now
@@ -29,6 +32,7 @@ from app.schemas.chat import AgentLoopResult
 
 settings = get_settings()
 UNTRUSTED_TOOL_SOURCES = {"web_fetch", "rag_search", "read_attachment"}
+tracer = get_tracer(__name__)
 
 # Auto-injected into every agent's system prompt so the model is explicitly
 # told how to use the structured memory tools. The tool schemas are provided
@@ -284,20 +288,25 @@ async def _agent_stream(
         content_parts: list[str] = []
         tc_map: dict[int, dict[str, Any]] = {}
 
-        async for ev in llm.stream(messages, tools=tool_schemas, temperature=agent.temperature):
-            if ev["type"] == "content":
-                content_parts.append(ev["text"])
-                yield {"event": "token", "data": {"content": ev["text"]}}
-            elif ev["type"] == "tool_calls":
-                for tc in ev["tool_calls"]:
-                    idx = tc.index
-                    entry = tc_map.setdefault(idx, {"id": None, "name": "", "arguments": ""})
-                    if tc.id:
-                        entry["id"] = tc.id
-                    if tc.function and tc.function.name:
-                        entry["name"] = tc.function.name
-                    if tc.function and tc.function.arguments:
-                        entry["arguments"] += tc.function.arguments
+        with tracer.start_as_current_span(
+            "agent_loop.iteration",
+            attributes={"org_id": agent.org_id, "agent_id": agent.id, "depth": depth},
+        ):
+            stream_iter = llm.stream(messages, tools=tool_schemas, temperature=agent.temperature)
+            async for ev in stream_iter:
+                if ev["type"] == "content":
+                    content_parts.append(ev["text"])
+                    yield {"event": "token", "data": {"content": ev["text"]}}
+                elif ev["type"] == "tool_calls":
+                    for tc in ev["tool_calls"]:
+                        idx = tc.index
+                        entry = tc_map.setdefault(idx, {"id": None, "name": "", "arguments": ""})
+                        if tc.id:
+                            entry["id"] = tc.id
+                        if tc.function and tc.function.name:
+                            entry["name"] = tc.function.name
+                        if tc.function and tc.function.arguments:
+                            entry["arguments"] += tc.function.arguments
 
         if tc_map:
             openai_tcs = []
@@ -383,8 +392,29 @@ async def _agent_stream(
                         return
                     else:
                         try:
-                            result = await execute_tool_call(spec, args, ctx)
+                            with tracer.start_as_current_span(
+                                "tool.call",
+                                attributes={
+                                    "org_id": agent.org_id,
+                                    "agent_id": agent.id,
+                                    "tool_name": name,
+                                    "risk_tier": spec.risk_tier.value,
+                                },
+                            ):
+                                result = await execute_tool_call(spec, args, ctx)
+                            tool_calls_total.labels(name, "ok").inc()
+                            if spec.risk_tier.value == "dangerous":
+                                await log_action(
+                                    db,
+                                    org_id=agent.org_id,
+                                    actor_user_id=agent.created_by_user_id,
+                                    action="tool.dangerous.executed",
+                                    resource_type="tool",
+                                    resource_id=name,
+                                    metadata={"arguments": args},
+                                )
                         except Exception as e:  # noqa: BLE001
+                            tool_calls_total.labels(name, "error").inc()
                             result = f"error executing tool: {e}"
                 if name in UNTRUSTED_TOOL_SOURCES:
                     result = wrap_untrusted_if_flagged(str(result), source=name)
@@ -502,6 +532,7 @@ async def _agent_stream(
             )
         )
         await db.commit()
+        agent_run_cost_usd_total.labels(agent.org_id).inc(cost)
         await _finish_task(
             db,
             root_task,

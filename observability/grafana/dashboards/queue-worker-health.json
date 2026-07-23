@@ -1,0 +1,21 @@
+{
+  "title": "OpenAgent Queue & Worker Health",
+  "schemaVersion": 39,
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Workflow Duration",
+      "targets": [
+        { "expr": "histogram_quantile(0.95, rate(workflow_run_duration_seconds_bucket[5m]))" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Sandbox Executions",
+      "targets": [
+        { "expr": "sum by (status) (rate(sandbox_executions_total[5m]))" }
+      ]
+    }
+  ]
+}
+

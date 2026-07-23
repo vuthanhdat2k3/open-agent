@@ -1,0 +1,21 @@
+{
+  "title": "OpenAgent Latency & Errors",
+  "schemaVersion": 39,
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "HTTP Request Rate",
+      "targets": [
+        { "expr": "sum(rate(http_requests_total[5m]))" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Tool Errors",
+      "targets": [
+        { "expr": "sum by (tool_name) (rate(tool_calls_total{status=\"error\"}[5m]))" }
+      ]
+    }
+  ]
+}
+

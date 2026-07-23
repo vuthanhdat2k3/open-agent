@@ -1,0 +1,21 @@
+{
+  "title": "OpenAgent Usage & Cost",
+  "schemaVersion": 39,
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Agent Cost USD",
+      "targets": [
+        { "expr": "sum by (org_id) (rate(agent_run_cost_usd_total[5m]))" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Tool Calls",
+      "targets": [
+        { "expr": "sum by (tool_name,status) (rate(tool_calls_total[5m]))" }
+      ]
+    }
+  ]
+}
+
