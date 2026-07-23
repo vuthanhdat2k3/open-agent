@@ -7,7 +7,6 @@ Qdrant/Chroma by setting ``RAG_VECTOR_STORE``.
 
 from __future__ import annotations
 
-import asyncio
 import threading
 from typing import Any
 
@@ -124,7 +123,6 @@ class MemoryVectorStore(VectorStore):
     ) -> list[TextChunk]:
         with self._lock:
             store = self._data.get(collection, {})
-            wanted = set(chunk_ids)
             return [store["chunks"][cid] for cid in chunk_ids if cid in store["chunks"]]
 
     # convenience used by tests / tooling

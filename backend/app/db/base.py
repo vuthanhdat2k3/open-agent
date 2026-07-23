@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 
 from sqlalchemy.orm import DeclarativeBase
 
@@ -9,7 +9,9 @@ def gen_id() -> str:
 
 
 def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+    # Models use TIMESTAMP WITHOUT TIME ZONE. Persist naive UTC consistently
+    # across SQLite and PostgreSQL, and only attach a timezone at API boundaries.
+    return datetime.utcnow()
 
 
 class Base(DeclarativeBase):

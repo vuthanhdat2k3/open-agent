@@ -11,6 +11,7 @@ import re
 from typing import Any
 
 from rag_service.core.logging import logger
+from rag_service.pipeline.base import TextChunk
 from rag_service.pipeline.chunker.base import Chunker, make_chunk
 
 _FALLBACK_SPLIT = re.compile(r"(?<=[.!?])\s+")

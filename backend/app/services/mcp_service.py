@@ -26,13 +26,15 @@ class McpService:
         if user_id:
             data["created_by_user_id"] = user_id
         srv = McpServer(**data)
-        return await self.repo.create(srv)
+        created = await self.repo.create(srv)
+        return await self.repo.get(org_id, created.id) or created
 
     async def update(self, org_id: str, id: str, data: dict) -> McpServer:
         srv = await self.repo.get(org_id, id)
         if srv is None:
             raise ValueError("mcp server not found")
-        return await self.repo.update(srv, data)
+        updated = await self.repo.update(srv, data)
+        return await self.repo.get(org_id, updated.id) or updated
 
     async def delete(self, org_id: str, id: str) -> bool:
         await get_mcp_manager().disconnect(id)

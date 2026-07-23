@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import asyncio
 
-import pytest
 from qdrant_client import AsyncQdrantClient
 
 from rag_service.pipeline.base import TextChunk
@@ -118,7 +117,6 @@ async def test_batch_upsert_large():
     ]
     vectors = [[float(i == j) for j in range(3)] for i in range(n)]
     await store.upsert("big", chunks, vectors)
-    from qdrant_client import AsyncQdrantClient
 
     cnt = await store.client.count(store._qname("big"))
     assert cnt.count == n

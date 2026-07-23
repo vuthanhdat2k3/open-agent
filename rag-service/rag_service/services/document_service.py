@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from rag_service.core.logging import logger
 from rag_service.exceptions import DocumentNotFoundError, JobNotFoundError
-from rag_service.models import Document, IngestJob
+from rag_service.models import Document
 from rag_service.repositories.chunk_repo import ChunkRepo
-from rag_service.repositories.collection_repo import CollectionRepo
 from rag_service.repositories.document_repo import DocumentRepo
 from rag_service.repositories.job_repo import JobRepo
 from rag_service.services.collection_service import CollectionService

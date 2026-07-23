@@ -61,9 +61,10 @@ export default function AgentsPage() {
 
   // Auto-populate model when models load (for new agent)
   React.useEffect(() => {
-    if (models.data?.length && !form.model_id && !editingAgent) {
-      setForm((f) => ({ ...f, model_id: models.data![0].id }));
-    }
+    if (!models.data?.length || editingAgent) return;
+    setForm((current) =>
+      current.model_id ? current : { ...current, model_id: models.data![0].id }
+    );
   }, [models.data, editingAgent]);
 
   // Populate form when editing an existing agent

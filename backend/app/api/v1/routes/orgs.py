@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth.api_key import generate_api_key
 from app.core.observability.audit import log_action
+from app.db.base import utc_now
 from app.db.session import get_db
 from app.dependencies import get_current_user, require_permission
 from app.models.api_key import ApiKey
@@ -193,7 +194,7 @@ async def create_api_key_endpoint(
     full_key, key_prefix, key_hash = generate_api_key()
     expires_at = None
     if body.expires_days:
-        expires_at = datetime.now(timezone.utc) + timedelta(days=body.expires_days)
+        expires_at = utc_now() + timedelta(days=body.expires_days)
 
     api_key_obj = ApiKey(
         org_id=id,
@@ -252,7 +253,7 @@ async def revoke_api_key(
     if not key_obj:
         raise HTTPException(404, "API key not found")
 
-    key_obj.revoked_at = datetime.now(timezone.utc)
+    key_obj.revoked_at = utc_now()
     await db.commit()
     await log_action(
         db,
