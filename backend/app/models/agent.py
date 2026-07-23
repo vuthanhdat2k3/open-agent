@@ -1,4 +1,4 @@
-from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, gen_id, utc_now
@@ -6,6 +6,7 @@ from app.db.base import Base, gen_id, utc_now
 
 class Agent(Base):
     __tablename__ = "agents"
+    __table_args__ = (UniqueConstraint("org_id", "name", name="uq_agents_org_name"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=gen_id)
     org_id: Mapped[str] = mapped_column(
@@ -14,7 +15,7 @@ class Agent(Base):
     created_by_user_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
-    name: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
     description: Mapped[str] = mapped_column(String(512), default="")
     system_prompt: Mapped[str] = mapped_column(Text, default="", nullable=False)
     model_id: Mapped[str] = mapped_column(ForeignKey("models.id"), nullable=False)

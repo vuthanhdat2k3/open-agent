@@ -126,7 +126,10 @@ def get_mcp_manager() -> McpManager:
 
 def _make_mcp_run(server_id: str, tool_name: str):
     async def _run(args: dict[str, Any], ctx: ToolContext) -> str:
-        res = await ctx.db.execute(select(McpServer).where(McpServer.id == server_id))
+        stmt = select(McpServer).where(McpServer.id == server_id)
+        if ctx.org_id:
+            stmt = stmt.where(McpServer.org_id == ctx.org_id)
+        res = await ctx.db.execute(stmt)
         server = res.scalar_one_or_none()
         if server is None:
             return "error: mcp server not found"
@@ -138,8 +141,17 @@ def _make_mcp_run(server_id: str, tool_name: str):
     return _run
 
 
-async def build_mcp_tool_spec(name: str, db: AsyncSession) -> ToolSpec | None:
-    res = await db.execute(select(McpTool).where(McpTool.name == name, McpTool.enabled.is_(True)))
+async def build_mcp_tool_spec(
+    name: str, db: AsyncSession, org_id: str | None = None
+) -> ToolSpec | None:
+    stmt = (
+        select(McpTool)
+        .join(McpServer, McpTool.server_id == McpServer.id)
+        .where(McpTool.name == name, McpTool.enabled.is_(True))
+    )
+    if org_id:
+        stmt = stmt.where(McpServer.org_id == org_id)
+    res = await db.execute(stmt)
     tool = res.scalar_one_or_none()
     if tool is None:
         return None

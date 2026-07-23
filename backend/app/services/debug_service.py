@@ -15,17 +15,27 @@ class DebugService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def list_sessions(self) -> list[Session]:
-        res = await self.db.execute(select(Session).order_by(Session.updated_at.desc()))
+    async def list_sessions(self, org_id: str) -> list[Session]:
+        if not org_id:
+            raise TypeError("org_id is required")
+        res = await self.db.execute(
+            select(Session).where(Session.org_id == org_id).order_by(Session.updated_at.desc())
+        )
         return list(res.scalars().all())
 
-    async def get_session_tree(self, session_id: str) -> dict[str, Any]:
-        res = await self.db.execute(select(Session).where(Session.id == session_id))
+    async def get_session_tree(self, org_id: str, session_id: str) -> dict[str, Any]:
+        if not org_id:
+            raise TypeError("org_id is required")
+        res = await self.db.execute(
+            select(Session).where(Session.id == session_id, Session.org_id == org_id)
+        )
         session = res.scalar_one_or_none()
         if session is None:
             raise ValueError("session not found")
         res = await self.db.execute(
-            select(Message).where(Message.session_id == session_id).order_by(Message.position)
+            select(Message)
+            .where(Message.session_id == session_id, Message.org_id == org_id)
+            .order_by(Message.position)
         )
         messages = [
             {
@@ -46,10 +56,14 @@ class DebugService:
             "messages": messages,
         }
 
-    async def usage_summary(self) -> list[dict[str, Any]]:
+    async def usage_summary(self, org_id: str) -> list[dict[str, Any]]:
+        if not org_id:
+            raise TypeError("org_id is required")
         repo = UsageRepository(self.db)
-        return await repo.summary()
+        return await repo.summary(org_id)
 
-    async def list_agents(self) -> list[Agent]:
-        res = await self.db.execute(select(Agent))
+    async def list_agents(self, org_id: str) -> list[Agent]:
+        if not org_id:
+            raise TypeError("org_id is required")
+        res = await self.db.execute(select(Agent).where(Agent.org_id == org_id))
         return list(res.scalars().all())

@@ -42,8 +42,7 @@ service-account*.json
 *.sqlite3
 
 # Alembic
-backend/alembic/versions/*.py
-!backend/alembic/versions/.gitkeep
+
 
 # Runtime data (uploaded files, local sqlite db)
 backend/data/

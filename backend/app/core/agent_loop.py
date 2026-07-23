@@ -69,7 +69,7 @@ async def _build_specs(agent: Agent, db: AsyncSession) -> list[Any]:
         if spec is not None:
             specs.append(spec)
         else:
-            mcp_spec = await build_mcp_tool_spec(name, db)
+            mcp_spec = await build_mcp_tool_spec(name, db, org_id=agent.org_id)
             if mcp_spec is not None:
                 specs.append(mcp_spec)
     return specs
@@ -100,11 +100,15 @@ async def _persist(
     role: str,
     content: str,
     meta: dict[str, Any],
+    org_id: str,
+    created_by_user_id: str | None = None,
 ) -> None:
     res = await db.execute(select(Message).where(Message.session_id == session_id))
     count = len(res.scalars().all())
     db.add(
         Message(
+            org_id=org_id,
+            created_by_user_id=created_by_user_id,
             session_id=session_id,
             role=role,
             content=content,
@@ -186,7 +190,15 @@ async def _agent_stream(
     messages.append({"role": "user", "content": message})
 
     if session_id:
-        await _persist(db, session_id, "user", message, {})
+        await _persist(
+            db,
+            session_id,
+            "user",
+            message,
+            {},
+            org_id=agent.org_id,
+            created_by_user_id=agent.created_by_user_id,
+        )
 
     start = time.monotonic()
     yield {"event": "message_start", "data": {}}
@@ -338,9 +350,13 @@ async def _agent_stream(
                     "tools": tool_calls_log,
                     "model": model_label,
                 },
+                org_id=agent.org_id,
+                created_by_user_id=agent.created_by_user_id,
             )
         db.add(
             UsageEvent(
+                org_id=agent.org_id,
+                created_by_user_id=agent.created_by_user_id,
                 source="call_agent" if depth > 0 else "chat",
                 agent_name=agent.name,
                 model_name=model.name,

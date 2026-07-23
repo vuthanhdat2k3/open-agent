@@ -75,16 +75,24 @@ async def run_workflow_events(
             args = {k: v for k, v in cfg.items() if k != "tool"}
             spec = BUILTIN_TOOLS.get(tool_name)
             if spec is None:
-                spec = await build_mcp_tool_spec(tool_name, db)
+                spec = await build_mcp_tool_spec(tool_name, db, org_id=workflow.org_id)
             if spec is None:
                 raise RuntimeError(f"tool '{tool_name}' not found")
-            ctx = ToolContext(db=db, depth=0, workspace_dir=get_settings().workspace_dir)
+            ctx = ToolContext(
+                db=db,
+                depth=0,
+                workspace_dir=get_settings().workspace_dir,
+                org_id=workflow.org_id,
+                user_id=workflow.created_by_user_id,
+            )
             return await spec.run(args, ctx)
         if kind == "agent":
             agent_id = node.get("agent_id")
             if not agent_id:
                 raise RuntimeError("agent node missing agent_id")
-            res = await db.execute(select(Agent).where(Agent.id == agent_id))
+            res = await db.execute(
+                select(Agent).where(Agent.id == agent_id, Agent.org_id == workflow.org_id)
+            )
             agent = res.scalar_one_or_none()
             if agent is None:
                 raise RuntimeError(f"agent '{agent_id}' not found")

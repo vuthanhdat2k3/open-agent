@@ -95,3 +95,45 @@ async def test_repository_org_scoping_and_isolation() -> None:
             await agent_repo.get(org_id="", id=agent_a.id)
 
     await engine.dispose()
+
+
+async def test_same_name_across_different_orgs() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    async with session_factory() as session:
+        org_repo = OrganizationRepository(session)
+        provider_repo = ProviderRepository(session)
+        model_repo = ModelRepository(session)
+        agent_repo = AgentRepository(session)
+
+        org_a = await org_repo.create(Organization(name="Org A", slug="org-a"))
+        org_b = await org_repo.create(Organization(name="Org B", slug="org-b"))
+
+        p_a = await provider_repo.create(
+            Provider(org_id=org_a.id, key="openai", name="OpenAI", base_url="http://a")
+        )
+        p_b = await provider_repo.create(
+            Provider(org_id=org_b.id, key="openai", name="OpenAI", base_url="http://b")
+        )
+        assert p_a.id != p_b.id
+
+        m_a = await model_repo.create(
+            Model(org_id=org_a.id, provider_id=p_a.id, name="gpt-4o", display_name="GPT-4o")
+        )
+        m_b = await model_repo.create(
+            Model(org_id=org_b.id, provider_id=p_b.id, name="gpt-4o", display_name="GPT-4o")
+        )
+
+        agent_a = await agent_repo.create(
+            Agent(org_id=org_a.id, name="Assistant", system_prompt="a", model_id=m_a.id)
+        )
+        agent_b = await agent_repo.create(
+            Agent(org_id=org_b.id, name="Assistant", system_prompt="b", model_id=m_b.id)
+        )
+        assert agent_a.id != agent_b.id
+
+    await engine.dispose()
