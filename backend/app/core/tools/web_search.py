@@ -37,9 +37,7 @@ async def _web_search(args: dict[str, Any], ctx: ToolContext) -> str:
         max_results = 5
 
     try:
-        async with httpx.AsyncClient(
-            timeout=20.0, follow_redirects=True
-        ) as client:
+        async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
             resp = await client.post(
                 DDG_HTML_URL,
                 data={"q": query},

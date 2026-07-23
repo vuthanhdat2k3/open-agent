@@ -11,31 +11,31 @@ class McpRepository(BaseRepository[McpServer]):
     def __init__(self, db):
         super().__init__(McpServer, db)
 
-    async def list(self, limit: int = 100, offset: int = 0) -> list[McpServer]:
-        # Eager-load tools so the relationship is populated inside the async
-        # session; otherwise serialization (which runs after the session closes)
-        # triggers a lazy load and raises MissingGreenlet. Also avoids N+1.
+    async def list(self, org_id: str, limit: int = 100, offset: int = 0) -> list[McpServer]:
+        if not org_id:
+            raise TypeError("org_id is required")
         res = await self.db.execute(
             select(McpServer)
             .options(selectinload(McpServer.tools))
+            .where(McpServer.org_id == org_id)
             .order_by(McpServer.created_at.desc())
             .limit(limit)
             .offset(offset)
         )
         return list(res.scalars().all())
 
-    async def get(self, id: str) -> McpServer | None:
+    async def get(self, org_id: str, id: str) -> McpServer | None:
+        if not org_id:
+            raise TypeError("org_id is required")
         res = await self.db.execute(
-            select(McpServer).options(selectinload(McpServer.tools)).where(McpServer.id == id)
+            select(McpServer)
+            .options(selectinload(McpServer.tools))
+            .where(McpServer.id == id, McpServer.org_id == org_id)
         )
         return res.scalar_one_or_none()
 
     async def list_tools(self, server_id: str) -> list[McpTool]:
-        from sqlalchemy import select
-
-        res = await self.db.execute(
-            select(McpTool).where(McpTool.server_id == server_id)
-        )
+        res = await self.db.execute(select(McpTool).where(McpTool.server_id == server_id))
         return list(res.scalars().all())
 
     async def replace_tools(self, server_id: str, tools: list[dict]) -> None:

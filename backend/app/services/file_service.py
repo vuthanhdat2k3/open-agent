@@ -31,7 +31,9 @@ class FileService:
         os.makedirs(path, exist_ok=True)
         return path
 
-    async def save_upload(self, file: UploadFile) -> UploadedFile:
+    async def save_upload(
+        self, org_id: str, file: UploadFile, user_id: str | None = None
+    ) -> UploadedFile:
         ext = os.path.splitext(file.filename or "")[1].lower()
         if ext and ext not in self.settings.allowed_extensions:
             raise ValueError(f"Unsupported file type: {ext or 'unknown'}")
@@ -46,6 +48,8 @@ class FileService:
         with open(stored_path, "wb") as f:
             f.write(data)
         record = UploadedFile(
+            org_id=org_id,
+            created_by_user_id=user_id,
             filename=stored_name,
             original_name=file.filename or stored_name,
             content_type=file.content_type or "",
@@ -55,14 +59,14 @@ class FileService:
         )
         return await self.repo.create(record)
 
-    async def list(self) -> list[UploadedFile]:
-        return await self.repo.list()
+    async def list(self, org_id: str) -> list[UploadedFile]:
+        return await self.repo.list(org_id)
 
-    async def get(self, id: str) -> UploadedFile | None:
-        return await self.repo.get(id)
+    async def get(self, org_id: str, id: str) -> UploadedFile | None:
+        return await self.repo.get(org_id, id)
 
-    async def delete(self, id: str) -> bool:
-        record = await self.repo.get(id)
+    async def delete(self, org_id: str, id: str) -> bool:
+        record = await self.repo.get(org_id, id)
         if record is None:
             return False
         if record.stored_path and os.path.exists(record.stored_path):
@@ -70,17 +74,18 @@ class FileService:
                 os.remove(record.stored_path)
             except OSError:  # noqa: SIM105
                 pass
-        return await self.repo.delete(id)
+        return await self.repo.delete(org_id, id)
 
     async def ingest_to_rag(
         self,
+        org_id: str,
         id: str,
         collection: str,
         chunk_size: int,
         chunk_overlap: int,
         tags: list[str],
     ) -> dict:
-        record = await self.repo.get(id)
+        record = await self.repo.get(org_id, id)
         if record is None:
             raise ValueError("file not found")
         try:
@@ -89,7 +94,8 @@ class FileService:
             content_base64 = base64.b64encode(data).decode("ascii")
             res = await self.db.execute(
                 select(McpServer).where(
-                    McpServer.name == self.settings.rag_mcp_server_name
+                    McpServer.org_id == org_id,
+                    McpServer.name == self.settings.rag_mcp_server_name,
                 )
             )
             server = res.scalar_one_or_none()

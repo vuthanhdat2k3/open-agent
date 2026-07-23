@@ -19,9 +19,7 @@ async def compact_session(
     """Load a session's messages, summarize the older ones, return a compacted
     context string combining the summary + recent messages."""
     res = await db.execute(
-        select(Message)
-        .where(Message.session_id == session_id)
-        .order_by(Message.position)
+        select(Message).where(Message.session_id == session_id).order_by(Message.position)
     )
     messages = res.scalars().all()
     if len(messages) <= keep_last:
@@ -29,13 +27,9 @@ async def compact_session(
 
     recent = messages[-keep_last:]
     to_summarize = messages[:-keep_last]
-    transcript = "\n\n".join(
-        f"{m.role}: {m.content}" for m in to_summarize
-    )
+    transcript = "\n\n".join(f"{m.role}: {m.content}" for m in to_summarize)
     try:
-        llm = LLMClient(
-            provider.base_url, resolve_api_key(provider), agent_model.name
-        )
+        llm = LLMClient(provider.base_url, resolve_api_key(provider), agent_model.name)
         summary, _, _ = await llm.complete(
             [
                 {

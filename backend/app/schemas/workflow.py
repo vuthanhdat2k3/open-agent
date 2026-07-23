@@ -12,7 +12,7 @@ class GraphNode(BaseModel):
     kind: NodeKind
     label: str = ""
     agent_id: str | None = None  # for kind == "agent"
-    merge_mode: MergeMode = "all"   # for kind == "merge"
+    merge_mode: MergeMode = "all"  # for kind == "merge"
     config: dict[str, Any] = {}
 
 

@@ -26,15 +26,17 @@ class AgentMemory(Base):
 
     __tablename__ = "agent_memories"
     __table_args__ = (
-        UniqueConstraint(
-            "agent_id", "memory_type", "attribute", name="uq_agent_memory"
-        ),
+        UniqueConstraint("agent_id", "memory_type", "attribute", name="uq_agent_memory"),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=gen_id)
-    agent_id: Mapped[str] = mapped_column(
-        ForeignKey("agents.id"), nullable=False, index=True
+    org_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
     )
+    created_by_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    agent_id: Mapped[str] = mapped_column(ForeignKey("agents.id"), nullable=False, index=True)
     owner_type: Mapped[str] = mapped_column(String(32), default="agent", nullable=False)
 
     memory_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
@@ -47,25 +49,25 @@ class AgentMemory(Base):
     source: Mapped[str] = mapped_column(String(32), default="agent", nullable=False)
     meta: Mapped[dict[str, Any] | None] = mapped_column("metadata", JSON, nullable=True)
 
-    last_accessed_at: Mapped[datetime | None] = mapped_column(
-        DateTime, nullable=True
-    )
+    last_accessed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     created_at: Mapped["utc_now"] = mapped_column(DateTime, default=utc_now)
-    updated_at: Mapped["utc_now"] = mapped_column(
-        DateTime, default=utc_now, onupdate=utc_now
-    )
+    updated_at: Mapped["utc_now"] = mapped_column(DateTime, default=utc_now, onupdate=utc_now)
 
 
 class SessionMemory(Base):
     __tablename__ = "session_memories"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=gen_id)
+    org_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    created_by_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     session_id: Mapped[str] = mapped_column(ForeignKey("sessions.id"), nullable=False, index=True)
     key: Mapped[str] = mapped_column(String(256), nullable=False)
     value: Mapped[str] = mapped_column(Text, nullable=False)
 
     created_at: Mapped["utc_now"] = mapped_column(DateTime, default=utc_now)
-    updated_at: Mapped["utc_now"] = mapped_column(
-        DateTime, default=utc_now, onupdate=utc_now
-    )
+    updated_at: Mapped["utc_now"] = mapped_column(DateTime, default=utc_now, onupdate=utc_now)

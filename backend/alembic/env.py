@@ -25,8 +25,9 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Inject the runtime DB URL.
-config.set_main_option("sqlalchemy.url", get_settings().db_url)
+# Inject the runtime DB URL if not explicitly provided.
+if not config.get_main_option("sqlalchemy.url"):
+    config.set_main_option("sqlalchemy.url", get_settings().db_url)
 
 target_metadata = Base.metadata
 

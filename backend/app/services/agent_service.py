@@ -10,32 +10,35 @@ class AgentService:
         self.repo = AgentRepository(db)
         self.model_repo = ModelRepository(db)
 
-    async def create(self, data: dict) -> Agent:
-        m = await self.model_repo.get(data["model_id"])
+    async def create(self, org_id: str, data: dict, user_id: str | None = None) -> Agent:
+        m = await self.model_repo.get(org_id, data["model_id"])
         if m is None:
             raise ValueError("model not found")
+        data["org_id"] = org_id
+        if user_id:
+            data["created_by_user_id"] = user_id
         return await self.repo.create(Agent(**data))
 
-    async def update(self, id: str, data: dict) -> Agent:
-        a = await self.repo.get(id)
+    async def update(self, org_id: str, id: str, data: dict) -> Agent:
+        a = await self.repo.get(org_id, id)
         if a is None:
             raise ValueError("agent not found")
         return await self.repo.update(a, data)
 
-    async def delete(self, id: str) -> bool:
-        return await self.repo.delete(id)
+    async def delete(self, org_id: str, id: str) -> bool:
+        return await self.repo.delete(org_id, id)
 
-    async def list(self) -> list[Agent]:
-        return await self.repo.list()
+    async def list(self, org_id: str) -> list[Agent]:
+        return await self.repo.list(org_id)
 
-    async def get(self, id: str) -> Agent | None:
-        return await self.repo.get(id)
+    async def get(self, org_id: str, id: str) -> Agent | None:
+        return await self.repo.get(org_id, id)
 
-    async def list_available_tools(self) -> list[dict]:
+    async def list_available_tools(self, org_id: str) -> list[dict]:
         from sqlalchemy import select
 
         from app.core.tools.registry import list_tools
-        from app.models.mcp import McpTool
+        from app.models.mcp import McpServer, McpTool
 
         seen: set[str] = set()
         out: list[dict] = []
@@ -51,7 +54,9 @@ class AgentService:
                 }
             )
         res = await self.repo.db.execute(
-            select(McpTool).where(McpTool.enabled.is_(True))
+            select(McpTool)
+            .join(McpServer)
+            .where(McpServer.org_id == org_id, McpTool.enabled.is_(True))
         )
         for t in res.scalars().all():
             if t.name in seen:
