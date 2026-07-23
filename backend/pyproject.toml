@@ -2,7 +2,7 @@
 name = "open-agent"
 version = "0.1.0"
 description = "OpenAgent - a personal multi-agent OS. FastAPI backend (layered, scalable) + Next.js frontend. OpenAI-compatible LLM, graph-based multi-agent workflows."
-readme = "../README.md"
+readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 
@@ -55,11 +55,10 @@ asyncio_mode = "auto"
 pythonpath = ["."]
 testpaths = ["tests"]
 
-
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-where = ["backend"]
+where = ["."]
 include = ["app*"]
