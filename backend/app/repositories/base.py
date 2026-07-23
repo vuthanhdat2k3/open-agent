@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Generic, Optional, Type, TypeVar
+from typing import Generic, TypeVar
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,11 +9,11 @@ ModelType = TypeVar("ModelType")
 
 
 class BaseRepository(Generic[ModelType]):
-    def __init__(self, model: Type[ModelType], db: AsyncSession):
+    def __init__(self, model: type[ModelType], db: AsyncSession):
         self.model = model
         self.db = db
 
-    async def get(self, id: str) -> Optional[ModelType]:
+    async def get(self, id: str) -> ModelType | None:
         res = await self.db.execute(select(self.model).where(self.model.id == id))
         return res.scalar_one_or_none()
 

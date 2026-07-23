@@ -1,19 +1,20 @@
-import json
 from typing import Any
 
 import httpx
 
 from app.config import get_settings
-from app.core.tools.paths import safe_resolve
-from app.core.tools.registry import register
-from app.core.tools.types import ToolContext, ToolSpec
 
 # Register the additional builtin tools (filesystem, shell, web search).
 # Importing this module triggers their registration as a side effect.
-from app.core.tools import filesystem  # noqa: F401
-from app.core.tools import memory  # noqa: F401
-from app.core.tools import shell  # noqa: F401
-from app.core.tools import web_search  # noqa: F401
+from app.core.tools import (
+    filesystem,  # noqa: F401
+    memory,  # noqa: F401
+    shell,  # noqa: F401
+    web_search,  # noqa: F401
+)
+from app.core.tools.paths import safe_resolve
+from app.core.tools.registry import register
+from app.core.tools.types import ToolContext, ToolSpec
 
 settings = get_settings()
 
@@ -23,7 +24,7 @@ MEMORY: dict[str, str] = {}
 MAX_ATTACHMENT_CHARS = 50_000
 
 
-def _read_attachment(args: dict[str, Any], ctx: ToolContext) -> str:
+async def _read_attachment(args: dict[str, Any], ctx: ToolContext) -> str:
     path = args.get("path", "")
     if not path:
         return "error: missing 'path'"
@@ -33,7 +34,7 @@ def _read_attachment(args: dict[str, Any], ctx: ToolContext) -> str:
     if not target.is_file():
         return f"error: file not found: {path}"
     try:
-        with open(target, "r", encoding="utf-8", errors="replace") as f:
+        with open(target, encoding="utf-8", errors="replace") as f:
             data = f.read(MAX_ATTACHMENT_CHARS)
     except Exception as e:  # noqa: BLE001
         return f"error reading file: {e}"
@@ -71,6 +72,7 @@ async def _memory_store(args: dict[str, Any], ctx: ToolContext) -> str:
         return f"stored key '{key}'"
 
     from sqlalchemy import select
+
     from app.models.memory import SessionMemory
 
     db = ctx.db
@@ -97,6 +99,7 @@ async def _memory_recall(args: dict[str, Any], ctx: ToolContext) -> str:
         return MEMORY.get(key, "not found")
 
     from sqlalchemy import select
+
     from app.models.memory import SessionMemory
 
     db = ctx.db
@@ -124,10 +127,9 @@ async def _call_agent(args: dict[str, Any], ctx: ToolContext) -> str:
     if ctx.depth >= get_settings().max_agent_depth:
         return f"error: max agent depth ({get_settings().max_agent_depth}) exceeded"
     # Lazy import to avoid circular dependency with agent_loop.
-    from app.core.agent_loop import run_agent_loop
-
     from sqlalchemy import select
 
+    from app.core.agent_loop import run_agent_loop
     from app.models.agent import Agent
 
     result = await ctx.db.execute(select(Agent).where(Agent.id == target_agent_id))

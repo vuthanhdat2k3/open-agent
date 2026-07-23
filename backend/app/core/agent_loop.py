@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import json
 import time
-from typing import Any, AsyncIterator, Optional
+from collections.abc import AsyncIterator
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -121,7 +122,7 @@ async def _agent_stream(
     message: str,
     db: AsyncSession,
     depth: int,
-    session_id: Optional[str],
+    session_id: str | None,
 ) -> AsyncIterator[dict[str, Any]]:
     res = await db.execute(select(Model).where(Model.id == agent.model_id))
     model = res.scalar_one_or_none()
@@ -377,7 +378,7 @@ async def stream_agent(
     agent: Agent,
     message: str,
     db: AsyncSession,
-    session_id: Optional[str] = None,
+    session_id: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     async for ev in _agent_stream(agent, message, db, 0, session_id):
         yield ev
@@ -388,7 +389,7 @@ async def run_agent_loop(
     message: str,
     db: AsyncSession,
     depth: int = 0,
-    session_id: Optional[str] = None,
+    session_id: str | None = None,
 ) -> AgentLoopResult:
     content = ""
     usage: dict[str, Any] = {"input_tokens": 0, "output_tokens": 0}

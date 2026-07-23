@@ -9,7 +9,6 @@ from fastapi import UploadFile
 from sqlalchemy import select
 
 from app.config import get_settings
-from app.db.base import utc_now
 from app.mcp.client import get_mcp_manager
 from app.models.files import UploadedFile
 from app.models.mcp import McpServer
@@ -69,7 +68,7 @@ class FileService:
         if record.stored_path and os.path.exists(record.stored_path):
             try:
                 os.remove(record.stored_path)
-            except OSError:
+            except OSError:  # noqa: SIM105
                 pass
         return await self.repo.delete(id)
 

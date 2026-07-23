@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from sqlalchemy import select
 
-from app.models.mcp import McpServer
 from app.mcp.client import get_mcp_manager
+from app.models.mcp import McpServer
 from app.repositories.mcp_repo import McpRepository
 
 

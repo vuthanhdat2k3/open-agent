@@ -4,10 +4,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import verify_api_key
 from app.db.session import get_db
-from app.schemas.chat import ChatMessageOut, SessionOut
-from app.services.chat_service import ChatService
-from app.models.session import Session
 from app.models.message import Message
+from app.models.session import Session
+from app.schemas.chat import ChatMessageOut, SessionOut
 
 router = APIRouter(
     prefix="/api/sessions",

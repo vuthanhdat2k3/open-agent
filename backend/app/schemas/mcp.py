@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Literal, Optional
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -21,13 +21,13 @@ class McpServerCreate(McpServerBase):
 
 
 class McpServerUpdate(BaseModel):
-    name: Optional[str] = None
-    transport: Optional[Transport] = None
-    command: Optional[str] = None
-    args: Optional[list[str]] = None
-    env: Optional[dict[str, str]] = None
-    url: Optional[str] = None
-    headers: Optional[dict[str, str]] = None
+    name: str | None = None
+    transport: Transport | None = None
+    command: str | None = None
+    args: list[str] | None = None
+    env: dict[str, str] | None = None
+    url: str | None = None
+    headers: dict[str, str] | None = None
 
 
 class McpToolOut(BaseModel):
