@@ -167,7 +167,9 @@ async def run_workflow_events(
         )
     )
 
-    async def run_node_once(node: dict[str, Any]) -> str:
+    async def run_node_once(
+        node: dict[str, Any], node_run: WorkflowNodeRun
+    ) -> str:
         kind = node.get("kind") or node.get("type")
         incoming = [e for e in edges_to[node["id"]] if e["_idx"] in active_edges]
         inputs = {e["from_"]: outputs.get(e["from_"], "") for e in incoming}
@@ -252,6 +254,8 @@ async def run_workflow_events(
             agent = res.scalar_one_or_none()
             if agent is None:
                 raise RuntimeError(f"agent '{agent_id}' not found")
+            node_run.agent_release_id = agent.active_release_id
+            await db.commit()
             from app.core.agent_loop import run_agent_loop
 
             text = "\n\n".join(inputs.values())
@@ -276,7 +280,7 @@ async def run_workflow_events(
                     "workflow.node",
                     attributes={"workflow_run_id": workflow_run.id, "node_id": node["id"]},
                 ):
-                    coro = run_node_once(node)
+                    coro = run_node_once(node, node_run)
                     result = (
                         await asyncio.wait_for(coro, timeout=float(timeout_s))
                         if timeout_s

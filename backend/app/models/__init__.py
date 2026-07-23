@@ -1,4 +1,5 @@
 from app.models.agent import Agent
+from app.models.agent_release import AgentRelease
 from app.models.api_key import ApiKey
 from app.models.approval_request import ApprovalRequest
 from app.models.audit_log import AuditLog
@@ -23,6 +24,7 @@ from app.models.workflow_run import WorkflowRun
 
 __all__ = [
     "Agent",
+    "AgentRelease",
     "ApiKey",
     "ApprovalRequest",
     "AuditLog",

@@ -158,6 +158,7 @@ async def _call_agent(args: dict[str, Any], ctx: ToolContext) -> str:
         parent_task_id=ctx.current_task_id,
         root_run_id=ctx.root_run_id or ctx.session_id or ctx.current_task_id or agent.id,
         agent_id=agent.id,
+        agent_release_id=agent.active_release_id,
         goal=instruction,
         status="running",
         depth=ctx.depth + 1,

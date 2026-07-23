@@ -19,6 +19,9 @@ class WorkflowNodeRun(Base):
         String(36), ForeignKey("workflow_runs.id", ondelete="CASCADE"), nullable=False, index=True
     )
     node_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    agent_release_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("agent_releases.id", ondelete="SET NULL"), nullable=True
+    )
     status: Mapped[str] = mapped_column(String(32), default="running", nullable=False, index=True)
     attempt: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     input: Mapped[dict] = mapped_column(JSON, default=dict)
@@ -26,4 +29,3 @@ class WorkflowNodeRun(Base):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     started_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-
