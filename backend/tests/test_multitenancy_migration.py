@@ -223,10 +223,11 @@ def test_multitenancy_migration_backfill(tmp_path: Path) -> None:
         assert memberships[0][1] == "default-user-id"
         assert memberships[0][2] == "owner"
 
-        agents = conn.execute(text("SELECT id, name, org_id FROM agents")).fetchall()
+        agents = conn.execute(text("SELECT id, name, org_id, allowed_risk_tiers FROM agents")).fetchall()
         assert len(agents) == 1
         assert agents[0][0] == "a1"
         assert agents[0][2] == "default-org-id"
+        assert agents[0][3] == '["safe", "read"]'
 
         # 5. Assert composite unique constraint per-tenant on migrated DB:
         # Create a second organization and insert an agent & provider with identical name/key

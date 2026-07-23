@@ -35,6 +35,7 @@ export const agentCreate = z.object({
   system_prompt: z.string().optional().default(""),
   model_id: z.string().min(1),
   tools: z.array(z.string()).optional().default([]),
+  allowed_risk_tiers: z.array(z.string()).optional().default(["safe", "read"]),
   max_iterations: z.number().int().positive().optional().default(12),
   temperature: z.number().min(0).max(2).optional().default(0.7),
 });

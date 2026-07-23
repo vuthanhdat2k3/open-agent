@@ -6,6 +6,7 @@ from typing import Any
 import httpx
 
 from app.core.tools.registry import register
+from app.core.tools.risk_tier import RiskTier
 from app.core.tools.types import ToolContext, ToolSpec
 
 MAX_SEARCH_CHARS = 20_000
@@ -93,5 +94,6 @@ register(
             "required": ["query"],
         },
         run=_web_search,
+        risk_tier=RiskTier.network,
     )
 )

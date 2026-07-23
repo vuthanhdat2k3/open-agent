@@ -1,26 +1,24 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.security import verify_api_key
-from app.dependencies import get_current_org_id, get_db
+from app.dependencies import get_current_org_id, get_db, require_permission
 from app.schemas.model import ModelCreate, ModelOut, ModelUpdate
 from app.services.model_service import ModelService
 
 router = APIRouter(
     prefix="/api/models",
     tags=["models"],
-    dependencies=[Depends(verify_api_key)],
 )
 
 
-@router.get("", response_model=list[ModelOut])
+@router.get("", response_model=list[ModelOut], dependencies=[Depends(require_permission("models:read"))])
 async def list_models(
     org_id: str = Depends(get_current_org_id), db: AsyncSession = Depends(get_db)
 ):
     return await ModelService(db).list(org_id)
 
 
-@router.post("", response_model=ModelOut, status_code=201)
+@router.post("", response_model=ModelOut, status_code=201, dependencies=[Depends(require_permission("models:manage"))])
 async def create_model(
     body: ModelCreate, org_id: str = Depends(get_current_org_id), db: AsyncSession = Depends(get_db)
 ):
@@ -30,7 +28,7 @@ async def create_model(
         raise HTTPException(400, str(e))
 
 
-@router.get("/{id}", response_model=ModelOut)
+@router.get("/{id}", response_model=ModelOut, dependencies=[Depends(require_permission("models:read"))])
 async def get_model(
     id: str, org_id: str = Depends(get_current_org_id), db: AsyncSession = Depends(get_db)
 ):
@@ -40,7 +38,7 @@ async def get_model(
     return m
 
 
-@router.put("/{id}", response_model=ModelOut)
+@router.put("/{id}", response_model=ModelOut, dependencies=[Depends(require_permission("models:manage"))])
 async def update_model(
     id: str,
     body: ModelUpdate,
@@ -53,7 +51,7 @@ async def update_model(
         raise HTTPException(404, str(e))
 
 
-@router.delete("/{id}")
+@router.delete("/{id}", dependencies=[Depends(require_permission("models:manage"))])
 async def delete_model(
     id: str, org_id: str = Depends(get_current_org_id), db: AsyncSession = Depends(get_db)
 ):
