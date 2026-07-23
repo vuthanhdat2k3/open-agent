@@ -12,6 +12,7 @@ from app.core.auth.api_key import hash_api_key
 from app.core.auth.jwt import verify_access_token
 from app.db.session import get_db
 from app.models.api_key import ApiKey
+from app.models.membership import Membership
 from app.models.user import User
 
 DEFAULT_ORG_ID = "default-org-id"
@@ -102,13 +103,41 @@ async def get_current_user(
 
 async def get_current_org_id(
     request: Request,
+    db: AsyncSession = Depends(get_db),
 ) -> str:
-    """Return org_id for current request context."""
+    """Return org_id for current request context.
+
+    If request is authenticated (request.state.user_id / org_id is set):
+    - Uses authenticated org_id by default.
+    - If X-Org-Id header is provided, verifies user membership in target org.
+    - Raises 403 Forbidden if user attempts tenant override to an un-joined org.
+    """
     header_org = request.headers.get("X-Org-Id")
+    state_org = getattr(request.state, "org_id", None)
+    user_id = getattr(request.state, "user_id", None)
+
+    if user_id and header_org:
+        if header_org != state_org:
+            res = await db.execute(
+                select(Membership).where(
+                    Membership.org_id == header_org,
+                    Membership.user_id == user_id,
+                )
+            )
+            membership = res.scalar_one_or_none()
+            if not membership:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"User does not belong to organization '{header_org}'",
+                )
+        return header_org
+
+    if state_org:
+        return state_org
+
     if header_org:
         return header_org
-    if hasattr(request.state, "org_id") and request.state.org_id:
-        return request.state.org_id
+
     return DEFAULT_ORG_ID
 
 

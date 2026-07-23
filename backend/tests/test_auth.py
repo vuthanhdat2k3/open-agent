@@ -259,3 +259,28 @@ def test_jwt_access_to_existing_api_routes(client: TestClient) -> None:
 
     models_resp = client.get("/api/models", headers={"Authorization": f"Bearer {token}"})
     assert models_resp.status_code == 200
+
+
+def test_tenant_override_prevention_403(client: TestClient) -> None:
+    # Register User 1 & Org 1
+    reg1 = client.post(
+        "/api/auth/register",
+        json={"email": "tenant1@example.com", "password": "Password123!", "org_name": "Org 1"},
+    )
+    token1 = reg1.json()["access_token"]
+
+    # Register User 2 & Org 2
+    reg2 = client.post(
+        "/api/auth/register",
+        json={"email": "tenant2@example.com", "password": "Password123!", "org_name": "Org 2"},
+    )
+    token2 = reg2.json()["access_token"]
+    me2 = client.get("/api/auth/me", headers={"Authorization": f"Bearer {token2}"})
+    org2_id = me2.json()["memberships"][0]["org_id"]
+
+    # User 1 sends Token 1 (Org 1) but attempts X-Org-Id: Org 2 -> MUST BE REJECTED 403
+    override_resp = client.get(
+        "/api/agents",
+        headers={"Authorization": f"Bearer {token1}", "X-Org-Id": org2_id},
+    )
+    assert override_resp.status_code == 403
