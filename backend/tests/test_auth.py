@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.core.auth.oauth import oauth
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
@@ -111,7 +114,9 @@ def test_refresh_rotation_rejects_old_token(client: TestClient) -> None:
 
     # Clear jar & send old_refresh_cookie explicitly
     client.cookies.clear()
-    refresh_resp2 = client.post("/api/auth/refresh", cookies={"refresh_token": old_refresh_cookie})
+    refresh_resp2 = client.post(
+        "/api/auth/refresh", cookies={"refresh_token": old_refresh_cookie}
+    )
     assert refresh_resp2.status_code == 401
 
 
@@ -206,3 +211,51 @@ def test_expired_api_key_returns_401(client: TestClient) -> None:
     # Using expired key MUST return 401
     me_via_expired_key = client.get("/api/auth/me", headers={"X-API-Key": expired_key})
     assert me_via_expired_key.status_code == 401
+
+
+def test_oauth_callback_links_existing_email(client: TestClient) -> None:
+    # 1. Register normal user
+    client.post(
+        "/api/auth/register",
+        json={"email": "oauth_user@example.com", "password": "Password123!"},
+    )
+
+    # 2. Mock OAuth google client
+    mock_client = MagicMock()
+    mock_client.authorize_access_token = AsyncMock(
+        return_value={
+            "access_token": "mock_google_token",
+            "userinfo": {
+                "email": "oauth_user@example.com",
+                "sub": "google-sub-9999",
+                "name": "OAuth User",
+            },
+        }
+    )
+    oauth.google = mock_client
+
+    # 3. Call OAuth callback
+    cb_resp = client.get("/api/auth/oauth/google/callback")
+    assert cb_resp.status_code == 200
+    access_token = cb_resp.json()["access_token"]
+
+    # 4. Verify me endpoint returns linked user
+    me_resp = client.get("/api/auth/me", headers={"Authorization": f"Bearer {access_token}"})
+    assert me_resp.status_code == 200
+    assert me_resp.json()["email"] == "oauth_user@example.com"
+
+
+def test_jwt_access_to_existing_api_routes(client: TestClient) -> None:
+    # Register User & get JWT Token
+    reg_resp = client.post(
+        "/api/auth/register",
+        json={"email": "api_user@example.com", "password": "Password123!"},
+    )
+    token = reg_resp.json()["access_token"]
+
+    # Call main API routes with Bearer JWT (verify_api_key accepts JWT and sets org_id)
+    agents_resp = client.get("/api/agents", headers={"Authorization": f"Bearer {token}"})
+    assert agents_resp.status_code == 200
+
+    models_resp = client.get("/api/models", headers={"Authorization": f"Bearer {token}"})
+    assert models_resp.status_code == 200
