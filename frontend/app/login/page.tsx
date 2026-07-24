@@ -26,7 +26,7 @@ export default function LoginPage() {
       if (!res.ok) throw new Error("Invalid email or password");
       const data = (await res.json()) as { access_token: string };
       setAccessToken(data.access_token);
-      window.location.href = "/";
+      window.location.replace("/");
     } catch (error: any) {
       toast.error(error.message);
     } finally {

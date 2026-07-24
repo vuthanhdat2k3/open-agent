@@ -183,19 +183,24 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
   React.useEffect(() => {
     const unsub = subscribeAuth(() => setReady(true));
-    if (publicRoute || getAccessToken()) {
+    if (getAccessToken()) {
       setReady(true);
       return unsub;
     }
+    if (publicRoute) {
+      setReady(true);
+      return unsub;
+    }
+    setReady(false);
     refreshAccessToken().finally(() => setReady(true));
     return unsub;
-  }, [publicRoute]);
+  }, [publicRoute, pathname]);
 
   React.useEffect(() => {
     if (ready && !publicRoute && !getAccessToken()) {
-      window.location.href = "/login";
+      window.location.replace("/login");
     }
-  }, [ready, publicRoute]);
+  }, [ready, publicRoute, pathname]);
 
   if (!ready && !publicRoute) {
     return <div className="p-6 text-sm text-muted-foreground">Preparing session...</div>;
