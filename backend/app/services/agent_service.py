@@ -8,8 +8,10 @@ from datetime import datetime
 from sqlalchemy import select
 
 from app.db.base import utc_now
+from app.evals.quality_gate import quality_gate_passes
 from app.models.agent import Agent
 from app.models.agent_release import AgentRelease
+from app.models.evaluation import EvaluationRun, EvaluationSuite
 from app.repositories.agent_repo import AgentRepository
 from app.repositories.model_repo import ModelRepository
 
@@ -183,6 +185,37 @@ class AgentService:
             return release
         if release.status != "draft":
             raise ValueError("only a draft release can be published")
+        # Check evaluation quality gate if evaluation runs exist for this release
+        latest_run_res = await self.repo.db.execute(
+            select(EvaluationRun)
+            .where(
+                EvaluationRun.org_id == org_id,
+                EvaluationRun.agent_release_id == release.id,
+                EvaluationRun.status == "completed",
+            )
+            .order_by(EvaluationRun.created_at.desc())
+        )
+        latest_run = latest_run_res.scalars().first()
+        if latest_run is not None:
+            suite_res = await self.repo.db.execute(
+                select(EvaluationSuite).where(
+                    EvaluationSuite.id == latest_run.suite_id,
+                    EvaluationSuite.org_id == org_id,
+                )
+            )
+            suite = suite_res.scalar_one_or_none()
+            min_pass_rate = (
+                suite.min_pass_rate
+                if suite and hasattr(suite, "min_pass_rate")
+                else 0.8
+            )
+            if not quality_gate_passes(
+                pass_rate=latest_run.pass_rate,
+                min_pass_rate=min_pass_rate,
+            ):
+                raise ValueError(
+                    f"Release {version} failed quality gate (pass rate {latest_run.pass_rate:.2f} < {min_pass_rate:.2f})"
+                )
         await self._publish_locked(agent, release, user_id)
         await self.repo.db.commit()
         await self.repo.db.refresh(release)

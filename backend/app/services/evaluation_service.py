@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.base import utc_now
 from app.evals.executor import EvaluationExecutor, ExecutionOutput
 from app.evals.grader import grade_output
+from app.evals.quality_gate import quality_gate_passes
 from app.models.agent import Agent
 from app.models.agent_release import AgentRelease
 from app.models.evaluation import (
