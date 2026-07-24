@@ -8,6 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, gen_id, utc_now
 
 if TYPE_CHECKING:
+    from app.models.api_key import ApiKey
     from app.models.membership import Membership
 
 
@@ -20,5 +21,8 @@ class Organization(Base):
     created_at: Mapped[utc_now] = mapped_column(DateTime, default=utc_now)
 
     memberships: Mapped[list[Membership]] = relationship(
+        back_populates="organization", cascade="all, delete-orphan"
+    )
+    api_keys: Mapped[list[ApiKey]] = relationship(
         back_populates="organization", cascade="all, delete-orphan"
     )

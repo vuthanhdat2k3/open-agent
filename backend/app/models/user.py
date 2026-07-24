@@ -8,7 +8,10 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, gen_id, utc_now
 
 if TYPE_CHECKING:
+    from app.models.api_key import ApiKey
     from app.models.membership import Membership
+    from app.models.oauth_account import OAuthAccount
+    from app.models.refresh_token import RefreshToken
 
 
 class User(Base):
@@ -23,4 +26,13 @@ class User(Base):
 
     memberships: Mapped[list[Membership]] = relationship(
         back_populates="user", cascade="all, delete-orphan", foreign_keys="Membership.user_id"
+    )
+    oauth_accounts: Mapped[list[OAuthAccount]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    refresh_tokens: Mapped[list[RefreshToken]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    api_keys: Mapped[list[ApiKey]] = relationship(
+        back_populates="created_by_user", foreign_keys="ApiKey.created_by_user_id"
     )

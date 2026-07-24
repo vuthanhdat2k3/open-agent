@@ -38,11 +38,18 @@ DEFAULT_USER_ID = "default-user-id"
 
 def upgrade() -> None:
     bind = op.get_bind()
+    inspector = sa.inspect(bind)
+
+    def _has_column(table_name: str, col_name: str) -> bool:
+        cols = [c["name"] for c in inspector.get_columns(table_name)]
+        return col_name in cols
 
     # 1. Add nullable org_id and created_by_user_id to business tables
     for table in BUSINESS_TABLES:
-        op.add_column(table, sa.Column("org_id", sa.String(length=36), nullable=True))
-        op.add_column(table, sa.Column("created_by_user_id", sa.String(length=36), nullable=True))
+        if not _has_column(table, "org_id"):
+            op.add_column(table, sa.Column("org_id", sa.String(length=36), nullable=True))
+        if not _has_column(table, "created_by_user_id"):
+            op.add_column(table, sa.Column("created_by_user_id", sa.String(length=36), nullable=True))
 
     # 2. Backfill: create default organization if not exists
     res = bind.execute(
@@ -126,9 +133,11 @@ def upgrade() -> None:
 
     # 4. Enforce NOT NULL, create index, and add Foreign Keys for org_id and created_by_user_id
     for table in BUSINESS_TABLES:
+        indexes = [idx["name"] for idx in inspector.get_indexes(table)]
         with op.batch_alter_table(table) as batch_op:
             batch_op.alter_column("org_id", existing_type=sa.String(length=36), nullable=False)
-            batch_op.create_index(f"ix_{table}_org_id", ["org_id"])
+            if f"ix_{table}_org_id" not in indexes:
+                batch_op.create_index(f"ix_{table}_org_id", ["org_id"])
             batch_op.create_foreign_key(
                 f"fk_{table}_org_id", "organizations", ["org_id"], ["id"], ondelete="CASCADE"
             )
