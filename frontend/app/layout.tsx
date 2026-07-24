@@ -43,6 +43,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { UserNav } from "@/components/user-nav";
 import { Button } from "@/components/ui/button";
 import { getAccessToken, refreshAccessToken, subscribeAuth } from "@/lib/auth";
 import { useApprovals } from "@/hooks";
@@ -60,22 +61,49 @@ const mono = Fira_Code({
   display: "swap",
 });
 
-const navItems: { href: string; label: string; icon: LucideIcon }[] = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/providers", label: "Providers", icon: Server },
-  { href: "/models", label: "Models", icon: Cpu },
-  { href: "/agents", label: "Agents", icon: Bot },
-  { href: "/mcp", label: "MCP", icon: Plug },
-  { href: "/files", label: "Files", icon: FileUp },
-  { href: "/workflows", label: "Workflows", icon: Workflow },
-  { href: "/chat", label: "Chat", icon: MessageSquare },
-  { href: "/approvals", label: "Approvals", icon: ShieldCheck },
-  { href: "/evaluations", label: "Evaluations", icon: FlaskConical },
-  { href: "/settings/members", label: "Members", icon: Users },
-  { href: "/settings/quotas", label: "Quotas", icon: Gauge },
-  { href: "/settings/profile", label: "Profile", icon: UserIcon },
-  { href: "/debug", label: "Debug", icon: Bug },
+interface NavItem {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+}
+
+interface NavGroup {
+  title: string;
+  items: NavItem[];
+}
+
+const navGroups: NavGroup[] = [
+  {
+    title: "Overview",
+    items: [
+      { href: "/", label: "Dashboard", icon: LayoutDashboard },
+      { href: "/chat", label: "Chat", icon: MessageSquare },
+    ],
+  },
+  {
+    title: "AI Infrastructure",
+    items: [
+      { href: "/agents", label: "Agents", icon: Bot },
+      { href: "/workflows", label: "Workflows", icon: Workflow },
+      { href: "/mcp", label: "MCP Servers", icon: Plug },
+      { href: "/models", label: "Models", icon: Cpu },
+      { href: "/providers", label: "Providers", icon: Server },
+      { href: "/files", label: "Files", icon: FileUp },
+    ],
+  },
+  {
+    title: "Governance & Ops",
+    items: [
+      { href: "/approvals", label: "Approvals", icon: ShieldCheck },
+      { href: "/evaluations", label: "Evaluations", icon: FlaskConical },
+      { href: "/settings/quotas", label: "Quotas", icon: Gauge },
+      { href: "/settings/members", label: "Members", icon: Users },
+      { href: "/debug", label: "Debug", icon: Bug },
+    ],
+  },
 ];
+
+const allNavItems = navGroups.flatMap((g) => g.items);
 
 // Warm a tab's data before the user clicks it (on hover/focus) so the first
 // visit also renders instantly instead of waiting on the network.
@@ -132,48 +160,57 @@ function SidebarNav({
   const approvals = useApprovals(!publicRoute);
   const pending = approvals.data?.length ?? 0;
   return (
-    <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 py-4">
-      {navItems.map((item) => {
-        const Icon = item.icon;
-        const active = isActive(pathname, item.href);
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            onClick={onNavigate}
-            onMouseEnter={() => prefetchTab(queryClient, item.href)}
-            onFocus={() => prefetchTab(queryClient, item.href)}
-            aria-current={active ? "page" : undefined}
-            title={collapsed ? item.label : undefined}
-            className={cn(
-              "group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200 ease-out-expo",
-              collapsed && "justify-center px-0",
-              active
-                ? "bg-primary/10 text-primary shadow-inner-edge"
-                : "text-muted-foreground hover:bg-accent hover:text-foreground",
-            )}
-          >
-            <Icon
-              className={cn(
-                "h-[18px] w-[18px] shrink-0 transition-transform duration-200 ease-out-expo group-hover:scale-110",
-                active && "scale-105",
-              )}
-            />
-            {!collapsed && <span className="truncate">{item.label}</span>}
-            {!collapsed && item.href === "/approvals" && pending > 0 && (
-              <span className="ml-auto rounded-full bg-destructive px-1.5 py-0.5 text-[10px] font-bold text-destructive-foreground">
-                {pending}
-              </span>
-            )}
-            {active && (
-              <span
-                className="absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-primary"
-                aria-hidden="true"
-              />
-            )}
-          </Link>
-        );
-      })}
+    <nav className="flex flex-1 flex-col gap-5 overflow-y-auto px-3 py-3">
+      {navGroups.map((group, groupIdx) => (
+        <div key={groupIdx} className="space-y-1">
+          {!collapsed && (
+            <div className="px-3 text-[11px] font-bold uppercase tracking-wider text-muted-foreground/60">
+              {group.title}
+            </div>
+          )}
+          {group.items.map((item) => {
+            const Icon = item.icon;
+            const active = isActive(pathname, item.href);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={onNavigate}
+                onMouseEnter={() => prefetchTab(queryClient, item.href)}
+                onFocus={() => prefetchTab(queryClient, item.href)}
+                aria-current={active ? "page" : undefined}
+                title={collapsed ? item.label : undefined}
+                className={cn(
+                  "group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200 ease-out-expo",
+                  collapsed && "justify-center px-0",
+                  active
+                    ? "bg-primary/10 text-primary shadow-inner-edge font-semibold"
+                    : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                )}
+              >
+                <Icon
+                  className={cn(
+                    "h-[18px] w-[18px] shrink-0 transition-transform duration-200 ease-out-expo group-hover:scale-110",
+                    active && "scale-105 text-primary",
+                  )}
+                />
+                {!collapsed && <span className="truncate">{item.label}</span>}
+                {!collapsed && item.href === "/approvals" && pending > 0 && (
+                  <span className="ml-auto rounded-full bg-destructive px-1.5 py-0.5 text-[10px] font-bold text-destructive-foreground">
+                    {pending}
+                  </span>
+                )}
+                {active && (
+                  <span
+                    className="absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-primary"
+                    aria-hidden="true"
+                  />
+                )}
+              </Link>
+            );
+          })}
+        </div>
+      ))}
     </nav>
   );
 }
@@ -253,7 +290,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   const [collapsed, setCollapsed] = React.useState(false);
   const [mobileOpen, setMobileOpen] = React.useState(false);
 
-  const title = navItems.find((n) => isActive(pathname, n.href))?.label ?? "OpenAgent";
+  const title = allNavItems.find((n) => isActive(pathname, n.href))?.label ?? "OpenAgent";
 
   const isPublic = pathname === "/login" || pathname === "/register" || pathname.startsWith("/oauth/");
 
@@ -275,21 +312,26 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 >
                   <Brand collapsed={collapsed} />
                   <SidebarNav collapsed={collapsed} queryClient={client} />
-                  <div className="flex items-center justify-between border-t border-border px-3 py-3">
-                    {!collapsed && (
-                      <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground/60">
-                        v0.1.0
-                      </span>
-                    )}
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-muted-foreground"
-                      onClick={() => setCollapsed((c) => !c)}
-                      aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-                    >
-                      {collapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
-                    </Button>
+                  
+                  {/* User Profile Avatar Footer */}
+                  <div className="border-t border-border/60 p-2 space-y-2">
+                    <UserNav collapsed={collapsed} />
+                    <div className="flex items-center justify-between px-2 pt-1">
+                      {!collapsed && (
+                        <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50">
+                          v0.1.0
+                        </span>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className={cn("h-7 w-7 text-muted-foreground hover:text-foreground", collapsed && "mx-auto")}
+                        onClick={() => setCollapsed((c) => !c)}
+                        aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+                      >
+                        {collapsed ? <PanelLeft className="h-3.5 w-3.5" /> : <PanelLeftClose className="h-3.5 w-3.5" />}
+                      </Button>
+                    </div>
                   </div>
                 </aside>
 
@@ -318,6 +360,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                         onNavigate={() => setMobileOpen(false)}
                         queryClient={client}
                       />
+                      <div className="border-t border-border/60 p-3 mt-auto">
+                        <UserNav collapsed={false} />
+                      </div>
                     </aside>
                   </div>
                 )}
