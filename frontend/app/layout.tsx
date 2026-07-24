@@ -248,94 +248,100 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
   const title = navItems.find((n) => isActive(pathname, n.href))?.label ?? "OpenAgent";
 
+  const isPublic = pathname === "/login" || pathname === "/register" || pathname.startsWith("/oauth/");
+
   return (
     <html lang="en" className={`${sans.variable} ${mono.variable} dark`}>
       <body className="min-h-screen bg-background font-sans text-foreground antialiased">
         <QueryClientProvider client={client}>
           <AuthGate>
-          <div className="relative z-10 flex min-h-screen">
-            {/* Desktop sidebar */}
-            <aside
-              className={cn(
-                "sticky top-0 hidden h-screen shrink-0 flex-col border-r border-border bg-card/40 backdrop-blur-xl transition-[width] duration-300 ease-out-expo lg:flex",
-                collapsed ? "w-[76px]" : "w-64",
-              )}
-            >
-              <Brand collapsed={collapsed} />
-              <SidebarNav collapsed={collapsed} queryClient={client} />
-              <div className="flex items-center justify-between border-t border-border px-3 py-3">
-                {!collapsed && (
-                  <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground/60">
-                    v0.1.0
-                  </span>
-                )}
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 text-muted-foreground"
-                  onClick={() => setCollapsed((c) => !c)}
-                  aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            {isPublic ? (
+              <main className="min-h-screen">{children}</main>
+            ) : (
+              <div className="relative z-10 flex min-h-screen">
+                {/* Desktop sidebar */}
+                <aside
+                  className={cn(
+                    "sticky top-0 hidden h-screen shrink-0 flex-col border-r border-border bg-card/40 backdrop-blur-xl transition-[width] duration-300 ease-out-expo lg:flex",
+                    collapsed ? "w-[76px]" : "w-64",
+                  )}
                 >
-                  {collapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
-                </Button>
-              </div>
-            </aside>
-
-            {/* Mobile drawer */}
-            {mobileOpen && (
-              <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Navigation">
-                <div
-                  className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-                  onClick={() => setMobileOpen(false)}
-                />
-                <aside className="absolute left-0 top-0 flex h-full w-64 flex-col border-r border-border bg-card">
-                  <div className="flex items-center justify-between pr-3">
-                  <Brand collapsed={false} />
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 text-muted-foreground"
-                    onClick={() => setMobileOpen(false)}
-                    aria-label="Close navigation"
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-                <SidebarNav
-                  collapsed={false}
-                  onNavigate={() => setMobileOpen(false)}
-                  queryClient={client}
-                />
+                  <Brand collapsed={collapsed} />
+                  <SidebarNav collapsed={collapsed} queryClient={client} />
+                  <div className="flex items-center justify-between border-t border-border px-3 py-3">
+                    {!collapsed && (
+                      <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground/60">
+                        v0.1.0
+                      </span>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-muted-foreground"
+                      onClick={() => setCollapsed((c) => !c)}
+                      aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+                    >
+                      {collapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+                    </Button>
+                  </div>
                 </aside>
+
+                {/* Mobile drawer */}
+                {mobileOpen && (
+                  <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Navigation">
+                    <div
+                      className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+                      onClick={() => setMobileOpen(false)}
+                    />
+                    <aside className="absolute left-0 top-0 flex h-full w-64 flex-col border-r border-border bg-card">
+                      <div className="flex items-center justify-between pr-3">
+                        <Brand collapsed={false} />
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-muted-foreground"
+                          onClick={() => setMobileOpen(false)}
+                          aria-label="Close navigation"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      <SidebarNav
+                        collapsed={false}
+                        onNavigate={() => setMobileOpen(false)}
+                        queryClient={client}
+                      />
+                    </aside>
+                  </div>
+                )}
+
+                <div className="flex min-w-0 flex-1 flex-col">
+                  <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-border bg-background/80 px-4 backdrop-blur lg:px-6">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="lg:hidden"
+                      onClick={() => setMobileOpen(true)}
+                      aria-label="Open navigation"
+                    >
+                      <Menu className="h-5 w-5" />
+                    </Button>
+                    <h1 className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight">{title}</h1>
+                    <ThemeToggle />
+                  </header>
+
+                  <main className="flex-1 overflow-x-hidden">
+                    {/* key=pathname replays the entrance animation on every navigation */}
+                    <div
+                      key={pathname}
+                      className="mx-auto w-full max-w-7xl animate-fade-in px-4 py-6 lg:px-8 lg:py-8"
+                    >
+                      {children}
+                    </div>
+                  </main>
+                </div>
               </div>
             )}
-
-            <div className="flex min-w-0 flex-1 flex-col">
-              <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-border bg-background/80 px-4 backdrop-blur lg:px-6">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="lg:hidden"
-                  onClick={() => setMobileOpen(true)}
-                  aria-label="Open navigation"
-                >
-                  <Menu className="h-5 w-5" />
-                </Button>
-                <h1 className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight">{title}</h1>
-                <ThemeToggle />
-              </header>
-
-              <main className="flex-1 overflow-x-hidden">
-                {/* key=pathname replays the entrance animation on every navigation */}
-                <div
-                  key={pathname}
-                  className="mx-auto w-full max-w-7xl animate-fade-in px-4 py-6 lg:px-8 lg:py-8"
-                >
-                  {children}
-                </div>
-              </main>
-            </div>
-          </div>
           </AuthGate>
           <Toaster richColors closeButton />
         </QueryClientProvider>
