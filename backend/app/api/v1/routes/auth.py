@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import select
@@ -165,8 +165,15 @@ async def refresh_token_route(
     res = await db.execute(select(RefreshToken).where(RefreshToken.token_hash == rt_hash))
     token_obj = res.scalar_one_or_none()
 
-    now = utc_now()
-    if not token_obj or token_obj.revoked_at is not None or token_obj.expires_at < now:
+    now = datetime.now(timezone.utc)
+    expires_at = token_obj.expires_at if token_obj else None
+    if expires_at and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    elif expires_at:
+        expires_at = expires_at.astimezone(timezone.utc)
+
+    if not token_obj or token_obj.revoked_at is not None or (expires_at and expires_at < now):
+
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or revoked refresh token")
 
     # Revoke old token (Rotation)
