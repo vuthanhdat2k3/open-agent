@@ -5,6 +5,7 @@ import os
 from typing import Any
 
 from app.config import get_settings
+from app.core.observability.metrics import sandbox_executions_total
 from app.core.tools.registry import register
 from app.core.tools.risk_tier import RiskTier
 from app.core.tools.types import ToolContext, ToolSpec
@@ -37,6 +38,7 @@ def _docker_cli_present() -> bool:
 
 async def _run_code(args: dict[str, Any], ctx: ToolContext) -> str:
     if not settings.sandbox_enabled:
+        sandbox_executions_total.labels("disabled").inc()
         return "error: sandbox execution is disabled"
 
     language = (args.get("language") or "python").lower()
@@ -52,6 +54,7 @@ async def _run_code(args: dict[str, Any], ctx: ToolContext) -> str:
         timeout = settings.sandbox_default_timeout
 
     if not _docker_available():
+        sandbox_executions_total.labels("docker_unavailable").inc()
         return (
             "error: docker unavailable — sandbox execution requires a running "
             "Docker daemon reachable from the backend host"
@@ -105,16 +108,20 @@ async def _run_code(args: dict[str, Any], ctx: ToolContext) -> str:
         except TimeoutError:
             proc.kill()
             await proc.wait()
+            sandbox_executions_total.labels("timeout").inc()
             return f"error: sandbox timed out after {timeout}s [exit code: -1]"
     except FileNotFoundError:
+        sandbox_executions_total.labels("docker_missing").inc()
         return "error: docker CLI not found on the backend host"
     except Exception as e:  # noqa: BLE001
+        sandbox_executions_total.labels("error").inc()
         return f"error executing sandbox: {e}"
 
     text = out.decode("utf-8", errors="replace") if out else ""
     if len(text) > MAX_SANDBOX_OUTPUT:
         text = text[:MAX_SANDBOX_OUTPUT] + "\n...[truncated]"
     text += f"\n[exit code: {proc.returncode}]"
+    sandbox_executions_total.labels("ok" if proc.returncode == 0 else "error").inc()
     return text
 
 

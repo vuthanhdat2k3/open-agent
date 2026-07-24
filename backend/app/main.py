@@ -8,6 +8,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.router import api_router
+from app.core.observability.logging import configure_logging, request_context_middleware
+from app.core.observability.metrics import mount_metrics
+from app.core.observability.tracing import init_tracing
 from app.core.security import allowed_origins
 from app.db.session import init_db
 from app.schemas.common import HealthResponse
@@ -20,6 +23,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="OpenAgent", version="0.1.0", lifespan=lifespan)
+configure_logging()
 
 app.add_middleware(
     CORSMiddleware,
@@ -28,8 +32,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.middleware("http")(request_context_middleware)
 
 app.include_router(api_router)
+mount_metrics(app)
+init_tracing(app)
 
 
 @app.get("/health", response_model=HealthResponse)

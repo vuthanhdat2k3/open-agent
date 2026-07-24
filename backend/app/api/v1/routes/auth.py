@@ -15,6 +15,7 @@ from app.core.auth.jwt import (
 )
 from app.core.auth.oauth import oauth
 from app.core.auth.password import hash_password, verify_password
+from app.core.observability.audit import log_action
 from app.db.session import get_db
 from app.dependencies import get_current_user
 from app.models.membership import Membership
@@ -97,7 +98,10 @@ async def register(
 
 @router.post("/login", response_model=TokenResponse)
 async def login(
-    body: LoginRequest, response: Response, db: AsyncSession = Depends(get_db)
+    body: LoginRequest,
+    request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
 ):
     res = await db.execute(select(User).where(User.email == body.email.lower()))
     user = res.scalar_one_or_none()
@@ -131,6 +135,16 @@ async def login(
         )
     )
     await db.commit()
+
+    await log_action(
+        db,
+        org_id=membership.org_id,
+        actor_user_id=user.id,
+        action="login",
+        resource_type="user",
+        resource_id=user.id,
+        ip=request.client.host if request.client else None,
+    )
 
     _set_refresh_cookie(response, raw_rt)
     return TokenResponse(access_token=access_token)

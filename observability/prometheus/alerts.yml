@@ -1,0 +1,25 @@
+groups:
+  - name: openagent
+    rules:
+      - alert: OpenAgentHighToolErrorRate
+        expr: sum(rate(tool_calls_total{status="error"}[5m])) / clamp_min(sum(rate(tool_calls_total[5m])), 1) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Tool error rate is above 5 percent
+      - alert: OpenAgentSandboxErrors
+        expr: sum(rate(sandbox_executions_total{status="error"}[5m])) > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Sandbox execution errors detected
+      - alert: OpenAgentWorkflowLatencyP95
+        expr: histogram_quantile(0.95, rate(workflow_run_duration_seconds_bucket[10m])) > 60
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Workflow p95 duration is above 60 seconds
+
