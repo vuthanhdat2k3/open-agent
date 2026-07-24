@@ -44,6 +44,7 @@ PERMISSIONS: dict[Role, set[str]] = {
         "agents:run",
         "agents:update",
         "agents:delete",
+        "agents:publish",
         "workflows:create",
         "workflows:read",
         "workflows:run",

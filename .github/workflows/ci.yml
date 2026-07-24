@@ -49,3 +49,18 @@ jobs:
       - run: docker build -t openagent-api ./backend
       - run: docker build -t openagent-frontend ./frontend
       - run: docker compose --env-file .env.example config
+
+  compose-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: docker compose --env-file .env.example up -d --build postgres redis api worker frontend
+      - run: python scripts/e2e_agent_releases.py
+      - if: always()
+        run: docker compose --env-file .env.example logs --no-color api worker frontend
+      - if: always()
+        run: docker compose --env-file .env.example down -v

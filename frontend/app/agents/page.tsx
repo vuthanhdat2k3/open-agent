@@ -2,7 +2,18 @@
 
 import * as React from "react";
 import { toast } from "sonner";
-import { Bot, Plus, Trash2, Wrench, Cpu, Pencil, Thermometer, RotateCcw, ChevronRight } from "lucide-react";
+import {
+  Bot,
+  Plus,
+  Trash2,
+  Wrench,
+  Cpu,
+  Pencil,
+  Thermometer,
+  RotateCcw,
+  History,
+  Upload,
+} from "lucide-react";
 import {
   useAgents,
   useAgentTools,
@@ -10,6 +21,10 @@ import {
   useCreateAgent,
   useDeleteAgent,
   useUpdateAgent,
+  useAgentReleases,
+  useCreateAgentRelease,
+  usePublishAgentRelease,
+  useRollbackAgentRelease,
 } from "@/hooks";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -49,12 +64,19 @@ const DEFAULT_FORM: AgentForm = {
 export default function AgentsPage() {
   const [open, setOpen] = React.useState(false);
   const [editingAgent, setEditingAgent] = React.useState<Agent | null>(null);
+  const [releaseAgent, setReleaseAgent] = React.useState<Agent | null>(null);
+  const [draftPrompt, setDraftPrompt] = React.useState("");
+  const [changeNote, setChangeNote] = React.useState("");
   const { data, isLoading } = useAgents();
   const models = useModels(open);
   const tools = useAgentTools(open);
   const create = useCreateAgent();
   const update = useUpdateAgent();
   const del = useDeleteAgent();
+  const releases = useAgentReleases(releaseAgent?.id ?? null);
+  const createRelease = useCreateAgentRelease();
+  const publishRelease = usePublishAgentRelease();
+  const rollbackRelease = useRollbackAgentRelease();
 
   const [selectedTools, setSelectedTools] = React.useState<string[]>([]);
   const [form, setForm] = React.useState<AgentForm>(DEFAULT_FORM);
@@ -87,6 +109,50 @@ export default function AgentsPage() {
     setForm({ ...DEFAULT_FORM, model_id: models.data?.[0]?.id ?? "" });
     setSelectedTools([]);
     setOpen(true);
+  };
+
+  const openReleases = (agent: Agent) => {
+    setReleaseAgent(agent);
+    setDraftPrompt(agent.system_prompt);
+    setChangeNote("");
+  };
+
+  const handleCreateDraft = async () => {
+    if (!releaseAgent) return;
+    try {
+      await createRelease.mutateAsync({
+        agentId: releaseAgent.id,
+        system_prompt: draftPrompt,
+        change_note: changeNote,
+      });
+      setChangeNote("");
+      toast.success("Draft release created");
+    } catch (error: any) {
+      toast.error(error.message);
+    }
+  };
+
+  const handlePublish = async (version: number) => {
+    if (!releaseAgent) return;
+    try {
+      await publishRelease.mutateAsync({ agentId: releaseAgent.id, version });
+      toast.success(`Version ${version} published`);
+    } catch (error: any) {
+      toast.error(error.message);
+    }
+  };
+
+  const handleRollback = async (version: number) => {
+    if (!releaseAgent) return;
+    try {
+      const release = await rollbackRelease.mutateAsync({
+        agentId: releaseAgent.id,
+        version,
+      });
+      toast.success(`Rolled back as version ${release.version}`);
+    } catch (error: any) {
+      toast.error(error.message);
+    }
   };
 
   const toggleTool = (t: string) =>
@@ -277,6 +343,102 @@ export default function AgentsPage() {
         }
       />
 
+      <Dialog
+        open={!!releaseAgent}
+        onOpenChange={(value) => {
+          if (!value) setReleaseAgent(null);
+        }}
+      >
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Release history: {releaseAgent?.name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-5 pt-1">
+            <div className="space-y-3 border-b border-border/50 pb-5">
+              <div className="space-y-1.5">
+                <Label>Draft system prompt</Label>
+                <Textarea
+                  className="min-h-[120px] font-mono text-xs"
+                  value={draftPrompt}
+                  onChange={(event) => setDraftPrompt(event.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Change note</Label>
+                <Input
+                  value={changeNote}
+                  maxLength={512}
+                  onChange={(event) => setChangeNote(event.target.value)}
+                  placeholder="Why this release is needed"
+                />
+              </div>
+              <Button
+                className="gap-2"
+                onClick={handleCreateDraft}
+                disabled={createRelease.isPending || !changeNote.trim()}
+              >
+                <Plus className="h-4 w-4" />
+                {createRelease.isPending ? "Creating..." : "Create draft"}
+              </Button>
+            </div>
+
+            <div className="space-y-2">
+              {releases.isLoading && <Skeleton className="h-24 w-full" />}
+              {releases.data?.map((release) => (
+                <div
+                  key={release.id}
+                  className="flex items-start justify-between gap-4 rounded-md border border-border/50 p-3"
+                >
+                  <div className="min-w-0 space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-sm font-semibold">
+                        v{release.version}
+                      </span>
+                      <Badge
+                        variant={release.status === "published" ? "default" : "outline"}
+                      >
+                        {release.status}
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {release.change_note || "No change note"}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground/70">
+                      {new Date(release.created_at).toLocaleString()}
+                      {" · "}
+                      {release.config_hash.slice(0, 10)}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 gap-1">
+                    {release.status === "draft" && (
+                      <Button
+                        size="sm"
+                        className="gap-1.5"
+                        onClick={() => handlePublish(release.version)}
+                        disabled={publishRelease.isPending}
+                      >
+                        <Upload className="h-3.5 w-3.5" /> Publish
+                      </Button>
+                    )}
+                    {release.status === "archived" && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="gap-1.5"
+                        onClick={() => handleRollback(release.version)}
+                        disabled={rollbackRelease.isPending}
+                      >
+                        <RotateCcw className="h-3.5 w-3.5" /> Rollback
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {isLoading ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 3 }).map((_, i) => (
@@ -310,6 +472,15 @@ export default function AgentsPage() {
                       size="icon"
                       variant="ghost"
                       className="h-7 w-7 text-muted-foreground hover:text-foreground active-tactile transition-transform"
+                      onClick={() => openReleases(a)}
+                      aria-label={`Release history for ${a.name}`}
+                    >
+                      <History className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-7 w-7 text-muted-foreground hover:text-foreground active-tactile transition-transform"
                       onClick={() => openEdit(a)}
                       aria-label={`Edit ${a.name}`}
                     >
@@ -331,6 +502,11 @@ export default function AgentsPage() {
                 {a.description && (
                   <p className="mt-3 line-clamp-2 text-xs text-muted-foreground leading-relaxed">{a.description}</p>
                 )}
+
+                <div className="mt-3 flex items-center gap-2 text-[10px] text-muted-foreground">
+                  <History className="h-3 w-3" />
+                  Active release v{a.latest_release_number}
+                </div>
 
                 {/* Model badge row */}
                 {agentModel && (

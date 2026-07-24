@@ -20,6 +20,9 @@ class Task(Base):
     )
     root_run_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     agent_id: Mapped[str] = mapped_column(String(36), ForeignKey("agents.id"), nullable=False)
+    agent_release_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("agent_releases.id", ondelete="SET NULL"), nullable=True
+    )
     goal: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[str] = mapped_column(String(32), default="pending", nullable=False, index=True)
     result: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -29,4 +32,3 @@ class Task(Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
-

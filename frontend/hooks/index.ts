@@ -5,6 +5,7 @@ import { api } from "@/lib/api";
 import { getAccessToken } from "@/lib/auth";
 import type {
   Agent,
+  AgentRelease,
   AgentToolInfo,
   ApiKey,
   ApiKeyCreateResponse,
@@ -103,6 +104,50 @@ export function useUpdateAgent() {
   return useMutation({
     mutationFn: ({ id, ...body }: any) => api.put<Agent>(`/api/agents/${id}`, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["agents"] }),
+  });
+}
+
+export function useAgentReleases(agentId: string | null) {
+  return useQuery({
+    queryKey: ["agent-releases", agentId],
+    enabled: !!agentId,
+    queryFn: () => api.get<AgentRelease[]>(`/api/agents/${agentId}/releases`),
+  });
+}
+
+export function useCreateAgentRelease() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ agentId, ...body }: { agentId: string; [key: string]: any }) =>
+      api.post<AgentRelease>(`/api/agents/${agentId}/releases`, body),
+    onSuccess: (release) => {
+      qc.invalidateQueries({ queryKey: ["agent-releases", release.agent_id] });
+      qc.invalidateQueries({ queryKey: ["agents"] });
+    },
+  });
+}
+
+export function usePublishAgentRelease() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ agentId, version }: { agentId: string; version: number }) =>
+      api.post<AgentRelease>(`/api/agents/${agentId}/releases/${version}/publish`),
+    onSuccess: (release) => {
+      qc.invalidateQueries({ queryKey: ["agent-releases", release.agent_id] });
+      qc.invalidateQueries({ queryKey: ["agents"] });
+    },
+  });
+}
+
+export function useRollbackAgentRelease() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ agentId, version }: { agentId: string; version: number }) =>
+      api.post<AgentRelease>(`/api/agents/${agentId}/releases/${version}/rollback`),
+    onSuccess: (release) => {
+      qc.invalidateQueries({ queryKey: ["agent-releases", release.agent_id] });
+      qc.invalidateQueries({ queryKey: ["agents"] });
+    },
   });
 }
 

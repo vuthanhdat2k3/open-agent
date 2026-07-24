@@ -177,6 +177,7 @@ async def _agent_stream(
             parent_task_id=None,
             root_run_id=resolved_root_run_id,
             agent_id=agent.id,
+            agent_release_id=getattr(agent, "active_release_id", None),
             goal=message,
             status="running",
             depth=depth,
