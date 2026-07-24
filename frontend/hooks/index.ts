@@ -30,6 +30,7 @@ import type {
   UsageSummary,
   Workflow,
   WorkflowRunDetail,
+  UserProfile,
 } from "@/types";
 
 export function useProviders(enabled: boolean = true) {
@@ -470,5 +471,22 @@ export function useWorkflowRun(runId: string | null) {
     queryKey: ["workflow-run", runId],
     enabled: !!runId,
     queryFn: () => api.get<WorkflowRunDetail>(`/api/workflows/runs/${runId}`),
+  });
+}
+
+export function useProfile(enabled: boolean = true) {
+  return useQuery({
+    queryKey: ["profile"],
+    queryFn: () => api.get<UserProfile>("/api/auth/me"),
+    enabled,
+  });
+}
+
+export function useUpdateProfile() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { display_name?: string; old_password?: string; new_password?: string }) =>
+      api.patch<UserProfile>("/api/auth/me", body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["profile"] }),
   });
 }

@@ -340,3 +340,45 @@ def test_tenant_override_prevention_403(client: TestClient) -> None:
         headers={"Authorization": f"Bearer {token1}", "X-Org-Id": org2_id},
     )
     assert override_resp.status_code == 403
+
+
+def test_update_profile_display_name_and_password(client: TestClient) -> None:
+    # Register user
+    reg = client.post(
+        "/api/auth/register",
+        json={"email": "profile_test@example.com", "password": "OldPassword123!"},
+    )
+    token = reg.json()["access_token"]
+
+    # Update display name
+    patch_resp = client.patch(
+        "/api/auth/me",
+        json={"display_name": "New Display Name"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert patch_resp.status_code == 200
+    assert patch_resp.json()["display_name"] == "New Display Name"
+
+    # Try change password with wrong old password -> 400
+    bad_pass_resp = client.patch(
+        "/api/auth/me",
+        json={"old_password": "WrongPassword!", "new_password": "NewPassword123!"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert bad_pass_resp.status_code == 400
+
+    # Change password with correct old password -> 200
+    good_pass_resp = client.patch(
+        "/api/auth/me",
+        json={"old_password": "OldPassword123!", "new_password": "NewPassword123!"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert good_pass_resp.status_code == 200
+
+    # Login with new password -> 200
+    login_resp = client.post(
+        "/api/auth/login",
+        json={"email": "profile_test@example.com", "password": "NewPassword123!"},
+    )
+    assert login_resp.status_code == 200
+

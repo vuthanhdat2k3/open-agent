@@ -353,3 +353,20 @@ export interface WorkflowRunDetail {
     finished_at: string | null;
   }>;
 }
+
+export interface UserMembership {
+  org_id: string;
+  org_name: string;
+  org_slug: string;
+  role: string;
+}
+
+export interface UserProfile {
+  id: string;
+  email: string;
+  display_name: string | null;
+  is_active: boolean;
+  created_at: string;
+  memberships: UserMembership[];
+}
+
