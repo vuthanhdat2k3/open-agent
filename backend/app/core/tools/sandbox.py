@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import shlex
 from typing import Any
 
 from app.config import get_settings
@@ -67,7 +68,8 @@ async def _run_code(args: dict[str, Any], ctx: ToolContext) -> str:
     container_path = f"/work/{filename}"
 
     network = "none" if not settings.sandbox_allow_network else "bridge"
-    runner = f"cat > {container_path} && {cmd} {container_path}"
+    safe_path = shlex.quote(container_path)
+    runner = f"cat > {safe_path} && {cmd} {safe_path}"
     docker_args = [
         "docker",
         "run",
