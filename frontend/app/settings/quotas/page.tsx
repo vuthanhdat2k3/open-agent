@@ -41,9 +41,12 @@ function optionalNumber(value: string) {
   return value === "" ? null : Number(value);
 }
 
+import { getActiveOrgId } from "@/lib/auth";
+
 export default function QuotasPage() {
   const me = useMe();
-  const orgId = me.data?.memberships?.[0]?.org_id;
+  const activeOrgId = getActiveOrgId();
+  const orgId = activeOrgId || me.data?.memberships?.[0]?.org_id;
   const quota = useOrganizationQuota(orgId);
   const usage = useQuotaUsage(orgId);
   const updateQuota = useUpdateOrganizationQuota(orgId);

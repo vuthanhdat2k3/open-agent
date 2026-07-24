@@ -23,16 +23,24 @@ async def async_session_factory():
     await engine.dispose()
 
 
+from app.core.quota.dependencies import _redis_client
+
+
 @pytest.fixture
 def client(async_session_factory):
     async def _override_get_db():
         async with async_session_factory() as session:
             yield session
 
+    async def _override_redis():
+        yield None
+
     app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[_redis_client] = _override_redis
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
+
 
 
 def test_register_login_me(client: TestClient) -> None:
@@ -71,6 +79,54 @@ def test_register_login_me(client: TestClient) -> None:
     assert len(me_data["memberships"]) == 1
     assert me_data["memberships"][0]["org_name"] == "Alice Inc"
     assert me_data["memberships"][0]["role"] == "owner"
+
+
+def test_switch_org(client: TestClient) -> None:
+    # Register Alice with Org 1
+    reg1 = client.post(
+        "/api/auth/register",
+        json={"email": "switch@example.com", "password": "Password123!", "org_name": "Org 1"},
+    )
+    token1 = reg1.json()["access_token"]
+    me1 = client.get("/api/auth/me", headers={"Authorization": f"Bearer {token1}"})
+    org1_id = me1.json()["memberships"][0]["org_id"]
+
+    # Create Org 2
+    create_org_resp = client.post(
+        "/api/orgs",
+        json={"name": "Org 2"},
+        headers={"Authorization": f"Bearer {token1}"},
+    )
+    assert create_org_resp.status_code == 201
+    org2_id = create_org_resp.json()["id"]
+
+    # Switch Org to Org 2
+    switch_resp = client.post(
+        "/api/auth/switch-org",
+        json={"org_id": org2_id},
+        headers={"Authorization": f"Bearer {token1}"},
+    )
+    assert switch_resp.status_code == 200
+    token2 = switch_resp.json()["access_token"]
+    assert token2 != token1
+
+    # Verify refresh token endpoint returns token bound to Org 2 (persisted via cookie)
+    refresh_resp = client.post("/api/auth/refresh")
+    assert refresh_resp.status_code == 200
+    refreshed_token = refresh_resp.json()["access_token"]
+    
+    from app.core.auth.jwt import verify_access_token
+    payload = verify_access_token(refreshed_token)
+    assert payload["org_id"] == org2_id
+
+    # Switch Org to forbidden org should return 403
+    forbidden_resp = client.post(
+        "/api/auth/switch-org",
+        json={"org_id": "non-existent-org-id"},
+        headers={"Authorization": f"Bearer {token1}"},
+    )
+    assert forbidden_resp.status_code == 403
+
 
 
 def test_unauthenticated_request_returns_401(client: TestClient) -> None:

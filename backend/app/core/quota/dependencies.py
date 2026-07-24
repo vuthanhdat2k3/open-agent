@@ -63,7 +63,7 @@ async def enforce_request_quota(
     org_id: str = Depends(_authenticated_org_id),
 ) -> None:
     quota = await QuotaService(db, redis).get(org_id)
-    if quota is None:
+    if quota is None or redis is None:
         return
     observe = quota.enforcement_mode == "observe"
     try:
@@ -112,6 +112,9 @@ async def agent_run_admission(
     quota = await QuotaService(db, redis).get(org_id)
     if quota is None:
         raise HTTPException(404, "organization not found")
+    if redis is None:
+        yield
+        return
     observe = quota.enforcement_mode == "observe"
     backend = RedisQuotaBackend(redis)
     token: str | None = None

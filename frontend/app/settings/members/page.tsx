@@ -11,9 +11,12 @@ import { Input, Label } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 
+import { getActiveOrgId } from "@/lib/auth";
+
 export default function MembersPage() {
   const me = useMe();
-  const orgId = me.data?.memberships?.[0]?.org_id;
+  const activeOrgId = getActiveOrgId();
+  const orgId = activeOrgId || me.data?.memberships?.[0]?.org_id;
   const members = useMembers(orgId);
   const invite = useInviteMember(orgId);
   const remove = useRemoveMember(orgId);
