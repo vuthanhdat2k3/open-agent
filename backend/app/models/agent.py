@@ -26,6 +26,12 @@ class Agent(Base):
     kind: Mapped[str] = mapped_column(String(32), default="worker", nullable=False)
     max_iterations: Mapped[int] = mapped_column(Integer, default=12)
     temperature: Mapped[float] = mapped_column(Float, default=0.7)
+    active_release_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("agent_releases.id", ondelete="SET NULL", use_alter=True),
+        nullable=True,
+    )
+    latest_release_number: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     created_at: Mapped["utc_now"] = mapped_column(DateTime, default=utc_now)
     updated_at: Mapped["utc_now"] = mapped_column(DateTime, default=utc_now, onupdate=utc_now)

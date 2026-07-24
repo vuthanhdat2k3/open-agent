@@ -15,6 +15,9 @@ class Session(Base):
         String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     agent_id: Mapped[str] = mapped_column(ForeignKey("agents.id"), nullable=False)
+    agent_release_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("agent_releases.id", ondelete="SET NULL"), nullable=True
+    )
     title: Mapped[str] = mapped_column(String(256), default="New session")
     created_at: Mapped["utc_now"] = mapped_column(DateTime, default=utc_now)
     updated_at: Mapped["utc_now"] = mapped_column(DateTime, default=utc_now, onupdate=utc_now)

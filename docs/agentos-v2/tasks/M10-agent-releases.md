@@ -22,7 +22,7 @@ Add `AgentRelease`:
 - `change_note`, `config_hash`
 - `created_by_user_id`, `published_by_user_id`
 - `created_at`, `published_at`
-- unique `(agent_id, version)` and `(agent_id, config_hash)`
+- unique `(agent_id, version)` plus an indexed `config_hash` for comparison
 
 Add `Agent.active_release_id` and `Agent.latest_release_number`.
 Chat sessions, workflow node runs, and tasks record the selected release where
@@ -69,4 +69,3 @@ publishing a release.
 - Migration test: existing agents receive a release-1 backfill.
 - Integration: create agent -> draft -> publish -> chat resolves active release.
 - Browser E2E: inspect history, create draft, publish, rollback.
-

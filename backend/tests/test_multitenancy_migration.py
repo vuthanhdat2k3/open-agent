@@ -223,6 +223,22 @@ def test_multitenancy_migration_backfill(tmp_path: Path) -> None:
         assert memberships[0][1] == "default-user-id"
         assert memberships[0][2] == "owner"
 
+        releases = conn.execute(
+            text(
+                "SELECT agent_id, version, status, system_prompt "
+                "FROM agent_releases WHERE agent_id = 'a1'"
+            )
+        ).fetchall()
+        assert releases == [("a1", 1, "published", "Prompt")]
+        active_release = conn.execute(
+            text(
+                "SELECT active_release_id, latest_release_number "
+                "FROM agents WHERE id = 'a1'"
+            )
+        ).one()
+        assert active_release[0]
+        assert active_release[1] == 1
+
         agents = conn.execute(text("SELECT id, name, org_id, allowed_risk_tiers FROM agents")).fetchall()
         assert len(agents) == 1
         assert agents[0][0] == "a1"
