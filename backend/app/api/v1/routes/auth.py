@@ -200,7 +200,7 @@ async def refresh_token_route(
         membership = res_m.scalars().first()
 
     org_id = membership.org_id if membership else "default-org-id"
-    role = membership.role if membership else "developer"
+    role = str(membership.role.value if hasattr(membership.role, "value") else membership.role) if membership else "developer"
 
     new_access_token = create_access_token(user_id=token_obj.user_id, org_id=org_id, role=role)
     new_raw_rt, new_rt_hash = create_refresh_token()
@@ -288,10 +288,11 @@ async def switch_org(
             detail="User does not belong to this organization",
         )
 
+    role = str(membership.role.value if hasattr(membership.role, "value") else membership.role)
     access_token = create_access_token(
         user_id=current_user.id,
         org_id=membership.org_id,
-        role=membership.role,
+        role=role,
     )
     response.set_cookie(
         key="active_org_id",
