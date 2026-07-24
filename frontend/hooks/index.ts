@@ -10,6 +10,12 @@ import type {
   ApiKey,
   ApiKeyCreateResponse,
   ApprovalRequest,
+  EvaluationCase,
+  EvaluationCaseInput,
+  EvaluationRun,
+  EvaluationRunInput,
+  EvaluationSuite,
+  EvaluationSuiteInput,
   IngestResult,
   McpServer,
   Message,
@@ -147,6 +153,52 @@ export function useRollbackAgentRelease() {
     onSuccess: (release) => {
       qc.invalidateQueries({ queryKey: ["agent-releases", release.agent_id] });
       qc.invalidateQueries({ queryKey: ["agents"] });
+    },
+  });
+}
+
+export function useEvaluationSuites() {
+  return useQuery({
+    queryKey: ["evaluation-suites"],
+    queryFn: () => api.get<EvaluationSuite[]>("/api/evaluations/suites"),
+  });
+}
+
+export function useCreateEvaluationSuite() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: EvaluationSuiteInput) =>
+      api.post<EvaluationSuite>("/api/evaluations/suites", body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["evaluation-suites"] }),
+  });
+}
+
+export function useAddEvaluationCase() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ suiteId, ...body }: EvaluationCaseInput & { suiteId: string }) =>
+      api.post<EvaluationCase>(`/api/evaluations/suites/${suiteId}/cases`, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["evaluation-suites"] }),
+  });
+}
+
+export function useEvaluationRuns(suiteId: string | null) {
+  return useQuery({
+    queryKey: ["evaluation-runs", suiteId],
+    enabled: !!suiteId,
+    queryFn: () =>
+      api.get<EvaluationRun[]>(`/api/evaluations/suites/${suiteId}/runs`),
+  });
+}
+
+export function useCreateEvaluationRun() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ suiteId, ...body }: EvaluationRunInput & { suiteId: string }) =>
+      api.post<EvaluationRun>(`/api/evaluations/suites/${suiteId}/runs`, body),
+    onSuccess: (run) => {
+      qc.invalidateQueries({ queryKey: ["evaluation-runs", run.suite_id] });
+      qc.invalidateQueries({ queryKey: ["evaluation-suites"] });
     },
   });
 }

@@ -30,21 +30,21 @@ All tables include `org_id`; dataset mutations increment `dataset_version`.
 The production-safe initial set is deterministic:
 
 - exact match after whitespace normalization
-- required substring / forbidden regex
-- required and forbidden tool calls
+- required substring / forbidden regex with a bounded execution timeout
+- required tool calls
 - maximum latency and maximum cost
-- weighted aggregate pass rate
+- aggregate pass rate
 
 The grader interface is extensible, but an LLM judge is out of scope for M11.
 
 ## API And CLI
 
-- CRUD `/api/evaluations/suites` and nested cases.
+- CRUD `/api/evaluations/suites` and append-only nested cases.
 - `POST /api/evaluations/suites/{id}/runs`
 - `GET /api/evaluations/runs/{id}`
 - `GET /api/evaluations/runs/{id}/results`
-- `POST /api/evaluations/runs/{id}/compare/{baseline_id}`
-- CLI: `python -m app.evals.cli run --suite <id> --release <id>
+- `GET /api/evaluations/runs/{id}/compare/{baseline_id}`
+- CLI: `python -m app.evals.cli --org <id> --suite <id> --release <id>
   --min-pass-rate 0.95`
 
 The CLI exits non-zero when the gate fails, making the same evaluator usable in
@@ -66,4 +66,3 @@ agent without external provider credentials.
 - Add deterministic evaluation smoke data generated during the test job.
 - Run the CLI quality gate against the fake executor in backend CI.
 - Keep external model evaluation opt-in and credential-gated.
-

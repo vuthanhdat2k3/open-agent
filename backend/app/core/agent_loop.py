@@ -579,6 +579,8 @@ async def run_agent_loop(
     usage: dict[str, Any] = {"input_tokens": 0, "output_tokens": 0}
     tool_calls: list[dict[str, Any]] = []
     latency_ms = 0
+    cost_usd = 0.0
+    error: str | None = None
     async for ev in _agent_stream(
         agent,
         message,
@@ -594,9 +596,14 @@ async def run_agent_loop(
             usage = data["usage"]
             tool_calls = data.get("tools", [])
             latency_ms = data["latency_ms"]
+            cost_usd = float(data.get("cost_usd", 0.0) or 0.0)
+        elif ev["event"] == "error":
+            error = str(ev["data"].get("message") or "agent execution failed")
     return AgentLoopResult(
         content=content,
         tool_calls=tool_calls,
         usage=usage,
         latency_ms=latency_ms,
+        cost_usd=cost_usd,
+        error=error,
     )

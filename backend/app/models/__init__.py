@@ -3,6 +3,12 @@ from app.models.agent_release import AgentRelease
 from app.models.api_key import ApiKey
 from app.models.approval_request import ApprovalRequest
 from app.models.audit_log import AuditLog
+from app.models.evaluation import (
+    EvaluationCase,
+    EvaluationResult,
+    EvaluationRun,
+    EvaluationSuite,
+)
 from app.models.files import UploadedFile
 from app.models.mcp import McpServer, McpTool
 from app.models.membership import Membership
@@ -28,6 +34,10 @@ __all__ = [
     "ApiKey",
     "ApprovalRequest",
     "AuditLog",
+    "EvaluationCase",
+    "EvaluationResult",
+    "EvaluationRun",
+    "EvaluationSuite",
     "McpServer",
     "McpTool",
     "Membership",
