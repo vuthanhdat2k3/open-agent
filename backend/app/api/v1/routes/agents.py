@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.observability.audit import log_action
+from app.core.quota.dependencies import enforce_resource_quota
 from app.dependencies import get_current_org_id, get_db, require_permission
 from app.schemas.agent import (
     AgentCreate,
@@ -36,7 +37,15 @@ async def list_tools(org_id: str = Depends(get_current_org_id), db: AsyncSession
     return await AgentService(db).list_available_tools(org_id)
 
 
-@router.post("", response_model=AgentOut, status_code=201, dependencies=[Depends(require_permission("agents:create"))])
+@router.post(
+    "",
+    response_model=AgentOut,
+    status_code=201,
+    dependencies=[
+        Depends(require_permission("agents:create")),
+        Depends(enforce_resource_quota("agents")),
+    ],
+)
 async def create_agent(
     body: AgentCreate,
     request: Request,

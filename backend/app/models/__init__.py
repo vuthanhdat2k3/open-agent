@@ -17,6 +17,7 @@ from app.models.message import Message
 from app.models.model import Model
 from app.models.oauth_account import OAuthAccount
 from app.models.organization import Organization
+from app.models.organization_quota import OrganizationQuota
 from app.models.provider import Provider
 from app.models.refresh_token import RefreshToken
 from app.models.role import Role
@@ -45,6 +46,7 @@ __all__ = [
     "Model",
     "OAuthAccount",
     "Organization",
+    "OrganizationQuota",
     "Provider",
     "RefreshToken",
     "Role",
