@@ -4,7 +4,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.db.base import Base
-from app.models.mcp import McpServer, McpTool
+from app.models.mcp import McpServer
 from app.services.mcp_service import McpService
 
 
