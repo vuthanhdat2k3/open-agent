@@ -24,6 +24,7 @@ from app.schemas.auth import (
     ApiKeyOut,
     InviteMemberRequest,
 )
+from app.services.quota_service import default_organization_quota
 
 router = APIRouter(prefix="/api/orgs", tags=["orgs"])
 
@@ -72,6 +73,7 @@ async def create_org(
     org = Organization(name=body.name, slug=slug)
     db.add(org)
     await db.flush()
+    db.add(default_organization_quota(org.id))
 
     membership = Membership(org_id=org.id, user_id=current_user.id, role=Role.owner)
     db.add(membership)

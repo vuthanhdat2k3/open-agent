@@ -32,6 +32,7 @@ from app.schemas.auth import (
     TokenResponse,
     UserMembershipOut,
 )
+from app.services.quota_service import default_organization_quota
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 settings = get_settings()
@@ -73,6 +74,7 @@ async def register(
     org = Organization(name=org_name, slug=slug)
     db.add(org)
     await db.flush()
+    db.add(default_organization_quota(org.id))
 
     # Create Membership
     membership = Membership(org_id=org.id, user_id=user.id, role=Role.owner)
@@ -299,6 +301,7 @@ async def oauth_callback(
             org = Organization(name=f"{display_name}'s Org", slug=slug)
             db.add(org)
             await db.flush()
+            db.add(default_organization_quota(org.id))
 
             membership = Membership(org_id=org.id, user_id=user.id, role=Role.owner)
             db.add(membership)

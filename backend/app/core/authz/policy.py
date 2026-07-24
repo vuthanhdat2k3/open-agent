@@ -40,6 +40,8 @@ PERMISSIONS: dict[Role, set[str]] = {
         "evaluations:read",
         "evaluations:manage",
         "evaluations:run",
+        "quota:read",
+        "quota:usage",
     },
     Role.developer: {
         "agents:create",
@@ -67,6 +69,7 @@ PERMISSIONS: dict[Role, set[str]] = {
         "evaluations:read",
         "evaluations:manage",
         "evaluations:run",
+        "quota:usage",
     },
     Role.viewer: {
         "agents:read",

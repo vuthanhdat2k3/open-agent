@@ -147,6 +147,36 @@ export interface EvaluationRunInput {
   recorded_outputs?: RecordedEvaluationOutput[];
 }
 
+export interface OrganizationQuota {
+  org_id: string;
+  requests_per_minute: number;
+  agent_runs_per_minute: number;
+  max_concurrent_runs: number;
+  monthly_cost_usd: number;
+  max_agents: number | null;
+  max_workflows: number | null;
+  max_storage_bytes: number | null;
+  enforcement_mode: "enforce" | "observe";
+  updated_by_user_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface QuotaUsage {
+  org_id: string;
+  month: string;
+  monthly_cost_usd: number;
+  monthly_cost_limit_usd: number;
+  agents: number;
+  agent_limit: number | null;
+  workflows: number;
+  workflow_limit: number | null;
+  storage_bytes: number;
+  storage_limit_bytes: number | null;
+  active_run_leases: number;
+  concurrent_run_limit: number;
+}
+
 export interface AgentToolInfo {
   name: string;
   description: string;

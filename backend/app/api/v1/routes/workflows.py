@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.sse import format_sse
+from app.core.quota.dependencies import agent_run_admission, enforce_resource_quota
 from app.core.workflow.engine import run_workflow
 from app.dependencies import get_current_org_id, get_db, require_permission
 from app.models.workflow_node_run import WorkflowNodeRun
@@ -29,7 +30,15 @@ async def list_workflows(
     return await WorkflowService(db).list(org_id)
 
 
-@router.post("", response_model=WorkflowOut, status_code=201, dependencies=[Depends(require_permission("workflows:create"))])
+@router.post(
+    "",
+    response_model=WorkflowOut,
+    status_code=201,
+    dependencies=[
+        Depends(require_permission("workflows:create")),
+        Depends(enforce_resource_quota("workflows")),
+    ],
+)
 async def create_workflow(
     body: WorkflowCreate,
     org_id: str = Depends(get_current_org_id),
@@ -77,7 +86,13 @@ async def delete_workflow(
     return {"ok": True}
 
 
-@router.post("/{id}/run", dependencies=[Depends(require_permission("workflows:run"))])
+@router.post(
+    "/{id}/run",
+    dependencies=[
+        Depends(require_permission("workflows:run")),
+        Depends(agent_run_admission),
+    ],
+)
 async def run_workflow_endpoint(
     id: str,
     body: RunWorkflowRequest,

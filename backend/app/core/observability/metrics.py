@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from prometheus_client import Counter, Histogram
+from prometheus_client import Counter, Gauge, Histogram
 from prometheus_fastapi_instrumentator import Instrumentator
 
 tool_calls_total = Counter(
@@ -28,8 +28,21 @@ sandbox_executions_total = Counter(
     ["status"],
 )
 queue_depth = Histogram("queue_depth", "Observed queue depth")
+quota_admission_total = Counter(
+    "quota_admission_total",
+    "Quota admission decisions",
+    ["limit_type", "decision"],
+)
+quota_backend_failures_total = Counter(
+    "quota_backend_failures_total",
+    "Quota backend failures",
+    ["operation"],
+)
+quota_active_run_leases = Gauge(
+    "quota_active_run_leases",
+    "Last observed active run lease count",
+)
 
 
 def mount_metrics(app) -> None:
     Instrumentator().instrument(app).expose(app, endpoint="/metrics")
-
