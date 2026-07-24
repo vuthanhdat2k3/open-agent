@@ -1,5 +1,9 @@
 # OpenAgent
 
+> AgentOS v2 is the current architecture for the multi-user, RBAC, guardrailed,
+> observable, deployable system. See `docs/agentos-v2/ARCHITECTURE.md`.
+> This root README still keeps some v1 context for orientation.
+
 > A personal **multi-agent OS**. Layered **FastAPI** backend (Python) + **Next.js**
 > frontend (Tailwind + shadcn/ui + Zod + Zustand + TanStack Query). One
 > OpenAI-compatible LLM driver. A **graph-based multi-agent workflow engine**
@@ -51,6 +55,16 @@ per-module design (especially `workflows.md`).
 ---
 
 ## Quick Start (dev)
+
+Docker Compose path:
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+Then open the frontend at `http://localhost:3000` and the API at
+`http://localhost:8000`.
 
 ```bash
 # Backend
