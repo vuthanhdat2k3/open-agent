@@ -264,6 +264,33 @@ async def me(current_user: User = Depends(get_current_user), db: AsyncSession = 
     )
 
 
+class UpdateProfileRequest(BaseModel):
+    display_name: str | None = None
+    old_password: str | None = None
+    new_password: str | None = None
+
+
+@router.patch("/me", response_model=MeResponse)
+async def update_me(
+    body: UpdateProfileRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if body.display_name is not None:
+        current_user.display_name = body.display_name.strip()
+
+    if body.new_password:
+        if not body.old_password:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Old password is required to set a new password")
+        if not verify_password(body.old_password, current_user.hashed_password or ""):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Incorrect old password")
+        current_user.hashed_password = hash_password(body.new_password)
+
+    await db.commit()
+    await db.refresh(current_user)
+    return await me(current_user=current_user, db=db)
+
+
 class SwitchOrgRequest(BaseModel):
     org_id: str
 

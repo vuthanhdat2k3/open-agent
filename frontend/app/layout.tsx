@@ -34,6 +34,7 @@ import {
   Gauge,
   ShieldCheck,
   Users,
+  User as UserIcon,
   Menu,
   PanelLeftClose,
   PanelLeft,
@@ -72,6 +73,7 @@ const navItems: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/evaluations", label: "Evaluations", icon: FlaskConical },
   { href: "/settings/members", label: "Members", icon: Users },
   { href: "/settings/quotas", label: "Quotas", icon: Gauge },
+  { href: "/settings/profile", label: "Profile", icon: UserIcon },
   { href: "/debug", label: "Debug", icon: Bug },
 ];
 
