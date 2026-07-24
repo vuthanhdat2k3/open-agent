@@ -203,18 +203,23 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+import { OrgSwitcher } from "@/components/org-switcher";
+
 function Brand({ collapsed }: { collapsed: boolean }) {
   return (
-    <div className={cn("flex items-center gap-3 px-3 py-5", collapsed && "justify-center px-0")}>
-      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-primary to-primary/60 shadow-diffuse">
-        <Bot className="h-5 w-5 text-primary-foreground" />
-      </div>
-      {!collapsed && (
-        <div className="min-w-0">
-          <div className="truncate text-base font-bold tracking-tight">OpenAgent</div>
-          <div className="truncate text-xs text-muted-foreground">Agent Platform</div>
+    <div className="space-y-2 p-3">
+      <div className={cn("flex items-center gap-3", collapsed && "justify-center px-0")}>
+        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-primary to-primary/60 shadow-diffuse">
+          <Bot className="h-5 w-5 text-primary-foreground" />
         </div>
-      )}
+        {!collapsed && (
+          <div className="min-w-0">
+            <div className="truncate text-base font-bold tracking-tight">OpenAgent</div>
+            <div className="truncate text-xs text-muted-foreground">Agent Platform</div>
+          </div>
+        )}
+      </div>
+      <OrgSwitcher collapsed={collapsed} />
     </div>
   );
 }

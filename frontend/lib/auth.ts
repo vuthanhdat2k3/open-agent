@@ -7,6 +7,18 @@ export function getAccessToken() {
   return accessToken;
 }
 
+export function getActiveOrgId(): string | null {
+  if (!accessToken) return null;
+  try {
+    const parts = accessToken.split(".");
+    if (parts.length < 2) return null;
+    const payload = JSON.parse(atob(parts[1]));
+    return payload.org_id || null;
+  } catch {
+    return null;
+  }
+}
+
 export function setAccessToken(token: string | null) {
   accessToken = token;
   listeners.forEach((listener) => listener(accessToken));
