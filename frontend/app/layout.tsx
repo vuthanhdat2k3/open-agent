@@ -30,6 +30,8 @@ import {
   MessageSquare,
   FileUp,
   Bug,
+  ShieldCheck,
+  Users,
   Menu,
   PanelLeftClose,
   PanelLeft,
@@ -39,6 +41,8 @@ import {
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
+import { getAccessToken, refreshAccessToken, subscribeAuth } from "@/lib/auth";
+import { useApprovals } from "@/hooks";
 
 const sans = Fira_Sans({
   subsets: ["latin"],
@@ -62,6 +66,8 @@ const navItems: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/files", label: "Files", icon: FileUp },
   { href: "/workflows", label: "Workflows", icon: Workflow },
   { href: "/chat", label: "Chat", icon: MessageSquare },
+  { href: "/approvals", label: "Approvals", icon: ShieldCheck },
+  { href: "/settings/members", label: "Members", icon: Users },
   { href: "/debug", label: "Debug", icon: Bug },
 ];
 
@@ -116,6 +122,9 @@ function SidebarNav({
   queryClient: QueryClient;
 }) {
   const pathname = usePathname();
+  const publicRoute = pathname === "/login" || pathname === "/register" || pathname.startsWith("/oauth/");
+  const approvals = useApprovals(!publicRoute);
+  const pending = approvals.data?.length ?? 0;
   return (
     <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 py-4">
       {navItems.map((item) => {
@@ -145,6 +154,11 @@ function SidebarNav({
               )}
             />
             {!collapsed && <span className="truncate">{item.label}</span>}
+            {!collapsed && item.href === "/approvals" && pending > 0 && (
+              <span className="ml-auto rounded-full bg-destructive px-1.5 py-0.5 text-[10px] font-bold text-destructive-foreground">
+                {pending}
+              </span>
+            )}
             {active && (
               <span
                 className="absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-primary"
@@ -156,6 +170,33 @@ function SidebarNav({
       })}
     </nav>
   );
+}
+
+function AuthGate({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const [ready, setReady] = React.useState(false);
+  const publicRoute = pathname === "/login" || pathname === "/register" || pathname.startsWith("/oauth/");
+
+  React.useEffect(() => {
+    const unsub = subscribeAuth(() => setReady(true));
+    if (publicRoute || getAccessToken()) {
+      setReady(true);
+      return unsub;
+    }
+    refreshAccessToken().finally(() => setReady(true));
+    return unsub;
+  }, [publicRoute]);
+
+  React.useEffect(() => {
+    if (ready && !publicRoute && !getAccessToken()) {
+      window.location.href = "/login";
+    }
+  }, [ready, publicRoute]);
+
+  if (!ready && !publicRoute) {
+    return <div className="p-6 text-sm text-muted-foreground">Preparing session...</div>;
+  }
+  return <>{children}</>;
 }
 
 function Brand({ collapsed }: { collapsed: boolean }) {
@@ -202,6 +243,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={`${sans.variable} ${mono.variable} dark`}>
       <body className="min-h-screen bg-background font-sans text-foreground antialiased">
         <QueryClientProvider client={client}>
+          <AuthGate>
           <div className="relative z-10 flex min-h-screen">
             {/* Desktop sidebar */}
             <aside
@@ -285,6 +327,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               </main>
             </div>
           </div>
+          </AuthGate>
           <Toaster richColors closeButton />
         </QueryClientProvider>
       </body>

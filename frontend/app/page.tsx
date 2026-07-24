@@ -33,6 +33,7 @@ export default function Dashboard() {
   const agents = useAgents();
   const workflows = useWorkflows();
   const mcp = useMcpServers();
+  const grafanaUrl = process.env.NEXT_PUBLIC_GRAFANA_URL;
 
   const stats: { label: string; value: number; icon: LucideIcon }[] = [
     { label: "Providers", value: providers.data?.length ?? 0, icon: Network },
@@ -56,6 +57,14 @@ export default function Dashboard() {
                 Manage Agents
               </Link>
             </Button>
+            {grafanaUrl && (
+              <Button asChild variant="outline" size="lg" className="gap-2">
+                <a href={grafanaUrl} target="_blank" rel="noreferrer">
+                  <BarChart3 className="h-4 w-4" />
+                  Open Grafana
+                </a>
+              </Button>
+            )}
             <Button asChild size="lg" className="gap-2">
               <Link href="/chat">
                 <MessageSquare className="h-4 w-4" />

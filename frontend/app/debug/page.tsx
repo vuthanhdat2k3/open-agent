@@ -1,11 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { Bug, MessageSquare, BarChart3 } from "lucide-react";
-import { useDebugSessions, useSessionTree, useUsageSummary } from "@/hooks";
+import { Bug, MessageSquare, BarChart3, GitBranch, Workflow } from "lucide-react";
+import { useDebugSessions, useSessionTree, useTaskTree, useUsageSummary, useWorkflowRun } from "@/hooks";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
@@ -22,7 +23,11 @@ export default function DebugPage() {
   const sessions = useDebugSessions();
   const usage = useUsageSummary();
   const [sel, setSel] = React.useState<string | null>(null);
+  const [rootRunId, setRootRunId] = React.useState("");
+  const [workflowRunId, setWorkflowRunId] = React.useState("");
   const tree = useSessionTree(sel);
+  const taskTree = useTaskTree(rootRunId || null);
+  const workflowRun = useWorkflowRun(workflowRunId || null);
 
   return (
     <div className="space-y-6">
@@ -135,6 +140,68 @@ export default function DebugPage() {
               </Table>
             ) : (
               <EmptyState icon={BarChart3} title="No usage recorded yet" />
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <Card glass>
+          <CardHeader className="flex flex-row items-center gap-3 border-b border-border/60 bg-muted/20">
+            <GitBranch className="h-4 w-4 text-primary" />
+            <CardTitle className="text-sm">Task Tree</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4 pt-6">
+            <Input value={rootRunId} onChange={(e) => setRootRunId(e.target.value)} placeholder="root_run_id" />
+            {taskTree.data?.tasks?.map((node) => (
+              <div key={node.id} className="rounded-lg border border-border p-3 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold">{node.goal}</span>
+                  <Badge variant="outline">{node.status}</Badge>
+                </div>
+                <div className="mt-1 font-mono text-muted-foreground">{node.id}</div>
+                {node.children.map((child) => (
+                  <div key={child.id} className="mt-3 border-l border-border pl-3">
+                    <div className="flex items-center justify-between">
+                      <span>{child.goal}</span>
+                      <Badge variant="outline">{child.status}</Badge>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+
+        <Card glass>
+          <CardHeader className="flex flex-row items-center gap-3 border-b border-border/60 bg-muted/20">
+            <Workflow className="h-4 w-4 text-primary" />
+            <CardTitle className="text-sm">Workflow Run</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4 pt-6">
+            <Input value={workflowRunId} onChange={(e) => setWorkflowRunId(e.target.value)} placeholder="workflow_run_id" />
+            {workflowRun.data && (
+              <div className="space-y-2">
+                <Badge variant="outline">{workflowRun.data.status}</Badge>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Node</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Attempt</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {workflowRun.data.nodes.map((node) => (
+                      <TableRow key={node.id}>
+                        <TableCell className="font-mono text-xs">{node.node_id}</TableCell>
+                        <TableCell><Badge variant="outline">{node.status}</Badge></TableCell>
+                        <TableCell className="text-right font-mono text-xs">{node.attempt}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
             )}
           </CardContent>
         </Card>

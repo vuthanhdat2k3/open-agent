@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { GraphEdge, GraphNode } from "@/types";
 
 interface AgentState {
   selectedAgentId: string | null;
@@ -11,10 +12,10 @@ export const useAgentStore = create<AgentState>((set) => ({
 }));
 
 interface WorkflowState {
-  nodes: any[];
-  edges: any[];
+  nodes: GraphNode[];
+  edges: GraphEdge[];
   selectedNodeId: string | null;
-  setGraph: (nodes: any[], edges: any[]) => void;
+  setGraph: (nodes: GraphNode[], edges: GraphEdge[]) => void;
   setSelectedNode: (id: string | null) => void;
   reset: () => void;
 }
