@@ -16,6 +16,20 @@ class Settings(BaseSettings):
     # API key; empty => localhost-only mode.
     api_key: str = ""
 
+    # Auth / JWT / OAuth configuration
+    jwt_secret_key: str = "dev-secret-key-change-in-production"
+    jwt_private_key_path: str = ""
+    jwt_public_key_path: str = ""
+    jwt_algorithm: str = "HS256"
+    jwt_access_ttl_minutes: int = 15
+    jwt_refresh_ttl_days: int = 30
+
+    oauth_google_client_id: str = ""
+    oauth_google_client_secret: str = ""
+    oauth_github_client_id: str = ""
+    oauth_github_client_secret: str = ""
+    cookie_secure: bool = False
+
     # Workflow / agent-loop tuning
     max_agent_depth: int = 5
     max_iterations: int = 12
