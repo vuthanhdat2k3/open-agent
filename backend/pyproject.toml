@@ -35,7 +35,7 @@ dependencies = [
     "opentelemetry-sdk>=1.44",
     "opentelemetry-instrumentation-fastapi>=0.65b0",
     "opentelemetry-exporter-otlp>=1.44",
-    "prometheus-fastapi-instrumentator>=6,<7",
+    "prometheus-fastapi-instrumentator>=6,<9",
     "pyyaml>=6.0",
     # Config / validation
     "python-dotenv>=1.0",
