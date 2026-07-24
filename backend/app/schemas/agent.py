@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -10,6 +11,7 @@ class AgentBase(BaseModel):
     model_id: str
     tools: list[str] = []
     allowed_risk_tiers: list[str] | None = None
+    kind: Literal["worker", "orchestrator"] = "worker"
     max_iterations: int = 12
     temperature: float = 0.7
 
@@ -25,6 +27,7 @@ class AgentUpdate(BaseModel):
     model_id: str | None = None
     tools: list[str] | None = None
     allowed_risk_tiers: list[str] | None = None
+    kind: Literal["worker", "orchestrator"] | None = None
     max_iterations: int | None = None
     temperature: float | None = None
 
@@ -33,6 +36,7 @@ class AgentToolInfo(BaseModel):
     name: str
     description: str
     available: bool
+    risk_tier: str | None = None
 
 
 class AgentOut(AgentBase):
