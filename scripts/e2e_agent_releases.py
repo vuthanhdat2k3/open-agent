@@ -139,7 +139,7 @@ def run(base_url: str) -> None:
     )
     assert published["status"] == "published"
     active = client.request("GET", f"/api/agents/{agent['id']}")
-    assert active["system_prompt"] == "release two"
+    assert active["system_prompt"] == draft["system_prompt"]
 
     rollback = client.request(
         "POST", f"/api/agents/{agent['id']}/releases/1/rollback", expected=201

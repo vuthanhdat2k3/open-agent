@@ -29,6 +29,7 @@ from app.models.provider import Provider
 from app.models.task import Task
 from app.models.usage import UsageEvent
 from app.schemas.chat import AgentLoopResult
+from app.services.quota_service import invalidate_monthly_cost_cache
 
 settings = get_settings()
 UNTRUSTED_TOOL_SOURCES = {"web_fetch", "rag_search", "read_attachment"}
@@ -533,6 +534,7 @@ async def _agent_stream(
             )
         )
         await db.commit()
+        await invalidate_monthly_cost_cache(agent.org_id)
         agent_run_cost_usd_total.labels(agent.org_id).inc(cost)
         await _finish_task(
             db,

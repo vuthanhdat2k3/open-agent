@@ -5,6 +5,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.observability.audit import log_action
+from app.core.quota.dependencies import agent_run_admission
 from app.dependencies import get_current_org_id, get_db, require_permission
 from app.evals.executor import LiveAgentExecutor, RecordedOutputExecutor
 from app.schemas.evaluation import (
@@ -191,7 +192,10 @@ async def list_runs(
     "/suites/{suite_id}/runs",
     response_model=EvaluationRunOut,
     status_code=201,
-    dependencies=[Depends(require_permission("evaluations:run"))],
+    dependencies=[
+        Depends(require_permission("evaluations:run")),
+        Depends(agent_run_admission),
+    ],
 )
 async def create_run(
     suite_id: str,

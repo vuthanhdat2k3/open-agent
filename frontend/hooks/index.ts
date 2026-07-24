@@ -20,8 +20,10 @@ import type {
   McpServer,
   Message,
   Model,
+  OrganizationQuota,
   OrgMember,
   Provider,
+  QuotaUsage,
   Session,
   TaskTree,
   UploadedFile,
@@ -404,6 +406,36 @@ export function useRevokeApiKey(orgId?: string) {
   return useMutation({
     mutationFn: (keyId: string) => api.delete(`/api/orgs/${orgId}/api-keys/${keyId}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["api-keys", orgId] }),
+  });
+}
+
+export function useOrganizationQuota(orgId?: string) {
+  return useQuery({
+    queryKey: ["organization-quota", orgId],
+    enabled: !!orgId,
+    queryFn: () =>
+      api.get<OrganizationQuota>(`/api/orgs/${orgId}/quota`),
+  });
+}
+
+export function useQuotaUsage(orgId?: string) {
+  return useQuery({
+    queryKey: ["quota-usage", orgId],
+    enabled: !!orgId,
+    queryFn: () =>
+      api.get<QuotaUsage>(`/api/orgs/${orgId}/quota/usage`),
+  });
+}
+
+export function useUpdateOrganizationQuota(orgId?: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Partial<OrganizationQuota>) =>
+      api.put<OrganizationQuota>(`/api/orgs/${orgId}/quota`, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["organization-quota", orgId] });
+      qc.invalidateQueries({ queryKey: ["quota-usage", orgId] });
+    },
   });
 }
 

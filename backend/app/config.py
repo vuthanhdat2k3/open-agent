@@ -35,7 +35,13 @@ class Settings(BaseSettings):
     max_agent_depth: int = 5
     max_iterations: int = 12
     workflow_execution_mode: Literal["inline", "queued"] = "inline"
-    redis_url: str = "redis://localhost:6379/0"
+    redis_url: str = "redis://127.0.0.1:6379/0"
+    quota_requests_per_minute: int = 600
+    quota_agent_runs_per_minute: int = 60
+    quota_max_concurrent_runs: int = 10
+    quota_monthly_cost_usd: float = 100.0
+    quota_run_lease_ttl_seconds: int = 600
+    quota_usage_cache_seconds: int = 15
     otel_enabled: bool = False
     otel_exporter_endpoint: str = ""
     log_format: Literal["json", "console"] = "json"

@@ -31,6 +31,7 @@ import {
   FileUp,
   Bug,
   FlaskConical,
+  Gauge,
   ShieldCheck,
   Users,
   Menu,
@@ -70,6 +71,7 @@ const navItems: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/approvals", label: "Approvals", icon: ShieldCheck },
   { href: "/evaluations", label: "Evaluations", icon: FlaskConical },
   { href: "/settings/members", label: "Members", icon: Users },
+  { href: "/settings/quotas", label: "Quotas", icon: Gauge },
   { href: "/debug", label: "Debug", icon: Bug },
 ];
 

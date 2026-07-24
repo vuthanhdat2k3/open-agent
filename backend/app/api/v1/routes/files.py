@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.dependencies import get_current_org_id, get_db, require_permission
 from app.schemas.files import IngestRequest, IngestResult, UploadedFileOut
 from app.services.file_service import FileService
+from app.services.quota_service import QuotaService
 
 router = APIRouter(
     prefix="/api/files",
@@ -17,6 +18,16 @@ async def upload_file(
     org_id: str = Depends(get_current_org_id),
     db: AsyncSession = Depends(get_db),
 ):
+    quota = await QuotaService(db).get_for_update(org_id)
+    if (
+        quota is not None
+        and quota.max_storage_bytes is not None
+        and await QuotaService(db).storage_bytes(org_id)
+        + int(file.size or 0)
+        > quota.max_storage_bytes
+        and quota.enforcement_mode == "enforce"
+    ):
+        raise HTTPException(429, "storage quota reached")
     try:
         return await FileService(db).save_upload(org_id, file)
     except ValueError as e:

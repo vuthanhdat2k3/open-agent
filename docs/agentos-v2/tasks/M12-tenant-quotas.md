@@ -41,7 +41,10 @@ Defaults are configurable and safe for self-hosted development.
 - `GET /api/orgs/{id}/quota`: owner/admin.
 - `PUT /api/orgs/{id}/quota`: owner only by default.
 - `GET /api/orgs/{id}/quota/usage`: owner/admin/developer.
-- New permissions: `quota:read`, `quota:manage`.
+- New permissions: `quota:read`, `quota:usage`, `quota:manage`.
+
+The owner wildcard includes `quota:manage`; admins receive `quota:read` and
+`quota:usage`, while developers receive usage access only.
 
 ## Observability
 
@@ -60,4 +63,3 @@ Defaults are configurable and safe for self-hosted development.
 - 429 responses are consistent through direct API and frontend proxy.
 - Redis integration test and Docker Compose E2E pass.
 - Full backend, frontend, RAG, migration, and browser regressions pass.
-

@@ -40,6 +40,7 @@ async def request_context_middleware(
     request.state.request_id = request_id
     response = await call_next(request)
     response.headers["X-Request-Id"] = request_id
+    for name, value in getattr(request.state, "rate_limit_headers", {}).items():
+        response.headers[name] = value
     clear_contextvars()
     return response
-
