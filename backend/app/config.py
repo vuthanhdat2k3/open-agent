@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     # Workflow / agent-loop tuning
     max_agent_depth: int = 5
     max_iterations: int = 12
+    budget_max_tool_calls: int = 40
+    budget_max_cost_usd: float = 2.0
+    budget_max_wall_seconds: float = 300.0
+    budget_max_repeated_call: int = 3
 
     # Local filesystem sandbox for read_attachment
     workspace_dir: str = "./workspace"
