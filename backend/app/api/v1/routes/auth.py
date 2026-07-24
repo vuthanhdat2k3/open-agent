@@ -163,7 +163,12 @@ async def refresh_token_route(
     token_obj = res.scalar_one_or_none()
 
     now = datetime.now(timezone.utc)
-    if not token_obj or token_obj.revoked_at is not None or token_obj.expires_at.replace(tzinfo=timezone.utc) < now:
+    expires_at = token_obj.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    else:
+        expires_at = expires_at.astimezone(timezone.utc)
+    if not token_obj or token_obj.revoked_at is not None or expires_at < now:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or revoked refresh token")
 
     # Revoke old token (Rotation)

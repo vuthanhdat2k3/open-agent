@@ -41,3 +41,11 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run build
+
+  build-images:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t openagent-api ./backend
+      - run: docker build -t openagent-frontend ./frontend
+      - run: docker compose --env-file .env.example config
