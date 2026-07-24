@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     max_iterations: int = 12
     workflow_execution_mode: Literal["inline", "queued"] = "inline"
     redis_url: str = "redis://localhost:6379/0"
+    otel_enabled: bool = False
+    otel_exporter_endpoint: str = ""
+    log_format: Literal["json", "console"] = "json"
     budget_max_tool_calls: int = 40
     budget_max_cost_usd: float = 2.0
     budget_max_wall_seconds: float = 300.0

@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.guardrails.approval import get_pending, resolve_approval
+from app.core.observability.audit import log_action
 from app.dependencies import get_current_org_id, get_current_user, get_db, require_permission
 from app.models.user import User
 
@@ -74,5 +75,13 @@ async def decide_approval(
         raise HTTPException(status_code=400, detail=str(exc))
     if approval is None:
         raise HTTPException(status_code=404, detail="approval request not found")
+    await log_action(
+        db,
+        org_id=org_id,
+        actor_user_id=current_user.id,
+        action="approval.decided",
+        resource_type="approval_request",
+        resource_id=approval.id,
+        metadata={"decision": body.decision, "reason": body.reason},
+    )
     return approval
-

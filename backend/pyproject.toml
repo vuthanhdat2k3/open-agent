@@ -31,6 +31,12 @@ dependencies = [
     "jsonschema>=4.22",
     "arq>=0.26",
     "redis>=5.0",
+    "structlog>=26.1",
+    "opentelemetry-sdk>=1.44",
+    "opentelemetry-instrumentation-fastapi>=0.65b0",
+    "opentelemetry-exporter-otlp>=1.44",
+    "prometheus-fastapi-instrumentator>=6,<9",
+    "pyyaml>=6.0",
     # Config / validation
     "python-dotenv>=1.0",
     # Misc

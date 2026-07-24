@@ -24,6 +24,7 @@ jobs:
           python-version: "3.11"
       - run: pip install -e ".[dev]"
       - run: ruff check .
+      - run: python -c "import yaml; yaml.safe_load(open('../observability/prometheus/alerts.yml'))"
       - run: pytest -q
 
   frontend:

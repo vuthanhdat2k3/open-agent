@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -11,6 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.core.guardrails.approval import request_approval
 from app.core.guardrails.budget import BudgetTracker, RunBudget
+from app.core.observability.metrics import workflow_run_duration_seconds
+from app.core.observability.tracing import get_tracer
 from app.core.tools.registry import BUILTIN_TOOLS, execute_tool_call
 from app.core.tools.types import ToolContext
 from app.db.base import utc_now
@@ -19,6 +22,8 @@ from app.models.agent import Agent
 from app.models.workflow import Workflow
 from app.models.workflow_node_run import WorkflowNodeRun
 from app.models.workflow_run import WorkflowRun
+
+tracer = get_tracer(__name__)
 
 
 def _eval_condition(cond: str, output: str) -> bool:
@@ -267,12 +272,16 @@ async def run_workflow_events(
         for attempt in range(1, max_attempts + 1):
             node_run = await _start_node_run(db, workflow_run.id, node["id"], attempt, node_input)
             try:
-                coro = run_node_once(node)
-                result = (
-                    await asyncio.wait_for(coro, timeout=float(timeout_s))
-                    if timeout_s
-                    else await coro
-                )
+                with tracer.start_as_current_span(
+                    "workflow.node",
+                    attributes={"workflow_run_id": workflow_run.id, "node_id": node["id"]},
+                ):
+                    coro = run_node_once(node)
+                    result = (
+                        await asyncio.wait_for(coro, timeout=float(timeout_s))
+                        if timeout_s
+                        else await coro
+                    )
             except WorkflowWaitingApproval as exc:
                 await _finish_node_run(
                     db,
@@ -380,6 +389,9 @@ async def run_workflow_events(
     workflow_run.output = {"text": final_output}
     workflow_run.finished_at = utc_now()
     await db.commit()
+    workflow_run_duration_seconds.observe(
+        max(0.0, time.monotonic() - budget.started_at)
+    )
 
 
 async def run_workflow(
