@@ -1,19 +1,17 @@
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.security import verify_api_key
-from app.dependencies import get_current_org_id, get_db
+from app.dependencies import get_current_org_id, get_db, require_permission
 from app.schemas.files import IngestRequest, IngestResult, UploadedFileOut
 from app.services.file_service import FileService
 
 router = APIRouter(
     prefix="/api/files",
     tags=["files"],
-    dependencies=[Depends(verify_api_key)],
 )
 
 
-@router.post("/upload", response_model=UploadedFileOut, status_code=201)
+@router.post("/upload", response_model=UploadedFileOut, status_code=201, dependencies=[Depends(require_permission("files:manage"))])
 async def upload_file(
     file: UploadFile = File(...),
     org_id: str = Depends(get_current_org_id),
@@ -25,12 +23,12 @@ async def upload_file(
         raise HTTPException(400, str(e))
 
 
-@router.get("", response_model=list[UploadedFileOut])
+@router.get("", response_model=list[UploadedFileOut], dependencies=[Depends(require_permission("files:read"))])
 async def list_files(org_id: str = Depends(get_current_org_id), db: AsyncSession = Depends(get_db)):
     return await FileService(db).list(org_id)
 
 
-@router.delete("/{id}")
+@router.delete("/{id}", dependencies=[Depends(require_permission("files:manage"))])
 async def delete_file(
     id: str, org_id: str = Depends(get_current_org_id), db: AsyncSession = Depends(get_db)
 ):
@@ -39,7 +37,7 @@ async def delete_file(
     return {"ok": True}
 
 
-@router.post("/{id}/ingest", response_model=IngestResult)
+@router.post("/{id}/ingest", response_model=IngestResult, dependencies=[Depends(require_permission("files:manage"))])
 async def ingest_file(
     id: str,
     body: IngestRequest,

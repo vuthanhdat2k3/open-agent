@@ -6,6 +6,7 @@ from typing import Any
 
 from app.core.tools.paths import safe_resolve
 from app.core.tools.registry import register
+from app.core.tools.risk_tier import RiskTier
 from app.core.tools.types import ToolContext, ToolSpec
 
 MAX_FILE_CHARS = 50_000
@@ -162,6 +163,7 @@ register(
             "required": ["path", "content"],
         },
         run=_write_file,
+        risk_tier=RiskTier.write,
     )
 )
 
@@ -183,6 +185,7 @@ register(
             "required": [],
         },
         run=_list_dir,
+        risk_tier=RiskTier.read,
     )
 )
 
@@ -213,5 +216,6 @@ register(
             "required": ["pattern"],
         },
         run=_search_files,
+        risk_tier=RiskTier.read,
     )
 )

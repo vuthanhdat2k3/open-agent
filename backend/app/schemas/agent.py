@@ -9,6 +9,7 @@ class AgentBase(BaseModel):
     system_prompt: str = ""
     model_id: str
     tools: list[str] = []
+    allowed_risk_tiers: list[str] | None = None
     max_iterations: int = 12
     temperature: float = 0.7
 
@@ -23,6 +24,7 @@ class AgentUpdate(BaseModel):
     system_prompt: str | None = None
     model_id: str | None = None
     tools: list[str] | None = None
+    allowed_risk_tiers: list[str] | None = None
     max_iterations: int | None = None
     temperature: float | None = None
 

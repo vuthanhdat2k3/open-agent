@@ -6,6 +6,8 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.tools.risk_tier import RiskTier
+
 
 @dataclass
 class ToolContext:
@@ -28,6 +30,11 @@ class ToolSpec:
     description: str
     input_schema: dict[str, Any]  # JSON schema (dict)
     run: Callable[[dict[str, Any], ToolContext], Awaitable[str]]
+
+    risk_tier: RiskTier = RiskTier.safe
+    requires_approval: bool = False
+    timeout_s: float = 30.0
+    max_retries: int = 0
 
 
 def tool_to_openai_schema(spec: ToolSpec) -> dict[str, Any]:

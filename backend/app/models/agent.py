@@ -20,6 +20,9 @@ class Agent(Base):
     system_prompt: Mapped[str] = mapped_column(Text, default="", nullable=False)
     model_id: Mapped[str] = mapped_column(ForeignKey("models.id"), nullable=False)
     tools: Mapped[list[str]] = mapped_column(JSON, default=list)
+    allowed_risk_tiers: Mapped[list[str]] = mapped_column(
+        JSON, default=lambda: ["safe", "read"]
+    )
     max_iterations: Mapped[int] = mapped_column(Integer, default=12)
     temperature: Mapped[float] = mapped_column(Float, default=0.7)
 

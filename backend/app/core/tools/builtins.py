@@ -14,6 +14,7 @@ from app.core.tools import (
 )
 from app.core.tools.paths import safe_resolve
 from app.core.tools.registry import register
+from app.core.tools.risk_tier import RiskTier
 from app.core.tools.types import ToolContext, ToolSpec
 
 settings = get_settings()
@@ -163,6 +164,7 @@ register(
             "required": ["path"],
         },
         run=_read_attachment,
+        risk_tier=RiskTier.read,
     )
 )
 
@@ -176,6 +178,7 @@ register(
             "required": ["url"],
         },
         run=_web_fetch,
+        risk_tier=RiskTier.read,
     )
 )
 
@@ -192,6 +195,7 @@ register(
             "required": ["key", "value"],
         },
         run=_memory_store,
+        risk_tier=RiskTier.safe,
     )
 )
 
@@ -205,6 +209,7 @@ register(
             "required": ["key"],
         },
         run=_memory_recall,
+        risk_tier=RiskTier.safe,
     )
 )
 
@@ -223,5 +228,6 @@ register(
             "required": ["target_agent_id", "instruction"],
         },
         run=_call_agent,
+        risk_tier=RiskTier.execute,
     )
 )
