@@ -22,6 +22,8 @@ class ToolContext:
     session_id: str | None = None
     org_id: str | None = None
     user_id: str | None = None
+    current_task_id: str | None = None
+    root_run_id: str | None = None
 
 
 @dataclass

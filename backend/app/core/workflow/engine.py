@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.core.guardrails.approval import request_approval
 from app.core.guardrails.budget import BudgetTracker, RunBudget
-from app.core.tools.registry import BUILTIN_TOOLS
+from app.core.tools.registry import BUILTIN_TOOLS, execute_tool_call
 from app.core.tools.types import ToolContext
 from app.mcp.client import build_mcp_tool_spec
 from app.models.agent import Agent
@@ -106,7 +106,7 @@ async def run_workflow_events(
                 org_id=workflow.org_id,
                 user_id=workflow.created_by_user_id,
             )
-            return await spec.run(args, ctx)
+            return await execute_tool_call(spec, args, ctx)
         if kind == "approval":
             cfg = node.get("config", {}) or {}
             approval = await request_approval(
