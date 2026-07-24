@@ -17,6 +17,8 @@ from app.models.task import Task
 from app.models.usage import UsageEvent
 from app.models.user import User
 from app.models.workflow import Workflow
+from app.models.workflow_node_run import WorkflowNodeRun
+from app.models.workflow_run import WorkflowRun
 
 __all__ = [
     "Agent",
@@ -38,6 +40,8 @@ __all__ = [
     "UsageEvent",
     "User",
     "Workflow",
+    "WorkflowNodeRun",
+    "WorkflowRun",
     "AgentMemory",
     "SessionMemory",
 ]

@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -33,6 +34,8 @@ class Settings(BaseSettings):
     # Workflow / agent-loop tuning
     max_agent_depth: int = 5
     max_iterations: int = 12
+    workflow_execution_mode: Literal["inline", "queued"] = "inline"
+    redis_url: str = "redis://localhost:6379/0"
     budget_max_tool_calls: int = 40
     budget_max_cost_usd: float = 2.0
     budget_max_wall_seconds: float = 300.0
