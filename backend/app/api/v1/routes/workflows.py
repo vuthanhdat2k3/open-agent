@@ -3,9 +3,8 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.sse import format_sse
-from app.core.security import verify_api_key
 from app.core.workflow.engine import run_workflow
-from app.dependencies import get_current_org_id, get_db
+from app.dependencies import get_current_org_id, get_db, require_permission
 from app.schemas.workflow import (
     RunWorkflowRequest,
     WorkflowCreate,
@@ -17,18 +16,17 @@ from app.services.workflow_service import WorkflowService
 router = APIRouter(
     prefix="/api/workflows",
     tags=["workflows"],
-    dependencies=[Depends(verify_api_key)],
 )
 
 
-@router.get("", response_model=list[WorkflowOut])
+@router.get("", response_model=list[WorkflowOut], dependencies=[Depends(require_permission("workflows:read"))])
 async def list_workflows(
     org_id: str = Depends(get_current_org_id), db: AsyncSession = Depends(get_db)
 ):
     return await WorkflowService(db).list(org_id)
 
 
-@router.post("", response_model=WorkflowOut, status_code=201)
+@router.post("", response_model=WorkflowOut, status_code=201, dependencies=[Depends(require_permission("workflows:create"))])
 async def create_workflow(
     body: WorkflowCreate,
     org_id: str = Depends(get_current_org_id),
@@ -40,7 +38,7 @@ async def create_workflow(
         raise HTTPException(400, str(e))
 
 
-@router.get("/{id}", response_model=WorkflowOut)
+@router.get("/{id}", response_model=WorkflowOut, dependencies=[Depends(require_permission("workflows:read"))])
 async def get_workflow(
     id: str,
     org_id: str = Depends(get_current_org_id),
@@ -52,7 +50,7 @@ async def get_workflow(
     return wf
 
 
-@router.put("/{id}", response_model=WorkflowOut)
+@router.put("/{id}", response_model=WorkflowOut, dependencies=[Depends(require_permission("workflows:update"))])
 async def update_workflow(
     id: str,
     body: WorkflowUpdate,
@@ -65,7 +63,7 @@ async def update_workflow(
         raise HTTPException(404, str(e))
 
 
-@router.delete("/{id}")
+@router.delete("/{id}", dependencies=[Depends(require_permission("workflows:delete"))])
 async def delete_workflow(
     id: str,
     org_id: str = Depends(get_current_org_id),
@@ -76,7 +74,7 @@ async def delete_workflow(
     return {"ok": True}
 
 
-@router.post("/{id}/run")
+@router.post("/{id}/run", dependencies=[Depends(require_permission("workflows:run"))])
 async def run_workflow_endpoint(
     id: str,
     body: RunWorkflowRequest,

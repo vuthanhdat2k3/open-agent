@@ -253,10 +253,24 @@ async def _agent_stream(
                 if spec is None:
                     result = f"error: tool '{name}' not available"
                 else:
-                    try:
-                        result = await spec.run(args, ctx)
-                    except Exception as e:  # noqa: BLE001
-                        result = f"error executing tool: {e}"
+                    # Layer 1: risk-tier capability gate
+                    if spec.risk_tier.value not in agent.allowed_risk_tiers:
+                        result = (
+                            f"error: tool '{name}' requires risk tier "
+                            f"'{spec.risk_tier.value}' which is not enabled for this agent. "
+                            f"Allowed tiers: {agent.allowed_risk_tiers}"
+                        )
+                    # Layer 2: approval gate (M4 will add real approval flow)
+                    elif spec.requires_approval:
+                        result = (
+                            f"error: tool '{name}' requires human approval before execution. "
+                            "Approval is not yet supported in this version."
+                        )
+                    else:
+                        try:
+                            result = await spec.run(args, ctx)
+                        except Exception as e:  # noqa: BLE001
+                            result = f"error executing tool: {e}"
                 yield {
                     "event": "tool_result",
                     "data": {"name": name, "result": str(result)},

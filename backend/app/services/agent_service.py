@@ -17,12 +17,16 @@ class AgentService:
         data["org_id"] = org_id
         if user_id:
             data["created_by_user_id"] = user_id
+        if "allowed_risk_tiers" not in data or not data["allowed_risk_tiers"]:
+            data["allowed_risk_tiers"] = ["safe", "read"]
         return await self.repo.create(Agent(**data))
 
     async def update(self, org_id: str, id: str, data: dict) -> Agent:
         a = await self.repo.get(org_id, id)
         if a is None:
             raise ValueError("agent not found")
+        if "allowed_risk_tiers" in data and not data["allowed_risk_tiers"]:
+            data.pop("allowed_risk_tiers")
         return await self.repo.update(a, data)
 
     async def delete(self, org_id: str, id: str) -> bool:
@@ -51,6 +55,7 @@ class AgentService:
                     "name": spec.name,
                     "description": spec.description,
                     "available": True,
+                    "risk_tier": spec.risk_tier.value,
                 }
             )
         res = await self.repo.db.execute(

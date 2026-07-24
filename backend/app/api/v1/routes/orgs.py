@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth.api_key import generate_api_key
 from app.db.session import get_db
-from app.dependencies import get_current_user
+from app.dependencies import get_current_user, require_permission
 from app.models.api_key import ApiKey
 from app.models.membership import Membership
 from app.models.organization import Organization
@@ -60,7 +60,7 @@ async def _ensure_user_belongs_to_org(
     return membership
 
 
-@router.post("", response_model=OrgOut, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=OrgOut, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_permission("orgs:create"))])
 async def create_org(
     body: OrgCreateRequest,
     current_user: User = Depends(get_current_user),
@@ -78,7 +78,7 @@ async def create_org(
     return OrgOut(id=org.id, name=org.name, slug=org.slug, created_at=org.created_at)
 
 
-@router.get("/{id}/members", response_model=list[OrgMemberOut])
+@router.get("/{id}/members", response_model=list[OrgMemberOut], dependencies=[Depends(require_permission("orgs:read"))])
 async def list_org_members(
     id: str,
     current_user: User = Depends(get_current_user),
@@ -103,7 +103,7 @@ async def list_org_members(
     ]
 
 
-@router.post("/{id}/members", response_model=OrgMemberOut, status_code=status.HTTP_201_CREATED)
+@router.post("/{id}/members", response_model=OrgMemberOut, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_permission("orgs:manage"))])
 async def add_org_member(
     id: str,
     body: InviteMemberRequest,
@@ -144,7 +144,7 @@ async def add_org_member(
     )
 
 
-@router.delete("/{id}/members/{user_id}")
+@router.delete("/{id}/members/{user_id}", dependencies=[Depends(require_permission("orgs:manage"))])
 async def remove_org_member(
     id: str,
     user_id: str,
@@ -164,7 +164,7 @@ async def remove_org_member(
     return {"ok": True}
 
 
-@router.post("/{id}/api-keys", response_model=ApiKeyCreateResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/{id}/api-keys", response_model=ApiKeyCreateResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_permission("orgs:manage"))])
 async def create_api_key_endpoint(
     id: str,
     body: ApiKeyCreateRequest,
@@ -195,7 +195,7 @@ async def create_api_key_endpoint(
     )
 
 
-@router.get("/{id}/api-keys", response_model=list[ApiKeyOut])
+@router.get("/{id}/api-keys", response_model=list[ApiKeyOut], dependencies=[Depends(require_permission("orgs:read"))])
 async def list_api_keys(
     id: str,
     current_user: User = Depends(get_current_user),
@@ -210,7 +210,7 @@ async def list_api_keys(
     return [ApiKeyOut.model_validate(k) for k in res.scalars().all()]
 
 
-@router.delete("/{id}/api-keys/{key_id}")
+@router.delete("/{id}/api-keys/{key_id}", dependencies=[Depends(require_permission("orgs:manage"))])
 async def revoke_api_key(
     id: str,
     key_id: str,

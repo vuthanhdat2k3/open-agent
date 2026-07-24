@@ -1,26 +1,24 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.security import verify_api_key
-from app.dependencies import get_current_org_id, get_db
+from app.dependencies import get_current_org_id, get_db, require_permission
 from app.schemas.mcp import McpServerCreate, McpServerOut, McpServerUpdate
 from app.services.mcp_service import McpService
 
 router = APIRouter(
     prefix="/api/mcp/servers",
     tags=["mcp"],
-    dependencies=[Depends(verify_api_key)],
 )
 
 
-@router.get("", response_model=list[McpServerOut])
+@router.get("", response_model=list[McpServerOut], dependencies=[Depends(require_permission("mcp:read"))])
 async def list_servers(
     org_id: str = Depends(get_current_org_id), db: AsyncSession = Depends(get_db)
 ):
     return await McpService(db).list(org_id)
 
 
-@router.post("", response_model=McpServerOut, status_code=201)
+@router.post("", response_model=McpServerOut, status_code=201, dependencies=[Depends(require_permission("mcp:manage"))])
 async def create_server(
     body: McpServerCreate,
     org_id: str = Depends(get_current_org_id),
@@ -32,7 +30,7 @@ async def create_server(
         raise HTTPException(409, str(e))
 
 
-@router.get("/{id}", response_model=McpServerOut)
+@router.get("/{id}", response_model=McpServerOut, dependencies=[Depends(require_permission("mcp:read"))])
 async def get_server(
     id: str, org_id: str = Depends(get_current_org_id), db: AsyncSession = Depends(get_db)
 ):
@@ -42,7 +40,7 @@ async def get_server(
     return s
 
 
-@router.put("/{id}", response_model=McpServerOut)
+@router.put("/{id}", response_model=McpServerOut, dependencies=[Depends(require_permission("mcp:manage"))])
 async def update_server(
     id: str,
     body: McpServerUpdate,
@@ -55,7 +53,7 @@ async def update_server(
         raise HTTPException(404, str(e))
 
 
-@router.delete("/{id}")
+@router.delete("/{id}", dependencies=[Depends(require_permission("mcp:manage"))])
 async def delete_server(
     id: str, org_id: str = Depends(get_current_org_id), db: AsyncSession = Depends(get_db)
 ):
@@ -64,14 +62,14 @@ async def delete_server(
     return {"ok": True}
 
 
-@router.post("/{id}/connect")
+@router.post("/{id}/connect", dependencies=[Depends(require_permission("mcp:manage"))])
 async def connect(
     id: str, org_id: str = Depends(get_current_org_id), db: AsyncSession = Depends(get_db)
 ):
     return await McpService(db).connect(org_id, id)
 
 
-@router.post("/{id}/disconnect")
+@router.post("/{id}/disconnect", dependencies=[Depends(require_permission("mcp:manage"))])
 async def disconnect(
     id: str, org_id: str = Depends(get_current_org_id), db: AsyncSession = Depends(get_db)
 ):

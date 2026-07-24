@@ -37,6 +37,7 @@ export interface Agent {
   system_prompt: string;
   model_id: string;
   tools: string[];
+  allowed_risk_tiers: string[];
   max_iterations: number;
   temperature: number;
   created_at: string;

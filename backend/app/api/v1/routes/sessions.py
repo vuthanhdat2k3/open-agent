@@ -2,8 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.security import verify_api_key
-from app.dependencies import get_current_org_id, get_db
+from app.dependencies import get_current_org_id, get_db, require_permission
 from app.models.message import Message
 from app.models.session import Session
 from app.schemas.chat import ChatMessageOut, SessionOut
@@ -11,11 +10,10 @@ from app.schemas.chat import ChatMessageOut, SessionOut
 router = APIRouter(
     prefix="/api/sessions",
     tags=["sessions"],
-    dependencies=[Depends(verify_api_key)],
 )
 
 
-@router.get("", response_model=list[SessionOut])
+@router.get("", response_model=list[SessionOut], dependencies=[Depends(require_permission("sessions:read"))])
 async def list_sessions(
     org_id: str = Depends(get_current_org_id), db: AsyncSession = Depends(get_db)
 ):
@@ -25,7 +23,7 @@ async def list_sessions(
     return list(res.scalars().all())
 
 
-@router.get("/{session_id}/messages", response_model=list[ChatMessageOut])
+@router.get("/{session_id}/messages", response_model=list[ChatMessageOut], dependencies=[Depends(require_permission("sessions:read"))])
 async def list_messages(
     session_id: str, org_id: str = Depends(get_current_org_id), db: AsyncSession = Depends(get_db)
 ):
@@ -37,7 +35,7 @@ async def list_messages(
     return list(res.scalars().all())
 
 
-@router.delete("/{session_id}")
+@router.delete("/{session_id}", dependencies=[Depends(require_permission("sessions:delete"))])
 async def delete_session(
     session_id: str, org_id: str = Depends(get_current_org_id), db: AsyncSession = Depends(get_db)
 ):

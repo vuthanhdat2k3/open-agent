@@ -9,6 +9,7 @@ from typing import Any
 
 from app.config import get_settings
 from app.core.tools.registry import register
+from app.core.tools.risk_tier import RiskTier
 from app.core.tools.types import ToolContext, ToolSpec
 
 settings = get_settings()
@@ -124,6 +125,7 @@ register(
             "network (unless enabled). Provide 'language' (python|bash) and 'code'. "
             "Optional 'filename', 'timeout' (seconds)."
         ),
+        risk_tier=RiskTier.execute,
         input_schema={
             "type": "object",
             "properties": {

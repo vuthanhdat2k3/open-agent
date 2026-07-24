@@ -12,6 +12,7 @@ from app.core.memory_schema import (
     to_metadata_dict,
 )
 from app.core.tools.registry import register
+from app.core.tools.risk_tier import RiskTier
 from app.core.tools.types import ToolContext, ToolSpec
 from app.models.memory import AgentMemory
 
@@ -175,6 +176,7 @@ register(
             "required": ["memory_type", "attribute", "value"],
         },
         run=_save_memory,
+        risk_tier=RiskTier.safe,
     )
 )
 
@@ -207,5 +209,6 @@ register(
             "required": [],
         },
         run=_call_memory,
+        risk_tier=RiskTier.safe,
     )
 )

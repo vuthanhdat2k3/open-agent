@@ -5,6 +5,7 @@ from typing import Any
 
 from app.core.tools.paths import safe_resolve
 from app.core.tools.registry import register
+from app.core.tools.risk_tier import RiskTier
 from app.core.tools.types import ToolContext, ToolSpec
 
 MAX_SHELL_OUTPUT = 50_000
@@ -77,5 +78,7 @@ register(
             "required": ["cmd"],
         },
         run=_run_shell,
+        risk_tier=RiskTier.dangerous,
+        requires_approval=True,
     )
 )

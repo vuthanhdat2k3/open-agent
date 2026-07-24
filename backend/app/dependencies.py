@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.core.auth.api_key import hash_api_key
 from app.core.auth.jwt import verify_access_token
+from app.core.authz.policy import has_permission
 from app.db.session import get_db
 from app.models.api_key import ApiKey
 from app.models.membership import Membership
@@ -141,4 +142,46 @@ async def get_current_org_id(
     return DEFAULT_ORG_ID
 
 
-__all__ = ["get_db", "get_settings", "get_current_user", "get_current_org_id", "DEFAULT_ORG_ID"]
+def require_permission(permission: str):
+    """Enforce RBAC permission check against the resolved request org_id.
+
+    Note: Checks role in the org resolved by `get_current_org_id` (JWT home org or X-Org-Id).
+    Nested routes with explicit path parameters (e.g. `/orgs/{id}/members`) must perform
+    explicit resource-level membership checks to ensure operating on the target path org.
+    """
+
+    async def _checker(
+        request: Request,
+        db: AsyncSession = Depends(get_db),
+        current_user: User = Depends(get_current_user),
+        org_id: str = Depends(get_current_org_id),
+    ) -> None:
+        res = await db.execute(
+            select(Membership).where(
+                Membership.org_id == org_id,
+                Membership.user_id == current_user.id,
+            )
+        )
+        membership = res.scalar_one_or_none()
+        if membership is None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User does not belong to this organization",
+            )
+        if not has_permission(membership.role, permission):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Permission denied: {permission}",
+            )
+
+    return _checker
+
+
+__all__ = [
+    "get_db",
+    "get_settings",
+    "get_current_user",
+    "get_current_org_id",
+    "require_permission",
+    "DEFAULT_ORG_ID",
+]

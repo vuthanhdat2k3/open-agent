@@ -1,8 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.security import verify_api_key
-from app.dependencies import get_current_org_id, get_db
+from app.dependencies import get_current_org_id, get_db, require_permission
 from app.schemas.provider import (
     ProviderCreate,
     ProviderOut,
@@ -14,18 +13,17 @@ from app.services.provider_service import ProviderService
 router = APIRouter(
     prefix="/api/providers",
     tags=["providers"],
-    dependencies=[Depends(verify_api_key)],
 )
 
 
-@router.get("", response_model=list[ProviderOut])
+@router.get("", response_model=list[ProviderOut], dependencies=[Depends(require_permission("providers:read"))])
 async def list_providers(
     org_id: str = Depends(get_current_org_id), db: AsyncSession = Depends(get_db)
 ):
     return await ProviderService(db).list(org_id)
 
 
-@router.post("", response_model=ProviderOut, status_code=201)
+@router.post("", response_model=ProviderOut, status_code=201, dependencies=[Depends(require_permission("providers:manage"))])
 async def create_provider(
     body: ProviderCreate,
     org_id: str = Depends(get_current_org_id),
@@ -37,7 +35,7 @@ async def create_provider(
         raise HTTPException(400, str(e))
 
 
-@router.get("/{id}", response_model=ProviderOut)
+@router.get("/{id}", response_model=ProviderOut, dependencies=[Depends(require_permission("providers:read"))])
 async def get_provider(
     id: str, org_id: str = Depends(get_current_org_id), db: AsyncSession = Depends(get_db)
 ):
@@ -47,7 +45,7 @@ async def get_provider(
     return p
 
 
-@router.put("/{id}", response_model=ProviderOut)
+@router.put("/{id}", response_model=ProviderOut, dependencies=[Depends(require_permission("providers:manage"))])
 async def update_provider(
     id: str,
     body: ProviderUpdate,
@@ -60,7 +58,7 @@ async def update_provider(
         raise HTTPException(404, str(e))
 
 
-@router.delete("/{id}")
+@router.delete("/{id}", dependencies=[Depends(require_permission("providers:manage"))])
 async def delete_provider(
     id: str, org_id: str = Depends(get_current_org_id), db: AsyncSession = Depends(get_db)
 ):
@@ -69,7 +67,7 @@ async def delete_provider(
     return {"ok": True}
 
 
-@router.post("/{id}/test", response_model=ProviderTestResult)
+@router.post("/{id}/test", response_model=ProviderTestResult, dependencies=[Depends(require_permission("providers:manage"))])
 async def test_provider(
     id: str, org_id: str = Depends(get_current_org_id), db: AsyncSession = Depends(get_db)
 ):
