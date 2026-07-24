@@ -10,6 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.core.compactor import compact_session
+from app.core.guardrails.approval import request_approval
+from app.core.guardrails.budget import BudgetTracker, RunBudget
+from app.core.guardrails.injection import wrap_untrusted_if_flagged
+from app.core.guardrails.secrets import scan_and_redact
 from app.core.llm import LLMClient, resolve_api_key
 from app.core.tools.registry import BUILTIN_TOOLS
 from app.core.tools.types import ToolContext, tool_to_openai_schema
@@ -22,6 +26,7 @@ from app.models.usage import UsageEvent
 from app.schemas.chat import AgentLoopResult
 
 settings = get_settings()
+UNTRUSTED_TOOL_SOURCES = {"web_fetch", "rag_search", "read_attachment"}
 
 # Auto-injected into every agent's system prompt so the model is explicitly
 # told how to use the structured memory tools. The tool schemas are provided
@@ -103,6 +108,9 @@ async def _persist(
     org_id: str,
     created_by_user_id: str | None = None,
 ) -> None:
+    content, findings = scan_and_redact(content)
+    if findings:
+        meta = {**meta, "redacted_secret_findings": [f.kind for f in findings]}
     res = await db.execute(select(Message).where(Message.session_id == session_id))
     count = len(res.scalars().all())
     db.add(
@@ -206,6 +214,14 @@ async def _agent_stream(
     tool_calls_log: list[dict[str, Any]] = []
     consecutive_failures = 0
     max_retries = max(1, min(settings.sandbox_max_retries, agent.max_iterations))
+    budget = BudgetTracker(
+        RunBudget(
+            max_tool_calls=settings.budget_max_tool_calls,
+            max_cost_usd=settings.budget_max_cost_usd,
+            max_wall_seconds=settings.budget_max_wall_seconds,
+            max_repeated_call=settings.budget_max_repeated_call,
+        )
+    )
 
     for _ in range(agent.max_iterations):
         content_parts: list[str] = []
@@ -253,6 +269,28 @@ async def _agent_stream(
                 if spec is None:
                     result = f"error: tool '{name}' not available"
                 else:
+                    budget_reason = budget.record_call(name, args)
+                    if budget_reason:
+                        result = f"error: run budget exceeded: {budget_reason}"
+                        yield {
+                            "event": "budget_exceeded",
+                            "data": {"reason": budget_reason, "tool": name},
+                        }
+                        yield {
+                            "event": "tool_result",
+                            "data": {"name": name, "result": result},
+                        }
+                        tool_calls_log.append(
+                            {"name": name, "arguments": args, "result": result}
+                        )
+                        messages.append(
+                            {
+                                "role": "tool",
+                                "tool_call_id": entry["id"],
+                                "content": result,
+                            }
+                        )
+                        return
                     # Layer 1: risk-tier capability gate
                     if spec.risk_tier.value not in agent.allowed_risk_tiers:
                         result = (
@@ -260,27 +298,46 @@ async def _agent_stream(
                             f"'{spec.risk_tier.value}' which is not enabled for this agent. "
                             f"Allowed tiers: {agent.allowed_risk_tiers}"
                         )
-                    # Layer 2: approval gate (M4 will add real approval flow)
                     elif spec.requires_approval:
-                        result = (
-                            f"error: tool '{name}' requires human approval before execution. "
-                            "Approval is not yet supported in this version."
+                        approval = await request_approval(
+                            db,
+                            org_id=agent.org_id,
+                            run_type="agent",
+                            run_id=session_id,
+                            tool_name=name,
+                            args_snapshot=args,
+                            requested_by=agent.created_by_user_id,
                         )
+                        yield {
+                            "event": "approval_required",
+                            "data": {
+                                "approval_id": approval.id,
+                                "tool_name": name,
+                                "run_id": session_id,
+                            },
+                        }
+                        return
                     else:
                         try:
                             result = await spec.run(args, ctx)
                         except Exception as e:  # noqa: BLE001
                             result = f"error executing tool: {e}"
+                if name in UNTRUSTED_TOOL_SOURCES:
+                    result = wrap_untrusted_if_flagged(str(result), source=name)
+                result, secret_findings = scan_and_redact(str(result))
                 yield {
                     "event": "tool_result",
-                    "data": {"name": name, "result": str(result)},
+                    "data": {"name": name, "result": result},
                 }
-                tool_calls_log.append({"name": name, "arguments": args, "result": str(result)})
+                log_entry: dict[str, Any] = {"name": name, "arguments": args, "result": result}
+                if secret_findings:
+                    log_entry["redacted_secret_findings"] = [f.kind for f in secret_findings]
+                tool_calls_log.append(log_entry)
                 messages.append(
                     {
                         "role": "tool",
                         "tool_call_id": entry["id"],
-                        "content": str(result),
+                        "content": result,
                     }
                 )
                 if _is_tool_failure(name, result):

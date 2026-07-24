@@ -2,9 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import shutil
-import uuid
-from pathlib import Path
 from typing import Any
 
 from app.config import get_settings
@@ -63,41 +60,48 @@ async def _run_code(args: dict[str, Any], ctx: ToolContext) -> str:
     image, cmd = _LANG_IMAGES[language]
     filename = args.get("filename") or f"script.{'py' if language == 'python' else 'sh'}"
 
-    work_root = Path(ctx.workspace_dir).resolve() / ".sandbox"
-    work_root.mkdir(parents=True, exist_ok=True)
-    run_dir = work_root / uuid.uuid4().hex
-    run_dir.mkdir(parents=True, exist_ok=True)
-    target = run_dir / filename
-    target.write_text(str(code), encoding="utf-8")
+    filename = os.path.basename(str(filename)) or "script.py"
+    container_path = f"/work/{filename}"
 
     network = "none" if not settings.sandbox_allow_network else "bridge"
+    runner = f"cat > {container_path} && {cmd} {container_path}"
     docker_args = [
         "docker",
         "run",
         "--rm",
         "--network",
         network,
+        "--security-opt",
+        "no-new-privileges",
+        "--pids-limit",
+        "64",
+        "--read-only",
+        "--tmpfs",
+        "/work:rw,size=64m",
         "--memory",
         settings.sandbox_memory,
         "--cpus",
         str(settings.sandbox_cpus),
-        "-v",
-        f"{run_dir}:/work:rw",
         "-w",
         "/work",
         image,
-        cmd,
-        filename,
+        "sh",
+        "-c",
+        runner,
     ]
 
     try:
         proc = await asyncio.create_subprocess_exec(
             *docker_args,
+            stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
         )
         try:
-            out, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+            out, _ = await asyncio.wait_for(
+                proc.communicate(str(code).encode("utf-8")),
+                timeout=timeout,
+            )
         except TimeoutError:
             proc.kill()
             await proc.wait()
@@ -106,8 +110,6 @@ async def _run_code(args: dict[str, Any], ctx: ToolContext) -> str:
         return "error: docker CLI not found on the backend host"
     except Exception as e:  # noqa: BLE001
         return f"error executing sandbox: {e}"
-    finally:
-        shutil.rmtree(run_dir, ignore_errors=True)
 
     text = out.decode("utf-8", errors="replace") if out else ""
     if len(text) > MAX_SANDBOX_OUTPUT:
