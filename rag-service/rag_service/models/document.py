@@ -4,12 +4,17 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from sqlalchemy import DateTime, ForeignKey, Integer, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from rag_service.db.base import Base
+
+if TYPE_CHECKING:
+    from rag_service.models.chunk import Chunk
+    from rag_service.models.collection import Collection
 
 
 class Document(Base):
@@ -42,7 +47,7 @@ class Document(Base):
     )
 
     collection: Mapped["Collection"] = relationship(back_populates="documents")
-    chunks: Mapped[list["Chunk"]] = relationship(  # noqa: F821
+    chunks: Mapped[list["Chunk"]] = relationship(
         back_populates="document", cascade="all, delete-orphan"
     )
 

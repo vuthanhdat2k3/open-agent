@@ -10,7 +10,6 @@ import asyncio
 import time
 
 from rag_service.config import settings
-from rag_service.core.logging import logger
 from rag_service.pipeline.base import Embedder, TextChunk
 from rag_service.retrieval.bm25.base import BM25Index
 from rag_service.retrieval.rrf import reciprocal_rank_fusion

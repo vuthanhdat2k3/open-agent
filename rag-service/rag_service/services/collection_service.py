@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from rag_service.core.logging import logger
 from rag_service.exceptions import AlreadyExistsError, CollectionNotFoundError
-from rag_service.models import Collection
 from rag_service.repositories.chunk_repo import ChunkRepo
 from rag_service.repositories.collection_repo import CollectionRepo
 from rag_service.repositories.document_repo import DocumentRepo

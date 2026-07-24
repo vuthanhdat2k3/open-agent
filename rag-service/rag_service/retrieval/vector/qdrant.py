@@ -20,6 +20,10 @@ from typing import Any
 
 from qdrant_client import AsyncQdrantClient, models
 
+from rag_service.exceptions import VectorStoreUnavailableError
+from rag_service.pipeline.base import TextChunk
+from rag_service.retrieval.vector.base import VectorStore
+
 # Qdrant point IDs must be unsigned ints or UUIDs. Map logical string chunk_ids
 # (e.g. "chunk_abc123") to a deterministic UUID via UUID5 so the same chunk_id
 # always resolves to the same point id across upsert/delete/get_by_ids.
@@ -28,10 +32,6 @@ _POINT_NS = uuid.UUID("6f9619ff-8b86-d011-b42d-00cf4fc964ff")
 
 def _point_id(chunk_id: str) -> str:
     return str(uuid.uuid5(_POINT_NS, chunk_id))
-
-from rag_service.exceptions import VectorStoreUnavailableError
-from rag_service.pipeline.base import TextChunk
-from rag_service.retrieval.vector.base import VectorStore
 
 # Qdrant collection-name rule: start with letter/underscore, then [letter/digit/_].
 _QDRANT_NAME_RE = re.compile(r"[^a-zA-Z0-9_]")

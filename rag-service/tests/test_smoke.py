@@ -7,10 +7,8 @@ using the in-memory fallbacks forced in ``conftest.py``.
 
 from __future__ import annotations
 
-import os
 import pathlib
 
-import pytest
 
 
 # --------------------------------------------------------------------------- #

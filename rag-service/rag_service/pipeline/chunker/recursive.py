@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from rag_service.pipeline.base import TextChunk
 from rag_service.pipeline.chunker.base import Chunker, make_chunk
 
 

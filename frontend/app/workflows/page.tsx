@@ -168,7 +168,7 @@ export default function WorkflowsPage() {
       }));
       setGraph(updatedNodes, edges);
     }
-  }, [nodes.length]);
+  }, [nodes, edges, setGraph]);
 
   const addNode = (kind: GNode["kind"]) => {
     const id = `${kind}-${Math.random().toString(36).slice(2, 7)}`;

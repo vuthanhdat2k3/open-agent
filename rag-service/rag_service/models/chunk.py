@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from sqlalchemy import DateTime, ForeignKey, Integer, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from rag_service.db.base import Base
+
+if TYPE_CHECKING:
+    from rag_service.models.document import Document
 
 
 class Chunk(Base):
