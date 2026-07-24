@@ -4,6 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.core.quota.dependencies import _redis_client
 from app.db.base import Base
 from app.db.session import get_db
 from app.evals.cli import quality_gate_passes
@@ -32,7 +33,11 @@ def client(async_session_factory):
         async with async_session_factory() as session:
             yield session
 
+    async def _override_redis():
+        yield None
+
     app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[_redis_client] = _override_redis
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()

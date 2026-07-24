@@ -10,9 +10,12 @@ import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 
+import { getActiveOrgId } from "@/lib/auth";
+
 export default function ApiKeysPage() {
   const me = useMe();
-  const orgId = me.data?.memberships?.[0]?.org_id;
+  const activeOrgId = getActiveOrgId();
+  const orgId = activeOrgId || me.data?.memberships?.[0]?.org_id;
   const keys = useApiKeys(orgId);
   const create = useCreateApiKey(orgId);
   const revoke = useRevokeApiKey(orgId);

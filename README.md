@@ -1,30 +1,59 @@
 # OpenAgent
 
-> AgentOS v2 is the current architecture for the multi-user, RBAC, guardrailed,
-> observable, deployable system. See `docs/agentos-v2/ARCHITECTURE.md`.
-> This root README still keeps some v1 context for orientation.
+> **AgentOS v2** is the current architecture: multi-user, RBAC, guardrailed,
+> observable, deployable. See [`docs/agentos-v2/ARCHITECTURE.md`](docs/agentos-v2/ARCHITECTURE.md)
+> for the target design and [`docs/agentos-v2/IMPLEMENTATION_PLAN.md`](docs/agentos-v2/IMPLEMENTATION_PLAN.md)
+> for the milestone-by-milestone rollout (M0–M12, tenant quotas is the latest).
+> This root README covers day-to-day orientation across the whole repo.
 
-> A personal **multi-agent OS**. Layered **FastAPI** backend (Python) + **Next.js**
-> frontend (Tailwind + shadcn/ui + Zod + Zustand + TanStack Query). One
-> OpenAI-compatible LLM driver. A **graph-based multi-agent workflow engine**
-> (parallel — not sequential).
-
-A reduced, hackable reimagining of OpenFang (the Rust Agent OS): keep the useful
-core, make it scalable for one person.
+A **multi-agent OS**: layered **FastAPI** backend (Python, async SQLAlchemy 2.0)
++ **Next.js** frontend (Tailwind + shadcn/ui + Zod + Zustand + TanStack Query),
+with OpenAI-compatible LLM access, a **graph-based multi-agent workflow engine**
+(parallel fan-out/fan-in — not just a sequential pipeline), and two standalone
+**MCP microservices** (RAG retrieval, Google Drive) that plug in over the MCP
+protocol without any backend code changes.
 
 ---
 
 ## What it does
 
-- **Providers / Models** — manage OpenAI-compatible endpoints + their models.
-- **Agents** — system prompt + model + granted tool set.
-- **Tools** — `read_attachment`, `call_agent` (delegate to another agent),
-  `web_fetch`, `memory_store` / `memory_recall`, and MCP tools.
-- **Workflows** — connect agents into a **graph** that runs in parallel with
-  fan-out / fan-in / conditional branches (the upgrade over sequential pipelines).
-- **Chat** — streaming chat with any agent (UI or REST).
-- **Debug** — inspect messages, tool calls, token usage, latency.
+**Core**
+- **Providers / Models** — manage OpenAI-compatible endpoints and their models.
+- **Agents** — system prompt + model + granted tool set + risk-tiered
+  capabilities; versioned **releases** with an evaluation quality gate before
+  publish.
+- **Tools** — `read_attachment`, `write_file` / `list_dir` / `search_files`,
+  `call_agent` (delegate to another agent as an audited `Task`), `web_fetch`,
+  `run_shell` (sandboxed, requires approval), `memory_store` / `memory_recall`,
+  plus any tool exposed by a connected MCP server.
+- **Workflows** — connect agents/tools into a **DAG** that runs in parallel
+  (wavefront scheduler, `asyncio.gather` fan-out/fan-in, conditional edges),
+  with durable `WorkflowRun`/`WorkflowNodeRun` checkpoints and an optional
+  queued execution mode for scaling across worker processes.
+- **Chat** — streaming (SSE) chat with any agent, from the UI or REST.
+- **Debug** — inspect messages, tool calls, token usage, latency, and the
+  subagent delegation tree.
+- **Evaluations** — suites/datasets/graders that score agent releases;
+  publishing a release is blocked if it fails the pass-rate gate.
 - **Compactor** — summarize long sessions to fit the context window.
+
+**Platform (AgentOS v2)**
+- **Multi-tenant**: Organization → Membership → Role, enforced at the
+  repository layer (every query is scoped by `org_id`).
+- **AuthN/AuthZ**: JWT access + rotating refresh tokens, OAuth2/OIDC login,
+  API keys for machine-to-machine, static role→permission matrix
+  (`owner` / `admin` / `developer` / `viewer`).
+- **Guardrails**: prompt-injection filter, secret/PII scanner, loop &
+  cost/wall-clock circuit breakers, human-in-the-loop approval gate, append-only
+  audit log.
+- **Quotas**: per-org request/resource/storage limits enforced via a Redis
+  Lua-script sliding window, with an observe-only mode and fail-open/closed
+  policy per operation type.
+- **Sandbox**: hardened Docker execution for `run_shell` (`--network none`,
+  memory/cpu/pids limits, read-only rootfs, seccomp, hard timeout).
+- **Observability**: `structlog` JSON logs, OpenTelemetry tracing, Prometheus
+  metrics, Grafana dashboards, Loki log aggregation — all wired through
+  `trace_id`/`run_id`.
 
 ---
 
@@ -32,10 +61,15 @@ core, make it scalable for one person.
 
 | Layer | Choice |
 |-------|--------|
-| Backend | Python ≥ 3.11, FastAPI, SQLAlchemy 2.0 (async) + Alembic, SQLite→Postgres |
-| LLM | `openai` SDK (OpenAI-compatible only) |
-| MCP | `mcp` Python SDK (client) |
-| Frontend | Next.js 15 (App Router), Tailwind, shadcn/ui, Zod, Zustand, TanStack Query |
+| Backend | Python ≥ 3.10, FastAPI, SQLAlchemy 2.0 (async) + Alembic, SQLite (dev) / Postgres (`asyncpg`) |
+| Auth | JWT (`pyjwt`), Argon2 password hashing, OAuth2/OIDC (`authlib`) |
+| Queue | Redis + `arq` (durable agent/workflow jobs, quota backend) |
+| Vector DB | Qdrant (via `rag-service`) |
+| LLM | `openai` SDK (OpenAI-compatible endpoints only) |
+| MCP | `mcp` Python SDK — backend is a client; `rag-service` and `mcp-drive-server` are servers |
+| Sandbox | Docker (hardened container per tool execution) |
+| Observability | `structlog`, OpenTelemetry, Prometheus, Grafana, Loki |
+| Frontend | Next.js 15 (App Router), React 19, Tailwind, shadcn/ui, Zod, Zustand, TanStack Query |
 
 ---
 
@@ -43,28 +77,44 @@ core, make it scalable for one person.
 
 ```
 open-agent/
-├── docs/                 # ARCHITECTURE, database-schema, api-reference, modules/*
-├── backend/              # FastAPI: app/{db,models,schemas,repositories,services,core,api}
-└── frontend/             # Next.js: app/, components/, lib/, stores/, hooks/, types/
+├── docs/                 # ARCHITECTURE, database-schema, api-reference, modules/*, agentos-v2/*
+├── backend/              # FastAPI: app/{api,core,db,evals,mcp,models,repositories,schemas,services}
+├── frontend/              # Next.js: app/, components/, lib/, stores/, hooks/, types/
+├── rag-service/           # Standalone RAG microservice (MCP server + REST admin API)
+├── mcp-drive-server/      # Standalone Google Drive MCP server (stdio)
+├── observability/         # Grafana dashboards + Prometheus config
+├── scripts/               # Root-level e2e smoke tests (agent releases, evaluations, tenant quotas)
+└── docker-compose.yml     # postgres, redis, api, worker, frontend, qdrant, rag-service,
+                            # mcp-drive-server (profile: optional), prometheus/grafana/loki/otel-collector (profile: observability)
 ```
 
-Read `docs/ARCHITECTURE.md` for the big picture, `docs/database-schema.md` for
-the DB, `docs/api-reference.md` for the REST surface, and `docs/modules/*` for
-per-module design (especially `workflows.md`).
+Backend layering is strict `routes → services → repositories → models`;
+cross-cutting concerns (auth, RBAC, guardrails, quotas, observability) attach
+via FastAPI dependencies/middleware rather than living inside business logic.
+
+Read [`docs/agentos-v2/ARCHITECTURE.md`](docs/agentos-v2/ARCHITECTURE.md) for
+the full v2 design, [`docs/database-schema.md`](docs/database-schema.md) for
+the DB, [`docs/api-reference.md`](docs/api-reference.md) for the REST surface,
+and [`docs/modules/*`](docs/modules) for per-module design (agents, workflows,
+tools, mcp, chat, debug, sandbox-tools, compactor, providers, models).
 
 ---
 
 ## Quick Start (dev)
 
-Docker Compose path:
+### Docker Compose (full stack)
 
 ```bash
 cp .env.example .env
 docker compose up --build
 ```
 
-Then open the frontend at `http://localhost:3000` and the API at
-`http://localhost:8000`.
+Brings up `frontend` (:3000), `api` (:8000), `worker` (arq), `postgres`,
+`redis`, `qdrant`, and `rag-service`. Add `--profile optional` for
+`mcp-drive-server`, or `--profile observability` for
+`prometheus`/`grafana`/`loki`/`otel-collector`.
+
+### Manual (backend + frontend only, SQLite)
 
 ```bash
 # Backend
@@ -80,12 +130,36 @@ npm install
 npm run dev                   # http://localhost:3000  (proxies /api → :8000)
 ```
 
+### Optional MCP microservices
+
+Each is independent and only couples to the backend via the MCP protocol —
+see their own READMEs for setup: [`rag-service/README.md`](rag-service/README.md)
+(hybrid BM25 + semantic retrieval, boots with zero external services via
+in-memory fallbacks) and [`mcp-drive-server/README.md`](mcp-drive-server/README.md)
+(Google Drive file listing/reading, requires a one-time Google Cloud OAuth
+setup — **do not commit the resulting `credentials.json`/`token.json`**, they
+already sit in `.gitignore`).
+
 ---
 
-## Scope (v1)
+## Testing
 
-**In:** providers, models, agents, MCP, chat, debug, compactor, graph workflows.
-**Out (for now):** multi-user RBAC, channel adapters (Telegram/Discord/...),
-P2P networking, WASM sandbox. Add later as needed.
+```bash
+cd backend && pytest              # unit + integration (auth, authz, quotas, guardrails, workflows, evals, mcp, ...)
+cd frontend && npm run typecheck && npm run lint && npm run build
+python scripts/e2e_tenant_quotas.py   # e2e smoke tests against a running stack (frontend :3000 proxy)
+python scripts/e2e_evaluations.py
+python scripts/e2e_agent_releases.py
+```
+
+---
+
+## Scope
+
+**In:** providers, models, agents (+ versioned releases & evaluation gate),
+MCP, chat, debug, compactor, graph workflows, multi-org RBAC, quotas,
+guardrails, sandboxed tool execution, observability.
+**Deliberately out (see [ARCHITECTURE.md §10](docs/agentos-v2/ARCHITECTURE.md)):**
+dynamic ABAC/policy engine, Kubernetes manifests, microVM sandboxing, billing.
 
 MIT.

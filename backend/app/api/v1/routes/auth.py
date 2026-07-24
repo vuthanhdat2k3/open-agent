@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -179,11 +180,25 @@ async def refresh_token_route(
     # Revoke old token (Rotation)
     token_obj.revoked_at = now
 
-    # Get primary membership
-    res_m = await db.execute(
-        select(Membership).where(Membership.user_id == token_obj.user_id).order_by(Membership.created_at)
-    )
-    membership = res_m.scalars().first()
+    # Check if user requested a specific active_org_id via cookie
+    active_org_id = request.cookies.get("active_org_id")
+    membership = None
+    if active_org_id:
+        res_m = await db.execute(
+            select(Membership).where(
+                Membership.user_id == token_obj.user_id,
+                Membership.org_id == active_org_id,
+            )
+        )
+        membership = res_m.scalar_one_or_none()
+
+    if not membership:
+        # Fallback to primary membership
+        res_m = await db.execute(
+            select(Membership).where(Membership.user_id == token_obj.user_id).order_by(Membership.created_at)
+        )
+        membership = res_m.scalars().first()
+
     org_id = membership.org_id if membership else "default-org-id"
     role = membership.role if membership else "developer"
 
@@ -217,6 +232,7 @@ async def logout(request: Request, response: Response, db: AsyncSession = Depend
             await db.commit()
 
     response.delete_cookie("refresh_token")
+    response.delete_cookie("active_org_id")
     return {"ok": True}
 
 
@@ -246,6 +262,47 @@ async def me(current_user: User = Depends(get_current_user), db: AsyncSession = 
         created_at=current_user.created_at,
         memberships=memberships_out,
     )
+
+
+class SwitchOrgRequest(BaseModel):
+    org_id: str
+
+
+@router.post("/switch-org", response_model=TokenResponse)
+async def switch_org(
+    body: SwitchOrgRequest,
+    response: Response,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    res = await db.execute(
+        select(Membership).where(
+            Membership.user_id == current_user.id,
+            Membership.org_id == body.org_id,
+        )
+    )
+    membership = res.scalar_one_or_none()
+    if not membership:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User does not belong to this organization",
+        )
+
+    access_token = create_access_token(
+        user_id=current_user.id,
+        org_id=membership.org_id,
+        role=membership.role,
+    )
+    response.set_cookie(
+        key="active_org_id",
+        value=membership.org_id,
+        httponly=True,
+        secure=settings.cookie_secure,
+        samesite="lax",
+        max_age=settings.jwt_refresh_ttl_days * 24 * 60 * 60,
+    )
+    return TokenResponse(access_token=access_token)
+
 
 
 @router.get("/oauth/{provider}")

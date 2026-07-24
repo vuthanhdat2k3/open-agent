@@ -4,6 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.core.quota.dependencies import _redis_client
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
@@ -30,10 +31,15 @@ def client(async_session_factory):
         async with async_session_factory() as session:
             yield session
 
+    async def _override_redis():
+        yield None
+
     app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[_redis_client] = _override_redis
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
+
 
 
 def _register(client: TestClient, email: str, org_name: str) -> tuple[str, str]:
@@ -114,6 +120,51 @@ def test_release_draft_publish_and_rollback(client: TestClient) -> None:
     unchanged = client.get(f"/api/agents/{agent['id']}", headers=headers)
     assert unchanged.json()["system_prompt"] == "version one"
     assert unchanged.json()["active_release_id"] == agent["active_release_id"]
+
+    # Create a failing evaluation run for draft release 2
+    suite = client.post(
+        "/api/evaluations/suites",
+        headers=headers,
+        json={"name": "Gate Suite", "agent_id": agent["id"]},
+    ).json()
+    case = client.post(
+        f"/api/evaluations/suites/{suite['id']}/cases",
+        headers=headers,
+        json={"input": "test input", "expected_output": "correct output"},
+    ).json()
+    failed_run = client.post(
+        f"/api/evaluations/suites/{suite['id']}/runs",
+        headers=headers,
+        json={
+            "agent_release_id": draft.json()["id"],
+            "execution_mode": "recorded",
+            "recorded_outputs": [
+                {"case_id": case["id"], "output": "wrong output"}
+            ],
+        },
+    )
+    assert failed_run.status_code == 201
+
+    # Attempt to publish release 2 should fail quality gate
+    fail_pub = client.post(
+        f"/api/agents/{agent['id']}/releases/2/publish", headers=headers
+    )
+    assert fail_pub.status_code == 400
+    assert "failed quality gate" in fail_pub.json()["detail"]
+
+    # Pass the quality gate by creating a successful run
+    pass_run = client.post(
+        f"/api/evaluations/suites/{suite['id']}/runs",
+        headers=headers,
+        json={
+            "agent_release_id": draft.json()["id"],
+            "execution_mode": "recorded",
+            "recorded_outputs": [
+                {"case_id": case["id"], "output": "correct output"}
+            ],
+        },
+    )
+    assert pass_run.status_code == 201
 
     published = client.post(
         f"/api/agents/{agent['id']}/releases/2/publish", headers=headers
