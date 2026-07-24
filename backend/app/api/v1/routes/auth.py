@@ -16,6 +16,7 @@ from app.core.auth.jwt import (
 from app.core.auth.oauth import oauth
 from app.core.auth.password import hash_password, verify_password
 from app.core.observability.audit import log_action
+from app.db.base import utc_now
 from app.db.session import get_db
 from app.dependencies import get_current_user
 from app.models.membership import Membership
@@ -80,7 +81,7 @@ async def register(
     # Issue Tokens
     access_token = create_access_token(user_id=user.id, org_id=org.id, role=Role.owner)
     raw_rt, rt_hash = create_refresh_token()
-    now = datetime.now(timezone.utc)
+    now = utc_now()
     exp = now + timedelta(days=settings.jwt_refresh_ttl_days)
 
     db.add(
@@ -124,7 +125,7 @@ async def login(
         user_id=user.id, org_id=membership.org_id, role=membership.role
     )
     raw_rt, rt_hash = create_refresh_token()
-    now = datetime.now(timezone.utc)
+    now = utc_now()
     exp = now + timedelta(days=settings.jwt_refresh_ttl_days)
 
     db.add(
@@ -163,12 +164,14 @@ async def refresh_token_route(
     token_obj = res.scalar_one_or_none()
 
     now = datetime.now(timezone.utc)
-    expires_at = token_obj.expires_at
-    if expires_at.tzinfo is None:
+    expires_at = token_obj.expires_at if token_obj else None
+    if expires_at and expires_at.tzinfo is None:
         expires_at = expires_at.replace(tzinfo=timezone.utc)
-    else:
+    elif expires_at:
         expires_at = expires_at.astimezone(timezone.utc)
-    if not token_obj or token_obj.revoked_at is not None or expires_at < now:
+
+    if not token_obj or token_obj.revoked_at is not None or (expires_at and expires_at < now):
+
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or revoked refresh token")
 
     # Revoke old token (Rotation)
@@ -208,7 +211,7 @@ async def logout(request: Request, response: Response, db: AsyncSession = Depend
         res = await db.execute(select(RefreshToken).where(RefreshToken.token_hash == rt_hash))
         token_obj = res.scalar_one_or_none()
         if token_obj and token_obj.revoked_at is None:
-            token_obj.revoked_at = datetime.now(timezone.utc)
+            token_obj.revoked_at = utc_now()
             await db.commit()
 
     response.delete_cookie("refresh_token")
@@ -321,7 +324,7 @@ async def oauth_callback(
         role=membership.role if membership else "owner",
     )
     raw_rt, rt_hash = create_refresh_token()
-    now = datetime.now(timezone.utc)
+    now = utc_now()
     exp = now + timedelta(days=settings.jwt_refresh_ttl_days)
 
     db.add(RefreshToken(user_id=user.id, token_hash=rt_hash, expires_at=exp))

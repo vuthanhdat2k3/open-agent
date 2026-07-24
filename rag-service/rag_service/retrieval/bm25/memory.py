@@ -6,7 +6,6 @@ collection under ``RAG_BM25_PERSIST_DIR`` and reloaded on startup.
 
 from __future__ import annotations
 
-import asyncio
 import pickle
 from typing import Any
 

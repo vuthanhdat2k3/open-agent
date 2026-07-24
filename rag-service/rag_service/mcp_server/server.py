@@ -11,11 +11,9 @@ implementation functions.
 
 from __future__ import annotations
 
-import json
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator
 
-from rag_service.config import settings
 from rag_service.core.logging import logger
 from rag_service.db.base import get_sessionmaker
 from rag_service.dependencies import get_components

@@ -33,7 +33,7 @@ services:
       OPENAGENT_DB_URL: postgresql+asyncpg://${POSTGRES_USER:-openagent}:${POSTGRES_PASSWORD:-openagent}@postgres:5432/${POSTGRES_DB:-openagent}
       OPENAGENT_REDIS_URL: redis://redis:6379/0
       OPENAGENT_WORKFLOW_EXECUTION_MODE: ${OPENAGENT_WORKFLOW_EXECUTION_MODE:-inline}
-      OPENAGENT_JWT_SECRET_KEY: ${OPENAGENT_JWT_SECRET_KEY:-dev-secret-change-me}
+      OPENAGENT_JWT_SECRET_KEY: ${OPENAGENT_JWT_SECRET_KEY:-local-dev-secret-change-me-32-bytes}
       OPENAGENT_COOKIE_SECURE: ${OPENAGENT_COOKIE_SECURE:-false}
       OPENAGENT_OTEL_ENABLED: ${OPENAGENT_OTEL_ENABLED:-false}
       OPENAGENT_OTEL_EXPORTER_ENDPOINT: ${OPENAGENT_OTEL_EXPORTER_ENDPOINT:-}
@@ -66,7 +66,10 @@ services:
   frontend:
     build:
       context: ./frontend
+      args:
+        API_INTERNAL_URL: ${API_INTERNAL_URL:-http://api:8000}
     environment:
+      API_INTERNAL_URL: ${API_INTERNAL_URL:-http://api:8000}
       NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
     ports:
       - "3000:3000"
@@ -131,4 +134,3 @@ services:
 volumes:
   postgres-data:
   qdrant-data:
-

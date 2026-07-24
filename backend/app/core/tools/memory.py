@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import select
@@ -14,6 +13,7 @@ from app.core.memory_schema import (
 from app.core.tools.registry import register
 from app.core.tools.risk_tier import RiskTier
 from app.core.tools.types import ToolContext, ToolSpec
+from app.db.base import utc_now
 from app.models.memory import AgentMemory
 
 
@@ -52,7 +52,7 @@ async def _save_memory(args: dict[str, Any], ctx: ToolContext) -> str:
         existing.source = norm.source
         if meta:
             existing.meta = meta
-        existing.updated_at = datetime.now(timezone.utc)
+        existing.updated_at = utc_now()
     else:
         org_id = ctx.org_id
         if not org_id and ctx.agent_id:
@@ -101,7 +101,7 @@ async def _call_memory(args: dict[str, Any], ctx: ToolContext) -> str:
     memories = res.scalars().all()
 
     # Mark accessed for future retrieval ranking.
-    now = datetime.now(timezone.utc)
+    now = utc_now()
     for m in memories:
         m.last_accessed_at = now
 

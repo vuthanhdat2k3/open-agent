@@ -61,7 +61,8 @@ export default function ChatPage() {
 
   // Auto-select first agent
   React.useEffect(() => {
-    if (agents.data?.length && !agentId) setAgentId(agents.data[0].id);
+    if (!agents.data?.length) return;
+    setAgentId((current) => current || agents.data![0].id);
   }, [agents.data]);
 
   // Reset model override when agent changes

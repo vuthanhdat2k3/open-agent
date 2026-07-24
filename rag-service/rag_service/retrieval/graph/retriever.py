@@ -9,7 +9,6 @@ return ``[]`` / empty results when the graph is empty or unavailable.
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Any
 
 from rag_service.core.logging import logger
 from rag_service.pipeline.base import TextChunk

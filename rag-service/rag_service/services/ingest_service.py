@@ -21,7 +21,7 @@ from rag_service.exceptions import (
     RAGError,
     UnsupportedFormatError,
 )
-from rag_service.models import Chunk, Document, IngestJob
+from rag_service.models import Chunk, Document
 from rag_service.pipeline.base import IngestOptions, TextChunk
 from rag_service.repositories.chunk_repo import ChunkRepo
 from rag_service.repositories.collection_repo import CollectionRepo

@@ -324,6 +324,23 @@ class TestRouteRBAC:
         )
         assert resp.status_code == 403
 
+    def test_owner_can_create_mcp_server_with_empty_tools(self, client: TestClient) -> None:
+        owner_token = _register(client, "mcp_owner_create@test.com", PASSWORD, "MCP Create")
+        org_id = _get_org_id(client, owner_token)
+
+        resp = client.post(
+            "/api/mcp/servers",
+            headers=_auth_headers(owner_token, org_id),
+            json={
+                "name": "rag",
+                "transport": "http",
+                "url": "http://rag-service:8100",
+            },
+        )
+
+        assert resp.status_code == 201, resp.text
+        assert resp.json()["tools"] == []
+
     def test_admin_can_manage_org(self, client: TestClient) -> None:
         owner_token = _register(client, "ao_owner@test.com", PASSWORD, "AdminOrg")
         org_id = _get_org_id(client, owner_token)

@@ -1,7 +1,9 @@
 import asyncio
 from collections.abc import AsyncGenerator
 
+from sqlalchemy import inspect
 from sqlalchemy.ext.asyncio import (
+    AsyncConnection,
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
@@ -22,6 +24,10 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
         yield session
 
 
+async def _has_table(conn: AsyncConnection, table_name: str) -> bool:
+    return await conn.run_sync(lambda sync_conn: inspect(sync_conn).has_table(table_name))
+
+
 async def init_db() -> None:
     """Apply database schema via Alembic (production path).
 
@@ -29,20 +35,11 @@ async def init_db() -> None:
     For a fresh database or DB initialized via create_all, we create missing
     tables and stamp at head so future upgrades apply incrementally.
     """
-    from sqlalchemy import text as _text
-
     from app import models  # noqa: F401  (register models on Base.metadata)
 
     async with engine.begin() as conn:
-        res_agents = await conn.execute(
-            _text("SELECT name FROM sqlite_master WHERE type='table' AND name='agents'")
-        )
-        has_agents = res_agents.first() is not None
-
-        res_alembic = await conn.execute(
-            _text("SELECT name FROM sqlite_master WHERE type='table' AND name='alembic_version'")
-        )
-        has_alembic = res_alembic.first() is not None
+        has_agents = await _has_table(conn, "agents")
+        has_alembic = await _has_table(conn, "alembic_version")
 
     from alembic.config import Config
 
@@ -50,6 +47,7 @@ async def init_db() -> None:
 
     cfg = Config("alembic.ini")
     cfg.set_main_option("script_location", "alembic")
+    cfg.set_main_option("sqlalchemy.url", engine.url.render_as_string(hide_password=False))
 
     if not has_agents or not has_alembic:
         async with engine.begin() as conn:

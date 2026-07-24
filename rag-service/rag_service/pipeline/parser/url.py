@@ -7,7 +7,6 @@ otherwise plain text).
 
 from __future__ import annotations
 
-from rag_service.core.logging import logger
 from rag_service.exceptions import ParseError
 from rag_service.pipeline.base import Parser, ParseResult
 

@@ -44,7 +44,6 @@ class NetworkXGraphStore:
     async def upsert(
         self, collection_id: str, graph_data_list: list[Any]
     ) -> None:
-        nx = self._ensure_nx()
         g = self._g()
         for gd in graph_data_list:
             for ent in gd.entities:

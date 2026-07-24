@@ -14,8 +14,12 @@ Swap to production backends via env vars (see ``configuration.md``).
 
 from __future__ import annotations
 
+import hashlib
+import math
 from dataclasses import dataclass, field
 from typing import Any
+
+import numpy as np
 
 from rag_service.config import settings
 from rag_service.core.logging import logger
@@ -63,12 +67,6 @@ def build_vector_store() -> VectorStore:
 # --------------------------------------------------------------------------- #
 # Embedder
 # --------------------------------------------------------------------------- #
-import hashlib
-import math
-
-import numpy as np
-
-
 class _FallbackEmbedder(Embedder):
     """Zero-dependency deterministic embedder (hashed bag-of-words, L2-normalized).
 
