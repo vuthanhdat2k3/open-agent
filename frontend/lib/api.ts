@@ -1,5 +1,6 @@
 // API client — calls are relative (/api/...) because next.config.mjs proxies
 // /api/* to the FastAPI backend on :8000.
+import { getAccessToken, refreshAccessToken } from "@/lib/auth";
 
 export interface SseEvent {
   event: string;
@@ -7,10 +8,25 @@ export interface SseEvent {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = getAccessToken();
   const res = await fetch(path, {
-    headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(init?.headers || {}),
+    },
     ...init,
   });
+  if (res.status === 401) {
+    const refreshed = await refreshAccessToken();
+    if (refreshed) {
+      return request<T>(path, init);
+    }
+    if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
+      window.location.href = "/login";
+    }
+  }
   if (!res.ok) {
     let detail = res.statusText;
     try {
@@ -42,7 +58,11 @@ export async function streamSSE(
 ): Promise<void> {
   const res = await fetch(path, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      ...(getAccessToken() ? { Authorization: `Bearer ${getAccessToken()}` } : {}),
+    },
     body: JSON.stringify(body),
   });
   if (!res.ok || !res.body) {

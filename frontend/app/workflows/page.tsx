@@ -35,7 +35,7 @@ import {
 
 type GNode = {
   id: string;
-  kind: "input" | "agent" | "tool" | "merge" | "output";
+  kind: "input" | "agent" | "tool" | "merge" | "output" | "approval" | "sub_workflow";
   label: string;
   agent_id?: string;
   merge_mode?: "all" | "any";

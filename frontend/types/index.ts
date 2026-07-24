@@ -40,6 +40,7 @@ export interface Agent {
   allowed_risk_tiers: string[];
   max_iterations: number;
   temperature: number;
+  kind: "worker" | "orchestrator";
   created_at: string;
   updated_at: string;
 }
@@ -48,6 +49,7 @@ export interface AgentToolInfo {
   name: string;
   description: string;
   available: boolean;
+  risk_tier?: "safe" | "read" | "write" | "execute" | "network" | "dangerous";
 }
 
 export interface McpTool {
@@ -76,8 +78,9 @@ export interface McpServer {
 
 export interface GraphNode {
   id: string;
-  kind: "input" | "agent" | "tool" | "merge" | "output";
+  kind: "input" | "agent" | "tool" | "merge" | "output" | "approval" | "sub_workflow";
   label: string;
+  position?: { x: number; y: number };
   agent_id?: string;
   merge_mode?: "all" | "any";
   config: Record<string, any>;
@@ -142,4 +145,79 @@ export interface IngestResult {
   ok: boolean;
   result: string;
   document_id: string | null;
+}
+
+export interface OrgMember {
+  user_id: string;
+  email: string;
+  display_name: string;
+  role: "owner" | "admin" | "developer" | "viewer";
+  created_at: string;
+}
+
+export interface ApiKey {
+  id: string;
+  name: string;
+  key_prefix: string;
+  created_at: string;
+  expires_at: string | null;
+}
+
+export interface ApiKeyCreateResponse {
+  api_key: ApiKey;
+  secret_key: string;
+}
+
+export interface ApprovalRequest {
+  id: string;
+  org_id: string;
+  run_type: "agent" | "workflow";
+  run_id: string | null;
+  tool_name: string | null;
+  node_id: string | null;
+  args_snapshot: Record<string, unknown>;
+  status: "pending" | "approved" | "rejected" | "expired";
+  requested_by: string | null;
+  decided_by: string | null;
+  reason: string;
+  created_at: string;
+}
+
+export interface TaskTreeNode {
+  id: string;
+  parent_task_id: string | null;
+  root_run_id: string;
+  agent_id: string;
+  goal: string;
+  status: string;
+  result: string | null;
+  cost_usd: number;
+  token_usage: Record<string, unknown>;
+  depth: number;
+  children: TaskTreeNode[];
+}
+
+export interface TaskTree {
+  root_run_id: string;
+  tasks: TaskTreeNode[];
+}
+
+export interface WorkflowRunDetail {
+  id: string;
+  workflow_id: string;
+  status: string;
+  input: Record<string, unknown>;
+  output: Record<string, unknown>;
+  error: string | null;
+  nodes: Array<{
+    id: string;
+    node_id: string;
+    status: string;
+    attempt: number;
+    input: Record<string, unknown>;
+    output: Record<string, unknown>;
+    error: string | null;
+    started_at: string;
+    finished_at: string | null;
+  }>;
 }

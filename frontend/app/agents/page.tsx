@@ -112,6 +112,14 @@ export default function AgentsPage() {
     balanced: "border-info/60 text-info bg-info/10",
     economy: "border-muted-foreground/40 text-muted-foreground bg-muted/20",
   };
+  const riskColor: Record<string, string> = {
+    safe: "border-muted-foreground/40 bg-muted/30 text-muted-foreground",
+    read: "border-info/50 bg-info/10 text-info",
+    write: "border-warning/50 bg-warning/10 text-warning",
+    execute: "border-orange-500/50 bg-orange-500/10 text-orange-400",
+    network: "border-violet-500/50 bg-violet-500/10 text-violet-400",
+    dangerous: "border-destructive/50 bg-destructive/10 text-destructive",
+  };
 
   return (
     <div className="space-y-6">
@@ -217,6 +225,11 @@ export default function AgentsPage() {
                             }`}
                           >
                             <Wrench className="h-2.5 w-2.5" /> {t.name}
+                            {t.risk_tier && (
+                              <span className={`ml-1 rounded-full border px-1.5 py-0.5 ${riskColor[t.risk_tier]}`}>
+                                {t.risk_tier}
+                              </span>
+                            )}
                           </Badge>
                         </button>
                       );
@@ -346,6 +359,11 @@ export default function AgentsPage() {
                       {a.tools.map((t) => (
                         <Badge key={t} variant="outline" className="gap-1 font-mono text-[10px] bg-muted/30 border-border/50">
                           <Wrench className="h-2.5 w-2.5" /> {t}
+                          {tools.data?.find((tool) => tool.name === t)?.risk_tier && (
+                            <span className="text-muted-foreground">
+                              {tools.data.find((tool) => tool.name === t)?.risk_tier}
+                            </span>
+                          )}
                         </Badge>
                       ))}
                     </div>
