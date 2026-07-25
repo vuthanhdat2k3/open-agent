@@ -49,7 +49,7 @@ export default function MembersPage() {
               <option value="admin">admin</option>
             </Select>
           </div>
-          <Button className="mt-auto gap-2 active-tactile transition-transform" onClick={submit} disabled={!email || invite.isPending}>
+          <Button className="self-end gap-2 active-tactile transition-transform" onClick={submit} disabled={!email || invite.isPending}>
             <UserPlus className="h-4 w-4" /> Add
           </Button>
         </CardContent>

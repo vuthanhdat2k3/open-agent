@@ -56,6 +56,17 @@ class RunWorkflowRequest(BaseModel):
     stream: bool = True
 
 
+class WorkflowGenerateRequest(BaseModel):
+    prompt: str
+    model_id: str
+
+
+class WorkflowGenerateResponse(BaseModel):
+    name: str
+    description: str = ""
+    graph: WorkflowGraph
+
+
 class WorkflowRunEvent(BaseModel):
     event: str  # "node_start" | "node_done" | "node_error" | "edge" | "done" | "error"
     node_id: str | None = None
