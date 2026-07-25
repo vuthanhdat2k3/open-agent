@@ -55,6 +55,9 @@ async def update_model(
 async def delete_model(
     id: str, org_id: str = Depends(get_current_org_id), db: AsyncSession = Depends(get_db)
 ):
-    if not await ModelService(db).delete(org_id, id):
-        raise HTTPException(404, "model not found")
+    try:
+        if not await ModelService(db).delete(org_id, id):
+            raise HTTPException(404, "model not found")
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     return {"ok": True}
