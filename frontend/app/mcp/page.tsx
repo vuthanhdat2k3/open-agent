@@ -185,7 +185,11 @@ export default function McpPage() {
                     size="sm"
                     variant="destructive"
                     className="gap-1.5 active-tactile transition-transform"
-                    onClick={() => del.mutate(s.id)}
+                    onClick={() => {
+                      if (window.confirm(`Xóa MCP server "${s.name}"? Hành động này không thể hoàn tác.`)) {
+                        del.mutate(s.id);
+                      }
+                    }}
                   >
                     <Trash2 className="h-3.5 w-3.5" /> Delete
                   </Button>

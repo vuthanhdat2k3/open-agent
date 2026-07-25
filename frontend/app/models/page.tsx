@@ -127,7 +127,11 @@ export default function ModelsPage() {
                       size="icon"
                       variant="ghost"
                       className="h-8 w-8 text-muted-foreground hover:text-destructive active-tactile transition-transform"
-                      onClick={() => del.mutate(m.id)}
+                      onClick={() => {
+                        if (window.confirm(`Xóa model "${m.display_name || m.name}"? Hành động này không thể hoàn tác.`)) {
+                          del.mutate(m.id);
+                        }
+                      }}
                       aria-label={`Delete ${m.display_name}`}
                     >
                       <Trash2 className="h-4 w-4" />

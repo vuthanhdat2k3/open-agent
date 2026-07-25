@@ -32,6 +32,12 @@ export function AgentCard({
 }: AgentCardProps) {
   const agentModel = models?.find((m) => m.id === agent.model_id);
 
+  const handleDelete = () => {
+    if (window.confirm(`Xóa agent "${agent.name}"? Hành động này không thể hoàn tác.`)) {
+      onDelete(agent.id);
+    }
+  };
+
   return (
     <Card glass className="card-lift flex flex-col p-5 group">
       {/* Header */}
@@ -73,7 +79,7 @@ export function AgentCard({
             size="icon"
             variant="ghost"
             className="h-7 w-7 text-muted-foreground hover:text-destructive active-tactile transition-transform"
-            onClick={() => onDelete(agent.id)}
+            onClick={handleDelete}
             aria-label={`Delete ${agent.name}`}
           >
             <Trash2 className="h-3.5 w-3.5" />

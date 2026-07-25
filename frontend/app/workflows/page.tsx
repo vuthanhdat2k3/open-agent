@@ -13,20 +13,18 @@ import {
   Wrench,
   GitMerge,
   LogOut,
-  Terminal,
-  Trash2,
   RefreshCw,
   Sparkles,
 } from "lucide-react";
 import { streamSSE } from "@/lib/api";
-import { useWorkflows, useCreateWorkflow, useDeleteWorkflow, useAgents, useModels, useGenerateWorkflow } from "@/hooks";
+import { useWorkflows, useCreateWorkflow, useAgents, useModels, useGenerateWorkflow } from "@/hooks";
 import { useWorkflowStore } from "@/stores";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input, Label, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { PageHeader } from "@/components/page-header";
 import { WorkflowNodeCard, type GNode } from "@/components/workflows/workflow-node-card";
+import { WorkflowConsole, type WorkflowLogItem } from "@/components/workflows/workflow-console";
 import {
   Dialog,
   DialogClose,
@@ -89,6 +87,7 @@ export default function WorkflowsPage() {
   const [running, setRunning] = React.useState(false);
   const [nodeStatus, setNodeStatus] = React.useState<Record<string, string>>({});
   const [output, setOutput] = React.useState("");
+  const [logs, setLogs] = React.useState<WorkflowLogItem[]>([]);
   const [editId, setEditId] = React.useState<string | null>(null);
 
   const canvasRef = React.useRef<HTMLDivElement>(null);
@@ -206,6 +205,7 @@ export default function WorkflowsPage() {
     setEditId(null);
     setInput("");
     setOutput("");
+    setLogs([]);
     setNodeStatus({});
     setGraph([], []);
     setSelectedNode(null);
@@ -217,6 +217,8 @@ export default function WorkflowsPage() {
     setEditId(wf.id);
     setGraph(wf.graph.nodes, wf.graph.edges);
     setSelectedNode(null);
+    setLogs([]);
+    setOutput("");
   };
 
   const save = async () => {
@@ -278,23 +280,111 @@ export default function WorkflowsPage() {
     setRunning(true);
     setOutput("");
     setNodeStatus({});
+    setLogs([]);
     try {
       await streamSSE(
         `/api/workflows/${editId}/run`,
         { input, stream: true },
         (ev) => {
           const d = ev.data;
-          if (ev.event === "node_start")
+          const ts = Date.now();
+          const logId = Math.random().toString(36).slice(2, 9);
+
+          if (ev.event === "node_start") {
             setNodeStatus((s) => ({ ...s, [d.node_id]: "running" }));
-          else if (ev.event === "node_done")
+            setLogs((prev) => [
+              ...prev,
+              {
+                id: logId,
+                ts,
+                event: "node_start",
+                node_id: d.node_id,
+                message: `Node "${d.node_id}" started (${d.kind || "execution"})`,
+              },
+            ]);
+          } else if (ev.event === "node_done") {
             setNodeStatus((s) => ({ ...s, [d.node_id]: "done" }));
-          else if (ev.event === "node_error")
+            const outSnippet = d.output ? ` (output: ${typeof d.output === "string" ? d.output.slice(0, 100) : JSON.stringify(d.output).slice(0, 100)})` : "";
+            setLogs((prev) => [
+              ...prev,
+              {
+                id: logId,
+                ts,
+                event: "node_done",
+                node_id: d.node_id,
+                message: `Node "${d.node_id}" completed${outSnippet}`,
+                output: typeof d.output === "string" ? d.output : JSON.stringify(d.output, null, 2),
+              },
+            ]);
+          } else if (ev.event === "node_error") {
             setNodeStatus((s) => ({ ...s, [d.node_id]: "error" }));
-          else if (ev.event === "done") setOutput(d.output || "");
+            setLogs((prev) => [
+              ...prev,
+              {
+                id: logId,
+                ts,
+                event: "node_error",
+                node_id: d.node_id,
+                message: d.message || `Node "${d.node_id}" failed`,
+              },
+            ]);
+          } else if (ev.event === "edge") {
+            setLogs((prev) => [
+              ...prev,
+              {
+                id: logId,
+                ts,
+                event: "edge",
+                message: `Edge ${d.from} → ${d.to} taken`,
+              },
+            ]);
+          } else if (ev.event === "approval_required") {
+            setLogs((prev) => [
+              ...prev,
+              {
+                id: logId,
+                ts,
+                event: "approval_required",
+                node_id: d.node_id,
+                message: `Node "${d.node_id}" waiting for approval (approval_id: ${d.approval_id})`,
+              },
+            ]);
+          } else if (ev.event === "error") {
+            setLogs((prev) => [
+              ...prev,
+              {
+                id: logId,
+                ts,
+                event: "error",
+                message: d.message || "Workflow execution error",
+              },
+            ]);
+          } else if (ev.event === "done") {
+            setOutput(d.output || "");
+            setLogs((prev) => [
+              ...prev,
+              {
+                id: logId,
+                ts,
+                event: "done",
+                message: "Workflow finished successfully",
+                output: typeof d.output === "string" ? d.output : JSON.stringify(d.output, null, 2),
+              },
+            ]);
+          }
         },
       );
     } catch (e: any) {
       toast.error(e.message);
+      setLogs((prev) => [
+        ...prev,
+        {
+          id: Math.random().toString(36).slice(2, 9),
+          ts: Date.now(),
+          event: "error",
+          message: e.message || "Execution error occurred",
+        },
+      ]);
     } finally {
       setRunning(false);
     }
@@ -357,6 +447,9 @@ export default function WorkflowsPage() {
   };
 
   const deleteNode = (id: string) => {
+    const target = nodes.find((n) => n.id === id);
+    const name = target?.label || id;
+    if (!window.confirm(`Xóa node "${name}"? Hành động này sẽ làm mất cấu hình của node trên canvas.`)) return;
     setGraph(
       nodes.filter((x) => x.id !== id),
       edges.filter((edge) => edge.from_ !== id && edge.to !== id)
@@ -545,11 +638,15 @@ export default function WorkflowsPage() {
                       strokeWidth={12}
                       fill="none"
                       className="cursor-pointer"
-                      onClick={() => setGraph(nodes, edges.filter((_, j) => j !== i))}
+                      onClick={() => {
+                        if (!window.confirm("Xóa kết nối này?")) return;
+                        setGraph(nodes, edges.filter((_, j) => j !== i));
+                      }}
                     />
                     <g
                       className="opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
                       onClick={() => {
+                        if (!window.confirm("Xóa kết nối này?")) return;
                         setGraph(nodes, edges.filter((_, j) => j !== i));
                         toast.success("Connection deleted");
                       }}
@@ -684,7 +781,13 @@ export default function WorkflowsPage() {
                       <span className="truncate max-w-[80%] font-mono text-muted-foreground">
                         {nodes.find((n) => n.id === e.from_)?.label} → {nodes.find((n) => n.id === e.to)?.label}
                       </span>
-                      <button onClick={() => setGraph(nodes, edges.filter((_, j) => j !== i))} className="text-destructive hover:scale-115 transition-transform font-bold px-1 text-xs">
+                      <button 
+                        onClick={() => {
+                          if (!window.confirm("Xóa kết nối này?")) return;
+                          setGraph(nodes, edges.filter((_, j) => j !== i));
+                        }} 
+                        className="text-destructive hover:scale-115 transition-transform font-bold px-1 text-xs"
+                      >
                         ×
                       </button>
                     </div>
@@ -697,19 +800,7 @@ export default function WorkflowsPage() {
       </div>
 
       <div className="animate-slide-up" style={{ animationDelay: "150ms" }}>
-        <Card glass className="overflow-hidden">
-          <CardHeader className="flex flex-row items-center gap-3 border-b border-border/60 bg-muted/20 px-4 py-3">
-            <div className="grid h-8 w-8 place-items-center rounded-xl bg-gradient-to-br from-primary/25 via-primary/10 to-transparent text-primary shadow-3d-card border border-primary/20">
-              <Terminal className="h-4 w-4" />
-            </div>
-            <CardTitle className="text-sm font-semibold tracking-tight">Run Output Console</CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            <pre className="max-h-80 overflow-auto whitespace-pre-wrap bg-muted/10 p-4 font-mono text-[11px] text-foreground leading-normal scrollbar-thin">
-              {output || "Console waiting for workflow execution input…"}
-            </pre>
-          </CardContent>
-        </Card>
+        <WorkflowConsole logs={logs} output={output} running={running} />
       </div>
     </div>
   );

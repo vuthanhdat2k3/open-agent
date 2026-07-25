@@ -64,7 +64,11 @@ export default function MembersPage() {
               </div>
               <div className="flex items-center gap-2">
                 <Badge variant="outline" className="font-mono text-[10px] uppercase tracking-wider">{member.role}</Badge>
-                <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-destructive active-tactile transition-transform" onClick={() => remove.mutate(member.user_id)}>
+                <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-destructive active-tactile transition-transform" onClick={() => {
+                  if (window.confirm(`Xóa thành viên "${member.email}" khỏi tổ chức? Hành động này không thể hoàn tác.`)) {
+                    remove.mutate(member.user_id);
+                  }
+                }}>
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </div>

@@ -438,7 +438,11 @@ export default function AgentsPage() {
               tools={tools.data}
               onEdit={openEdit}
               onReleases={openReleases}
-              onDelete={(id) => del.mutate(id)}
+              onDelete={(id) => {
+                if (window.confirm(`Xóa agent "${a.name}"? Hành động này không thể hoàn tác.`)) {
+                  del.mutate(id);
+                }
+              }}
             />
           ))}
         </div>
