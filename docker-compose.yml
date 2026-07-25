@@ -88,7 +88,8 @@ services:
     build:
       context: ./rag-service
     environment:
-      QDRANT_URL: http://qdrant:6333
+      RAG_VECTOR_STORE: qdrant
+      RAG_QDRANT_URL: http://qdrant:6333
     ports:
       - "8100:8100"
       - "8101:8101"
