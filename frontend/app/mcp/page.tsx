@@ -47,7 +47,7 @@ export default function McpPage() {
         actions={
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-              <Button className="gap-2">
+              <Button className="gap-2 active-tactile transition-transform">
                 <Plus className="h-4 w-4" /> New Server
               </Button>
             </DialogTrigger>
@@ -109,11 +109,11 @@ export default function McpPage() {
               <Card key={s.id} glass className="card-lift flex flex-col p-5">
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex min-w-0 items-center gap-3">
-                    <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 text-primary shadow-inner-edge">
-                      <Network className="h-4 w-4" />
+                    <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-primary/25 via-primary/10 to-transparent text-primary shadow-3d-card border border-primary/20">
+                      <Network className="h-5 w-5" />
                     </div>
                     <div className="min-w-0">
-                      <p className="truncate font-semibold text-sm tracking-tight">{s.name}</p>
+                      <p className="truncate font-semibold text-sm tracking-tight text-foreground">{s.name}</p>
                       <Badge
                         variant={connected ? "success" : errored ? "destructive" : "secondary"}
                         className="mt-1 gap-1 text-[10px] py-0 px-1.5 uppercase font-semibold tracking-wider"
@@ -127,7 +127,7 @@ export default function McpPage() {
                 
                 <div className="mt-4 flex-1 space-y-1">
                   <div className="font-semibold text-[10px] uppercase tracking-wider text-muted-foreground/80">Command / transport</div>
-                  <div className="truncate rounded border border-border/40 bg-muted/40 px-2 py-1 font-mono text-xs text-muted-foreground select-all">
+                  <div className="truncate rounded-lg border border-border/40 bg-muted/30 px-2.5 py-1.5 font-mono text-xs text-muted-foreground select-all shadow-inner-edge">
                     <span className="text-foreground font-semibold">{s.transport}</span>{" "}
                     {s.command} {s.args.join(" ")} {s.url}
                   </div>
@@ -163,7 +163,7 @@ export default function McpPage() {
                     <Button
                       size="sm"
                       variant="outline"
-                      className="gap-1.5 active-tactile transition-transform"
+                      className="gap-1.5 active-tactile transition-transform ml-auto"
                       onClick={() => disconnect.mutate(s.id)}
                     >
                       <Unplug className="h-3.5 w-3.5" /> Disconnect
@@ -171,7 +171,7 @@ export default function McpPage() {
                   ) : (
                     <Button
                       size="sm"
-                      className="gap-1.5 active-tactile transition-transform"
+                      className="gap-1.5 active-tactile transition-transform ml-auto"
                       loading={connect.isPending}
                       onClick={async () => {
                         const r = await connect.mutateAsync(s.id);

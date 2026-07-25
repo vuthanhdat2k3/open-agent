@@ -3,44 +3,23 @@
 import * as React from "react";
 import { toast } from "sonner";
 import { streamSSE } from "@/lib/api";
-import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { useAgents, useSessions, useSessionMessages, useDeleteSession, useModels } from "@/hooks";
 import { useChatStore } from "@/stores";
 import {
   Bot,
-  CornerDownRight,
   MessageSquare,
   Plus,
   Send,
-  Wrench,
   Cpu,
-  ChevronDown,
   Trash2,
-  Clock,
-  DollarSign,
   Sparkles,
   Bug,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/input";
-import { Label } from "@/components/ui/input";
+import { Textarea, Label } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-
-type UIMessage = {
-  id: string;
-  role: string;
-  content: string;
-  meta?: {
-    model?: string;
-    in_tokens?: number;
-    out_tokens?: number;
-    cost_usd?: number;
-    latency_ms?: number;
-    toolName?: string;
-    tools?: any[];
-  };
-};
+import { ChatMessageItem, type UIMessage } from "@/components/chat/chat-message-item";
 
 export default function ChatPage() {
   const agents = useAgents();
@@ -51,26 +30,23 @@ export default function ChatPage() {
   const messagesQuery = useSessionMessages(sessionId);
 
   const [agentId, setAgentId] = React.useState("");
-  const [modelOverrideId, setModelOverrideId] = React.useState(""); // "" = use agent's default
+  const [modelOverrideId, setModelOverrideId] = React.useState("");
   const [draft, setDraft] = React.useState("");
   const [messages, setMessages] = React.useState<UIMessage[]>([]);
   const [streaming, setStreaming] = React.useState(false);
-  const [phase, setPhase] = React.useState<string>(""); // debug phase: thinking | tool:<name> | result | ""
-  const [debug, setDebug] = React.useState(true); // show/hide the agent trace (thinking, tool use, results)
+  const [phase, setPhase] = React.useState<string>("");
+  const [debug, setDebug] = React.useState(true);
   const bottomRef = React.useRef<HTMLDivElement>(null);
 
-  // Auto-select first agent
   React.useEffect(() => {
     if (!agents.data?.length) return;
     setAgentId((current) => current || agents.data![0].id);
   }, [agents.data]);
 
-  // Reset model override when agent changes
   React.useEffect(() => {
     setModelOverrideId("");
   }, [agentId]);
 
-  // Load historical messages when session changes
   React.useEffect(() => {
     if (messagesQuery.data) {
       setMessages(
@@ -84,12 +60,10 @@ export default function ChatPage() {
     }
   }, [messagesQuery.data]);
 
-  // Auto-scroll to bottom on new messages
   React.useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Derived: current agent object
   const currentAgent = agents.data?.find((a) => a.id === agentId);
   const currentAgentModel = models.data?.find((m) => m.id === currentAgent?.model_id);
   const effectiveModelId = modelOverrideId || currentAgent?.model_id || "";
@@ -153,7 +127,6 @@ export default function ChatPage() {
             setPhase("");
             setMessages((m) =>
               m
-                // Remove live tool_call/tool_result — they're now in meta.tools
                 .filter((x) => x.role !== "tool_call" && x.role !== "tool_result")
                 .map((x) =>
                   x.id === assistantId
@@ -193,12 +166,13 @@ export default function ChatPage() {
     setSession(null);
   };
 
+  const hasLiveTools = messages.some((x) => x.role === "tool_call" || x.role === "tool_result");
+
   return (
     <div className="grid grid-cols-1 gap-6 lg:h-[calc(100vh-10rem)] lg:grid-cols-4 stagger">
-      {/* ── Sidebar ── */}
+      {/* Sidebar */}
       <div className="flex flex-col gap-4">
-        <div className="rounded-xl border border-border/60 bg-card/40 p-4 space-y-4 backdrop-blur-md">
-          {/* Agent selector */}
+        <div className="rounded-xl border border-border/80 bg-card/50 p-4 space-y-4 backdrop-blur-xl shadow-3d-card">
           <div className="space-y-1.5">
             <Label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">
               <Bot className="h-3.5 w-3.5 text-primary" /> Active Agent
@@ -221,7 +195,6 @@ export default function ChatPage() {
             )}
           </div>
 
-          {/* Model override selector */}
           <div className="space-y-1.5">
             <Label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">
               <Cpu className="h-3.5 w-3.5 text-primary" /> Model Override
@@ -252,7 +225,6 @@ export default function ChatPage() {
             )}
           </div>
 
-          {/* Session list */}
           <div className="space-y-2">
             <Label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">
               <MessageSquare className="h-3.5 w-3.5 text-primary" /> Chat Sessions
@@ -272,7 +244,7 @@ export default function ChatPage() {
                     key={s.id}
                     className={`group flex items-center gap-1 rounded-lg transition-all duration-200 ${
                       sessionId === s.id
-                        ? "bg-primary text-primary-foreground shadow-inner-edge"
+                        ? "bg-primary text-primary-foreground shadow-3d-card font-semibold"
                         : "text-muted-foreground hover:bg-accent hover:text-foreground"
                     }`}
                   >
@@ -306,12 +278,11 @@ export default function ChatPage() {
         </div>
       </div>
 
-      {/* ── Chat Area ── */}
+      {/* Main Chat Stream */}
       <div className="flex min-h-[520px] flex-col lg:col-span-3">
         <Card glass className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          {/* Header */}
-          <CardHeader className="flex flex-row items-center gap-3 space-y-0 border-b border-border/60 bg-muted/20 px-4 py-3">
-            <div className="grid h-8 w-8 place-items-center rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 text-primary shadow-inner-edge">
+          <CardHeader className="flex flex-row items-center gap-3 space-y-0 border-b border-border/80 bg-muted/20 px-4 py-3">
+            <div className="grid h-8 w-8 place-items-center rounded-xl bg-gradient-to-br from-primary/25 via-primary/10 to-transparent text-primary shadow-3d-card border border-primary/20">
               <MessageSquare className="h-4 w-4" />
             </div>
             <div className="flex-1 min-w-0">
@@ -329,7 +300,7 @@ export default function ChatPage() {
               <Button
                 variant={debug ? "secondary" : "ghost"}
                 size="sm"
-                className={`h-7 gap-1 px-2 text-[10px] ${debug ? "text-primary" : "text-muted-foreground"}`}
+                className={`h-7 gap-1 px-2 text-[10px] ${debug ? "text-primary font-semibold" : "text-muted-foreground"}`}
                 onClick={() => setDebug((v) => !v)}
                 title="Toggle debug trace (thinking, tool calls, results)"
               >
@@ -349,11 +320,10 @@ export default function ChatPage() {
             </div>
           </CardHeader>
 
-          {/* Messages */}
           <CardContent className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4 scrollbar-thin">
             {messages.length === 0 ? (
               <div className="m-auto text-center max-w-sm animate-scale-in">
-                <div className="grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-primary/15 to-primary/5 text-primary shadow-inner-edge mx-auto mb-4">
+                <div className="grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-primary/25 via-primary/10 to-transparent text-primary shadow-3d-card border border-primary/20 mx-auto mb-4">
                   <Bot className="h-6 w-6" />
                 </div>
                 <p className="text-sm font-semibold tracking-tight">Ready to prompt</p>
@@ -372,167 +342,15 @@ export default function ChatPage() {
               </div>
             ) : (
               <>
-                {messages.map((m) => {
-                  if (!debug && (m.role === "tool_call" || m.role === "tool_result")) return null;
-                  if (m.role === "user") {
-                    return (
-                      <div
-                        key={m.id}
-                        className="animate-scale-in self-end max-w-[80%] rounded-2xl rounded-br-sm bg-primary px-4 py-2.5 text-xs text-primary-foreground shadow-md leading-relaxed select-text"
-                      >
-                        {m.content || "…"}
-                      </div>
-                    );
-                  }
-
-                  if (m.role === "tool_call") {
-                    const trimmed = m.content.trim();
-                    let argsText = m.content;
-                    try {
-                      if (trimmed.startsWith("{") || trimmed.startsWith("["))
-                        argsText = JSON.stringify(JSON.parse(m.content), null, 2);
-                    } catch {}
-                    return (
-                      <div
-                        key={m.id}
-                        className="animate-scale-in self-start w-full max-w-[92%] rounded-xl border border-amber-500/30 bg-amber-500/[0.06] shadow-sm"
-                      >
-                        <div className="flex items-center gap-1.5 border-b border-amber-500/20 bg-amber-500/10 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400 rounded-t-xl">
-                          <Wrench className="h-3 w-3" /> Tool Use
-                          {m.meta?.toolName && (
-                            <span className="ml-1 rounded bg-amber-500/20 px-1.5 py-0.5 font-mono text-[10px] normal-case tracking-normal text-amber-700 dark:text-amber-300">
-                              {m.meta.toolName}
-                            </span>
-                          )}
-                        </div>
-                        <pre className="block w-full min-h-[80px] max-h-60 overflow-y-auto overflow-x-auto px-3 py-2.5 font-mono text-[10.5px] text-foreground leading-relaxed scrollbar-thin whitespace-pre-wrap break-all">
-                          {argsText}
-                        </pre>
-                      </div>
-                    );
-                  }
-
-                  if (m.role === "tool_result") {
-                    return (
-                      <div
-                        key={m.id}
-                        className="animate-scale-in self-start w-full max-w-[92%] rounded-xl border border-border/50 bg-muted/20 shadow-sm"
-                      >
-                        <div className="flex items-center gap-1.5 border-b border-border/40 bg-muted/40 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground rounded-t-xl">
-                          <CornerDownRight className="h-3 w-3" /> Result
-                          {m.meta?.toolName && (
-                            <span className="ml-1 rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] normal-case tracking-normal">
-                              {m.meta.toolName}
-                            </span>
-                          )}
-                        </div>
-                        <pre className="block w-full min-h-[80px] max-h-60 overflow-y-auto overflow-x-auto px-3 py-2.5 font-mono text-[10.5px] leading-relaxed scrollbar-thin whitespace-pre-wrap break-all">
-                          {m.content}
-                        </pre>
-                      </div>
-                    );
-                  }
-
-                  // Assistant message
-                  const hasLiveTools = messages.some((x) => x.role === "tool_call" || x.role === "tool_result");
-                  const showHistoricalTools = debug && !hasLiveTools && m.meta?.tools && m.meta.tools.length > 0;
-
-                  return (
-                    <React.Fragment key={m.id}>
-                      {showHistoricalTools && (m.meta?.tools ?? []).map((t: any, idx: number) => {
-                        let argsText = String(t.arguments ?? "");
-                        try {
-                          if (typeof t.arguments === "object")
-                            argsText = JSON.stringify(t.arguments, null, 2);
-                          else if (typeof t.arguments === "string")
-                            argsText = JSON.stringify(JSON.parse(t.arguments), null, 2);
-                        } catch {}
-                        return (
-                          <React.Fragment key={`hist-tool-${m.id}-${idx}`}>
-                            {/* Tool Use block */}
-                            <div className="animate-scale-in self-start w-full max-w-[92%] rounded-xl border border-amber-500/30 bg-amber-500/[0.06] shadow-sm mb-2">
-                              <div className="flex items-center gap-1.5 border-b border-amber-500/20 bg-amber-500/10 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400 rounded-t-xl">
-                                <Wrench className="h-3 w-3" /> Tool Use
-                                <span className="ml-1 rounded bg-amber-500/20 px-1.5 py-0.5 font-mono text-[10px] normal-case tracking-normal text-amber-700 dark:text-amber-300">
-                                  {t.name}
-                                </span>
-                              </div>
-                              <pre className="block w-full min-h-[80px] max-h-60 overflow-y-auto overflow-x-auto px-3 py-2.5 font-mono text-[10.5px] text-foreground leading-relaxed scrollbar-thin whitespace-pre-wrap break-all">
-                                {argsText}
-                              </pre>
-                            </div>
-
-                            {/* Tool Result block */}
-                            <div className="animate-scale-in self-start w-full max-w-[92%] rounded-xl border border-border/50 bg-muted/20 shadow-sm mb-3">
-                              <div className="flex items-center gap-1.5 border-b border-border/40 bg-muted/40 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground rounded-t-xl">
-                                <CornerDownRight className="h-3 w-3" /> Result
-                                <span className="ml-1 rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] normal-case tracking-normal">
-                                  {t.name}
-                                </span>
-                              </div>
-                              <pre className="block w-full min-h-[80px] max-h-60 overflow-y-auto overflow-x-auto px-3 py-2.5 font-mono text-[10.5px] leading-relaxed scrollbar-thin whitespace-pre-wrap break-all">
-                                {t.result}
-                              </pre>
-                            </div>
-                          </React.Fragment>
-                        );
-                      })}
-
-                      <div className="animate-scale-in self-start max-w-[85%] space-y-1">
-                        <div className="rounded-2xl rounded-bl-sm border border-border/60 bg-card px-4 py-3 text-xs shadow-sm select-text leading-relaxed">
-                          {m.content ? (
-                            <MarkdownRenderer content={m.content} />
-                          ) : (
-                            <span className="flex items-center gap-2 text-muted-foreground">
-                              <span className="inline-flex gap-0.5">
-                                <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground animate-bounce [animation-delay:0ms]" />
-                                <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground animate-bounce [animation-delay:150ms]" />
-                                <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground animate-bounce [animation-delay:300ms]" />
-                              </span>
-                              {debug && <span className="text-[11px]">Thinking…</span>}
-                            </span>
-                          )}
-                        </div>
-                        {/* Per-message usage metadata */}
-                        {m.meta?.cost_usd != null && (
-                          <div className="flex items-center gap-3 px-1 text-[10px] text-muted-foreground/60">
-                            {m.meta.latency_ms != null && (
-                              <span className="flex items-center gap-0.5">
-                                <Clock className="h-2.5 w-2.5" />
-                                {(m.meta.latency_ms / 1000).toFixed(1)}s
-                              </span>
-                            )}
-                            {m.meta.in_tokens != null && (
-                              <span>{m.meta.in_tokens + (m.meta.out_tokens ?? 0)} tokens</span>
-                            )}
-                             {m.meta.cost_usd != null && (
-                               <span className="flex items-center gap-0.5">
-                                 <DollarSign className="h-2.5 w-2.5" />
-                                 {m.meta.cost_usd.toFixed(5)}
-                                </span>
-                             )}
-                             {m.meta.tools?.length ? (
-                               <span className="flex items-center gap-0.5">
-                                 <Wrench className="h-2.5 w-2.5" />
-                                 {m.meta.tools.length} tool{m.meta.tools.length > 1 ? "s" : ""}
-                               </span>
-                             ) : null}
-                             {m.meta.model && (
-                               <span className="font-mono ml-auto">{m.meta.model}</span>
-                             )}
-                          </div>
-                        )}
-                      </div>
-                    </React.Fragment>
-                  );
-                })}
+                {messages.map((m) => (
+                  <ChatMessageItem key={m.id} message={m} debug={debug} hasLiveTools={hasLiveTools} />
+                ))}
                 <div ref={bottomRef} />
               </>
             )}
           </CardContent>
         </Card>
 
-        {/* Composer */}
         <div className="mt-3 flex gap-2 items-end">
           <Textarea
             value={draft}
@@ -556,7 +374,6 @@ export default function ChatPage() {
           </Button>
         </div>
 
-        {/* Status bar */}
         {streaming && (
           <div className="mt-2 flex items-center gap-2 text-[10px] text-muted-foreground animate-pulse">
             {phase === "thinking" ? (

@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { Bot } from "lucide-react";
+import { Bot, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input, Label } from "@/components/ui/input";
@@ -35,32 +35,35 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="mx-auto flex min-h-[70vh] max-w-md items-center">
-      <Card glass className="w-full">
-        <CardHeader className="space-y-3">
-          <div className="grid h-11 w-11 place-items-center rounded-xl bg-primary text-primary-foreground">
-            <Bot className="h-5 w-5" />
+    <div className="mx-auto flex min-h-screen max-w-md items-center px-4 py-12">
+      <Card glass className="w-full shadow-3d-floating border-border/80 animate-scale-in">
+        <CardHeader className="space-y-3 text-center pb-2">
+          <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-primary to-primary/60 text-primary-foreground shadow-3d-card border border-primary/30">
+            <Bot className="h-6 w-6" />
           </div>
-          <CardTitle>Sign in</CardTitle>
+          <div>
+            <CardTitle className="text-xl font-bold tracking-tight text-foreground">Welcome to OpenAgent</CardTitle>
+            <p className="mt-1 text-xs text-muted-foreground">Sign in to your multi-agent developer platform</p>
+          </div>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-4 pt-4">
           <div className="space-y-1.5">
-            <Label>Email</Label>
-            <Input value={email} onChange={(e) => setEmail(e.target.value)} />
+            <Label className="text-xs uppercase tracking-wider font-semibold text-muted-foreground/80">Email</Label>
+            <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@company.com" />
           </div>
           <div className="space-y-1.5">
-            <Label>Password</Label>
-            <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+            <Label className="text-xs uppercase tracking-wider font-semibold text-muted-foreground/80">Password</Label>
+            <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" />
           </div>
-          <Button className="w-full" onClick={submit} disabled={loading || !email || !password}>
+          <Button className="w-full gap-2 active-tactile transition-transform h-10 mt-2" onClick={submit} disabled={loading || !email || !password}>
             {loading ? "Signing in..." : "Sign in"}
+            {!loading && <ArrowRight className="h-4 w-4" />}
           </Button>
-          <p className="text-center text-sm text-muted-foreground">
-            No account? <Link className="text-primary" href="/register">Create one</Link>
+          <p className="text-center text-xs text-muted-foreground pt-2">
+            No account yet? <Link className="text-primary font-semibold hover:underline" href="/register">Create account</Link>
           </p>
         </CardContent>
       </Card>
     </div>
   );
 }
-
