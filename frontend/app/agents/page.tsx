@@ -5,10 +5,8 @@ import { toast } from "sonner";
 import {
   Bot,
   Plus,
-  Trash2,
   Wrench,
   Cpu,
-  Pencil,
   Thermometer,
   RotateCcw,
   History,
@@ -26,7 +24,6 @@ import {
   usePublishAgentRelease,
   useRollbackAgentRelease,
 } from "@/hooks";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input, Label, Textarea } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -34,6 +31,7 @@ import { Select, Slider } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
+import { AgentCard } from "@/components/agents/agent-card";
 import {
   Dialog,
   DialogContent,
@@ -81,7 +79,6 @@ export default function AgentsPage() {
   const [selectedTools, setSelectedTools] = React.useState<string[]>([]);
   const [form, setForm] = React.useState<AgentForm>(DEFAULT_FORM);
 
-  // Auto-populate model when models load (for new agent)
   React.useEffect(() => {
     if (!models.data?.length || editingAgent) return;
     setForm((current) =>
@@ -89,7 +86,6 @@ export default function AgentsPage() {
     );
   }, [models.data, editingAgent]);
 
-  // Populate form when editing an existing agent
   const openEdit = (agent: Agent) => {
     setEditingAgent(agent);
     setForm({
@@ -174,11 +170,6 @@ export default function AgentsPage() {
     }
   };
 
-  const tierColor: Record<string, string> = {
-    frontier: "border-primary/60 text-primary bg-primary/10",
-    balanced: "border-info/60 text-info bg-info/10",
-    economy: "border-muted-foreground/40 text-muted-foreground bg-muted/20",
-  };
   const riskColor: Record<string, string> = {
     safe: "border-muted-foreground/40 bg-muted/30 text-muted-foreground",
     read: "border-info/50 bg-info/10 text-info",
@@ -206,7 +197,6 @@ export default function AgentsPage() {
                 <DialogTitle>{editingAgent ? `Edit — ${editingAgent.name}` : "New Agent"}</DialogTitle>
               </DialogHeader>
               <div className="space-y-4 pt-1">
-                {/* Name + Description */}
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
                     <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">Name</Label>
@@ -226,7 +216,6 @@ export default function AgentsPage() {
                   </div>
                 </div>
 
-                {/* Model */}
                 <div className="space-y-1.5">
                   <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80 flex items-center gap-1.5">
                     <Cpu className="h-3.5 w-3.5 text-primary" /> Model
@@ -255,7 +244,6 @@ export default function AgentsPage() {
                   })()}
                 </div>
 
-                {/* System Prompt */}
                 <div className="space-y-1.5">
                   <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">System Prompt</Label>
                   <Textarea
@@ -266,7 +254,6 @@ export default function AgentsPage() {
                   />
                 </div>
 
-                {/* Tools */}
                 <div className="space-y-1.5">
                   <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80 flex items-center gap-1.5">
                     <Wrench className="h-3.5 w-3.5 text-primary" /> Tools
@@ -301,13 +288,9 @@ export default function AgentsPage() {
                         </button>
                       );
                     })}
-                    {!tools.data?.length && (
-                      <span className="text-xs text-muted-foreground/60 m-auto">Loading tools…</span>
-                    )}
                   </div>
                 </div>
 
-                {/* Max Iterations + Temperature */}
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
                     <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80 flex items-center gap-1.5">
@@ -447,108 +430,17 @@ export default function AgentsPage() {
         </div>
       ) : data && data.length > 0 ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 stagger">
-          {data.map((a) => {
-            const agentModel = models.data?.find((m) => m.id === a.model_id);
-            return (
-              <Card key={a.id} glass className="card-lift flex flex-col p-5 group">
-                {/* Header */}
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex min-w-0 items-center gap-3">
-                    <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 text-primary shadow-inner-edge">
-                      <Bot className="h-4 w-4" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="truncate font-semibold text-sm tracking-tight">{a.name}</p>
-                      {agentModel && (
-                        <p className="mt-0.5 flex items-center gap-1 text-[10px] text-muted-foreground/70">
-                          <Cpu className="h-2.5 w-2.5 text-primary/60" />
-                          <span className="truncate font-mono">{agentModel.display_name || agentModel.name}</span>
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-7 w-7 text-muted-foreground hover:text-foreground active-tactile transition-transform"
-                      onClick={() => openReleases(a)}
-                      aria-label={`Release history for ${a.name}`}
-                    >
-                      <History className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-7 w-7 text-muted-foreground hover:text-foreground active-tactile transition-transform"
-                      onClick={() => openEdit(a)}
-                      aria-label={`Edit ${a.name}`}
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-7 w-7 text-muted-foreground hover:text-destructive active-tactile transition-transform"
-                      onClick={() => del.mutate(a.id)}
-                      aria-label={`Delete ${a.name}`}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Description */}
-                {a.description && (
-                  <p className="mt-3 line-clamp-2 text-xs text-muted-foreground leading-relaxed">{a.description}</p>
-                )}
-
-                <div className="mt-3 flex items-center gap-2 text-[10px] text-muted-foreground">
-                  <History className="h-3 w-3" />
-                  Active release v{a.latest_release_number}
-                </div>
-
-                {/* Model badge row */}
-                {agentModel && (
-                  <div className="mt-3 flex items-center gap-1.5 flex-wrap">
-                    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider border ${tierColor[agentModel.tier] ?? tierColor.economy}`}>
-                      {agentModel.tier}
-                    </span>
-                    <span className="text-[10px] font-mono text-muted-foreground/60 bg-muted/30 border border-border/30 px-2 py-0.5 rounded-full">
-                      ctx {agentModel.context_window.toLocaleString()}
-                    </span>
-                    <span className="text-[10px] font-mono text-muted-foreground/60 bg-muted/30 border border-border/30 px-2 py-0.5 rounded-full">
-                      T={a.temperature.toFixed(1)}
-                    </span>
-                    <span className="text-[10px] font-mono text-muted-foreground/60 bg-muted/30 border border-border/30 px-2 py-0.5 rounded-full">
-                      ×{a.max_iterations}
-                    </span>
-                  </div>
-                )}
-
-                {/* Tools */}
-                {a.tools.length > 0 && (
-                  <div className="mt-4 pt-3 border-t border-border/40 space-y-1.5">
-                    <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/80">
-                      Granted tools ({a.tools.length})
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {a.tools.map((t) => (
-                        <Badge key={t} variant="outline" className="gap-1 font-mono text-[10px] bg-muted/30 border-border/50">
-                          <Wrench className="h-2.5 w-2.5" /> {t}
-                          {tools.data?.find((tool) => tool.name === t)?.risk_tier && (
-                            <span className="text-muted-foreground">
-                              {tools.data.find((tool) => tool.name === t)?.risk_tier}
-                            </span>
-                          )}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </Card>
-            );
-          })}
+          {data.map((a) => (
+            <AgentCard
+              key={a.id}
+              agent={a}
+              models={models.data}
+              tools={tools.data}
+              onEdit={openEdit}
+              onReleases={openReleases}
+              onDelete={(id) => del.mutate(id)}
+            />
+          ))}
         </div>
       ) : (
         <EmptyState

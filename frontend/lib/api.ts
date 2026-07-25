@@ -1,6 +1,7 @@
 // API client — calls are relative (/api/...) because next.config.mjs proxies
 // /api/* to the FastAPI backend on :8000.
 import { getAccessToken, refreshAccessToken } from "@/lib/auth";
+import { apiBaseUrl } from "@/lib/utils";
 
 export interface SseEvent {
   event: string;
@@ -58,7 +59,11 @@ export async function streamSSE(
   body: unknown,
   onEvent: (ev: SseEvent) => void,
 ): Promise<void> {
-  const res = await fetch(path, {
+  // Call the backend directly (not through next.config.mjs rewrites): Next's
+  // rewrite proxy does not reliably forward incremental SSE chunks — it can
+  // hold the connection open for the full duration and then deliver only the
+  // first and last chunk, dropping everything streamed in between.
+  const res = await fetch(`${apiBaseUrl}${path}`, {
     method: "POST",
     credentials: "include",
     headers: {

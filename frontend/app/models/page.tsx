@@ -39,7 +39,7 @@ export default function ModelsPage() {
         actions={
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-              <Button className="gap-2">
+              <Button className="gap-2 active-tactile transition-transform">
                 <Plus className="h-4 w-4" /> New Model
               </Button>
             </DialogTrigger>
@@ -102,46 +102,48 @@ export default function ModelsPage() {
               <Card key={m.id} glass className="card-lift flex flex-col p-5">
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex min-w-0 items-center gap-3">
-                    <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 text-primary shadow-inner-edge">
-                      <Cpu className="h-4 w-4" />
+                    <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-primary/25 via-primary/10 to-transparent text-primary shadow-3d-card border border-primary/20">
+                      <Cpu className="h-5 w-5" />
                     </div>
                     <div className="min-w-0">
-                      <p className="truncate font-semibold text-sm tracking-tight">{m.display_name}</p>
-                      <p className="truncate font-mono text-[10px] text-muted-foreground/80 mt-0.5 bg-muted/65 px-1.5 py-0.5 rounded border border-border/30 w-fit">{provider ? `${provider.key}/${m.name}` : m.name}</p>
+                      <p className="truncate font-semibold text-sm tracking-tight text-foreground">{m.display_name}</p>
+                      <p className="truncate font-mono text-[10px] text-muted-foreground/80 mt-0.5 bg-muted/65 px-1.5 py-0.5 rounded-md border border-border/30 w-fit">{provider ? `${provider.key}/${m.name}` : m.name}</p>
                     </div>
                   </div>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-8 w-8 text-muted-foreground hover:text-foreground active-tactile transition-transform"
-                    aria-label={`Edit ${m.display_name}`}
-                    onClick={() => {
-                      setEditTarget(m);
-                      setEditOpen(true);
-                    }}
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-8 w-8 text-muted-foreground hover:text-destructive active-tactile transition-transform"
-                    onClick={() => del.mutate(m.id)}
-                    aria-label={`Delete ${m.display_name}`}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-8 w-8 text-muted-foreground hover:text-foreground active-tactile transition-transform"
+                      aria-label={`Edit ${m.display_name}`}
+                      onClick={() => {
+                        setEditTarget(m);
+                        setEditOpen(true);
+                      }}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-8 w-8 text-muted-foreground hover:text-destructive active-tactile transition-transform"
+                      onClick={() => del.mutate(m.id)}
+                      aria-label={`Delete ${m.display_name}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
                 <div className="mt-4 flex flex-wrap gap-1.5">
-                  {provider && <Badge variant="outline" className="border-border/60 text-muted-foreground">{provider.key}</Badge>}
-                  <Badge variant="outline" className="border-border/60 text-muted-foreground">{m.tier}</Badge>
+                  {provider && <Badge variant="outline" className="border-border/60 text-muted-foreground font-mono">{provider.key}</Badge>}
+                  <Badge variant="outline" className="border-border/60 text-muted-foreground font-mono">{m.tier}</Badge>
                   {m.active ? (
                     <Badge variant="success" className="gap-1 text-[10px] font-semibold uppercase tracking-wider">active</Badge>
                   ) : (
                     <Badge variant="secondary" className="text-[10px] font-semibold uppercase tracking-wider">inactive</Badge>
                   )}
                 </div>
-                <div className="mt-4 pt-3 border-t border-border/40 font-mono text-[11px] text-muted-foreground/90 space-y-1">
+                <div className="mt-4 pt-3 border-t border-border/40 font-mono text-[11px] text-muted-foreground/90 space-y-1.5">
                   <div className="flex justify-between">
                     <span>context window:</span>
                     <span className="text-foreground font-semibold">{m.context_window.toLocaleString()}</span>

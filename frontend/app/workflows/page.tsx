@@ -4,7 +4,6 @@ import * as React from "react";
 import { toast } from "sonner";
 import {
   Workflow as WorkflowIcon,
-  Plus,
   Play,
   Save,
   FolderOpen,
@@ -25,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Label, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { PageHeader } from "@/components/page-header";
+import { WorkflowNodeCard, type GNode } from "@/components/workflows/workflow-node-card";
 import {
   Dialog,
   DialogContent,
@@ -33,15 +33,6 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
-type GNode = {
-  id: string;
-  kind: "input" | "agent" | "tool" | "merge" | "output" | "approval" | "sub_workflow";
-  label: string;
-  agent_id?: string;
-  merge_mode?: "all" | "any";
-  config: Record<string, any>;
-  position?: { x: number; y: number };
-};
 type GEdge = { from_: string; to: string; condition?: string };
 
 function layout(nodes: GNode[], edges: GEdge[]) {
@@ -74,9 +65,8 @@ function layout(nodes: GNode[], edges: GEdge[]) {
 }
 
 export default function WorkflowsPage() {
-  const { data, isLoading } = useWorkflows();
+  const { data } = useWorkflows();
   const create = useCreateWorkflow();
-  const del = useDeleteWorkflow();
   const agents = useAgents();
   const { nodes, edges, selectedNodeId, setGraph, setSelectedNode } = useWorkflowStore();
 
@@ -88,7 +78,6 @@ export default function WorkflowsPage() {
   const [output, setOutput] = React.useState("");
   const [editId, setEditId] = React.useState<string | null>(null);
 
-  // Drag and drop states
   const canvasRef = React.useRef<HTMLDivElement>(null);
   const [draggingNode, setDraggingNode] = React.useState<{
     id: string;
@@ -96,11 +85,9 @@ export default function WorkflowsPage() {
     offsetY: number;
   } | null>(null);
 
-  // Connection dragging states
   const [connectingFromId, setConnectingFromId] = React.useState<string | null>(null);
   const [mousePosition, setMousePosition] = React.useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
-  // Compute node positions dynamically
   const pos = React.useMemo(() => {
     const layoutPos = layout(nodes, edges);
     const p: Record<string, { x: number; y: number }> = {};
@@ -110,7 +97,6 @@ export default function WorkflowsPage() {
     return p;
   }, [nodes, edges]);
 
-  // Handle global mousemove and mouseup for smooth node/connection dragging
   React.useEffect(() => {
     if (!draggingNode && !connectingFromId) return;
 
@@ -158,7 +144,6 @@ export default function WorkflowsPage() {
     };
   }, [draggingNode, connectingFromId, nodes, edges, setGraph]);
 
-  // Initialize node positions using autolayout if loaded without coordinates
   React.useEffect(() => {
     if (nodes.length > 0 && !nodes.every((n) => n.position?.x != null)) {
       const calculatedPos = layout(nodes, edges);
@@ -263,7 +248,6 @@ export default function WorkflowsPage() {
     }
   };
 
-  // Node drag start handler
   const onNodeMouseDown = (e: React.MouseEvent, id: string) => {
     const target = e.target as HTMLElement;
     if (target.closest(".no-drag")) return;
@@ -289,7 +273,6 @@ export default function WorkflowsPage() {
     setSelectedNode(id);
   };
 
-  // Connection dragging source port mouse down handler
   const onOutputPortMouseDown = (e: React.MouseEvent, sourceId: string) => {
     e.stopPropagation();
     e.preventDefault();
@@ -302,14 +285,13 @@ export default function WorkflowsPage() {
     const nodeX = node.position?.x ?? pos[sourceId]?.x ?? 0;
     const nodeY = node.position?.y ?? pos[sourceId]?.y ?? 0;
 
-    const portX = nodeX + 160; // Right port x position (node width is 160)
-    const portY = nodeY + 35;  // Center port y position (node height is 70)
+    const portX = nodeX + 160;
+    const portY = nodeY + 35;
 
     setConnectingFromId(sourceId);
     setMousePosition({ x: portX, y: portY });
   };
 
-  // Connection dragging target port mouse up handler
   const onInputPortMouseUp = (e: React.MouseEvent, targetId: string) => {
     e.stopPropagation();
     if (connectingFromId && connectingFromId !== targetId) {
@@ -322,14 +304,14 @@ export default function WorkflowsPage() {
     setConnectingFromId(null);
   };
 
-  const nodeColor = (id?: string) =>
-    id && nodeStatus[id] === "done"
-      ? "border-success"
-      : id && nodeStatus[id] === "running"
-        ? "border-info"
-        : id && nodeStatus[id] === "error"
-          ? "border-destructive"
-          : "border-border";
+  const deleteNode = (id: string) => {
+    setGraph(
+      nodes.filter((x) => x.id !== id),
+      edges.filter((edge) => edge.from_ !== id && edge.to !== id)
+    );
+    if (selectedNodeId === id) setSelectedNode(null);
+    toast.success("Node deleted");
+  };
 
   return (
     <div className="space-y-6">
@@ -374,7 +356,7 @@ export default function WorkflowsPage() {
       />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-4 stagger">
-        <div className="rounded-xl border border-border/60 bg-card/40 p-4 space-y-4 backdrop-blur-md">
+        <div className="rounded-xl border border-border/80 bg-card/50 p-4 space-y-4 backdrop-blur-xl shadow-3d-card">
           <div className="space-y-2">
             <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">Add node to canvas</Label>
             <div className="space-y-1.5">
@@ -408,16 +390,14 @@ export default function WorkflowsPage() {
 
         <div 
           ref={canvasRef}
-          className="relative h-[500px] overflow-auto rounded-xl border border-border bg-card/30 backdrop-blur-sm lg:col-span-2 shadow-inner-edge select-none cursor-grab active:cursor-grabbing"
+          className="relative h-[500px] overflow-auto rounded-xl border border-border/80 bg-card/30 backdrop-blur-sm lg:col-span-2 shadow-inner-edge select-none cursor-grab active:cursor-grabbing"
           style={{ 
             backgroundImage: 'radial-gradient(hsl(var(--foreground) / 0.05) 1px, transparent 1px)', 
             backgroundSize: '16px 16px' 
           }}
         >
-          {/* Scrollable canvas wrapper */}
           <div className="absolute w-[2000px] h-[1200px] inset-0">
             <svg className="pointer-events-none absolute inset-0 h-full w-full">
-              {/* Connection curves */}
               {edges.map((e, i) => {
                 const a = pos[e.from_];
                 const b = pos[e.to];
@@ -434,7 +414,6 @@ export default function WorkflowsPage() {
 
                 return (
                   <g key={i} className="group pointer-events-auto">
-                    {/* Hover highlights */}
                     <path
                       d={path}
                       stroke="hsl(var(--primary) / 0.25)"
@@ -449,7 +428,6 @@ export default function WorkflowsPage() {
                       fill="none"
                       className="transition-colors group-hover:stroke-primary"
                     />
-                    {/* Invisible fat line to make hover easier */}
                     <path
                       d={path}
                       stroke="transparent"
@@ -458,7 +436,6 @@ export default function WorkflowsPage() {
                       className="cursor-pointer"
                       onClick={() => setGraph(nodes, edges.filter((_, j) => j !== i))}
                     />
-                    {/* Tiny delete connection button */}
                     <g
                       className="opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
                       onClick={() => {
@@ -474,7 +451,6 @@ export default function WorkflowsPage() {
                 );
               })}
 
-              {/* Live drawing connection curve */}
               {connectingFromId && (
                 (() => {
                   const source = pos[connectingFromId];
@@ -497,70 +473,24 @@ export default function WorkflowsPage() {
               )}
             </svg>
 
-            {/* Draggable workflow Nodes */}
-            {nodes.map((n) => {
-              const p = pos[n.id] || { x: 0, y: 0 };
-              const NodeIcon =
-                n.kind === "input" ? Box : n.kind === "agent" ? Bot : n.kind === "tool" ? Wrench : n.kind === "merge" ? GitMerge : LogOut;
-              return (
-                <div
-                  key={n.id}
-                  className={`absolute flex w-[160px] h-[70px] select-none cursor-grab active:cursor-grabbing flex-col justify-between rounded-xl border bg-card/95 dark:bg-card/85 p-3 text-xs shadow-card transition-shadow duration-200 hover:shadow-md hover:border-primary/45 ${nodeColor(n.id)} ${
-                    selectedNodeId === n.id ? "ring-2 ring-primary border-primary/50" : ""
-                  }`}
-                  style={{ left: p.x, top: p.y }}
-                  onMouseDown={(e) => onNodeMouseDown(e, n.id)}
-                >
-                  {/* Target Port handle (Left) */}
-                  <div
-                    className={`absolute -left-2 top-[25px] h-4.5 w-4.5 rounded-full border border-border bg-background flex items-center justify-center cursor-crosshair z-30 transition-all hover:scale-125 hover:border-primary ${
-                      connectingFromId && connectingFromId !== n.id ? "animate-pulse-soft border-primary/80 bg-primary/20 scale-110" : ""
-                    }`}
-                    onMouseUp={(e) => onInputPortMouseUp(e, n.id)}
-                    title="Connect parent output here"
-                  >
-                    <div className="h-1.5 w-1.5 rounded-full bg-muted-foreground hover:bg-primary" />
-                  </div>
-
-                  {/* Source Port handle (Right) */}
-                  <div
-                    className="absolute -right-2 top-[25px] h-4.5 w-4.5 rounded-full border border-border bg-background flex items-center justify-center cursor-crosshair z-30 transition-all hover:scale-125 hover:border-primary"
-                    onMouseDown={(e) => onOutputPortMouseDown(e, n.id)}
-                    title="Drag to child input"
-                  >
-                    <div className="h-1.5 w-1.5 rounded-full bg-muted-foreground hover:bg-primary" />
-                  </div>
-
-                  <div className="flex items-center justify-between gap-1 font-bold tracking-tight">
-                    <div className="flex items-center gap-1.5">
-                      <NodeIcon className="h-3.5 w-3.5 text-primary" /> 
-                      <span className="capitalize">{n.kind}</span>
-                    </div>
-                    {/* Delete node button */}
-                    <button
-                      className="no-drag text-muted-foreground hover:text-destructive transition-colors p-0.5 rounded hover:bg-muted"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setGraph(
-                          nodes.filter((x) => x.id !== n.id),
-                          edges.filter((edge) => edge.from_ !== n.id && edge.to !== n.id)
-                        );
-                        if (selectedNodeId === n.id) setSelectedNode(null);
-                        toast.success("Node deleted");
-                      }}
-                      title="Delete node"
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </button>
-                  </div>
-                  <div className="truncate text-[10px] text-muted-foreground/90 font-mono bg-muted/40 px-1.5 py-0.5 rounded border border-border/30">{n.label}</div>
-                </div>
-              );
-            })}
+            {nodes.map((n) => (
+              <WorkflowNodeCard
+                key={n.id}
+                node={n}
+                position={pos[n.id] || { x: 0, y: 0 }}
+                isSelected={selectedNodeId === n.id}
+                status={nodeStatus[n.id]}
+                connectingFromId={connectingFromId}
+                onNodeMouseDown={onNodeMouseDown}
+                onOutputPortMouseDown={onOutputPortMouseDown}
+                onInputPortMouseUp={onInputPortMouseUp}
+                onDeleteNode={deleteNode}
+              />
+            ))}
           </div>
         </div>
 
-        <div className="rounded-xl border border-border/60 bg-card/40 p-4 space-y-4 backdrop-blur-md">
+        <div className="rounded-xl border border-border/80 bg-card/50 p-4 space-y-4 backdrop-blur-xl shadow-3d-card">
           <div className="space-y-2">
             <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">Node Config</Label>
             {selectedNodeId ? (
@@ -658,7 +588,7 @@ export default function WorkflowsPage() {
       <div className="animate-slide-up" style={{ animationDelay: "150ms" }}>
         <Card glass className="overflow-hidden">
           <CardHeader className="flex flex-row items-center gap-3 border-b border-border/60 bg-muted/20 px-4 py-3">
-            <div className="grid h-8 w-8 place-items-center rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 text-primary shadow-inner-edge">
+            <div className="grid h-8 w-8 place-items-center rounded-xl bg-gradient-to-br from-primary/25 via-primary/10 to-transparent text-primary shadow-3d-card border border-primary/20">
               <Terminal className="h-4 w-4" />
             </div>
             <CardTitle className="text-sm font-semibold tracking-tight">Run Output Console</CardTitle>

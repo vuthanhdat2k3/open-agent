@@ -84,11 +84,11 @@ export default function Dashboard() {
                 <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   {s.label}
                 </p>
-                <div className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 text-primary shadow-inner-edge">
+                <div className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-primary/25 via-primary/10 to-transparent text-primary shadow-3d-card border border-primary/20">
                   <Icon className="h-4 w-4" />
                 </div>
               </div>
-              <div className="mt-4 text-3xl font-bold tracking-tight tabular-nums">{s.value}</div>
+              <div className="mt-4 text-3xl font-bold tracking-tight tabular-nums text-foreground">{s.value}</div>
             </Card>
           );
         })}
@@ -96,8 +96,8 @@ export default function Dashboard() {
 
       <div className="animate-slide-up" style={{ animationDelay: "150ms" }}>
         <Card glass className="overflow-hidden">
-          <CardHeader className="flex flex-row items-center gap-3 border-b border-border">
-            <div className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 text-primary shadow-inner-edge">
+          <CardHeader className="flex flex-row items-center gap-3 border-b border-border/80 bg-muted/20">
+            <div className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-primary/25 via-primary/10 to-transparent text-primary shadow-3d-card border border-primary/20">
               <BarChart3 className="h-4 w-4" />
             </div>
             <div>
