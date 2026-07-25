@@ -10,85 +10,77 @@ from app.models.mcp import McpServer, McpTool
 
 
 class McpClient:
-    """Wraps a single MCP server connection. The `mcp` package is imported
-    lazily so the backend imports fine without it installed."""
+    """Wraps a single MCP server. Connections are ephemeral — opened and torn
+    down within the same call — because the `mcp` SDK's transports run an
+    anyio task group bound to whichever asyncio task establishes them.
+    FastAPI runs every request in its own task, so caching a connection
+    across requests corrupts that task group on the next unrelated request
+    (surfaces as a bare, message-less RuntimeError/ExceptionGroup deep in
+    anyio's cancel-scope teardown). Reconnecting per call is the correct
+    fix, not just a workaround: the SDK doesn't support cross-task reuse.
+    The `mcp` package is imported lazily so the backend imports fine
+    without it installed.
+    """
 
     def __init__(self, server: McpServer):
         self.server = server
-        self._conn: dict[str, Any] | None = None
+
+    def _transport(self):
+        if self.server.transport == "stdio":
+            from mcp import StdioServerParameters
+            from mcp.client.stdio import stdio_client
+
+            params = StdioServerParameters(
+                command=self.server.command or "",
+                args=self.server.args or [],
+                env=self.server.env or None,
+            )
+            return stdio_client(params)
+        from mcp.client.sse import sse_client
+
+        return sse_client(self.server.url, headers=self.server.headers or {})
 
     async def connect(self) -> None:
-        if self._conn is not None:
-            return
-        transport = self.server.transport
+        # No persistent state to establish; list_tools() below does a real
+        # round trip and will raise if the server is unreachable.
+        await self.list_tools()
+
+    async def list_tools(self) -> list[dict[str, Any]]:
         try:
-            if transport == "stdio":
-                from mcp import ClientSession, StdioServerParameters
-                from mcp.client.stdio import stdio_client
+            from mcp import ClientSession
 
-                params = StdioServerParameters(
-                    command=self.server.command or "",
-                    args=self.server.args or [],
-                    env=self.server.env or None,
-                )
-                ctx = stdio_client(params)
-                read, write = await ctx.__aenter__()
-                session = ClientSession(read, write)
-                await session.__aenter__()
-                await session.initialize()
-                self._conn = {"ctx": ctx, "session": session}
-            else:
-                from mcp import ClientSession
-                from mcp.client.sse import sse_client
-
-                ctx = sse_client(self.server.url, headers=self.server.headers or {})
-                read, write = await ctx.__aenter__()
-                session = ClientSession(read, write)
-                await session.__aenter__()
-                await session.initialize()
-                self._conn = {"ctx": ctx, "session": session}
+            async with self._transport() as (read, write):
+                async with ClientSession(read, write) as session:
+                    await session.initialize()
+                    resp = await session.list_tools()
+                    return [
+                        {
+                            "name": t.name,
+                            "description": getattr(t, "description", "") or "",
+                            "input_schema": getattr(t, "inputSchema", {}) or {},
+                        }
+                        for t in resp.tools
+                    ]
         except ImportError as e:  # pragma: no cover
             raise RuntimeError("mcp package not installed; cannot connect to MCP servers") from e
 
-    async def list_tools(self) -> list[dict[str, Any]]:
-        await self.connect()
-        assert self._conn is not None
-        resp = await self._conn["session"].list_tools()
-        out: list[dict[str, Any]] = []
-        for t in resp.tools:
-            out.append(
-                {
-                    "name": t.name,
-                    "description": getattr(t, "description", "") or "",
-                    "input_schema": getattr(t, "inputSchema", {}) or {},
-                }
-            )
-        return out
-
     async def call_tool(self, name: str, args: dict[str, Any]) -> str:
-        await self.connect()
-        assert self._conn is not None
-        result = await self._conn["session"].call_tool(name, args)
-        parts: list[str] = []
-        for c in getattr(result, "content", []) or []:
-            text = getattr(c, "text", None)
-            if text is not None:
-                parts.append(text)
-        return "\n".join(parts)
+        from mcp import ClientSession
+
+        async with self._transport() as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                result = await session.call_tool(name, args)
+                parts: list[str] = []
+                for c in getattr(result, "content", []) or []:
+                    text = getattr(c, "text", None)
+                    if text is not None:
+                        parts.append(text)
+                return "\n".join(parts)
 
     async def disconnect(self) -> None:
-        conn = self._conn
-        self._conn = None
-        if not conn:
-            return
-        try:
-            await conn["session"].__aexit__(None, None, None)
-        except Exception:  # noqa: BLE001, SIM105
-            pass
-        try:
-            await conn["ctx"].__aexit__(None, None, None)
-        except Exception:  # noqa: BLE001, SIM105
-            pass
+        # Nothing persistent to tear down — kept for API compatibility.
+        return None
 
 
 class McpManager:
