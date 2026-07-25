@@ -167,7 +167,11 @@ export default function FilesPage() {
                           size="icon"
                           variant="ghost"
                           className="h-8 w-8 text-muted-foreground hover:text-destructive active-tactile transition-transform"
-                          onClick={() => del.mutate(f.id)}
+                          onClick={() => {
+                            if (window.confirm(`Xóa file "${f.original_name}"? Hành động này không thể hoàn tác.`)) {
+                              del.mutate(f.id);
+                            }
+                          }}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>

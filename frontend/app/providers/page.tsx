@@ -163,7 +163,11 @@ export default function ProvidersPage() {
                   size="sm"
                   variant="destructive"
                   className="gap-1.5 active-tactile transition-transform"
-                  onClick={() => del.mutate(p.id)}
+                  onClick={() => {
+                    if (window.confirm(`Xóa nhà cung cấp "${p.name}"? Hành động này không thể hoàn tác.`)) {
+                      del.mutate(p.id);
+                    }
+                  }}
                 >
                   <Trash2 className="h-3.5 w-3.5" /> Delete
                 </Button>
