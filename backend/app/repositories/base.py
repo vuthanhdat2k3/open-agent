@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Generic, TypeVar
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 ModelType = TypeVar("ModelType")
@@ -54,5 +55,11 @@ class BaseRepository(Generic[ModelType]):
         if obj is None:
             return False
         await self.db.delete(obj)
-        await self.db.commit()
+        try:
+            await self.db.commit()
+        except IntegrityError as e:
+            await self.db.rollback()
+            raise ValueError(
+                f"cannot delete {self.model.__name__}: still referenced by another record"
+            ) from e
         return True
