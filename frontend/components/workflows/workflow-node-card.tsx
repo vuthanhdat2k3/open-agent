@@ -57,9 +57,9 @@ export function WorkflowNodeCard({
       style={{ left: p.x, top: p.y }}
       onMouseDown={(e) => onNodeMouseDown(e, n.id)}
     >
-      {/* Target Port handle (Left) */}
+      {/* Target Port handle (Top) */}
       <div
-        className={`absolute -left-2 top-[25px] h-4.5 w-4.5 rounded-full border border-border bg-background flex items-center justify-center cursor-crosshair z-30 transition-all hover:scale-125 hover:border-primary shadow-sm ${
+        className={`absolute -top-2 left-[72px] h-4 w-4 rounded-full border border-border bg-background flex items-center justify-center cursor-crosshair z-30 transition-all hover:scale-125 hover:border-primary shadow-sm ${
           connectingFromId && connectingFromId !== n.id ? "animate-pulse-soft border-primary/80 bg-primary/20 scale-110" : ""
         }`}
         onMouseUp={(e) => onInputPortMouseUp(e, n.id)}
@@ -68,9 +68,9 @@ export function WorkflowNodeCard({
         <div className="h-1.5 w-1.5 rounded-full bg-muted-foreground hover:bg-primary" />
       </div>
 
-      {/* Source Port handle (Right) */}
+      {/* Source Port handle (Bottom) */}
       <div
-        className="absolute -right-2 top-[25px] h-4.5 w-4.5 rounded-full border border-border bg-background flex items-center justify-center cursor-crosshair z-30 transition-all hover:scale-125 hover:border-primary shadow-sm"
+        className="absolute -bottom-2 left-[72px] h-4 w-4 rounded-full border border-border bg-background flex items-center justify-center cursor-crosshair z-30 transition-all hover:scale-125 hover:border-primary shadow-sm"
         onMouseDown={(e) => onOutputPortMouseDown(e, n.id)}
         title="Drag to child input"
       >

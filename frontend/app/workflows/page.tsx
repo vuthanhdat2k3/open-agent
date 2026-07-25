@@ -7,6 +7,7 @@ import {
   Play,
   Save,
   FolderOpen,
+  FilePlus,
   Box,
   Bot,
   Wrench,
@@ -15,9 +16,10 @@ import {
   Terminal,
   Trash2,
   RefreshCw,
+  Sparkles,
 } from "lucide-react";
 import { streamSSE } from "@/lib/api";
-import { useWorkflows, useCreateWorkflow, useDeleteWorkflow, useAgents } from "@/hooks";
+import { useWorkflows, useCreateWorkflow, useDeleteWorkflow, useAgents, useModels, useGenerateWorkflow } from "@/hooks";
 import { useWorkflowStore } from "@/stores";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -27,6 +29,7 @@ import { PageHeader } from "@/components/page-header";
 import { WorkflowNodeCard, type GNode } from "@/components/workflows/workflow-node-card";
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogHeader,
   DialogTitle,
@@ -57,9 +60,10 @@ function layout(nodes: GNode[], edges: GEdge[]) {
     const l = layer[n.id] ?? 0;
     (perLayer[l] = perLayer[l] || []).push(n);
   });
+  // Vertical flow: BFS depth -> row (y), index within a row -> column (x).
   const pos: Record<string, { x: number; y: number }> = {};
   Object.entries(perLayer).forEach(([l, ns]) => {
-    ns.forEach((n, i) => (pos[n.id] = { x: 40 + +l * 240, y: 40 + i * 120 }));
+    ns.forEach((n, i) => (pos[n.id] = { x: 40 + i * 200, y: 40 + +l * 140 }));
   });
   return pos;
 }
@@ -68,9 +72,18 @@ export default function WorkflowsPage() {
   const { data } = useWorkflows();
   const create = useCreateWorkflow();
   const agents = useAgents();
+  const models = useModels();
+  const generate = useGenerateWorkflow();
   const { nodes, edges, selectedNodeId, setGraph, setSelectedNode } = useWorkflowStore();
 
   const [wfName, setWfName] = React.useState("");
+  const [aiPrompt, setAiPrompt] = React.useState("");
+  const [aiModelId, setAiModelId] = React.useState("");
+  const [aiResult, setAiResult] = React.useState<{
+    name: string;
+    description: string;
+    graph: { nodes: GNode[]; edges: GEdge[] };
+  } | null>(null);
   const [input, setInput] = React.useState("");
   const [newEdge, setNewEdge] = React.useState<GEdge>({ from_: "", to: "" });
   const [running, setRunning] = React.useState(false);
@@ -188,6 +201,17 @@ export default function WorkflowsPage() {
     setNewEdge({ from_: "", to: "" });
   };
 
+  const newWorkflow = () => {
+    setWfName("");
+    setEditId(null);
+    setInput("");
+    setOutput("");
+    setNodeStatus({});
+    setGraph([], []);
+    setSelectedNode(null);
+    toast.success("New workflow — canvas cleared");
+  };
+
   const loadWorkflow = (wf: any) => {
     setWfName(wf.name);
     setEditId(wf.id);
@@ -206,6 +230,34 @@ export default function WorkflowsPage() {
     } catch (e: any) {
       toast.error(e.message);
     }
+  };
+
+  React.useEffect(() => {
+    if (!aiModelId && models.data?.length) setAiModelId(models.data[0].id);
+  }, [models.data, aiModelId]);
+
+  const handleGenerate = async () => {
+    if (!aiPrompt.trim() || !aiModelId) return;
+    try {
+      const result = await generate.mutateAsync({ prompt: aiPrompt, model_id: aiModelId });
+      setAiResult(result);
+    } catch (e: any) {
+      toast.error(e.message);
+    }
+  };
+
+  const applyGenerated = () => {
+    if (!aiResult) return;
+    setWfName(aiResult.name);
+    setEditId(null);
+    setGraph(
+      aiResult.graph.nodes.map((n) => ({ ...n, position: undefined })),
+      aiResult.graph.edges,
+    );
+    setSelectedNode(null);
+    setAiResult(null);
+    setAiPrompt("");
+    toast.success("Applied to canvas — review and Save");
   };
 
   const handleAutoLayout = () => {
@@ -285,8 +337,8 @@ export default function WorkflowsPage() {
     const nodeX = node.position?.x ?? pos[sourceId]?.x ?? 0;
     const nodeY = node.position?.y ?? pos[sourceId]?.y ?? 0;
 
-    const portX = nodeX + 160;
-    const portY = nodeY + 35;
+    const portX = nodeX + 80;
+    const portY = nodeY + 70;
 
     setConnectingFromId(sourceId);
     setMousePosition({ x: portX, y: portY });
@@ -321,6 +373,9 @@ export default function WorkflowsPage() {
         description="Connect agents into a parallel graph"
         actions={
           <>
+            <Button variant="outline" className="gap-2 active-tactile transition-transform" onClick={newWorkflow}>
+              <FilePlus className="h-4 w-4" /> New
+            </Button>
             <Dialog>
               <DialogTrigger asChild>
                 <Button variant="outline" className="gap-2 active-tactile transition-transform">
@@ -333,14 +388,15 @@ export default function WorkflowsPage() {
                 </DialogHeader>
                 <div className="space-y-2">
                   {data?.map((wf) => (
-                    <Button
-                      key={wf.id}
-                      variant="outline"
-                      className="w-full justify-start"
-                      onClick={() => loadWorkflow(wf)}
-                    >
-                      {wf.name}
-                    </Button>
+                    <DialogClose asChild key={wf.id}>
+                      <Button
+                        variant="outline"
+                        className="w-full justify-start"
+                        onClick={() => loadWorkflow(wf)}
+                      >
+                        {wf.name}
+                      </Button>
+                    </DialogClose>
                   ))}
                 </div>
               </DialogContent>
@@ -348,6 +404,61 @@ export default function WorkflowsPage() {
             <Button variant="outline" className="gap-2 active-tactile transition-transform" onClick={handleAutoLayout}>
               <RefreshCw className="h-4 w-4" /> Auto-Layout
             </Button>
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button variant="outline" className="gap-2 active-tactile transition-transform">
+                  <Sparkles className="h-4 w-4 text-primary" /> AI Generate
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Generate workflow with AI</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">
+                      Describe what the workflow should do
+                    </Label>
+                    <Textarea
+                      className="min-h-[100px] text-xs"
+                      value={aiPrompt}
+                      onChange={(e) => setAiPrompt(e.target.value)}
+                      placeholder="e.g. Research a topic, then draft a report, then review it before output."
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">Model</Label>
+                    <Select className="text-xs w-full" value={aiModelId} onChange={(e) => setAiModelId(e.target.value)}>
+                      {models.data?.map((m) => (
+                        <option key={m.id} value={m.id}>{m.display_name || m.name}</option>
+                      ))}
+                    </Select>
+                  </div>
+                  <Button
+                    className="w-full gap-2 active-tactile transition-transform"
+                    disabled={!aiPrompt.trim() || !aiModelId || generate.isPending}
+                    onClick={handleGenerate}
+                  >
+                    <Sparkles className="h-4 w-4" /> {generate.isPending ? "Generating…" : "Generate"}
+                  </Button>
+
+                  {aiResult && (
+                    <div className="space-y-2 rounded-lg border border-primary/30 bg-primary/5 p-3">
+                      <div className="text-sm font-semibold text-foreground">{aiResult.name}</div>
+                      {aiResult.description && (
+                        <p className="text-xs text-muted-foreground">{aiResult.description}</p>
+                      )}
+                      <p className="text-[11px] text-muted-foreground">
+                        {aiResult.graph.nodes.length} nodes · {aiResult.graph.edges.length} connections
+                      </p>
+                      <Button size="sm" className="w-full gap-2" onClick={applyGenerated}>
+                        Apply to canvas
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </DialogContent>
+            </Dialog>
             <Button onClick={save} className="gap-2 active-tactile transition-transform">
               <Save className="h-4 w-4" /> Save
             </Button>
@@ -402,12 +513,12 @@ export default function WorkflowsPage() {
                 const a = pos[e.from_];
                 const b = pos[e.to];
                 if (!a || !b) return null;
-                const x1 = a.x + 160;
-                const y1 = a.y + 35;
-                const x2 = b.x;
-                const y2 = b.y + 35;
-                const dx = Math.abs(x2 - x1) * 0.5;
-                const path = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
+                const x1 = a.x + 80;
+                const y1 = a.y + 70;
+                const x2 = b.x + 80;
+                const y2 = b.y;
+                const dy = Math.abs(y2 - y1) * 0.5;
+                const path = `M ${x1} ${y1} C ${x1} ${y1 + dy}, ${x2} ${y2 - dy}, ${x2} ${y2}`;
                 
                 const mx = (x1 + x2) / 2;
                 const my = (y1 + y2) / 2;
@@ -455,14 +566,14 @@ export default function WorkflowsPage() {
                 (() => {
                   const source = pos[connectingFromId];
                   if (!source) return null;
-                  const x1 = source.x + 160;
-                  const y1 = source.y + 35;
+                  const x1 = source.x + 80;
+                  const y1 = source.y + 70;
                   const x2 = mousePosition.x;
                   const y2 = mousePosition.y;
-                  const dx = Math.abs(x2 - x1) * 0.5;
+                  const dy = Math.abs(y2 - y1) * 0.5;
                   return (
                     <path
-                      d={`M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`}
+                      d={`M ${x1} ${y1} C ${x1} ${y1 + dy}, ${x2} ${y2 - dy}, ${x2} ${y2}`}
                       stroke="hsl(var(--primary))"
                       strokeWidth={2}
                       strokeDasharray="4 4"

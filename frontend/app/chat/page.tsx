@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { streamSSE } from "@/lib/api";
 import { useAgents, useSessions, useSessionMessages, useDeleteSession, useModels } from "@/hooks";
@@ -22,6 +23,7 @@ import { Select } from "@/components/ui/select";
 import { ChatMessageItem, type UIMessage } from "@/components/chat/chat-message-item";
 
 export default function ChatPage() {
+  const searchParams = useSearchParams();
   const agents = useAgents();
   const models = useModels();
   const { sessionId, setSession } = useChatStore();
@@ -40,8 +42,10 @@ export default function ChatPage() {
 
   React.useEffect(() => {
     if (!agents.data?.length) return;
-    setAgentId((current) => current || agents.data![0].id);
-  }, [agents.data]);
+    const preselect = searchParams.get("agent");
+    const valid = preselect && agents.data.some((a) => a.id === preselect);
+    setAgentId((current) => current || (valid ? preselect! : agents.data![0].id));
+  }, [agents.data, searchParams]);
 
   React.useEffect(() => {
     setModelOverrideId("");

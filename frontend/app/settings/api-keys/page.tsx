@@ -41,7 +41,9 @@ export default function ApiKeysPage() {
             <Label className="text-xs uppercase tracking-wider font-semibold text-muted-foreground/80">Name</Label>
             <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="automation" />
           </div>
-          <Button className="mt-auto active-tactile transition-transform" onClick={submit} disabled={!name || create.isPending}>Create key</Button>
+          <Button className="self-end active-tactile transition-transform" onClick={submit} disabled={!name || create.isPending}>
+            Create key
+          </Button>
         </CardContent>
       </Card>
       {secret && (

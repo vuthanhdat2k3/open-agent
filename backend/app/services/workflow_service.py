@@ -1,7 +1,36 @@
 from __future__ import annotations
 
+import json
+import re
+
+from sqlalchemy import select
+
+from app.core.llm import LLMClient, resolve_api_key
+from app.models.model import Model
+from app.models.provider import Provider
 from app.models.workflow import Workflow
+from app.repositories.agent_repo import AgentRepository
 from app.repositories.workflow_repo import WorkflowRepository
+
+_GENERATE_SYSTEM_PROMPT = """You design workflow graphs for a multi-agent automation platform.
+
+A workflow graph is JSON: {{"name": str, "description": str, "graph": {{"nodes": [...], "edges": [...]}}}}.
+
+Node shape: {{"id": str, "kind": "input"|"agent"|"merge"|"output", "label": str, "agent_id": str|null, "merge_mode": "all"|"any"}}
+- Exactly one "input" node and at least one "output" node.
+- "agent" nodes MUST use an agent_id from the list below — never invent one.
+- Use "merge" nodes (merge_mode "all"|"any") to join parallel branches back together.
+Edge shape: {{"from_": node_id, "to": node_id}}.
+
+Available agents in this organization:
+{agents}
+
+Design a graph that fulfils the user's request. Prefer running independent steps in parallel
+(fan-out to multiple agent nodes from the same source, fan-in via a merge node) over a purely
+sequential chain when the steps do not depend on each other.
+
+Respond with ONLY the JSON object, no markdown fences, no commentary.
+"""
 
 
 class WorkflowService:
@@ -31,6 +60,64 @@ class WorkflowService:
 
     async def get(self, org_id: str, id: str) -> Workflow | None:
         return await self.repo.get(org_id, id)
+
+    async def generate_graph(self, org_id: str, prompt: str, model_id: str) -> dict:
+        agents = await AgentRepository(self.repo.db).list(org_id)
+        if not agents:
+            raise ValueError("create at least one agent before generating a workflow")
+        agents_desc = "\n".join(
+            f'- id="{a.id}" name="{a.name}" kind={a.kind}: {a.description or "(no description)"}'
+            for a in agents
+        )
+
+        res = await self.repo.db.execute(
+            select(Model).where(Model.id == model_id, Model.org_id == org_id)
+        )
+        model = res.scalar_one_or_none()
+        if model is None:
+            raise ValueError(f"model {model_id} not found")
+        res = await self.repo.db.execute(select(Provider).where(Provider.id == model.provider_id))
+        provider = res.scalar_one_or_none()
+        if provider is None:
+            raise ValueError("provider not found for model")
+
+        llm = LLMClient(provider.base_url, resolve_api_key(provider), model.name)
+        messages = [
+            {"role": "system", "content": _GENERATE_SYSTEM_PROMPT.format(agents=agents_desc)},
+            {"role": "user", "content": prompt},
+        ]
+        content, _usage, _tool_calls = await llm.complete(messages, temperature=0.3)
+
+        match = re.search(r"\{.*\}", content, re.DOTALL)
+        if not match:
+            raise ValueError(f"model did not return valid JSON: {content[:200]}")
+        try:
+            result = json.loads(match.group(0))
+        except json.JSONDecodeError as e:
+            raise ValueError(f"model returned malformed JSON: {e}") from e
+
+        graph = result.get("graph")
+        if not isinstance(graph, dict):
+            raise ValueError("generated response missing 'graph'")
+        self.validate_graph(graph)
+
+        valid_agent_ids = {a.id for a in agents}
+        for node in graph.get("nodes", []):
+            if node.get("kind") == "agent" and node.get("agent_id") not in valid_agent_ids:
+                raise ValueError(f"generated graph references unknown agent_id: {node.get('agent_id')}")
+            # The model sometimes emits explicit nulls for optional fields; drop them so
+            # pydantic falls back to field defaults instead of failing validation
+            # (merge_mode is a non-nullable Literal on the GraphNode schema).
+            if node.get("merge_mode") is None:
+                node.pop("merge_mode", None)
+            if node.get("config") is None:
+                node.pop("config", None)
+
+        return {
+            "name": result.get("name") or "Generated workflow",
+            "description": result.get("description") or "",
+            "graph": graph,
+        }
 
     @staticmethod
     def validate_graph(graph: dict) -> None:

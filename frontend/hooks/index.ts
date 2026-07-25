@@ -256,6 +256,12 @@ export function useCreateWorkflow() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["workflows"] }),
   });
 }
+export function useGenerateWorkflow() {
+  return useMutation({
+    mutationFn: (body: { prompt: string; model_id: string }) =>
+      api.post<{ name: string; description: string; graph: any }>("/api/workflows/generate", body),
+  });
+}
 export function useDeleteWorkflow() {
   const qc = useQueryClient();
   return useMutation({

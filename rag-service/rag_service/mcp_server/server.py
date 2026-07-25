@@ -273,7 +273,18 @@ def create_mcp_server() -> Any:
 
 
 def _create_fastmcp_server() -> FastMCP:
-    mcp: FastMCP = FastMCP("rag-service")
+    from mcp.server.transport_security import TransportSecuritySettings
+
+    # FastMCP's DNS-rebinding protection only allows localhost/127.0.0.1 by
+    # default, which rejects requests reaching this container via its Docker
+    # Compose service name ("rag-service") from sibling containers.
+    mcp: FastMCP = FastMCP(
+        "rag-service",
+        transport_security=TransportSecuritySettings(
+            allowed_hosts=["localhost:*", "127.0.0.1:*", "rag-service:*"],
+            allowed_origins=["http://localhost:*", "http://127.0.0.1:*", "http://rag-service:*"],
+        ),
+    )
 
     @mcp.tool()
     async def rag_search(

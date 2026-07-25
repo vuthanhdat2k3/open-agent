@@ -12,6 +12,8 @@ from app.models.workflow_run import WorkflowRun
 from app.schemas.workflow import (
     RunWorkflowRequest,
     WorkflowCreate,
+    WorkflowGenerateRequest,
+    WorkflowGenerateResponse,
     WorkflowOut,
     WorkflowUpdate,
 )
@@ -46,6 +48,22 @@ async def create_workflow(
 ):
     try:
         return await WorkflowService(db).create(org_id, body.model_dump())
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@router.post(
+    "/generate",
+    response_model=WorkflowGenerateResponse,
+    dependencies=[Depends(require_permission("workflows:create"))],
+)
+async def generate_workflow(
+    body: WorkflowGenerateRequest,
+    org_id: str = Depends(get_current_org_id),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        return await WorkflowService(db).generate_graph(org_id, body.prompt, body.model_id)
     except ValueError as e:
         raise HTTPException(400, str(e))
 
