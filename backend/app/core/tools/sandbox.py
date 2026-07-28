@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import os
 import shlex
+import tarfile
 from collections.abc import AsyncIterator
+from pathlib import Path
 from typing import Any
 
 from app.config import get_settings
@@ -11,10 +14,13 @@ from app.core.observability.metrics import sandbox_executions_total
 from app.core.tools.registry import register
 from app.core.tools.risk_tier import RiskTier
 from app.core.tools.types import ToolContext, ToolSpec
+from app.services.workspace_service import finish_execution_record, start_execution_record
 
 settings = get_settings()
 
 MAX_SANDBOX_OUTPUT = 50_000
+MAX_WORKSPACE_ARCHIVE_BYTES = 10 * 1024 * 1024
+SKIP_WORKSPACE_DIRS = {".git", "__pycache__", ".venv", "node_modules", ".codegraph", ".omo"}
 
 _LANG_IMAGES = {
     "python": (settings.sandbox_docker_image_python, "python"),
@@ -38,7 +44,12 @@ def _docker_cli_present() -> bool:
     return which("docker") is not None
 
 
-def build_docker_args(language: str, filename: str | None = None) -> list[str]:
+def build_docker_args(
+    language: str,
+    filename: str | None = None,
+    *,
+    stdin_mode: str = "code",
+) -> list[str]:
     image, cmd = _LANG_IMAGES[language]
     fname = filename or f"script.{'py' if language == 'python' else 'sh'}"
     fname = os.path.basename(str(fname)) or "script.py"
@@ -46,7 +57,10 @@ def build_docker_args(language: str, filename: str | None = None) -> list[str]:
 
     network = "none" if not settings.sandbox_allow_network else "bridge"
     safe_path = shlex.quote(container_path)
-    runner = f"cat > {safe_path} && {cmd} {safe_path}"
+    if stdin_mode == "archive":
+        runner = f"tar -xzf - -C /work && {cmd} {safe_path}"
+    else:
+        runner = f"cat > {safe_path} && {cmd} {safe_path}"
     return [
         "docker",
         "run",
@@ -72,6 +86,39 @@ def build_docker_args(language: str, filename: str | None = None) -> list[str]:
         "-c",
         runner,
     ]
+
+
+def build_workspace_archive(workspace_dir: str, filename: str, code: str) -> bytes:
+    """Package workspace files plus the requested script for stdin into Docker."""
+    fname = os.path.basename(str(filename)) or "script.py"
+    base = Path(workspace_dir).resolve()
+    buf = io.BytesIO()
+    total_size = 0
+
+    with tarfile.open(fileobj=buf, mode="w:gz") as archive:
+        if base.exists():
+            for path in base.rglob("*"):
+                rel = path.relative_to(base)
+                if any(part in SKIP_WORKSPACE_DIRS for part in rel.parts):
+                    continue
+                if path.is_dir():
+                    continue
+                try:
+                    stat = path.stat()
+                except OSError:
+                    continue
+                total_size += stat.st_size
+                if total_size > MAX_WORKSPACE_ARCHIVE_BYTES:
+                    raise ValueError("workspace archive exceeds 10MB")
+                archive.add(path, arcname=str(rel))
+
+        data = str(code).encode("utf-8")
+        info = tarfile.TarInfo(fname)
+        info.size = len(data)
+        info.mode = 0o644
+        archive.addfile(info, io.BytesIO(data))
+
+    return buf.getvalue()
 
 
 async def stream_sandbox_execution(
@@ -201,11 +248,29 @@ async def _run_code(args: dict[str, Any], ctx: ToolContext) -> str:
         return "error: sandbox execution is disabled"
 
     language = (args.get("language") or "python").lower()
-    code = args.get("code", "")
+    code = args.get("code")
+    if code is None:
+        code = args.get("content", "")
+    execution = await start_execution_record(
+        ctx.db,
+        org_id=ctx.org_id,
+        source="run_code",
+        language=language,
+        command=str(code)[:4000],
+        user_id=ctx.user_id,
+        agent_id=ctx.agent_id,
+        session_id=ctx.session_id,
+        task_id=ctx.current_task_id,
+        root_run_id=ctx.root_run_id,
+    )
     if language not in _LANG_IMAGES:
-        return f"error: unsupported language '{language}' (use python or bash)"
+        msg = f"error: unsupported language '{language}' (use python or bash)"
+        await finish_execution_record(ctx.db, execution, status="failed", output=msg, error=msg)
+        return msg
     if not code:
-        return "error: missing 'code'"
+        msg = "error: missing 'code'"
+        await finish_execution_record(ctx.db, execution, status="failed", output=msg, error=msg)
+        return msg
 
     try:
         timeout = float(args.get("timeout", settings.sandbox_default_timeout))
@@ -214,13 +279,22 @@ async def _run_code(args: dict[str, Any], ctx: ToolContext) -> str:
 
     if not _docker_available():
         sandbox_executions_total.labels("docker_unavailable").inc()
-        return (
+        msg = (
             "error: docker unavailable — sandbox execution requires a running "
             "Docker daemon reachable from the backend host"
         )
+        await finish_execution_record(ctx.db, execution, status="failed", output=msg, error=msg)
+        return msg
 
     filename = args.get("filename") or f"script.{'py' if language == 'python' else 'sh'}"
-    docker_args = build_docker_args(language, filename)
+    try:
+        archive = build_workspace_archive(ctx.workspace_dir, filename, str(code))
+    except ValueError as e:
+        msg = f"error: {e}"
+        await finish_execution_record(ctx.db, execution, status="failed", output=msg, error=msg)
+        return msg
+
+    docker_args = build_docker_args(language, filename, stdin_mode="archive")
 
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -231,26 +305,46 @@ async def _run_code(args: dict[str, Any], ctx: ToolContext) -> str:
         )
         try:
             out, _ = await asyncio.wait_for(
-                proc.communicate(str(code).encode("utf-8")),
+                proc.communicate(archive),
                 timeout=timeout,
             )
         except TimeoutError:
             proc.kill()
             await proc.wait()
             sandbox_executions_total.labels("timeout").inc()
-            return f"error: sandbox timed out after {timeout}s [exit code: -1]"
+            msg = f"error: sandbox timed out after {timeout}s [exit code: -1]"
+            await finish_execution_record(
+                ctx.db,
+                execution,
+                status="timed_out",
+                output=msg,
+                error=msg,
+                exit_code=-1,
+            )
+            return msg
     except FileNotFoundError:
         sandbox_executions_total.labels("docker_missing").inc()
-        return "error: docker CLI not found on the backend host"
+        msg = "error: docker CLI not found on the backend host"
+        await finish_execution_record(ctx.db, execution, status="failed", output=msg, error=msg)
+        return msg
     except Exception as e:  # noqa: BLE001
         sandbox_executions_total.labels("error").inc()
-        return f"error executing sandbox: {e}"
+        msg = f"error executing sandbox: {e}"
+        await finish_execution_record(ctx.db, execution, status="failed", output=msg, error=str(e))
+        return msg
 
     text = out.decode("utf-8", errors="replace") if out else ""
     if len(text) > MAX_SANDBOX_OUTPUT:
         text = text[:MAX_SANDBOX_OUTPUT] + "\n...[truncated]"
     text += f"\n[exit code: {proc.returncode}]"
     sandbox_executions_total.labels("ok" if proc.returncode == 0 else "error").inc()
+    await finish_execution_record(
+        ctx.db,
+        execution,
+        status="succeeded" if proc.returncode == 0 else "failed",
+        output=text,
+        exit_code=proc.returncode,
+    )
     return text
 
 
@@ -261,10 +355,13 @@ register(
             "Execute Python or bash inside an isolated Docker container and return "
             "its combined output plus exit code. Code cannot access the host or "
             "network (unless enabled). Provide 'language' (python|bash) and 'code'. "
-            "Optional 'filename', 'timeout' (seconds).\n\n"
+            "Optional 'filename', 'timeout' (seconds). Use language='python' for "
+            "Python code. The bash image is minimal and does not include python, "
+            "pip, npm, apt-get, or build tools.\n\n"
             "NOTE FOR GRAPHICS & DRAWINGS: The sandbox runs in headless mode (no GUI/turtle/X11). "
             "To draw or display visual graphics (flowers, charts, diagrams) directly in the Chat UI, "
-            "do NOT use turtle/tkinter. Instead, print raw SVG markup (e.g. print('<svg ...>...</svg>')) "
+            "do NOT use matplotlib/turtle/tkinter or try to install GUI packages. "
+            "Instead, print raw SVG markup (e.g. print('<svg ...>...</svg>')) "
             "or HTML directly to stdout. The OpenAgent Chat UI will automatically render the live interactive "
             "graphic preview directly inside the conversation thread for the user!"
         ),
@@ -281,6 +378,10 @@ register(
                     "type": "string",
                     "description": "Source code to execute",
                 },
+                "content": {
+                    "type": "string",
+                    "description": "Alias for 'code' for compatibility with code-writing prompts",
+                },
                 "filename": {
                     "type": "string",
                     "description": "Optional filename (default script.py/script.sh)",
@@ -290,7 +391,7 @@ register(
                     "description": "Timeout in seconds (default 30)",
                 },
             },
-            "required": ["language", "code"],
+            "required": ["language"],
         },
         run=_run_code,
     )
