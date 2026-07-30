@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useParams } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
+import { Loader2 } from "lucide-react";
 
 export default function OAuthCallbackPage() {
   const params = useParams<{ provider: string }>();
@@ -12,9 +13,13 @@ export default function OAuthCallbackPage() {
   }, [params.provider]);
 
   return (
-    <Card glass>
-      <CardContent className="p-6 text-sm text-muted-foreground">Completing OAuth sign in...</CardContent>
-    </Card>
+    <div className="mx-auto flex min-h-screen max-w-md items-center px-4">
+      <Card glass className="w-full shadow-3d-floating text-center border-border/80 animate-scale-in">
+        <CardContent className="flex items-center justify-center gap-3 p-8 text-sm font-medium text-foreground">
+          <Loader2 className="h-5 w-5 animate-spin text-primary" />
+          Completing OAuth sign in...
+        </CardContent>
+      </Card>
+    </div>
   );
 }
-

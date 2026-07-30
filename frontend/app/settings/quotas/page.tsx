@@ -14,6 +14,8 @@ import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Card, CardContent } from "@/components/ui/card";
+import { getActiveOrgId } from "@/lib/auth";
 
 type FormState = {
   requests_per_minute: string;
@@ -40,8 +42,6 @@ const EMPTY_FORM: FormState = {
 function optionalNumber(value: string) {
   return value === "" ? null : Number(value);
 }
-
-import { getActiveOrgId } from "@/lib/auth";
 
 export default function QuotasPage() {
   const me = useMe();
@@ -132,7 +132,7 @@ export default function QuotasPage() {
         description={`Admission and spend controls for ${usage.data?.month ?? "current month"}`}
         actions={
           <Button
-            className="gap-2"
+            className="gap-2 active-tactile transition-transform"
             onClick={save}
             disabled={updateQuota.isPending}
           >
@@ -142,39 +142,36 @@ export default function QuotasPage() {
         }
       />
 
-      <section>
-        <h2 className="text-sm font-semibold">Current usage</h2>
-        <div className="mt-3 grid border-y border-border/60 sm:grid-cols-2 lg:grid-cols-5">
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold text-foreground">Current usage</h2>
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5 stagger">
           {usageRows.map((row) => (
-            <div
-              key={row.label}
-              className="border-b border-border/60 p-4 sm:border-r lg:border-b-0"
-            >
-              <p className="text-xs text-muted-foreground">{row.label}</p>
-              <p className="mt-1 text-lg font-semibold">{row.value}</p>
-              <p className="mt-1 text-[11px] text-muted-foreground">
-                Limit {row.limit}
+            <Card key={row.label} glass className="card-lift p-4 overflow-hidden">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{row.label}</p>
+              <p className="mt-2 text-xl font-bold tracking-tight text-foreground font-mono">{row.value}</p>
+              <p className="mt-1 text-[11px] font-mono text-muted-foreground/80">
+                Limit: {row.limit}
               </p>
-            </div>
+            </Card>
           ))}
         </div>
       </section>
 
-      <section>
-        <div className="flex items-end justify-between gap-4">
+      <Card glass className="p-6 shadow-3d-card space-y-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between border-b border-border/60 pb-5">
           <div>
-            <h2 className="text-sm font-semibold">Admission policy</h2>
+            <h2 className="text-base font-semibold tracking-tight text-foreground">Admission policy</h2>
             <p className="mt-1 text-xs text-muted-foreground">
               Observe records limit decisions without rejecting requests.
             </p>
           </div>
           <div className="w-40">
-            <Label>Mode</Label>
+            <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">Mode</Label>
             <Select
-              className="mt-1.5"
+              className="mt-1.5 text-xs"
               value={form.enforcement_mode}
               onChange={(event) =>
-                setField("enforcement_mode", event.target.value)
+                setField("enforcement_mode", event.target.value as any)
               }
             >
               <option value="enforce">Enforce</option>
@@ -183,7 +180,7 @@ export default function QuotasPage() {
           </div>
         </div>
 
-        <div className="mt-5 grid gap-x-6 gap-y-4 border-t border-border/60 pt-5 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-x-6 gap-y-4 md:grid-cols-2 xl:grid-cols-3">
           {[
             ["requests_per_minute", "Requests per minute"],
             ["agent_runs_per_minute", "Agent runs per minute"],
@@ -194,7 +191,7 @@ export default function QuotasPage() {
             ["max_storage_bytes", "Storage (bytes)"],
           ].map(([field, label]) => (
             <div key={field} className="space-y-1.5">
-              <Label>{label}</Label>
+              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">{label}</Label>
               <Input
                 type="number"
                 min="0"
@@ -207,7 +204,7 @@ export default function QuotasPage() {
             </div>
           ))}
         </div>
-      </section>
+      </Card>
     </div>
   );
 }

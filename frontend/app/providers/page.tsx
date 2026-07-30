@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { Plus, Server, CheckCircle2, Trash2, Pencil } from "lucide-react";
 import { useProviders, useCreateProvider, useDeleteProvider, useTestProvider, useUpdateProvider } from "@/hooks";
 import type { Provider } from "@/types";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -39,7 +39,7 @@ export default function ProvidersPage() {
         actions={
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-              <Button className="gap-2">
+              <Button className="gap-2 active-tactile transition-transform">
                 <Plus className="h-4 w-4" /> New Provider
               </Button>
             </DialogTrigger>
@@ -98,11 +98,11 @@ export default function ProvidersPage() {
             <Card key={p.id} glass className="card-lift flex flex-col p-5">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex min-w-0 items-center gap-3">
-                  <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 text-primary shadow-inner-edge">
-                    <Server className="h-4 w-4" />
+                  <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-primary/25 via-primary/10 to-transparent text-primary shadow-3d-card border border-primary/20">
+                    <Server className="h-5 w-5" />
                   </div>
                   <div className="min-w-0">
-                    <p className="truncate font-semibold text-sm tracking-tight">{p.name}</p>
+                    <p className="truncate font-semibold text-sm tracking-tight text-foreground">{p.name}</p>
                     <p className="truncate font-mono text-[10px] text-muted-foreground/70">{p.key}</p>
                     {p.is_default && (
                       <Badge variant="success" className="mt-1 text-[10px] py-0 px-1.5 uppercase font-semibold tracking-wider">
@@ -114,19 +114,19 @@ export default function ProvidersPage() {
               </div>
               
               <div className="mt-4 flex-1 space-y-2 font-mono text-xs text-muted-foreground">
-                <div className="truncate rounded border border-border/40 bg-muted/40 px-2 py-1 select-all">{p.base_url}</div>
+                <div className="truncate rounded-lg border border-border/40 bg-muted/30 px-2.5 py-1.5 select-all shadow-inner-edge">{p.base_url}</div>
                 <div className="flex items-center gap-1 text-[11px]">
                   {p.api_key ? (
                     <>
                       <span className="text-muted-foreground/60">key:</span>
-                      <span className="rounded bg-muted px-1 py-0.5 text-foreground font-medium">
+                      <span className="rounded bg-muted px-1.5 py-0.5 text-foreground font-medium">
                         •••• {p.api_key.slice(-4)}
                       </span>
                     </>
                   ) : (
                     <>
                       <span className="text-muted-foreground/60">env:</span>
-                      <span className="rounded bg-muted px-1 py-0.5 text-foreground font-medium">
+                      <span className="rounded bg-muted px-1.5 py-0.5 text-foreground font-medium">
                         {p.env_var || "—"}
                       </span>
                     </>
@@ -150,7 +150,7 @@ export default function ProvidersPage() {
                 <Button
                   size="sm"
                   variant="outline"
-                  className="gap-1.5 active-tactile transition-transform"
+                  className="gap-1.5 active-tactile transition-transform ml-auto"
                   loading={test.isPending}
                   onClick={async () => {
                     const r = await test.mutateAsync(p.id);
@@ -163,7 +163,11 @@ export default function ProvidersPage() {
                   size="sm"
                   variant="destructive"
                   className="gap-1.5 active-tactile transition-transform"
-                  onClick={() => del.mutate(p.id)}
+                  onClick={() => {
+                    if (window.confirm(`Xóa nhà cung cấp "${p.name}"? Hành động này không thể hoàn tác.`)) {
+                      del.mutate(p.id);
+                    }
+                  }}
                 >
                   <Trash2 className="h-3.5 w-3.5" /> Delete
                 </Button>

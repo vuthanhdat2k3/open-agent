@@ -63,8 +63,12 @@ class Settings(BaseSettings):
     sandbox_allow_network: bool = False
     sandbox_max_retries: int = 3
 
-    upload_dir: str = "data/uploads"
     max_upload_size: int = 25 * 1024 * 1024
+    s3_endpoint_url: str = "http://minio:9000"
+    s3_access_key: str = "minioadmin"
+    s3_secret_key: str = "minioadmin"
+    s3_bucket: str = "openagent-uploads"
+    s3_region: str = "us-east-1"
     rag_mcp_server_name: str = "rag"
     allowed_extensions: list[str] = [
         ".pdf",

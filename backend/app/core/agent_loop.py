@@ -193,8 +193,13 @@ async def _agent_stream(
     res = await db.execute(select(Model).where(Model.id == agent.model_id))
     model = res.scalar_one_or_none()
     if model is None:
-        await _finish_task(db, root_task, status="failed", result=f"model {agent.model_id} not found")
-        yield {"event": "error", "data": {"message": f"model {agent.model_id} not found"}}
+        msg = (
+            "no model assigned to this agent — assign one before chatting"
+            if agent.model_id is None
+            else f"model {agent.model_id} not found"
+        )
+        await _finish_task(db, root_task, status="failed", result=msg)
+        yield {"event": "error", "data": {"message": msg}}
         return
     res = await db.execute(select(Provider).where(Provider.id == model.provider_id))
     provider = res.scalar_one_or_none()

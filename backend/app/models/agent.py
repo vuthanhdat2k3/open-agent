@@ -18,7 +18,9 @@ class Agent(Base):
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     description: Mapped[str] = mapped_column(String(512), default="")
     system_prompt: Mapped[str] = mapped_column(Text, default="", nullable=False)
-    model_id: Mapped[str] = mapped_column(ForeignKey("models.id"), nullable=False)
+    model_id: Mapped[str | None] = mapped_column(
+        ForeignKey("models.id", ondelete="SET NULL"), nullable=True
+    )
     tools: Mapped[list[str]] = mapped_column(JSON, default=list)
     allowed_risk_tiers: Mapped[list[str]] = mapped_column(
         JSON, default=lambda: ["safe", "read"]

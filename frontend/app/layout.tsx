@@ -34,7 +34,6 @@ import {
   Gauge,
   ShieldCheck,
   Users,
-  User as UserIcon,
   Menu,
   PanelLeftClose,
   PanelLeft,
@@ -47,6 +46,7 @@ import { UserNav } from "@/components/user-nav";
 import { Button } from "@/components/ui/button";
 import { getAccessToken, refreshAccessToken, subscribeAuth } from "@/lib/auth";
 import { useApprovals } from "@/hooks";
+import { OrgSwitcher } from "@/components/org-switcher";
 
 const sans = Fira_Sans({
   subsets: ["latin"],
@@ -105,8 +105,6 @@ const navGroups: NavGroup[] = [
 
 const allNavItems = navGroups.flatMap((g) => g.items);
 
-// Warm a tab's data before the user clicks it (on hover/focus) so the first
-// visit also renders instantly instead of waiting on the network.
 type PrefetchSpec = { queryKey: QueryKey; queryFn: () => Promise<unknown> };
 
 const tabQueries: Record<string, PrefetchSpec[]> = {
@@ -181,11 +179,11 @@ function SidebarNav({
                 aria-current={active ? "page" : undefined}
                 title={collapsed ? item.label : undefined}
                 className={cn(
-                  "group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200 ease-out-expo",
+                  "group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200 ease-out-expo active-tactile",
                   collapsed && "justify-center px-0",
                   active
-                    ? "bg-primary/10 text-primary shadow-inner-edge font-semibold"
-                    : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                    ? "bg-primary/12 text-primary shadow-inner-edge font-semibold border border-primary/20"
+                    : "text-muted-foreground hover:bg-accent/80 hover:text-foreground hover:translate-x-0.5",
                 )}
               >
                 <Icon
@@ -196,13 +194,13 @@ function SidebarNav({
                 />
                 {!collapsed && <span className="truncate">{item.label}</span>}
                 {!collapsed && item.href === "/approvals" && pending > 0 && (
-                  <span className="ml-auto rounded-full bg-destructive px-1.5 py-0.5 text-[10px] font-bold text-destructive-foreground">
+                  <span className="ml-auto rounded-full bg-destructive px-1.5 py-0.5 text-[10px] font-bold text-destructive-foreground shadow-sm">
                     {pending}
                   </span>
                 )}
                 {active && (
                   <span
-                    className="absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-primary"
+                    className="absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-primary shadow-sm"
                     aria-hidden="true"
                   />
                 )}
@@ -247,18 +245,16 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-import { OrgSwitcher } from "@/components/org-switcher";
-
 function Brand({ collapsed }: { collapsed: boolean }) {
   return (
     <div className="space-y-2 p-3">
       <div className={cn("flex items-center gap-3", collapsed && "justify-center px-0")}>
-        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-primary to-primary/60 shadow-diffuse">
+        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-primary to-primary/60 shadow-3d-card border border-primary/30">
           <Bot className="h-5 w-5 text-primary-foreground" />
         </div>
         {!collapsed && (
           <div className="min-w-0">
-            <div className="truncate text-base font-bold tracking-tight">OpenAgent</div>
+            <div className="truncate text-base font-bold tracking-tight text-foreground">OpenAgent</div>
             <div className="truncate text-xs text-muted-foreground">Agent Platform</div>
           </div>
         )}
@@ -275,12 +271,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         queries: {
           retry: 1,
           refetchOnWindowFocus: false,
-          // Without staleTime the cache is considered stale immediately, so navigating
-          // to a tab (which remounts the page in the App Router) refetches every time
-          // and shows a loading spinner. Keeping data fresh for a minute means a tab
-          // you just left renders instantly from cache on return.
           staleTime: 30_000,
-          // Keep cached data around longer so background refetches stay rare.
           gcTime: 10 * 60_000,
         },
       },
@@ -291,7 +282,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   const [mobileOpen, setMobileOpen] = React.useState(false);
 
   const title = allNavItems.find((n) => isActive(pathname, n.href))?.label ?? "OpenAgent";
-
   const isPublic = pathname === "/login" || pathname === "/register" || pathname.startsWith("/oauth/");
 
   return (
@@ -306,7 +296,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 {/* Desktop sidebar */}
                 <aside
                   className={cn(
-                    "sticky top-0 hidden h-screen shrink-0 flex-col border-r border-border bg-card/40 backdrop-blur-xl transition-[width] duration-300 ease-out-expo lg:flex",
+                    "sticky top-0 hidden h-screen shrink-0 flex-col border-r border-border/80 bg-card/45 backdrop-blur-xl transition-[width] duration-300 ease-out-expo lg:flex shadow-3d-card",
                     collapsed ? "w-[76px]" : "w-64",
                   )}
                 >
@@ -339,10 +329,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 {mobileOpen && (
                   <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Navigation">
                     <div
-                      className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+                      className="absolute inset-0 bg-black/65 backdrop-blur-md"
                       onClick={() => setMobileOpen(false)}
                     />
-                    <aside className="absolute left-0 top-0 flex h-full w-64 flex-col border-r border-border bg-card">
+                    <aside className="absolute left-0 top-0 flex h-full w-64 flex-col border-r border-border bg-card shadow-3d-floating">
                       <div className="flex items-center justify-between pr-3">
                         <Brand collapsed={false} />
                         <Button
@@ -368,7 +358,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 )}
 
                 <div className="flex min-w-0 flex-1 flex-col">
-                  <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-border bg-background/80 px-4 backdrop-blur lg:px-6">
+                  <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-border/80 bg-background/80 px-4 backdrop-blur-md lg:px-6 shadow-sm">
                     <Button
                       variant="ghost"
                       size="icon"
@@ -383,7 +373,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   </header>
 
                   <main className="flex-1 overflow-x-hidden">
-                    {/* key=pathname replays the entrance animation on every navigation */}
                     <div
                       key={pathname}
                       className="mx-auto w-full max-w-7xl animate-fade-in px-4 py-6 lg:px-8 lg:py-8"

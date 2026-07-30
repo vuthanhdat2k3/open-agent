@@ -3,6 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { toast } from "sonner";
+import { Bot, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input, Label } from "@/components/ui/input";
@@ -35,33 +36,39 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="mx-auto flex min-h-[70vh] max-w-md items-center">
-      <Card glass className="w-full">
-        <CardHeader>
-          <CardTitle>Create account</CardTitle>
+    <div className="mx-auto flex min-h-screen max-w-md items-center px-4 py-12">
+      <Card glass className="w-full shadow-3d-floating border-border/80 animate-scale-in">
+        <CardHeader className="space-y-3 text-center pb-2">
+          <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-primary to-primary/60 text-primary-foreground shadow-3d-card border border-primary/30">
+            <Bot className="h-6 w-6" />
+          </div>
+          <div>
+            <CardTitle className="text-xl font-bold tracking-tight text-foreground">Create your account</CardTitle>
+            <p className="mt-1 text-xs text-muted-foreground">Start building multi-agent AI systems with OpenAgent</p>
+          </div>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-4 pt-4">
           <div className="space-y-1.5">
-            <Label>Email</Label>
-            <Input value={email} onChange={(e) => setEmail(e.target.value)} />
+            <Label className="text-xs uppercase tracking-wider font-semibold text-muted-foreground/80">Email</Label>
+            <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@company.com" />
           </div>
           <div className="space-y-1.5">
-            <Label>Password</Label>
-            <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+            <Label className="text-xs uppercase tracking-wider font-semibold text-muted-foreground/80">Password</Label>
+            <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" />
           </div>
           <div className="space-y-1.5">
-            <Label>Organization</Label>
-            <Input value={orgName} onChange={(e) => setOrgName(e.target.value)} placeholder="Optional" />
+            <Label className="text-xs uppercase tracking-wider font-semibold text-muted-foreground/80">Organization (optional)</Label>
+            <Input value={orgName} onChange={(e) => setOrgName(e.target.value)} placeholder="Acme Inc." />
           </div>
-          <Button className="w-full" onClick={submit} disabled={loading || !email || !password}>
-            {loading ? "Creating..." : "Create account"}
+          <Button className="w-full gap-2 active-tactile transition-transform h-10 mt-2" onClick={submit} disabled={loading || !email || !password}>
+            {loading ? "Creating account..." : "Create account"}
+            {!loading && <ArrowRight className="h-4 w-4" />}
           </Button>
-          <p className="text-center text-sm text-muted-foreground">
-            Already have an account? <Link className="text-primary" href="/login">Sign in</Link>
+          <p className="text-center text-xs text-muted-foreground pt-2">
+            Already have an account? <Link className="text-primary font-semibold hover:underline" href="/login">Sign in</Link>
           </p>
         </CardContent>
       </Card>
     </div>
   );
 }
-

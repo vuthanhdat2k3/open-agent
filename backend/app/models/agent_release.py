@@ -26,8 +26,8 @@ class AgentRelease(Base):
 
     description: Mapped[str] = mapped_column(String(512), default="", nullable=False)
     system_prompt: Mapped[str] = mapped_column(Text, default="", nullable=False)
-    model_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("models.id"), nullable=False
+    model_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("models.id", ondelete="SET NULL"), nullable=True
     )
     tools: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     allowed_risk_tiers: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)

@@ -19,6 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input, Label, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Card } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -135,7 +136,7 @@ export default function EvaluationsPage() {
         title="Evaluations"
         description="Versioned test suites and release quality gates"
         actions={
-          <Button className="gap-2" onClick={() => setSuiteDialog(true)}>
+          <Button className="gap-2 active-tactile transition-transform" onClick={() => setSuiteDialog(true)}>
             <Plus className="h-4 w-4" /> New Suite
           </Button>
         }
@@ -147,30 +148,31 @@ export default function EvaluationsPage() {
           <Skeleton className="h-32 w-full" />
         </div>
       ) : suites.data?.length ? (
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-          <div className="space-y-3">
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px] stagger">
+          <div className="space-y-4">
             {suites.data.map((suite) => {
               const agent = agents.data?.find((item) => item.id === suite.agent_id);
               return (
-                <section
+                <Card
                   key={suite.id}
-                  className="border-b border-border/60 pb-5"
+                  glass
+                  className="card-lift p-5 space-y-4 overflow-hidden"
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <div className="flex items-center gap-2">
-                        <h2 className="text-sm font-semibold">{suite.name}</h2>
-                        <Badge variant="outline">dataset v{suite.dataset_version}</Badge>
+                        <h2 className="text-base font-semibold tracking-tight text-foreground">{suite.name}</h2>
+                        <Badge variant="outline" className="font-mono text-[10px]">v{suite.dataset_version}</Badge>
                       </div>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        {suite.description || "No description"} | {agent?.name ?? "Unknown agent"}
+                        {suite.description || "No description"} · <span className="font-medium text-foreground">{agent?.name ?? "Unknown agent"}</span>
                       </p>
                     </div>
-                    <div className="flex gap-1.5">
+                    <div className="flex gap-2">
                       <Button
                         size="sm"
                         variant="outline"
-                        className="gap-1.5"
+                        className="gap-1.5 active-tactile transition-transform text-xs"
                         onClick={() => {
                           setCaseSuite(suite);
                           setSelectedSuiteId(suite.id);
@@ -181,7 +183,7 @@ export default function EvaluationsPage() {
                       <Button
                         size="sm"
                         variant="outline"
-                        className="gap-1.5"
+                        className="gap-1.5 active-tactile transition-transform text-xs"
                         onClick={() => runSuite(suite, "recorded")}
                         disabled={createRun.isPending || !suite.cases.length}
                       >
@@ -189,7 +191,7 @@ export default function EvaluationsPage() {
                       </Button>
                       <Button
                         size="sm"
-                        className="gap-1.5"
+                        className="gap-1.5 active-tactile transition-transform text-xs"
                         onClick={() => runSuite(suite, "live")}
                         disabled={createRun.isPending || !suite.cases.length}
                       >
@@ -197,65 +199,63 @@ export default function EvaluationsPage() {
                       </Button>
                     </div>
                   </div>
-                  <div className="mt-3 overflow-hidden rounded-md border border-border/50">
+                  <div className="overflow-hidden rounded-xl border border-border/60 bg-muted/20">
                     {suite.cases.map((testCase) => (
                       <button
                         key={testCase.id}
-                        className="grid w-full grid-cols-[44px_minmax(0,1fr)_100px] items-center gap-3 border-b border-border/40 px-3 py-2 text-left text-xs last:border-0 hover:bg-muted/30"
+                        className="grid w-full grid-cols-[44px_minmax(0,1fr)_100px] items-center gap-3 border-b border-border/40 px-3.5 py-2.5 text-left text-xs last:border-0 hover:bg-accent/40 transition-colors"
                         onClick={() => setSelectedSuiteId(suite.id)}
                       >
-                        <span className="font-mono text-muted-foreground">
+                        <span className="font-mono text-muted-foreground text-[11px]">
                           #{testCase.ordinal}
                         </span>
-                        <span className="truncate">{testCase.input}</span>
-                        <span className="text-right text-[10px] text-muted-foreground">
-                          added v{testCase.added_in_version}
+                        <span className="truncate text-foreground font-medium">{testCase.input}</span>
+                        <span className="text-right text-[10px] font-mono text-muted-foreground">
+                          v{testCase.added_in_version}
                         </span>
                       </button>
                     ))}
                     {!suite.cases.length && (
-                      <p className="px-3 py-4 text-xs text-muted-foreground">
+                      <p className="px-4 py-4 text-xs text-muted-foreground text-center">
                         No test cases.
                       </p>
                     )}
                   </div>
-                </section>
+                </Card>
               );
             })}
           </div>
 
-          <aside className="border-l border-border/60 pl-5">
-            <h2 className="text-xs font-semibold uppercase text-muted-foreground">
+          <aside className="rounded-xl border border-border/80 bg-card/45 p-5 space-y-4 backdrop-blur-xl shadow-3d-card">
+            <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground/80">
               Recent runs
             </h2>
-            <div className="mt-3 space-y-2">
+            <div className="space-y-3">
               {runs.data?.map((run) => (
                 <div
                   key={run.id}
-                  className="border-b border-border/50 py-3 first:pt-0"
+                  className="rounded-lg border border-border/40 bg-muted/20 p-3 space-y-1.5 shadow-inner-edge"
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       {run.pass_rate === 1 ? (
-                        <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                        <CheckCircle2 className="h-4 w-4 text-success" />
                       ) : (
                         <XCircle className="h-4 w-4 text-destructive" />
                       )}
-                      <span className="font-mono text-sm">
+                      <span className="font-mono text-sm font-bold text-foreground">
                         {(run.pass_rate * 100).toFixed(0)}%
                       </span>
                     </div>
-                    <Badge variant="outline">{run.execution_mode}</Badge>
+                    <Badge variant="outline" className="font-mono text-[10px]">{run.execution_mode}</Badge>
                   </div>
-                  <p className="mt-1 text-[10px] text-muted-foreground">
-                    {run.passed_cases}/{run.total_cases} cases |{" "}
-                    {run.average_latency_ms.toFixed(0)} ms | $
-                    {run.total_cost_usd.toFixed(4)}
+                  <p className="text-[11px] font-mono text-muted-foreground">
+                    {run.passed_cases}/{run.total_cases} cases · {run.average_latency_ms.toFixed(0)}ms · ${run.total_cost_usd.toFixed(4)}
                   </p>
                 </div>
               ))}
               {!runs.data?.length && (
-                <p className="text-xs text-muted-foreground">No runs yet.</p>
+                <p className="text-xs text-muted-foreground/80 py-4 text-center">No runs recorded.</p>
               )}
             </div>
           </aside>
@@ -266,7 +266,7 @@ export default function EvaluationsPage() {
           title="No evaluation suites"
           description="Create a repeatable quality gate for an agent release."
           action={
-            <Button className="gap-2" onClick={() => setSuiteDialog(true)}>
+            <Button className="gap-2 active-tactile transition-transform" onClick={() => setSuiteDialog(true)}>
               <Plus className="h-4 w-4" /> New Suite
             </Button>
           }
@@ -278,7 +278,7 @@ export default function EvaluationsPage() {
           <DialogHeader>
             <DialogTitle>New evaluation suite</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="space-y-4 pt-1">
             <div className="space-y-1.5">
               <Label>Name</Label>
               <Input
@@ -329,7 +329,7 @@ export default function EvaluationsPage() {
               </div>
             </div>
             <Button
-              className="w-full"
+              className="w-full active-tactile transition-transform"
               onClick={submitSuite}
               disabled={createSuite.isPending || !form.name || !form.agent_id}
             >
@@ -344,7 +344,7 @@ export default function EvaluationsPage() {
           <DialogHeader>
             <DialogTitle>Add case to {caseSuite?.name}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="space-y-4 pt-1">
             <div className="space-y-1.5">
               <Label>Input</Label>
               <Textarea
@@ -364,7 +364,7 @@ export default function EvaluationsPage() {
               />
             </div>
             <Button
-              className="w-full"
+              className="w-full active-tactile transition-transform"
               onClick={submitCase}
               disabled={addCase.isPending || !caseForm.input}
             >

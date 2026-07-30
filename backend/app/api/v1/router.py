@@ -13,6 +13,7 @@ from app.api.v1.routes import (
     orgs,
     providers,
     quotas,
+    sandbox,
     sessions,
     workflows,
 )
@@ -34,4 +35,5 @@ protected_router.include_router(debug.router)
 protected_router.include_router(evaluations.router)
 protected_router.include_router(files.router)
 protected_router.include_router(sessions.router)
+protected_router.include_router(sandbox.router)
 api_router.include_router(protected_router)

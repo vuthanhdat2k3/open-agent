@@ -34,12 +34,12 @@ export default function DebugPage() {
       <PageHeader icon={Bug} title="Debug" description="Inspect sessions, messages, and token usage" />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 stagger">
-        <Card glass className="flex flex-col">
+        <Card glass className="flex flex-col shadow-3d-card overflow-hidden">
           <CardHeader className="flex flex-row items-center gap-3 border-b border-border/60 bg-muted/20">
-            <div className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 text-primary shadow-inner-edge">
+            <div className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-primary/25 via-primary/10 to-transparent text-primary shadow-3d-card border border-primary/20">
               <MessageSquare className="h-4 w-4" />
             </div>
-            <CardTitle className="text-sm font-semibold tracking-tight">Active Sessions</CardTitle>
+            <CardTitle className="text-sm font-semibold tracking-tight text-foreground">Active Sessions</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 pt-6">
             <div className="space-y-1.5">
@@ -63,7 +63,7 @@ export default function DebugPage() {
                 {tree.data.messages.map((m: any) => (
                   <div
                     key={m.id}
-                    className="rounded-xl border border-border bg-card/65 p-3.5 text-xs transition-all duration-200 hover:border-primary/40 hover:bg-card"
+                    className="rounded-xl border border-border/80 bg-card/65 p-3.5 text-xs transition-all duration-200 hover:border-primary/40 hover:bg-card shadow-inner-edge"
                   >
                     <div className="mb-2 flex items-center justify-between">
                       <Badge variant="outline" className="text-[10px] bg-muted/40 font-semibold px-2 py-0.5">{m.role}</Badge>
@@ -93,12 +93,12 @@ export default function DebugPage() {
           </CardContent>
         </Card>
 
-        <Card glass className="flex flex-col">
+        <Card glass className="flex flex-col shadow-3d-card overflow-hidden">
           <CardHeader className="flex flex-row items-center gap-3 border-b border-border/60 bg-muted/20">
-            <div className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 text-primary shadow-inner-edge">
+            <div className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-primary/25 via-primary/10 to-transparent text-primary shadow-3d-card border border-primary/20">
               <BarChart3 className="h-4 w-4" />
             </div>
-            <CardTitle className="text-sm font-semibold tracking-tight">Usage Per Agent/Model</CardTitle>
+            <CardTitle className="text-sm font-semibold tracking-tight text-foreground">Usage Per Agent/Model</CardTitle>
           </CardHeader>
           <CardContent className="pt-6">
             {usage.isLoading ? (
@@ -122,9 +122,9 @@ export default function DebugPage() {
                 <TableBody>
                   {usage.data.map((u, i) => (
                     <TableRow key={i}>
-                      <TableCell className="font-medium text-xs">{u.agent_name}</TableCell>
-                      <TableCell className="text-muted-foreground text-xs">{u.model_name}</TableCell>
-                      <TableCell className="text-right tabular-nums text-xs">{u.calls}</TableCell>
+                      <TableCell className="font-medium text-xs text-foreground">{u.agent_name}</TableCell>
+                      <TableCell className="text-muted-foreground text-xs font-mono">{u.model_name}</TableCell>
+                      <TableCell className="text-right tabular-nums text-xs font-mono">{u.calls}</TableCell>
                       <TableCell className="text-right tabular-nums font-mono text-[11px] text-muted-foreground">
                         {u.input_tokens.toLocaleString()}
                       </TableCell>
@@ -146,24 +146,24 @@ export default function DebugPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <Card glass>
+        <Card glass className="shadow-3d-card overflow-hidden">
           <CardHeader className="flex flex-row items-center gap-3 border-b border-border/60 bg-muted/20">
             <GitBranch className="h-4 w-4 text-primary" />
-            <CardTitle className="text-sm">Task Tree</CardTitle>
+            <CardTitle className="text-sm font-semibold text-foreground">Task Tree</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 pt-6">
-            <Input value={rootRunId} onChange={(e) => setRootRunId(e.target.value)} placeholder="root_run_id" />
+            <Input value={rootRunId} onChange={(e) => setRootRunId(e.target.value)} placeholder="root_run_id" className="font-mono text-xs" />
             {taskTree.data?.tasks?.map((node) => (
-              <div key={node.id} className="rounded-lg border border-border p-3 text-xs">
+              <div key={node.id} className="rounded-xl border border-border/80 bg-card/50 p-3.5 text-xs shadow-inner-edge">
                 <div className="flex items-center justify-between">
-                  <span className="font-semibold">{node.goal}</span>
+                  <span className="font-semibold text-foreground">{node.goal}</span>
                   <Badge variant="outline">{node.status}</Badge>
                 </div>
-                <div className="mt-1 font-mono text-muted-foreground">{node.id}</div>
+                <div className="mt-1 font-mono text-muted-foreground text-[10px]">{node.id}</div>
                 {node.children.map((child) => (
                   <div key={child.id} className="mt-3 border-l border-border pl-3">
                     <div className="flex items-center justify-between">
-                      <span>{child.goal}</span>
+                      <span className="text-foreground">{child.goal}</span>
                       <Badge variant="outline">{child.status}</Badge>
                     </div>
                   </div>
@@ -173,13 +173,13 @@ export default function DebugPage() {
           </CardContent>
         </Card>
 
-        <Card glass>
+        <Card glass className="shadow-3d-card overflow-hidden">
           <CardHeader className="flex flex-row items-center gap-3 border-b border-border/60 bg-muted/20">
             <Workflow className="h-4 w-4 text-primary" />
-            <CardTitle className="text-sm">Workflow Run</CardTitle>
+            <CardTitle className="text-sm font-semibold text-foreground">Workflow Run</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 pt-6">
-            <Input value={workflowRunId} onChange={(e) => setWorkflowRunId(e.target.value)} placeholder="workflow_run_id" />
+            <Input value={workflowRunId} onChange={(e) => setWorkflowRunId(e.target.value)} placeholder="workflow_run_id" className="font-mono text-xs" />
             {workflowRun.data && (
               <div className="space-y-2">
                 <Badge variant="outline">{workflowRun.data.status}</Badge>
@@ -194,7 +194,7 @@ export default function DebugPage() {
                   <TableBody>
                     {workflowRun.data.nodes.map((node) => (
                       <TableRow key={node.id}>
-                        <TableCell className="font-mono text-xs">{node.node_id}</TableCell>
+                        <TableCell className="font-mono text-xs text-foreground">{node.node_id}</TableCell>
                         <TableCell><Badge variant="outline">{node.status}</Badge></TableCell>
                         <TableCell className="text-right font-mono text-xs">{node.attempt}</TableCell>
                       </TableRow>

@@ -20,6 +20,7 @@ import rehypeHighlight from "rehype-highlight";
 import rehypeKatex from "rehype-katex";
 import rehypeRaw from "rehype-raw";
 import React from "react";
+import { streamSSE } from "@/lib/api";
 
 interface Props {
   content: string;
@@ -89,6 +90,192 @@ function normalizeLatex(text: string): string {
   return text;
 }
 
+function extractCodeText(children: React.ReactNode): string {
+  if (typeof children === "string") return children;
+  if (typeof children === "number") return String(children);
+  if (Array.isArray(children)) {
+    return children.map(extractCodeText).join("");
+  }
+  if (React.isValidElement(children) && children.props && (children.props as any).children) {
+    return extractCodeText((children.props as any).children);
+  }
+  return "";
+}
+
+function CodeBlockWithAction({ className, children, ...props }: any) {
+  const isBlock = Boolean(className?.includes("language-") || className?.includes("math"));
+  const match = /language-(\w+)/.exec(className || "");
+  const lang = match ? match[1].toLowerCase() : "";
+
+  const isHtml = lang === "html" || lang === "htm";
+  const isRunnable = lang === "python" || lang === "bash" || lang === "sh";
+
+  const [showPreview, setShowPreview] = React.useState(false);
+  const [isRunning, setIsRunning] = React.useState(false);
+  const [logs, setLogs] = React.useState<string[]>([]);
+  const [exitCode, setExitCode] = React.useState<number | null>(null);
+  const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
+
+  const logEndRef = React.useRef<HTMLDivElement>(null);
+
+  const codeText = React.useMemo(() => extractCodeText(children), [children]);
+
+  React.useEffect(() => {
+    logEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [logs, exitCode, errorMessage]);
+
+  if (!isBlock) {
+    return (
+      <code
+        className="rounded bg-muted/60 border border-border/40 px-1.5 py-0.5 font-mono text-[10.5px] text-foreground"
+        {...props}
+      >
+        {children}
+      </code>
+    );
+  }
+
+  if (!isHtml && !isRunnable) {
+    return (
+      <code className={`${className ?? ""} text-[10.5px] leading-relaxed`} {...props}>
+        {children}
+      </code>
+    );
+  }
+
+  const handleOpenNewTab = () => {
+    const blob = new Blob([codeText], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    window.open(url, "_blank", "noopener,noreferrer");
+    setTimeout(() => URL.revokeObjectURL(url), 30_000);
+  };
+
+  const handleRunBackend = async () => {
+    if (isRunning) return;
+    setIsRunning(true);
+    setLogs([]);
+    setExitCode(null);
+    setErrorMessage(null);
+
+    const targetLang = lang === "sh" ? "bash" : lang;
+
+    try {
+      await streamSSE(
+        "/api/sandbox/run",
+        { language: targetLang, code: codeText },
+        (ev) => {
+          if (ev.event === "stdout") {
+            const line = ev.data?.line ?? "";
+            setLogs((prev) => [...prev, line]);
+          } else if (ev.event === "exit") {
+            const code = ev.data?.code ?? 0;
+            setExitCode(code);
+          } else if (ev.event === "error") {
+            setErrorMessage(ev.data?.message || "Execution error");
+          }
+        },
+      );
+    } catch (e: any) {
+      setErrorMessage(e.message || "Execution error");
+    } finally {
+      setIsRunning(false);
+    }
+  };
+
+  return (
+    <div className="relative group/code my-2">
+      <div className="flex items-center justify-between px-3 py-1 bg-muted/60 border border-border/40 border-b-0 rounded-t-lg text-[10px] font-mono text-muted-foreground">
+        <span className="uppercase font-semibold tracking-wider text-[9px] text-foreground/70">{lang}</span>
+        {isHtml && (
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => setShowPreview((v) => !v)}
+              type="button"
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-primary/10 text-primary hover:bg-primary/20 transition-colors cursor-pointer"
+            >
+              {showPreview ? "▶ Hide Preview" : "▶ Preview"}
+            </button>
+            <button
+              onClick={handleOpenNewTab}
+              type="button"
+              title="Mở trang HTML trong tab mới"
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-muted/60 text-foreground/80 hover:bg-muted transition-colors cursor-pointer"
+            >
+              ↗ Mở tab mới
+            </button>
+          </div>
+        )}
+        {isRunnable && (
+          <button
+            onClick={handleRunBackend}
+            disabled={isRunning}
+            type="button"
+            className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-[10px] font-medium bg-emerald-500/15 text-emerald-500 hover:bg-emerald-500/25 border border-emerald-500/30 disabled:opacity-50 transition-colors cursor-pointer"
+          >
+            {isRunning ? (
+              <>
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-ping" />
+                Running...
+              </>
+            ) : (
+              "▶ Run"
+            )}
+          </button>
+        )}
+      </div>
+
+      <code className={`${className ?? ""} text-[10.5px] leading-relaxed block border border-border/40 border-t-0 rounded-b-lg bg-muted/30 p-3 overflow-x-auto`} {...props}>
+        {children}
+      </code>
+
+      {isHtml && showPreview && (
+        <div className="mt-2 rounded-lg border border-border/60 overflow-hidden bg-white dark:bg-card">
+          <div className="bg-muted/40 px-3 py-1 text-[10px] font-mono text-muted-foreground border-b border-border/40 flex items-center justify-between">
+            <span>HTML Sandbox Preview</span>
+            <span className="text-[9px] opacity-70">iframe sandbox=&quot;allow-scripts&quot;</span>
+          </div>
+          <iframe
+            srcDoc={codeText}
+            sandbox="allow-scripts"
+            className="w-full h-64 border-0 bg-white"
+            title="HTML Preview"
+          />
+        </div>
+      )}
+
+      {isRunnable && (logs.length > 0 || exitCode !== null || errorMessage !== null || isRunning) && (
+        <div className="mt-2 rounded-lg border border-border/60 bg-black/80 overflow-hidden font-mono text-[10.5px] text-foreground shadow-md">
+          <div className="bg-muted/40 px-3 py-1 text-[10px] text-muted-foreground border-b border-border/40 flex items-center justify-between">
+            <span className="font-semibold text-foreground flex items-center gap-1.5">
+              <span className={`h-2 w-2 rounded-full ${isRunning ? "bg-amber-400 animate-pulse" : exitCode === 0 ? "bg-emerald-400" : "bg-red-400"}`} />
+              Output Console
+            </span>
+            {exitCode !== null && (
+              <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${exitCode === 0 ? "bg-emerald-500/20 text-emerald-400" : "bg-red-500/20 text-red-400"}`}>
+                exit code: {exitCode}
+              </span>
+            )}
+          </div>
+          <pre className="p-3 max-h-60 overflow-y-auto whitespace-pre-wrap break-all leading-relaxed scrollbar-thin text-zinc-100">
+            {logs.map((l, i) => (
+              <span key={i}>{l}</span>
+            ))}
+            {errorMessage && (
+              <span className="text-red-400 block font-semibold">{errorMessage}</span>
+            )}
+            {exitCode !== null && (
+              <span className={`block font-bold mt-1.5 pt-1.5 border-t border-white/10 ${exitCode === 0 ? "text-emerald-400" : "text-red-400"}`}>
+                [exit code: {exitCode}]
+              </span>
+            )}
+            <div ref={logEndRef} />
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function MarkdownRenderer({ content }: Props) {
   const normalized = normalizeLatex(content);
 
@@ -133,31 +320,14 @@ export function MarkdownRenderer({ content }: Props) {
         ),
         em: ({ children }) => <em className="italic">{children}</em>,
 
-        // Inline code vs fenced code block
-        code: ({ className, children, ...props }) => {
-          const isBlock = Boolean(className?.includes("language-") || className?.includes("math"));
-          if (isBlock) {
-            return (
-              <code className={`${className ?? ""} text-[10.5px] leading-relaxed`} {...props}>
-                {children}
-              </code>
-            );
-          }
-          return (
-            <code
-              className="rounded bg-muted/60 border border-border/40 px-1.5 py-0.5 font-mono text-[10.5px] text-foreground"
-              {...props}
-            >
-              {children}
-            </code>
-          );
-        },
+        // Inline code vs fenced code block with Run / Preview action
+        code: (props) => <CodeBlockWithAction {...props} />,
 
         // Fenced code block wrapper
         pre: ({ children }) => (
-          <pre className="mb-3 mt-1 overflow-auto rounded-lg border border-border/40 bg-muted/30 p-3 font-mono text-[10.5px] leading-relaxed scrollbar-thin last:mb-0">
+          <div className="mb-3 mt-1 overflow-x-auto rounded-lg border border-border/40 bg-muted/30 font-mono text-[10.5px] leading-relaxed scrollbar-thin last:mb-0">
             {children}
-          </pre>
+          </div>
         ),
 
         // Blockquote
