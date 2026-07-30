@@ -42,6 +42,7 @@ class AgentToolInfo(BaseModel):
 class AgentOut(AgentBase):
     model_config = ConfigDict(from_attributes=True)
 
+    model_id: str | None = None
     id: str
     active_release_id: str | None = None
     latest_release_number: int = 0

@@ -248,6 +248,9 @@ async def rollback_agent_release(
 async def delete_agent(
     id: str, org_id: str = Depends(get_current_org_id), db: AsyncSession = Depends(get_db)
 ):
-    if not await AgentService(db).delete(org_id, id):
-        raise HTTPException(404, "agent not found")
+    try:
+        if not await AgentService(db).delete(org_id, id):
+            raise HTTPException(404, "agent not found")
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     return {"ok": True}

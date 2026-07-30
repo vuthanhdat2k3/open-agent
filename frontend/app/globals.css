@@ -35,7 +35,7 @@
 
   .dark {
     /* Refined dark theme — deep "ink" surface, elevated cards, desaturated emerald */
-    --background: 224 28% 6%;
+    --background: 224 28% 5%;
     --foreground: 210 30% 96%;
     --card: 224 24% 9%;
     --card-foreground: 210 30% 96%;
@@ -70,7 +70,7 @@
 
   html {
     color-scheme: light;
-    /* Smooth, spring-like easing used across the app for coherent motion */
+    /* Smooth spring-like easing used across the app */
     --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
   }
   html.dark {
@@ -96,8 +96,7 @@
     outline-offset: 2px;
   }
 
-  /* Ambient depth — a soft top-down light + faint emerald bloom, fixed and
-     pointer-transparent so it never repaints on scroll. Dark mode only. */
+  /* Ambient depth — soft specular top-down light + faint emerald bloom. Dark mode only. */
   .dark body::before {
     content: "";
     position: fixed;
@@ -105,8 +104,8 @@
     z-index: -2;
     pointer-events: none;
     background:
-      radial-gradient(60rem 40rem at 78% -10%, hsl(var(--primary) / 0.08), transparent 60%),
-      radial-gradient(50rem 50rem at -10% 110%, hsl(var(--info) / 0.04), transparent 55%);
+      radial-gradient(65rem 45rem at 78% -10%, hsl(var(--primary) / 0.09), transparent 60%),
+      radial-gradient(55rem 55rem at -10% 110%, hsl(var(--info) / 0.05), transparent 55%);
   }
 
   /* Dot Grid Pattern */
@@ -125,7 +124,7 @@
     background-image: radial-gradient(hsl(var(--foreground) / 0.04) 1px, transparent 1px);
   }
 
-  /* Scrollbars */
+  /* Custom Scrollbars */
   * {
     scrollbar-width: thin;
     scrollbar-color: hsl(var(--border)) transparent;
@@ -149,30 +148,35 @@
 }
 
 @layer components {
-  /* Card hover lift used across the app for tactile depth */
+  /* 3D Card Hover Lift with specular highlight and multi-layered depth */
   .card-lift {
     transition:
       transform 0.3s var(--ease-out-expo),
       box-shadow 0.3s var(--ease-out-expo),
       border-color 0.3s var(--ease-out-expo);
+    will-change: transform;
   }
   .card-lift:hover {
-    transform: translateY(-2px);
+    transform: translateY(-3px) scale(1.004);
     border-color: hsl(var(--primary) / 0.4);
     box-shadow: 
-      0 4px 20px -10px hsl(var(--primary) / 0.2),
-      0 1px 2px hsl(var(--foreground) / 0.02),
-      0 8px 24px -12px hsl(var(--foreground) / 0.08);
+      inset 0 1px 0 0 hsl(0 0% 100% / 0.12),
+      0 6px 24px -10px hsl(var(--primary) / 0.22),
+      0 2px 6px hsl(var(--foreground) / 0.04),
+      0 12px 32px -12px hsl(var(--foreground) / 0.16);
   }
   
   /* Tactile state for active interactive elements */
+  .active-tactile {
+    transition: transform 0.15s var(--ease-out-expo);
+  }
   .active-tactile:active {
-    transform: scale(0.98);
+    transform: scale(0.98) translateY(0);
   }
 }
 
 @layer utilities {
-  /* Shimmer skeleton (kept from prior design) */
+  /* Shimmer skeleton */
   .shimmer {
     background: linear-gradient(
       90deg,
@@ -183,18 +187,10 @@
     background-size: 200% 100%;
     animation: shimmer 1.4s ease-in-out infinite;
   }
-  @keyframes shimmer {
-    0% {
-      background-position: 200% 0;
-    }
-    100% {
-      background-position: -200% 0;
-    }
-  }
 
-  /* Staggered waterfall reveal — children animate in sequence. */
+  /* Staggered waterfall reveal */
   .stagger > * {
-    animation: slide-up 0.5s var(--ease-out-expo) both;
+    animation: slide-up 0.45s var(--ease-out-expo) both;
   }
   .stagger > *:nth-child(1) { animation-delay: 0ms; }
   .stagger > *:nth-child(2) { animation-delay: 40ms; }
@@ -206,24 +202,6 @@
   .stagger > *:nth-child(8) { animation-delay: 280ms; }
   .stagger > *:nth-child(9) { animation-delay: 320ms; }
   .stagger > *:nth-child(10) { animation-delay: 360ms; }
-
-  /* Scale-in entry animation for modals, empty states, etc. */
-  @keyframes scale-in {
-    from { opacity: 0; transform: scale(0.94); }
-    to   { opacity: 1; transform: scale(1); }
-  }
-  .animate-scale-in {
-    animation: scale-in 0.35s var(--ease-out-expo) both;
-  }
-
-  /* Soft pulse for connection port targets */
-  @keyframes pulse-soft {
-    0%, 100% { opacity: 1; transform: scale(1); }
-    50%       { opacity: 0.6; transform: scale(1.25); }
-  }
-  .animate-pulse-soft {
-    animation: pulse-soft 1.2s ease-in-out infinite;
-  }
 
   .text-balance {
     text-wrap: balance;
@@ -300,10 +278,8 @@
 .dark .hljs-formula                           { background: hsl(220 18% 16%); }
 
 /* ── KaTeX formula overrides ── */
-/* Inline formula: inherit font-size from context */
 .katex { font-size: 1.05em; }
 
-/* Block formula ($$...$$): centered, with spacing */
 .katex-display {
   margin: 0.75rem 0;
   overflow-x: auto;
@@ -315,14 +291,9 @@
   text-align: center;
 }
 
-/* Light mode formula color */
 .katex, .katex * { color: hsl(222 30% 14%); }
-
-/* Dark mode formula color */
 .dark .katex,
 .dark .katex * { color: hsl(210 25% 90%); }
-
-/* Formula block background (dark) */
 .dark .katex-display {
   background: transparent;
 }

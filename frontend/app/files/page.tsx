@@ -74,7 +74,7 @@ export default function FilesPage() {
             <Input
               value={collection}
               onChange={(e) => setCollection(e.target.value)}
-              className="h-9 w-36"
+              className="h-9 w-36 text-xs font-mono"
               placeholder="collection"
             />
             <input
@@ -94,7 +94,7 @@ export default function FilesPage() {
         }
       />
 
-      <Card glass className="card-lift">
+      <Card glass className="shadow-3d-card overflow-hidden">
         <CardContent className="p-0">
           {isLoading ? (
             <div className="space-y-2 p-6">
@@ -117,21 +117,21 @@ export default function FilesPage() {
               <TableBody>
                 {data.map((f: UploadedFile) => (
                   <TableRow key={f.id}>
-                    <TableCell className="max-w-[240px] truncate font-medium">
+                    <TableCell className="max-w-[240px] truncate font-medium text-foreground">
                       {f.original_name}
                     </TableCell>
-                    <TableCell className="text-muted-foreground">
+                    <TableCell className="text-muted-foreground font-mono text-xs">
                       {f.content_type || "—"}
                     </TableCell>
-                    <TableCell className="text-muted-foreground">
+                    <TableCell className="text-muted-foreground font-mono text-xs">
                       {formatSize(f.size)}
                     </TableCell>
                     <TableCell>
-                      <Badge variant={statusVariant[f.status] || "secondary"}>
+                      <Badge variant={statusVariant[f.status] || "secondary"} className="uppercase tracking-wider text-[10px]">
                         {f.status}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-muted-foreground">
+                    <TableCell className="text-muted-foreground font-mono text-xs">
                       {f.collection || "—"}
                     </TableCell>
                     <TableCell className="text-right">
@@ -166,8 +166,12 @@ export default function FilesPage() {
                         <Button
                           size="icon"
                           variant="ghost"
-                          className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                          onClick={() => del.mutate(f.id)}
+                          className="h-8 w-8 text-muted-foreground hover:text-destructive active-tactile transition-transform"
+                          onClick={() => {
+                            if (window.confirm(`Xóa file "${f.original_name}"? Hành động này không thể hoàn tác.`)) {
+                              del.mutate(f.id);
+                            }
+                          }}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>

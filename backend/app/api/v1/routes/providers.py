@@ -62,8 +62,11 @@ async def update_provider(
 async def delete_provider(
     id: str, org_id: str = Depends(get_current_org_id), db: AsyncSession = Depends(get_db)
 ):
-    if not await ProviderService(db).delete(org_id, id):
-        raise HTTPException(404, "provider not found")
+    try:
+        if not await ProviderService(db).delete(org_id, id):
+            raise HTTPException(404, "provider not found")
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     return {"ok": True}
 
 

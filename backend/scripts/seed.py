@@ -226,6 +226,17 @@ async def seed() -> None:
             env_var="Anthropic-API-KEY",
             is_default=False,
         )
+        bynara = await _provider(
+            db,
+            org_id,
+            user_id,
+            "Bynara",
+            key="bynara",
+            base_url="https://router.bynara.id/v1",
+            api_key=os.environ.get("BYNARA_API_KEY", ""),
+            env_var="Bynara-API-KEY",
+            is_default=False,
+        )
         ollama = await _provider(
             db,
             org_id,
@@ -317,6 +328,19 @@ async def seed() -> None:
             output_cost_per_1k=0.0,
             active=True,
         )
+        agnes = await _model(
+            db,
+            org_id,
+            user_id,
+            bynara.id,
+            "agnes-2.0-flash",
+            display_name="Agnes 2.0 Flash",
+            tier="frontier",
+            context_window=200000,
+            input_cost_per_1k=0.0,
+            output_cost_per_1k=0.0,
+            active=True,
+        )
 
         # --- Agents ---
         await _agent(
@@ -359,14 +383,18 @@ async def seed() -> None:
             db,
             org_id,
             user_id,
-            "coder",
+            "Coder",
             description="Code generation and file edits",
             system_prompt=(
                 "You are a coding agent. Read the relevant files, plan the change, "
-                "and implement it with clear, minimal diffs."
+                "and implement it with clear, minimal diffs.\n\n"
+                "IMPORTANT: When responding with HTML, CSS, or JavaScript for preview/display purposes, "
+                "return it as a code block (```html, ```css, ```javascript) in your response. "
+                "Do NOT use write_file for this. Users can then preview it directly in the chat UI "
+                "using the Preview button or 'Mở tab mới' (open in new tab) feature."
             ),
-            model_id=(await _model_by_name(db, org_id, "gpt-4o")).id,
-            tools=["read_attachment", "memory_store", "memory_recall"],
+            model_id=agnes.id,
+            tools=["run_code", "read_attachment", "memory_store", "memory_recall"],
             max_iterations=16,
             temperature=0.2,
         )
