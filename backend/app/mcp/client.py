@@ -49,34 +49,38 @@ class McpClient:
         try:
             from mcp import ClientSession
 
-            async with self._transport() as (read, write):
-                async with ClientSession(read, write) as session:
-                    await session.initialize()
-                    resp = await session.list_tools()
-                    return [
-                        {
-                            "name": t.name,
-                            "description": getattr(t, "description", "") or "",
-                            "input_schema": getattr(t, "inputSchema", {}) or {},
-                        }
-                        for t in resp.tools
-                    ]
+            async with (
+                self._transport() as (read, write),
+                ClientSession(read, write) as session,
+            ):
+                await session.initialize()
+                resp = await session.list_tools()
+                return [
+                    {
+                        "name": t.name,
+                        "description": getattr(t, "description", "") or "",
+                        "input_schema": getattr(t, "inputSchema", {}) or {},
+                    }
+                    for t in resp.tools
+                ]
         except ImportError as e:  # pragma: no cover
             raise RuntimeError("mcp package not installed; cannot connect to MCP servers") from e
 
     async def call_tool(self, name: str, args: dict[str, Any]) -> str:
         from mcp import ClientSession
 
-        async with self._transport() as (read, write):
-            async with ClientSession(read, write) as session:
-                await session.initialize()
-                result = await session.call_tool(name, args)
-                parts: list[str] = []
-                for c in getattr(result, "content", []) or []:
-                    text = getattr(c, "text", None)
-                    if text is not None:
-                        parts.append(text)
-                return "\n".join(parts)
+        async with (
+            self._transport() as (read, write),
+            ClientSession(read, write) as session,
+        ):
+            await session.initialize()
+            result = await session.call_tool(name, args)
+            parts: list[str] = []
+            for c in getattr(result, "content", []) or []:
+                text = getattr(c, "text", None)
+                if text is not None:
+                    parts.append(text)
+            return "\n".join(parts)
 
     async def disconnect(self) -> None:
         # Nothing persistent to tear down — kept for API compatibility.
