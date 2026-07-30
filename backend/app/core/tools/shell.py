@@ -7,6 +7,7 @@ from app.core.tools.paths import safe_resolve
 from app.core.tools.registry import register
 from app.core.tools.risk_tier import RiskTier
 from app.core.tools.types import ToolContext, ToolSpec
+from app.services.workspace_service import finish_execution_record, start_execution_record
 
 MAX_SHELL_OUTPUT = 50_000
 DEFAULT_TIMEOUT = 30.0
@@ -16,6 +17,18 @@ async def _run_shell(args: dict[str, Any], ctx: ToolContext) -> str:
     cmd = args.get("cmd", "")
     if not cmd:
         return "error: missing 'cmd'"
+    execution = await start_execution_record(
+        ctx.db,
+        org_id=ctx.org_id,
+        source="run_shell",
+        language="shell",
+        command=cmd,
+        user_id=ctx.user_id,
+        agent_id=ctx.agent_id,
+        session_id=ctx.session_id,
+        task_id=ctx.current_task_id,
+        root_run_id=ctx.root_run_id,
+    )
 
     cwd_arg = args.get("cwd")
     if cwd_arg:
@@ -40,14 +53,25 @@ async def _run_shell(args: dict[str, Any], ctx: ToolContext) -> str:
         )
         out, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
     except TimeoutError:
-        return f"error: command timed out after {timeout}s"
+        msg = f"error: command timed out after {timeout}s"
+        await finish_execution_record(ctx.db, execution, status="timed_out", output=msg, error=msg)
+        return msg
     except Exception as e:  # noqa: BLE001
-        return f"error executing command: {e}"
+        msg = f"error executing command: {e}"
+        await finish_execution_record(ctx.db, execution, status="failed", output=msg, error=str(e))
+        return msg
 
     text = out.decode("utf-8", errors="replace") if out else ""
     if len(text) > MAX_SHELL_OUTPUT:
         text = text[:MAX_SHELL_OUTPUT] + "\n...[truncated]"
     text += f"\n[exit code: {proc.returncode}]"
+    await finish_execution_record(
+        ctx.db,
+        execution,
+        status="succeeded" if proc.returncode == 0 else "failed",
+        output=text,
+        exit_code=proc.returncode,
+    )
     return text
 
 

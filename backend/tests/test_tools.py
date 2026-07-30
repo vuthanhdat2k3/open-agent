@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import io
+import tarfile
 from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 import app.models  # noqa: F401
 from app.core.tools.registry import get_tool, list_tools
+from app.core.tools.sandbox import build_workspace_archive
 from app.core.tools.types import ToolContext
 from app.db.base import Base
 
@@ -35,6 +38,24 @@ async def test_sandbox_rejects_traversal(tmp_path: Path) -> None:
     res = await get_tool("write_file").run({"path": "../../evil.txt", "content": "x"}, ctx)
     assert "escapes" in res
     assert not (tmp_path.parent / "evil.txt").exists()
+
+
+async def test_run_code_workspace_archive_includes_existing_files(tmp_path: Path) -> None:
+    (tmp_path / "draw_house.py").write_text("print('house')", encoding="utf-8")
+
+    archive_bytes = build_workspace_archive(
+        str(tmp_path),
+        "script.py",
+        "exec(open('draw_house.py').read())",
+    )
+
+    with tarfile.open(fileobj=io.BytesIO(archive_bytes), mode="r:gz") as archive:
+        names = archive.getnames()
+        assert "draw_house.py" in names
+        assert "script.py" in names
+        script = archive.extractfile("script.py")
+        assert script is not None
+        assert script.read().decode("utf-8") == "exec(open('draw_house.py').read())"
 
 
 async def test_run_shell_echo(tmp_path: Path) -> None:

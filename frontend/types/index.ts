@@ -279,6 +279,41 @@ export interface IngestResult {
   document_id: string | null;
 }
 
+export interface WorkspaceArtifact {
+  id: string;
+  path: string;
+  content_type: string;
+  size: number;
+  sha256: string;
+  source_tool: string;
+  agent_id: string | null;
+  session_id: string | null;
+  task_id: string | null;
+  root_run_id: string | null;
+  exists: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SandboxExecution {
+  id: string;
+  source: string;
+  language: string;
+  command: string;
+  status: "running" | "succeeded" | "failed" | "timed_out" | string;
+  exit_code: number | null;
+  duration_ms: number | null;
+  stdout_preview: string;
+  error: string | null;
+  agent_id: string | null;
+  session_id: string | null;
+  task_id: string | null;
+  root_run_id: string | null;
+  started_at: string;
+  finished_at: string | null;
+  created_at: string;
+}
+
 export interface OrgMember {
   user_id: string;
   email: string;

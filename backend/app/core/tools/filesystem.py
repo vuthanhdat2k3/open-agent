@@ -8,6 +8,7 @@ from app.core.tools.paths import safe_resolve
 from app.core.tools.registry import register
 from app.core.tools.risk_tier import RiskTier
 from app.core.tools.types import ToolContext, ToolSpec
+from app.services.workspace_service import upsert_workspace_artifact
 
 MAX_FILE_CHARS = 50_000
 MAX_LIST_ENTRIES = 500
@@ -61,6 +62,21 @@ async def _write_file(args: dict[str, Any], ctx: ToolContext) -> str:
         target.write_text(str(content), encoding="utf-8")
     except Exception as e:  # noqa: BLE001
         return f"error writing file: {e}"
+    try:
+        await upsert_workspace_artifact(
+            ctx.db,
+            org_id=ctx.org_id,
+            path=target,
+            workspace_dir=ctx.workspace_dir,
+            source_tool="write_file",
+            user_id=ctx.user_id,
+            agent_id=ctx.agent_id,
+            session_id=ctx.session_id,
+            task_id=ctx.current_task_id,
+            root_run_id=ctx.root_run_id,
+        )
+    except Exception:
+        pass
     return f"wrote {len(str(content))} chars to {path}"
 
 

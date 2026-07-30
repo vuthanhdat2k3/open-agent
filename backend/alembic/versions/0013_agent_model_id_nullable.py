@@ -17,27 +17,43 @@ branch_labels = None
 depends_on = None
 
 
-def _has_foreign_key(table_name: str, constraint_name: str) -> bool:
+def upgrade() -> None:
     bind = op.get_bind()
     inspector = sa.inspect(bind)
-    return any(
-        fk.get("name") == constraint_name for fk in inspector.get_foreign_keys(table_name)
+    fks = inspector.get_foreign_keys("agents")
+    fk_name = next(
+        (
+            fk["name"]
+            for fk in fks
+            if "model_id" in fk.get("constrained_columns", []) and fk.get("name")
+        ),
+        None,
     )
 
-
-def upgrade() -> None:
     with op.batch_alter_table("agents") as batch_op:
         batch_op.alter_column("model_id", existing_type=sa.String(36), nullable=True)
-        if _has_foreign_key("agents", "agents_model_id_fkey"):
-            batch_op.drop_constraint("agents_model_id_fkey", type_="foreignkey")
+        if fk_name:
+            batch_op.drop_constraint(fk_name, type_="foreignkey")
         batch_op.create_foreign_key(
             "agents_model_id_fkey", "models", ["model_id"], ["id"], ondelete="SET NULL"
         )
 
 
 def downgrade() -> None:
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    fks = inspector.get_foreign_keys("agents")
+    fk_name = next(
+        (
+            fk["name"]
+            for fk in fks
+            if "model_id" in fk.get("constrained_columns", []) and fk.get("name")
+        ),
+        None,
+    )
+
     with op.batch_alter_table("agents") as batch_op:
-        if _has_foreign_key("agents", "agents_model_id_fkey"):
-            batch_op.drop_constraint("agents_model_id_fkey", type_="foreignkey")
+        if fk_name:
+            batch_op.drop_constraint(fk_name, type_="foreignkey")
         batch_op.create_foreign_key("agents_model_id_fkey", "models", ["model_id"], ["id"])
         batch_op.alter_column("model_id", existing_type=sa.String(36), nullable=False)
