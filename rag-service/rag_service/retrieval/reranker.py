@@ -46,7 +46,7 @@ class CrossEncoderReranker:
         for cand in candidates:
             # Combine initial retrieval score + cross-encoder score
             cross_score = self._score_pair(query, cand.text)
-            combined_score = round((cand.score * 0.6) + (cross_score * 0.4), 6)
+            combined_score = round((cross_score * 0.75) + (cand.score * 0.25), 6)
             
             if combined_score >= self.min_score_threshold:
                 updated = cand.model_copy(update={"score": combined_score})
