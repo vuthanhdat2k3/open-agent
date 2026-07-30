@@ -96,7 +96,8 @@ Read [`docs/agentos-v2/ARCHITECTURE.md`](docs/agentos-v2/ARCHITECTURE.md) for
 the full v2 design, [`docs/database-schema.md`](docs/database-schema.md) for
 the DB, [`docs/api-reference.md`](docs/api-reference.md) for the REST surface,
 and [`docs/modules/*`](docs/modules) for per-module design (agents, workflows,
-tools, mcp, chat, debug, sandbox-tools, compactor, providers, models).
+tools, mcp, chat, debug, sandbox-tools, workspace-artifacts, compactor,
+providers, models).
 
 ---
 

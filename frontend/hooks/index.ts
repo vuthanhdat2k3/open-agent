@@ -24,12 +24,14 @@ import type {
   OrgMember,
   Provider,
   QuotaUsage,
+  SandboxExecution,
   Session,
   TaskTree,
   UploadedFile,
   UsageSummary,
   Workflow,
   WorkflowRunDetail,
+  WorkspaceArtifact,
   UserProfile,
 } from "@/types";
 
@@ -349,6 +351,37 @@ export function useIngestFile() {
     mutationFn: ({ id, body }: { id: string; body: any }) =>
       api.post<IngestResult>(`/api/files/${id}/ingest`, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["files"] }),
+  });
+}
+
+export function useWorkspaceArtifacts() {
+  return useQuery({
+    queryKey: ["workspace-artifacts"],
+    queryFn: () => api.get<WorkspaceArtifact[]>("/api/workspace/artifacts"),
+  });
+}
+
+export function useDeleteWorkspaceArtifact() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.delete(`/api/workspace/artifacts/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["workspace-artifacts"] }),
+  });
+}
+
+export function useSandboxExecutions() {
+  return useQuery({
+    queryKey: ["sandbox-executions"],
+    queryFn: () => api.get<SandboxExecution[]>("/api/workspace/executions"),
+    refetchInterval: 5000,
+  });
+}
+
+export function useDeleteSandboxExecution() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.delete(`/api/workspace/executions/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["sandbox-executions"] }),
   });
 }
 

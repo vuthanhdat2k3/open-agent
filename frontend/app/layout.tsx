@@ -12,9 +12,11 @@ import type {
   Model,
   Provider,
   Session,
+  SandboxExecution,
   UploadedFile,
   UsageSummary,
   Workflow as WorkflowT,
+  WorkspaceArtifact,
 } from "@/types";
 import { Toaster } from "sonner";
 import Link from "next/link";
@@ -29,6 +31,7 @@ import {
   Workflow,
   MessageSquare,
   FileUp,
+  FolderKanban,
   Bug,
   FlaskConical,
   Gauge,
@@ -85,6 +88,7 @@ const navGroups: NavGroup[] = [
     items: [
       { href: "/agents", label: "Agents", icon: Bot },
       { href: "/workflows", label: "Workflows", icon: Workflow },
+      { href: "/workspace", label: "Workspace", icon: FolderKanban },
       { href: "/mcp", label: "MCP Servers", icon: Plug },
       { href: "/models", label: "Models", icon: Cpu },
       { href: "/providers", label: "Providers", icon: Server },
@@ -125,6 +129,10 @@ const tabQueries: Record<string, PrefetchSpec[]> = {
   ],
   "/mcp": [{ queryKey: ["mcp"], queryFn: () => api.get<McpServer[]>("/api/mcp/servers") }],
   "/workflows": [{ queryKey: ["workflows"], queryFn: () => api.get<WorkflowT[]>("/api/workflows") }],
+  "/workspace": [
+    { queryKey: ["workspace-artifacts"], queryFn: () => api.get<WorkspaceArtifact[]>("/api/workspace/artifacts") },
+    { queryKey: ["sandbox-executions"], queryFn: () => api.get<SandboxExecution[]>("/api/workspace/executions") },
+  ],
   "/chat": [{ queryKey: ["sessions"], queryFn: () => api.get<Session[]>("/api/sessions") }],
   "/debug": [
     { queryKey: ["debug-sessions"], queryFn: () => api.get<Session[]>("/api/debug/sessions") },
