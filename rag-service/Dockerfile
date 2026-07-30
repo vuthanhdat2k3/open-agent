@@ -20,10 +20,9 @@ COPY scripts ./scripts
 COPY alembic ./alembic
 COPY alembic.ini ./alembic.ini
 
-# Install runtime + optional backends. sentence-transformers (local semantic
-# embeddings, e.g. BAAI/bge-m3) pulls torch and is included so the image can
-# serve real semantic retrieval without an external embedding API.
+# Install runtime + optional backends with CPU-only PyTorch (prevents 3.5GB CUDA layer bloat).
 RUN pip install --upgrade pip && \
+    pip install torch --index-url https://download.pytorch.org/whl/cpu && \
     pip install ".[parsers,openai,bm25-redis,graph-networkx,sentence-transformers]"
 
 # Container defaults: run fully offline out of the box.
