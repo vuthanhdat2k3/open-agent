@@ -14,7 +14,11 @@ from app.db.base import Base
 
 settings = get_settings()
 
-engine = create_async_engine(settings.db_url, echo=False, future=True)
+engine_kwargs = {"echo": False, "future": True}
+if "postgresql" in settings.db_url:
+    engine_kwargs["connect_args"] = {"statement_cache_size": 0}
+
+engine = create_async_engine(settings.db_url, **engine_kwargs)
 
 SessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
@@ -47,7 +51,7 @@ async def init_db() -> None:
 
     cfg = Config("alembic.ini")
     cfg.set_main_option("script_location", "alembic")
-    cfg.set_main_option("sqlalchemy.url", engine.url.render_as_string(hide_password=False))
+    cfg.set_main_option("sqlalchemy.url", engine.url.render_as_string(hide_password=False).replace("%", "%%"))
 
     if not has_agents or not has_alembic:
         async with engine.begin() as conn:
