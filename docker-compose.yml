@@ -1,20 +1,4 @@
 services:
-  postgres:
-    image: postgres:16
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-openagent}
-      POSTGRES_USER: ${POSTGRES_USER:-openagent}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-openagent}
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-openagent} -d ${POSTGRES_DB:-openagent}"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-
   redis:
     image: redis:7
     ports:
@@ -47,7 +31,7 @@ services:
       context: ./backend
     environment:
       OPENAGENT_HOST: 0.0.0.0
-      OPENAGENT_DB_URL: postgresql+asyncpg://${POSTGRES_USER:-openagent}:${POSTGRES_PASSWORD:-openagent}@postgres:5432/${POSTGRES_DB:-openagent}
+      OPENAGENT_DB_URL: ${OPENAGENT_DB_URL:-postgresql+asyncpg://postgres.dkzfrzwevnyzhcicmtda:openagent%4019052003@aws-0-ap-northeast-1.pooler.supabase.com:5432/postgres}
       OPENAGENT_REDIS_URL: redis://redis:6379/0
       OPENAGENT_WORKFLOW_EXECUTION_MODE: ${OPENAGENT_WORKFLOW_EXECUTION_MODE:-inline}
       OPENAGENT_JWT_SECRET_KEY: ${OPENAGENT_JWT_SECRET_KEY:-local-dev-secret-change-me-32-bytes}
@@ -62,8 +46,6 @@ services:
     ports:
       - "8000:8000"
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
       minio:
@@ -78,7 +60,7 @@ services:
     build:
       context: ./backend
     environment:
-      OPENAGENT_DB_URL: postgresql+asyncpg://${POSTGRES_USER:-openagent}:${POSTGRES_PASSWORD:-openagent}@postgres:5432/${POSTGRES_DB:-openagent}
+      OPENAGENT_DB_URL: ${OPENAGENT_DB_URL:-postgresql+asyncpg://postgres.dkzfrzwevnyzhcicmtda:openagent%4019052003@aws-0-ap-northeast-1.pooler.supabase.com:5432/postgres}
       OPENAGENT_REDIS_URL: redis://redis:6379/0
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
@@ -94,9 +76,15 @@ services:
       context: ./frontend
       args:
         API_INTERNAL_URL: ${API_INTERNAL_URL:-http://api:8000}
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-https://dkzfrzwevnyzhcicmtda.supabase.co}
+        NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:-sb_publishable_7J6Pd6G8bAgJ5wEqVSpklQ_KJhQrZsa}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-sb_publishable_7J6Pd6G8bAgJ5wEqVSpklQ_KJhQrZsa}
     environment:
       API_INTERNAL_URL: ${API_INTERNAL_URL:-http://api:8000}
       NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
+      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-https://dkzfrzwevnyzhcicmtda.supabase.co}
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:-sb_publishable_7J6Pd6G8bAgJ5wEqVSpklQ_KJhQrZsa}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-sb_publishable_7J6Pd6G8bAgJ5wEqVSpklQ_KJhQrZsa}
     ports:
       - "3000:3000"
     depends_on:
@@ -159,6 +147,5 @@ services:
       - "4318:4318"
 
 volumes:
-  postgres-data:
   qdrant-data:
   minio-data:
