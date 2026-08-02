@@ -23,7 +23,7 @@ dependencies = [
     "openai>=1.40",
     "httpx>=0.27",
     # MCP client
-    "mcp>=1.0",
+    "mcp>=1.0,<2.0",
     # Auth / Security
     "pyjwt>=2.8",
     "argon2-cffi>=23.1",
@@ -55,7 +55,7 @@ dev = [
     "ruff>=0.5",
     "httpx>=0.27",
     "alembic>=1.13",           # migrations (dev/optional; create_all used for dev)
-    "mcp>=1.0",                # MCP client (optional; lazy-imported)
+    "mcp>=1.0,<2.0",                # MCP client (optional; lazy-imported)
 ]
 
 [project.scripts]
