@@ -253,6 +253,51 @@ def test_cursor_reports_divergence_on_different_arguments() -> None:
         cursor.next_result("same_tool", {"q": "changed"})
 
 
+async def test_workflow_tool_node_records_then_replays_without_executing(
+    session_factory,
+) -> None:
+    """End-to-end: a tool node runs once live, then never again on replay."""
+    from app.core.workflow.engine import run_workflow
+    from app.models.workflow import Workflow
+    from app.models.workflow_run import WorkflowRun
+
+    _counting_probe("replay_wf_probe", "workflow tool output")
+    graph = {
+        "nodes": [
+            {"id": "in", "kind": "input"},
+            {"id": "t", "kind": "tool", "config": {"tool": "replay_wf_probe"}},
+            {"id": "out", "kind": "output"},
+        ],
+        "edges": [{"from_": "in", "to": "t"}, {"from_": "t", "to": "out"}],
+    }
+
+    async with session_factory() as db:
+        org = Organization(name="WF Replay", slug="wf-replay")
+        db.add(org)
+        await db.commit()
+        await db.refresh(org)
+
+        wf = Workflow(org_id=org.id, name="ReplayWF", graph=graph)
+        db.add(wf)
+        await db.commit()
+        await db.refresh(wf)
+
+        _final, _log, source_run_id = await run_workflow(wf, "go", db)
+        assert EXECUTIONS["replay_wf_probe"] == 1
+
+        output, log, replay_run_id = await run_workflow(
+            wf, "go", db, replay_of_run_id=source_run_id
+        )
+
+        res = await db.execute(select(WorkflowRun).where(WorkflowRun.id == replay_run_id))
+        replay_run = res.scalar_one()
+
+    assert EXECUTIONS["replay_wf_probe"] == 1, "replay must not execute the tool node again"
+    assert "workflow tool output" in output
+    assert replay_run.replay_of_run_id == source_run_id
+    assert any(e["event"] == "replay_start" for e in log)
+
+
 async def test_replay_is_tenant_scoped(session_factory) -> None:
     async with session_factory() as db:
         org = Organization(name="A", slug="org-a")
