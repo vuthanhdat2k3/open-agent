@@ -15,9 +15,13 @@ from app.core.guardrails.budget import BudgetTracker, RunBudget
 from app.core.guardrails.injection import wrap_untrusted_if_flagged
 from app.core.guardrails.secrets import scan_and_redact
 from app.core.llm import LLMClient, resolve_api_key
+from app.core.observability import genai
 from app.core.observability.audit import log_action
-from app.core.observability.metrics import agent_run_cost_usd_total, tool_calls_total
-from app.core.observability.tracing import get_tracer
+from app.core.observability.metrics import (
+    agent_run_cost_usd_total,
+    tool_call_duration_seconds,
+    tool_calls_total,
+)
 from app.core.tools.registry import BUILTIN_TOOLS, execute_tool_call
 from app.core.tools.types import ToolContext, tool_to_openai_schema
 from app.db.base import gen_id, utc_now
@@ -33,7 +37,6 @@ from app.services.quota_service import invalidate_monthly_cost_cache
 
 settings = get_settings()
 UNTRUSTED_TOOL_SOURCES = {"web_fetch", "rag_search", "read_attachment"}
-tracer = get_tracer(__name__)
 
 # Auto-injected into every agent's system prompt so the model is explicitly
 # told how to use the structured memory tools. The tool schemas are provided
@@ -294,262 +297,296 @@ async def _agent_stream(
     for _ in range(agent.max_iterations):
         content_parts: list[str] = []
         tc_map: dict[int, dict[str, Any]] = {}
+        # Real provider usage when available; the char-count heuristic below
+        # is only a fallback for providers that do not report it.
+        stream_usage: dict[str, int] = {}
+        usage_estimated = True
 
-        with tracer.start_as_current_span(
-            "agent_loop.iteration",
-            attributes={"org_id": agent.org_id, "agent_id": agent.id, "depth": depth},
-        ):
-            stream_iter = llm.stream(messages, tools=tool_schemas, temperature=agent.temperature)
-            async for ev in stream_iter:
-                if ev["type"] == "content":
-                    content_parts.append(ev["text"])
-                    yield {"event": "token", "data": {"content": ev["text"]}}
-                elif ev["type"] == "tool_calls":
-                    for tc in ev["tool_calls"]:
-                        idx = tc.index
-                        entry = tc_map.setdefault(idx, {"id": None, "name": "", "arguments": ""})
-                        if tc.id:
-                            entry["id"] = tc.id
-                        if tc.function and tc.function.name:
-                            entry["name"] = tc.function.name
-                        if tc.function and tc.function.arguments:
-                            entry["arguments"] += tc.function.arguments
-
-        if tc_map:
-            openai_tcs = []
-            iter_failures = 0
-            iter_results: list[dict[str, str]] = []
-            for entry in tc_map.values():
-                openai_tcs.append(
-                    {
-                        "id": entry["id"],
-                        "type": "function",
-                        "function": {
-                            "name": entry["name"],
-                            "arguments": entry["arguments"],
-                        },
-                    }
-                )
-            messages.append({"role": "assistant", "content": None, "tool_calls": openai_tcs})
-            for entry in tc_map.values():
-                name = entry["name"]
-                try:
-                    args = json.loads(entry["arguments"] or "{}")
-                except json.JSONDecodeError:
-                    args = {}
-                spec = tool_by_name.get(name)
-                yield {"event": "tool_call", "data": {"name": name, "arguments": args}}
-                if spec is None:
-                    result = f"error: tool '{name}' not available"
-                else:
-                    budget_reason = budget.record_call(name, args)
-                    if budget_reason:
-                        result = f"error: run budget exceeded: {budget_reason}"
-                        yield {
-                            "event": "budget_exceeded",
-                            "data": {"reason": budget_reason, "tool": name},
-                        }
-                        yield {
-                            "event": "tool_result",
-                            "data": {"name": name, "result": result},
-                        }
-                        tool_calls_log.append(
-                            {"name": name, "arguments": args, "result": result}
-                        )
-                        messages.append(
-                            {
-                                "role": "tool",
-                                "tool_call_id": entry["id"],
-                                "content": result,
-                            }
-                        )
-                        await _finish_task(db, root_task, status="failed", result=result)
-                        return
-                    # Layer 1: risk-tier capability gate
-                    if spec.risk_tier.value not in agent.allowed_risk_tiers:
-                        result = (
-                            f"error: tool '{name}' requires risk tier "
-                            f"'{spec.risk_tier.value}' which is not enabled for this agent. "
-                            f"Allowed tiers: {agent.allowed_risk_tiers}"
-                        )
-                    elif spec.requires_approval:
-                        approval = await request_approval(
-                            db,
+        # invoke_agent is the parent of both the chat span and every
+        # execute_tool span in this iteration, so a trace viewer shows one
+        # tree per turn rather than a flat list of siblings.
+        with genai.agent_span(agent, session_id=session_id, depth=depth):
+            with genai.llm_span(
+                agent,
+                provider=provider,
+                model_name=model.name,
+                temperature=agent.temperature,
+                session_id=session_id,
+            ) as chat_span:
+                stream_iter = llm.stream(messages, tools=tool_schemas, temperature=agent.temperature)
+                async for ev in stream_iter:
+                    if ev["type"] == "content":
+                        content_parts.append(ev["text"])
+                        yield {"event": "token", "data": {"content": ev["text"]}}
+                    elif ev["type"] == "tool_calls":
+                        for tc in ev["tool_calls"]:
+                            idx = tc.index
+                            entry = tc_map.setdefault(idx, {"id": None, "name": "", "arguments": ""})
+                            if tc.id:
+                                entry["id"] = tc.id
+                            if tc.function and tc.function.name:
+                                entry["name"] = tc.function.name
+                            if tc.function and tc.function.arguments:
+                                entry["arguments"] += tc.function.arguments
+                    elif ev["type"] == "usage":
+                        stream_usage = ev["usage"]
+                        usage_estimated = bool(ev.get("estimated", True))
+                        genai.record_usage(
+                            chat_span,
+                            stream_usage,
                             org_id=agent.org_id,
-                            run_type="agent",
-                            run_id=session_id,
-                            tool_name=name,
-                            args_snapshot=args,
-                            requested_by=agent.created_by_user_id,
+                            model_name=model.name,
+                            estimated=usage_estimated,
                         )
-                        yield {
-                            "event": "approval_required",
-                            "data": {
-                                "approval_id": approval.id,
-                                "tool_name": name,
-                                "run_id": session_id,
+                        genai.record_finish_reasons(chat_span, ev.get("finish_reasons") or [])
+
+            if tc_map:
+                openai_tcs = []
+                iter_failures = 0
+                iter_results: list[dict[str, str]] = []
+                for entry in tc_map.values():
+                    openai_tcs.append(
+                        {
+                            "id": entry["id"],
+                            "type": "function",
+                            "function": {
+                                "name": entry["name"],
+                                "arguments": entry["arguments"],
                             },
                         }
-                        await _finish_task(
-                            db,
-                            root_task,
-                            status="waiting_approval",
-                            result=f"approval required for tool '{name}'",
-                        )
-                        return
+                    )
+                messages.append({"role": "assistant", "content": None, "tool_calls": openai_tcs})
+                for entry in tc_map.values():
+                    name = entry["name"]
+                    try:
+                        args = json.loads(entry["arguments"] or "{}")
+                    except json.JSONDecodeError:
+                        args = {}
+                    spec = tool_by_name.get(name)
+                    yield {"event": "tool_call", "data": {"name": name, "arguments": args}}
+                    if spec is None:
+                        result = f"error: tool '{name}' not available"
                     else:
-                        try:
-                            with tracer.start_as_current_span(
-                                "tool.call",
-                                attributes={
-                                    "org_id": agent.org_id,
-                                    "agent_id": agent.id,
-                                    "tool_name": name,
-                                    "risk_tier": spec.risk_tier.value,
-                                },
-                            ):
-                                result = await execute_tool_call(spec, args, ctx)
-                            tool_calls_total.labels(name, "ok").inc()
-                            if spec.risk_tier.value == "dangerous":
-                                await log_action(
-                                    db,
-                                    org_id=agent.org_id,
-                                    actor_user_id=agent.created_by_user_id,
-                                    action="tool.dangerous.executed",
-                                    resource_type="tool",
-                                    resource_id=name,
-                                    metadata={"arguments": args},
-                                )
-                        except Exception as e:  # noqa: BLE001
-                            tool_calls_total.labels(name, "error").inc()
-                            result = f"error executing tool: {e}"
-                if name in UNTRUSTED_TOOL_SOURCES:
-                    result = wrap_untrusted_if_flagged(str(result), source=name)
-                result, secret_findings = scan_and_redact(str(result))
-                yield {
-                    "event": "tool_result",
-                    "data": {"name": name, "result": result},
-                }
-                log_entry: dict[str, Any] = {"name": name, "arguments": args, "result": result}
-                if secret_findings:
-                    log_entry["redacted_secret_findings"] = [f.kind for f in secret_findings]
-                tool_calls_log.append(log_entry)
-                messages.append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": entry["id"],
-                        "content": result,
-                    }
-                )
-                if _is_tool_failure(name, result):
-                    iter_failures += 1
-                    consecutive_failures += 1
-                else:
-                    consecutive_failures = 0
-                iter_results.append({"name": name, "result": str(result)})
-            if iter_failures > 0 and consecutive_failures < max_retries:
-                yield {
-                    "event": "retry",
-                    "data": {"attempt": consecutive_failures, "max": max_retries},
-                }
-                yield {
-                    "event": "self_correct",
-                    "data": {"status": "retrying", "failures": consecutive_failures},
-                }
-                messages.append(
-                    {
-                        "role": "user",
-                        "content": (
-                            "The previous tool call(s) failed. Errors:\n"
-                            + "\n".join(
-                                f"- {r['name']}: {r['result'][:500]}"
-                                for r in iter_results
-                                if _is_tool_failure(r["name"], r["result"])
+                        budget_reason = budget.record_call(name, args)
+                        if budget_reason:
+                            result = f"error: run budget exceeded: {budget_reason}"
+                            yield {
+                                "event": "budget_exceeded",
+                                "data": {"reason": budget_reason, "tool": name},
+                            }
+                            yield {
+                                "event": "tool_result",
+                                "data": {"name": name, "result": result},
+                            }
+                            tool_calls_log.append(
+                                {"name": name, "arguments": args, "result": result}
                             )
-                            + "\nAnalyze the error, fix the cause (arguments or code), "
-                            "and retry. Do not repeat the same mistake."
-                        ),
+                            messages.append(
+                                {
+                                    "role": "tool",
+                                    "tool_call_id": entry["id"],
+                                    "content": result,
+                                }
+                            )
+                            await _finish_task(db, root_task, status="failed", result=result)
+                            return
+                        # Layer 1: risk-tier capability gate
+                        if spec.risk_tier.value not in agent.allowed_risk_tiers:
+                            result = (
+                                f"error: tool '{name}' requires risk tier "
+                                f"'{spec.risk_tier.value}' which is not enabled for this agent. "
+                                f"Allowed tiers: {agent.allowed_risk_tiers}"
+                            )
+                        elif spec.requires_approval:
+                            approval = await request_approval(
+                                db,
+                                org_id=agent.org_id,
+                                run_type="agent",
+                                run_id=session_id,
+                                tool_name=name,
+                                args_snapshot=args,
+                                requested_by=agent.created_by_user_id,
+                            )
+                            yield {
+                                "event": "approval_required",
+                                "data": {
+                                    "approval_id": approval.id,
+                                    "tool_name": name,
+                                    "run_id": session_id,
+                                },
+                            }
+                            await _finish_task(
+                                db,
+                                root_task,
+                                status="waiting_approval",
+                                result=f"approval required for tool '{name}'",
+                            )
+                            return
+                        else:
+                            try:
+                                with (
+                                    genai.tool_span(
+                                        agent,
+                                        tool_name=name,
+                                        risk_tier=spec.risk_tier.value,
+                                        call_id=entry["id"],
+                                        session_id=session_id,
+                                    ),
+                                    tool_call_duration_seconds.labels(name).time(),
+                                ):
+                                    result = await execute_tool_call(spec, args, ctx)
+                                tool_calls_total.labels(name, "ok").inc()
+                                if spec.risk_tier.value == "dangerous":
+                                    await log_action(
+                                        db,
+                                        org_id=agent.org_id,
+                                        actor_user_id=agent.created_by_user_id,
+                                        action="tool.dangerous.executed",
+                                        resource_type="tool",
+                                        resource_id=name,
+                                        metadata={"arguments": args},
+                                    )
+                            except Exception as e:  # noqa: BLE001
+                                tool_calls_total.labels(name, "error").inc()
+                                result = f"error executing tool: {e}"
+                    if name in UNTRUSTED_TOOL_SOURCES:
+                        result = wrap_untrusted_if_flagged(str(result), source=name)
+                    result, secret_findings = scan_and_redact(str(result))
+                    yield {
+                        "event": "tool_result",
+                        "data": {"name": name, "result": result},
                     }
-                )
-            elif iter_failures > 0:
-                yield {
-                    "event": "self_correct",
-                    "data": {"status": "circuit_breaker", "failures": consecutive_failures},
-                }
-                messages.append(
-                    {
-                        "role": "user",
-                        "content": (
-                            "Tool calls have failed repeatedly and the retry limit is "
-                            "reached. Stop retrying the same approach; provide a final "
-                            "answer explaining the problem, or try a genuinely different "
-                            "approach if one exists."
-                        ),
+                    log_entry: dict[str, Any] = {"name": name, "arguments": args, "result": result}
+                    if secret_findings:
+                        log_entry["redacted_secret_findings"] = [f.kind for f in secret_findings]
+                    tool_calls_log.append(log_entry)
+                    messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": entry["id"],
+                            "content": result,
+                        }
+                    )
+                    if _is_tool_failure(name, result):
+                        iter_failures += 1
+                        consecutive_failures += 1
+                    else:
+                        consecutive_failures = 0
+                    iter_results.append({"name": name, "result": str(result)})
+                if iter_failures > 0 and consecutive_failures < max_retries:
+                    yield {
+                        "event": "retry",
+                        "data": {"attempt": consecutive_failures, "max": max_retries},
                     }
-                )
-            continue
+                    yield {
+                        "event": "self_correct",
+                        "data": {"status": "retrying", "failures": consecutive_failures},
+                    }
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": (
+                                "The previous tool call(s) failed. Errors:\n"
+                                + "\n".join(
+                                    f"- {r['name']}: {r['result'][:500]}"
+                                    for r in iter_results
+                                    if _is_tool_failure(r["name"], r["result"])
+                                )
+                                + "\nAnalyze the error, fix the cause (arguments or code), "
+                                "and retry. Do not repeat the same mistake."
+                            ),
+                        }
+                    )
+                elif iter_failures > 0:
+                    yield {
+                        "event": "self_correct",
+                        "data": {"status": "circuit_breaker", "failures": consecutive_failures},
+                    }
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": (
+                                "Tool calls have failed repeatedly and the retry limit is "
+                                "reached. Stop retrying the same approach; provide a final "
+                                "answer explaining the problem, or try a genuinely different "
+                                "approach if one exists."
+                            ),
+                        }
+                    )
+                continue
 
-        # Final answer (no tool calls this step)
-        final = "".join(content_parts)
-        elapsed = int((time.monotonic() - start) * 1000)
-        in_tok = _estimate_tokens(json.dumps(messages, ensure_ascii=False))
-        out_tok = _estimate_tokens(final)
-        cost = LLMClient.estimate_cost(model, {"input_tokens": in_tok, "output_tokens": out_tok})
-        usage = {"input_tokens": in_tok, "output_tokens": out_tok}
-        model_label = model.display_name or model.name
-        yield {
-            "event": "message_done",
-            "data": {
-                "content": final,
-                "usage": usage,
-                "cost_usd": cost,
-                "latency_ms": elapsed,
-                "tools": tool_calls_log,
-                "session_id": session_id,
-                "model": model_label,
-            },
-        }
-        if session_id:
-            await _persist(
-                db,
-                session_id,
-                "assistant",
-                final,
-                {
+            # Final answer (no tool calls this step)
+            final = "".join(content_parts)
+            elapsed = int((time.monotonic() - start) * 1000)
+            # Prefer the provider's reported token counts; the char-count
+            # heuristic is only a fallback, and cost derived from it is a
+            # guess (flagged via usage_estimated).
+            if stream_usage and not usage_estimated:
+                in_tok = int(stream_usage.get("input_tokens", 0))
+                out_tok = int(stream_usage.get("output_tokens", 0))
+            else:
+                in_tok = _estimate_tokens(json.dumps(messages, ensure_ascii=False))
+                out_tok = _estimate_tokens(final)
+            cost = LLMClient.estimate_cost(model, {"input_tokens": in_tok, "output_tokens": out_tok})
+            usage = {
+                "input_tokens": in_tok,
+                "output_tokens": out_tok,
+                "estimated": usage_estimated,
+            }
+            model_label = model.display_name or model.name
+            yield {
+                "event": "message_done",
+                "data": {
+                    "content": final,
                     "usage": usage,
                     "cost_usd": cost,
                     "latency_ms": elapsed,
                     "tools": tool_calls_log,
+                    "session_id": session_id,
                     "model": model_label,
                 },
-                org_id=agent.org_id,
-                created_by_user_id=agent.created_by_user_id,
+            }
+            if session_id:
+                await _persist(
+                    db,
+                    session_id,
+                    "assistant",
+                    final,
+                    {
+                        "usage": usage,
+                        "cost_usd": cost,
+                        "latency_ms": elapsed,
+                        "tools": tool_calls_log,
+                        "model": model_label,
+                    },
+                    org_id=agent.org_id,
+                    created_by_user_id=agent.created_by_user_id,
+                )
+            db.add(
+                UsageEvent(
+                    org_id=agent.org_id,
+                    created_by_user_id=agent.created_by_user_id,
+                    source="call_agent" if depth > 0 else "chat",
+                    agent_name=agent.name,
+                    model_name=model.name,
+                    input_tokens=in_tok,
+                    output_tokens=out_tok,
+                    cost_usd=cost,
+                    latency_ms=elapsed,
+                )
             )
-        db.add(
-            UsageEvent(
-                org_id=agent.org_id,
-                created_by_user_id=agent.created_by_user_id,
-                source="call_agent" if depth > 0 else "chat",
-                agent_name=agent.name,
-                model_name=model.name,
-                input_tokens=in_tok,
-                output_tokens=out_tok,
+            await db.commit()
+            await invalidate_monthly_cost_cache(agent.org_id)
+            agent_run_cost_usd_total.labels(agent.org_id).inc(cost)
+            await _finish_task(
+                db,
+                root_task,
+                status="succeeded",
+                result=final,
                 cost_usd=cost,
-                latency_ms=elapsed,
+                token_usage=usage,
             )
-        )
-        await db.commit()
-        await invalidate_monthly_cost_cache(agent.org_id)
-        agent_run_cost_usd_total.labels(agent.org_id).inc(cost)
-        await _finish_task(
-            db,
-            root_task,
-            status="succeeded",
-            result=final,
-            cost_usd=cost,
-            token_usage=usage,
-        )
-        return
+            return
 
     await _finish_task(
         db,
