@@ -19,17 +19,24 @@ from rag_service.exceptions import RAGError
 async def api_key_auth(request: Request) -> None:
     """Require the admin ``X-API-Key`` header when ``settings.api_key`` is set.
 
-    When ``settings.api_key`` is empty the guard is a no-op (local / trusted
-    network deployments).
+    When ``settings.api_key`` is empty the guard is a no-op except in
+    ``RAG_ENV=production`` (the Dockerfile default), which fails closed
+    instead of silently serving the collection/document/ingest admin API
+    unauthenticated.
     """
-    if not settings.api_key:
+    if settings.api_key:
+        provided = request.headers.get("X-API-Key")
+        if provided != settings.api_key:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid or missing X-API-Key",
+                headers={"WWW-Authenticate": "X-API-Key"},
+            )
         return
-    provided = request.headers.get("X-API-Key")
-    if provided != settings.api_key:
+    if settings.env == "production":
         raise HTTPException(
-            status_code=401,
-            detail="Invalid or missing X-API-Key",
-            headers={"WWW-Authenticate": "X-API-Key"},
+            status_code=503,
+            detail="RAG_API_KEY is not configured — refusing to serve the admin API unauthenticated outside development",
         )
 
 

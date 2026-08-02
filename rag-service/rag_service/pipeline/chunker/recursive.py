@@ -16,6 +16,15 @@ from rag_service.pipeline.base import TextChunk
 from rag_service.pipeline.chunker.base import Chunker, make_chunk
 
 
+def _snap_to_word_boundary(text: str, start: int, end: int) -> tuple[int, int]:
+    length = len(text)
+    while start > 0 and start < length and not text[start - 1].isspace() and not text[start].isspace():
+        start -= 1
+    while end > 0 and end < length and not text[end - 1].isspace() and not text[end].isspace():
+        end += 1
+    return max(0, start), min(length, end)
+
+
 class RecursiveCharacterChunker(Chunker):
     def __init__(
         self,
@@ -94,6 +103,8 @@ class RecursiveCharacterChunker(Chunker):
                 start = base
             else:
                 start = max(0, prev_end - self.chunk_overlap)
+
+            start, end = _snap_to_word_boundary(text, start, end)
             chunk_text = text[start:end]
             out.append(make_chunk(chunk_text, len(out), start, end, dict(doc_metadata)))
             prev_end = end

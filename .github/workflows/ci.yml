@@ -53,6 +53,9 @@ jobs:
   compose-e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      OPENAGENT_DB_URL: postgresql+asyncpg://openagent:openagent@postgres:5432/openagent
+      OPENAGENT_JWT_SECRET_KEY: ci-secret-change-me-32-bytes-minimum
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

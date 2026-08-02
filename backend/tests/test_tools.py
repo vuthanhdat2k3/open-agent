@@ -58,7 +58,22 @@ async def test_run_code_workspace_archive_includes_existing_files(tmp_path: Path
         assert script.read().decode("utf-8") == "exec(open('draw_house.py').read())"
 
 
-async def test_run_shell_echo(tmp_path: Path) -> None:
+async def test_run_shell_echo(tmp_path: Path, monkeypatch) -> None:
+    class FakeProcess:
+        returncode = 0
+
+        async def communicate(self, _archive: bytes):
+            return b"hello-agent\n", None
+
+    async def fake_create_subprocess_exec(*_args, **_kwargs):
+        return FakeProcess()
+
+    monkeypatch.setattr("app.core.tools.sandbox._docker_available", lambda: True)
+    monkeypatch.setattr(
+        "app.core.tools.shell.asyncio.create_subprocess_exec",
+        fake_create_subprocess_exec,
+    )
+
     ctx = _ctx(str(tmp_path))
     res = await get_tool("run_shell").run({"cmd": "echo hello-agent"}, ctx)
     assert "hello-agent" in res

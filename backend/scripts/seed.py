@@ -361,6 +361,7 @@ async def seed() -> None:
                 "memory_recall",
                 "call_agent",
             ],
+            allowed_risk_tiers=["safe", "read", "network"],
             max_iterations=12,
             temperature=0.7,
         )
@@ -376,6 +377,7 @@ async def seed() -> None:
             ),
             model_id=claude_sonnet.id,
             tools=["web_fetch", "memory_store", "memory_recall", "read_attachment"],
+            allowed_risk_tiers=["safe", "read", "network"],
             max_iterations=20,
             temperature=0.3,
         )
@@ -413,6 +415,34 @@ async def seed() -> None:
             max_iterations=8,
             temperature=0.4,
         )
+        rag_researcher = await _agent(
+            db,
+            org_id,
+            user_id,
+            "rag-researcher",
+            description="Deep information retrieval and research using RAG knowledge base",
+            system_prompt=(
+                "You are a specialized RAG research agent. Your objective is to answer questions "
+                "by querying the knowledge base using RAG tools. Always call `rag_search` before "
+                "answering factual or domain queries. If details are missing, suggest ingesting "
+                "documents or URLs using `rag_ingest_file` or `rag_ingest_url`."
+            ),
+            model_id=claude_sonnet.id,
+            tools=[
+                "rag_search",
+                "rag_ingest_file",
+                "rag_ingest_url",
+                "rag_ingest_text",
+                "rag_list_collections",
+                "rag_graph_search",
+                "web_fetch",
+                "memory_store",
+                "memory_recall",
+            ],
+            allowed_risk_tiers=["safe", "read", "network"],
+            max_iterations=20,
+            temperature=0.2,
+        )
 
         # --- MCP servers + tools ---
         await _mcp(
@@ -438,6 +468,24 @@ async def seed() -> None:
             transport="stdio",
             command="uvx",
             args=["mcp-server-fetch"],
+        )
+        await _mcp(
+            db,
+            org_id,
+            user_id,
+            "rag",
+            tools=[
+                {"name": "rag_search", "description": "Search knowledge base using hybrid vector + BM25 retrieval"},
+                {"name": "rag_ingest_file", "description": "Ingest document file (PDF, DOCX, TXT, MD) into RAG collection"},
+                {"name": "rag_ingest_url", "description": "Fetch and ingest webpage URL into RAG collection"},
+                {"name": "rag_ingest_text", "description": "Ingest raw text into RAG collection"},
+                {"name": "rag_list_collections", "description": "List all available RAG collections and stats"},
+                {"name": "rag_delete_collection", "description": "Delete a RAG collection"},
+                {"name": "rag_graph_search", "description": "Perform graph-based entity & relation retrieval"},
+            ],
+            transport="sse",
+            url="http://rag-service:8101/sse",
+            headers=({"X-API-Key": os.environ["RAG_API_KEY"]} if os.environ.get("RAG_API_KEY") else {}),
         )
 
         # --- Workflows (graph DAGs) ---

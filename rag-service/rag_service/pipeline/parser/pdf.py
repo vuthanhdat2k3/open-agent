@@ -36,7 +36,12 @@ class PDFParser(Parser):
             pages: list[str] = []
             for page in reader.pages:
                 try:
-                    pages.append(page.extract_text() or "")
+                    text = ""
+                    try:
+                        text = page.extract_text(extraction_mode="layout") or ""
+                    except Exception:
+                        text = page.extract_text() or ""
+                    pages.append(text)
                 except Exception as exc:  # pragma: no cover - defensive
                     logger.warning("pypdf failed on a page: %s", exc)
                     pages.append("")
