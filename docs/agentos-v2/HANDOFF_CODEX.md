@@ -14,7 +14,7 @@ Roadmap đang theo: `docs/agentos-v2/ROADMAP_2026.md` (M13–M17), mỗi
 milestone có file đặc tả riêng trong `docs/agentos-v2/tasks/`.
 
 **M0–M12 đã xong từ trước. M13 và M14 vừa hoàn thành.** Việc của bạn là
-M15 → M16 → M17, cộng vài mục tồn đọng liệt kê bên dưới.
+M15 → M16 → M17. Các mục tồn đọng của M13/M14 đã đóng hết (xem bên dưới).
 
 ### ĐỌC TRƯỚC KHI VIẾT BẤT KỲ DÒNG CODE NÀO
 
@@ -64,13 +64,15 @@ trong file task tương ứng.
 | `ab3df41` | `app/core/workflow/resume.py` — resume không chạy lại node đã succeeded, lease chống chạy trùng, `MAX_RESUME_ATTEMPTS` |
 | `c6d7535` | `app/core/workflow/replay.py` — replay tất định, `ReplayDiverged` khi lệch nhánh |
 | `294a2d3` | `sweep_orphans` chạy lúc worker khởi động |
+| `57297fb` | Replay + heartbeat lease trong workflow engine |
+| `364d60b` | Route replay + Grafana panel cho metric M13 |
 
-Test: `tests/test_workflow_resume.py` (7), `tests/test_workflow_replay.py` (9).
+Test: `tests/test_workflow_resume.py` (7), `tests/test_workflow_replay.py` (10).
 
 ### Trạng thái test (baseline — QUAN TRỌNG)
 
 ```
-3 failed, 76 passed, 39 errors
+3 failed, 77 passed, 39 errors
 ```
 
 **39 error và 3 failure là có sẵn, KHÔNG phải do M13/M14.** Nguyên nhân:
@@ -84,30 +86,32 @@ lớn 39 error sẽ biến mất — nên làm, và nếu làm được thì bá
 
 ---
 
-## Việc tồn đọng (làm trước M15)
+## Việc tồn đọng — ĐÃ ĐÓNG
 
-Đây là những thứ đặc tả M13/M14 có nêu nhưng chưa làm. Đều nhỏ.
+Bốn mục tồn đọng của M13/M14 đã hoàn thành trong hai commit cuối
+(`57297fb`, `364d60b`):
 
-1. **Grafana dashboard chưa dùng metric mới.** M13 thêm
-   `gen_ai_client_token_usage`, `gen_ai_operation_duration_seconds`,
-   `guardrail_events_total` nhưng
-   `observability/grafana/dashboards/*.json` chưa có panel nào cho chúng.
-   Thêm panel mới, **không xoá panel cũ** (metric M7 vẫn còn nguyên).
+1. **Replay nối vào workflow engine** — tool node ghi `ToolCallRecord` khi
+   chạy thật và đọc lại khi replay; cursor truyền xuống agent node. Có test
+   end-to-end đếm số lần thực thi để chứng minh replay không gọi tool.
+2. **Heartbeat `extend_lease`** — gọi giữa các vòng lập lịch trong
+   `run_workflow_events`, nên workflow chạy lâu hơn TTL không bị worker
+   khác cướp.
+3. **`POST /api/workflows/runs/{id}/replay`** — tạo run mới có
+   `replay_of_run_id`, trả về điểm lệch nhánh nếu có. Cố ý **không** đặt
+   sau `agent_run_admission` vì replay không gọi tool/provider nào.
+4. **Grafana dashboard** — thêm panel cho `gen_ai_client_token_usage`,
+   `gen_ai_operation_duration_seconds`, `guardrail_events_total` và
+   `tool_call_duration_seconds` (M7 định nghĩa nhưng chưa từng ghi nhận).
+   Panel cũ giữ nguyên.
 
-2. **API endpoint replay chưa có.** `replay.py` đã sẵn sàng nhưng chưa có
-   route. Đặc tả M14 yêu cầu
-   `POST /api/workflows/runs/{id}/replay` → tạo run mới với
-   `replay_of_run_id`. Cột `replay_of_run_id` đã có trong DB, chưa ai ghi.
+### Giới hạn còn lại của M14 (biết trước, chưa xử lý)
 
-3. **`extend_lease` chưa có ai gọi.** Hàm đã viết và test nhưng chưa có
-   heartbeat trong lúc chạy. Node chạy lâu hơn `DEFAULT_LEASE_SECONDS`
-   (300s) sẽ bị worker khác cướp run. Cần gọi định kỳ trong
-   `run_workflow_events`, hoặc nâng TTL nếu bạn thấy đơn giản hơn — **nêu
-   rõ lựa chọn trong PR**.
-
-4. **Replay mới nối vào agent loop, chưa nối vào workflow engine.**
-   `_agent_stream` nhận `replay_cursor`, nhưng `engine.py` chưa truyền
-   xuống. Workflow replay end-to-end vì thế chưa chạy được.
+- `sequence` của `ToolCallRecord` đánh riêng theo từng run: agent loop tự
+  đếm, workflow engine tự đếm. Với workflow lồng nhau (`sub_workflow`) thứ
+  tự này chưa được kiểm chứng — nếu M15/M16 cần replay workflow lồng sâu
+  thì rà lại trước.
+- Chưa có UI cho replay; mới chỉ có API.
 
 ---
 
