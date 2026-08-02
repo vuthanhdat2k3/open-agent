@@ -16,6 +16,7 @@ from app.core.observability import genai
 from app.core.observability.metrics import workflow_run_duration_seconds
 from app.core.tools.registry import BUILTIN_TOOLS, execute_tool_call
 from app.core.tools.types import ToolContext
+from app.core.workflow import resume
 from app.db.base import utc_now
 from app.mcp.client import build_mcp_tool_spec
 from app.models.agent import Agent
@@ -156,6 +157,19 @@ async def run_workflow_events(
     status: dict[str, str] = {n["id"]: "pending" for n in nodes}
     outputs: dict[str, str] = {}
     active_edges: set[int] = set()
+    # Populated only when re-entering an existing run (crash recovery); empty
+    # for a fresh run, so the normal path is unaffected.
+    resumed_outputs: dict[str, str] = (
+        await resume.completed_node_outputs(db, workflow_run.id) if workflow_run_id else {}
+    )
+    if resumed_outputs:
+        yield {
+            "event": "workflow_resumed",
+            "data": {
+                "workflow_run_id": workflow_run.id,
+                "completed_nodes": sorted(resumed_outputs),
+            },
+        }
     budget = BudgetTracker(
         RunBudget(
             max_tool_calls=settings.budget_max_tool_calls,
@@ -267,6 +281,13 @@ async def run_workflow_events(
         max_attempts = max(1, int(retry_cfg.get("max_attempts", 1) or 1))
         backoff_s = max(0.0, float(retry_cfg.get("backoff_s", 0.0) or 0.0))
         timeout_s = node.get("timeout_s") or cfg.get("timeout_s")
+
+        # Resume: a node that already succeeded in an earlier attempt of this
+        # run is not executed again — its recorded output is replayed. This
+        # makes a crashed multi-hour workflow cheap to restart, and stops
+        # side-effecting tool nodes from firing twice.
+        if node["id"] in resumed_outputs:
+            return resumed_outputs[node["id"]]
 
         last_error: Exception | None = None
         incoming = [e for e in edges_to[node["id"]] if e["_idx"] in active_edges]
