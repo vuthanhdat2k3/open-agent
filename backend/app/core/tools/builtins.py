@@ -12,7 +12,7 @@ from app.core.tools import (
     shell,  # noqa: F401
     web_search,  # noqa: F401
 )
-from app.core.tools.paths import safe_resolve
+from app.core.tools.paths import safe_resolve, safe_url
 from app.core.tools.registry import register
 from app.core.tools.risk_tier import RiskTier
 from app.core.tools.types import ToolContext, ToolSpec
@@ -44,13 +44,30 @@ async def _read_attachment(args: dict[str, Any], ctx: ToolContext) -> str:
     return data
 
 
+MAX_FETCH_REDIRECTS = 5
+
+
 async def _web_fetch(args: dict[str, Any], ctx: ToolContext) -> str:
     url = args.get("url", "")
     if not url:
         return "error: missing 'url'"
+    if safe_url(url) is None:
+        return "error: url blocked (must be http/https and resolve to a public address)"
     try:
-        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
-            resp = await client.get(url, headers={"User-Agent": "OpenAgent/0.1"})
+        # follow_redirects=False + manual hop validation: a redirect Location
+        # is attacker-influenced same as the original URL, so each hop must
+        # pass the same SSRF check before being followed (auto-follow would
+        # let a safe URL redirect into an internal/metadata address).
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=False) as client:
+            for _ in range(MAX_FETCH_REDIRECTS):
+                resp = await client.get(url, headers={"User-Agent": "OpenAgent/0.1"})
+                if resp.status_code in (301, 302, 303, 307, 308) and "location" in resp.headers:
+                    next_url = str(httpx.URL(url).join(resp.headers["location"]))
+                    if safe_url(next_url) is None:
+                        return "error: url blocked (redirect target must be http/https and resolve to a public address)"
+                    url = next_url
+                    continue
+                break
         text = resp.text
     except Exception as e:  # noqa: BLE001
         return f"error fetching url: {e}"
@@ -218,7 +235,7 @@ register(
             "required": ["url"],
         },
         run=_web_fetch,
-        risk_tier=RiskTier.read,
+        risk_tier=RiskTier.network,
     )
 )
 

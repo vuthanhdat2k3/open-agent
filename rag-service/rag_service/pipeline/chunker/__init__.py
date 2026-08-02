@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from rag_service.config import settings
 from rag_service.pipeline.base import Chunker
+from rag_service.pipeline.chunker.parent_child import ParentChildChunker
 from rag_service.pipeline.chunker.recursive import RecursiveCharacterChunker
+from rag_service.pipeline.chunker.semantic import SemanticChunker
 from rag_service.pipeline.chunker.sentence import SentenceChunker
 from rag_service.pipeline.chunker.token import TokenChunker
 
@@ -12,6 +14,8 @@ CHUNKER_REGISTRY: dict[str, type[Chunker]] = {
     "recursive": RecursiveCharacterChunker,
     "sentence": SentenceChunker,
     "token": TokenChunker,
+    "semantic": SemanticChunker,
+    "parent_child": ParentChildChunker,
 }
 
 
@@ -25,6 +29,8 @@ __all__ = [
     "RecursiveCharacterChunker",
     "SentenceChunker",
     "TokenChunker",
+    "SemanticChunker",
+    "ParentChildChunker",
     "CHUNKER_REGISTRY",
     "get_chunker",
 ]

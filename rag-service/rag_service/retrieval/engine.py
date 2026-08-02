@@ -1,7 +1,8 @@
-"""Hybrid retrieval engine: BM25 + semantic + RRF fusion.
+"""Hybrid retrieval engine: BM25 + semantic + RRF fusion + Cross-Encoder Reranking.
 
-Runs the two complementary signals in parallel, fuses their ranked lists with
-Reciprocal Rank Fusion, then fetches full chunk content for the top-N.
+Runs the complementary signals in parallel, fuses their ranked lists with
+Reciprocal Rank Fusion, applies Cross-Encoder reranking & long-context reordering,
+and resolves Parent-Child relationships for full-context synthesis.
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ import time
 from rag_service.config import settings
 from rag_service.pipeline.base import Embedder, TextChunk
 from rag_service.retrieval.bm25.base import BM25Index
+from rag_service.retrieval.reranker import CrossEncoderReranker, reorder_long_context
 from rag_service.retrieval.rrf import reciprocal_rank_fusion
 from rag_service.retrieval.vector.base import VectorStore
 from rag_service.schemas.retrieval import RetrievalResult
@@ -28,6 +30,8 @@ class HybridRetriever:
         bm25_weight: float | None = None,
         semantic_weight: float | None = None,
         query_cache_size: int | None = None,
+        enable_reranking: bool = True,
+        enable_context_reorder: bool = True,
     ) -> None:
         self.embedder = embedder
         self.vector_store = vector_store
@@ -38,6 +42,10 @@ class HybridRetriever:
         self.semantic_weight = (
             semantic_weight if semantic_weight is not None else settings.rrf_semantic_weight
         )
+        self.enable_reranking = enable_reranking
+        self.enable_context_reorder = enable_context_reorder
+        self.reranker = CrossEncoderReranker(min_score_threshold=0.15)
+
         self._cache: dict[str, list[float]] = {}
         self._cache_order: list[str] = []
         self._cache_max = (
@@ -104,24 +112,27 @@ class HybridRetriever:
         fused = reciprocal_rank_fusion(ranked_lists, k=self.rrf_k, weights=weights)
         rrf_ms = (time.perf_counter() - rrf_t0) * 1000
 
-        top_ids = [cid for cid, _ in fused[:top_k]]
+        # Fetch candidates for reranking
+        candidate_ids = [cid for cid, _ in fused[:candidate_k]]
         chunks: list[TextChunk] = (
-            await self.vector_store.get_by_ids(collection_id, top_ids) if top_ids else []
+            await self.vector_store.get_by_ids(collection_id, candidate_ids) if candidate_ids else []
         )
         by_id = {c.chunk_id: c for c in chunks}
 
         score_map = dict(fused)
-        out: list[RetrievalResult] = []
-        for rank, cid in enumerate(top_ids, start=1):
+        initial_results: list[RetrievalResult] = []
+        for rank, cid in enumerate(candidate_ids, start=1):
             chunk = by_id.get(cid)
             if chunk is None:
                 continue
             md = chunk.metadata
-            out.append(
+            # Parent-child resolution: Use parent_text if present for synthesis
+            text_content = md.get("parent_text") or chunk.text
+            initial_results.append(
                 RetrievalResult(
                     chunk_id=cid,
                     document_id=md.get("document_id", ""),
-                    text=chunk.text,
+                    text=text_content,
                     score=round(score_map[cid], 6),
                     rank=rank,
                     source_type=md.get("source_type", "unknown"),
@@ -129,6 +140,20 @@ class HybridRetriever:
                     highlights=[query.strip()],
                 )
             )
+
+        # Apply Cross-Encoder Reranking
+        rerank_t0 = time.perf_counter()
+        if self.enable_reranking and initial_results:
+            reranked = self.reranker.rerank(query, initial_results, top_k=top_k)
+        else:
+            reranked = initial_results[:top_k]
+        rerank_ms = (time.perf_counter() - rerank_t0) * 1000
+
+        # Apply Long Context Reordering
+        if self.enable_context_reorder:
+            out = reorder_long_context(reranked)
+        else:
+            out = reranked
 
         if not debug:
             return out, None
@@ -141,6 +166,7 @@ class HybridRetriever:
             "bm25_latency_ms": round(bm25_ms, 2),
             "semantic_latency_ms": round(sem_ms - bm25_ms, 2),
             "rrf_latency_ms": round(rrf_ms, 2),
+            "rerank_latency_ms": round(rerank_ms, 2),
             "total_latency_ms": round((time.perf_counter() - t0) * 1000, 2),
         }
         return out, dbg

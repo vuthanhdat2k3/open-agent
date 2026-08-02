@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import shlex
 from typing import Any
 
+from app.core.tools import sandbox
 from app.core.tools.paths import safe_resolve
 from app.core.tools.registry import register
 from app.core.tools.risk_tier import RiskTier
@@ -14,9 +17,17 @@ DEFAULT_TIMEOUT = 30.0
 
 
 async def _run_shell(args: dict[str, Any], ctx: ToolContext) -> str:
+    """Run ``cmd`` inside the same hardened Docker sandbox as run_code (never
+    on the backend host) — the workspace is archived in, cmd runs as a bash
+    script, and results come back over stdout, matching sandbox._run_code's
+    stdin_mode="archive" contract.
+    """
     cmd = args.get("cmd", "")
     if not cmd:
         return "error: missing 'cmd'"
+    if not sandbox.settings.sandbox_enabled:
+        return "error: sandbox execution is disabled"
+
     execution = await start_execution_record(
         ctx.db,
         org_id=ctx.org_id,
@@ -31,30 +42,53 @@ async def _run_shell(args: dict[str, Any], ctx: ToolContext) -> str:
     )
 
     cwd_arg = args.get("cwd")
+    rel_cwd = None
     if cwd_arg:
         cwd = safe_resolve(ctx.workspace_dir, cwd_arg)
         if cwd is None or not cwd.is_dir():
-            return "error: cwd escapes workspace directory or is not a directory"
-        cwd_str = str(cwd)
-    else:
-        cwd_str = ctx.workspace_dir
+            msg = "error: cwd escapes workspace directory or is not a directory"
+            await finish_execution_record(ctx.db, execution, status="failed", output=msg, error=msg)
+            return msg
+        rel_cwd = os.path.relpath(str(cwd), os.path.abspath(ctx.workspace_dir))
 
     try:
         timeout = float(args.get("timeout", DEFAULT_TIMEOUT))
     except (TypeError, ValueError):
         timeout = DEFAULT_TIMEOUT
 
+    if not sandbox._docker_available():
+        msg = (
+            "error: docker unavailable — sandbox execution requires a running "
+            "Docker daemon reachable from the backend host"
+        )
+        await finish_execution_record(ctx.db, execution, status="failed", output=msg, error=msg)
+        return msg
+
+    script = f"cd {shlex.quote(rel_cwd)} && {cmd}" if rel_cwd and rel_cwd != "." else cmd
     try:
-        proc = await asyncio.create_subprocess_shell(
-            cmd,
-            cwd=cwd_str,
+        archive = sandbox.build_workspace_archive(ctx.workspace_dir, "run_shell.sh", script)
+    except ValueError as e:
+        msg = f"error: {e}"
+        await finish_execution_record(ctx.db, execution, status="failed", output=msg, error=msg)
+        return msg
+
+    docker_args = sandbox.build_docker_args("bash", "run_shell.sh", stdin_mode="archive")
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *docker_args,
+            stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
         )
-        out, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        out, _ = await asyncio.wait_for(proc.communicate(archive), timeout=timeout)
     except TimeoutError:
         msg = f"error: command timed out after {timeout}s"
         await finish_execution_record(ctx.db, execution, status="timed_out", output=msg, error=msg)
+        return msg
+    except FileNotFoundError:
+        msg = "error: docker CLI not found on the backend host"
+        await finish_execution_record(ctx.db, execution, status="failed", output=msg, error=msg)
         return msg
     except Exception as e:  # noqa: BLE001
         msg = f"error executing command: {e}"
