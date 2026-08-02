@@ -9,6 +9,7 @@ from redis.asyncio import Redis, from_url
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
+from app.core.observability.audit import log_action
 from app.core.observability.metrics import (
     quota_active_run_leases,
     quota_admission_total,
@@ -33,6 +34,25 @@ def _rate_headers(decision) -> dict[str, str]:
         "RateLimit-Remaining": str(decision.remaining),
         "RateLimit-Reset": str(decision.reset_seconds),
     }
+
+
+async def _audit_quota_denied(
+    db: AsyncSession, org_id: str, limit_type: str, enforcement_mode: str
+) -> None:
+    """Record an admission refusal.
+
+    A rejected run is an operator-visible event: without it, "the agent
+    stopped responding" is indistinguishable from a crash in the audit
+    trail. Committed immediately because the caller raises straight after.
+    """
+    await log_action(
+        db,
+        org_id=org_id,
+        action="quota.denied",
+        resource_type="organization",
+        resource_id=org_id,
+        metadata={"limit_type": limit_type, "enforcement_mode": enforcement_mode},
+    )
 
 
 async def _redis_client() -> AsyncGenerator[Redis, None]:
@@ -93,6 +113,7 @@ async def enforce_request_quota(
     )
     quota_admission_total.labels("requests", metric_decision).inc()
     if not decision.allowed and not observe:
+        await _audit_quota_denied(db, org_id, "requests", "enforce")
         raise HTTPException(
             429,
             "request rate limit exceeded",
@@ -130,6 +151,7 @@ async def agent_run_admission(
                 "agent_runs", "observe" if observe else "reject"
             ).inc()
             if not observe:
+                await _audit_quota_denied(db, org_id, "agent_runs", "enforce")
                 raise HTTPException(
                     429,
                     "agent run rate limit exceeded",
@@ -147,6 +169,7 @@ async def agent_run_admission(
                 "monthly_cost", "observe" if observe else "reject"
             ).inc()
             if not observe:
+                await _audit_quota_denied(db, org_id, "monthly_cost", "enforce")
                 raise HTTPException(429, "monthly cost limit reached")
         else:
             quota_admission_total.labels("monthly_cost", "allow").inc()
@@ -163,6 +186,7 @@ async def agent_run_admission(
                 "concurrent_runs", "observe" if observe else "reject"
             ).inc()
             if not observe:
+                await _audit_quota_denied(db, org_id, "concurrent_runs", "enforce")
                 raise HTTPException(
                     429,
                     "concurrent agent run limit reached",

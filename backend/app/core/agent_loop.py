@@ -371,6 +371,19 @@ async def _agent_stream(
                         budget_reason = budget.record_call(name, args)
                         if budget_reason:
                             result = f"error: run budget exceeded: {budget_reason}"
+                            guardrail_events_total.labels(
+                                agent.org_id, "budget_exceeded", "blocked"
+                            ).inc()
+                            await log_action(
+                                db,
+                                org_id=agent.org_id,
+                                actor_user_id=agent.created_by_user_id,
+                                action="guardrail.budget_exceeded",
+                                resource_type="tool",
+                                resource_id=name,
+                                metadata={"reason": budget_reason},
+                                commit=False,
+                            )
                             yield {
                                 "event": "budget_exceeded",
                                 "data": {"reason": budget_reason, "tool": name},
@@ -398,6 +411,22 @@ async def _agent_stream(
                                 f"'{spec.risk_tier.value}' which is not enabled for this agent. "
                                 f"Allowed tiers: {agent.allowed_risk_tiers}"
                             )
+                            guardrail_events_total.labels(
+                                agent.org_id, "risk_tier_denied", "blocked"
+                            ).inc()
+                            await log_action(
+                                db,
+                                org_id=agent.org_id,
+                                actor_user_id=agent.created_by_user_id,
+                                action="guardrail.risk_tier_denied",
+                                resource_type="tool",
+                                resource_id=name,
+                                metadata={
+                                    "required_tier": spec.risk_tier.value,
+                                    "allowed_tiers": list(agent.allowed_risk_tiers or []),
+                                },
+                                commit=False,
+                            )
                         elif spec.requires_approval:
                             approval = await request_approval(
                                 db,
@@ -407,6 +436,19 @@ async def _agent_stream(
                                 tool_name=name,
                                 args_snapshot=args,
                                 requested_by=agent.created_by_user_id,
+                            )
+                            guardrail_events_total.labels(
+                                agent.org_id, "approval_required", "paused"
+                            ).inc()
+                            await log_action(
+                                db,
+                                org_id=agent.org_id,
+                                actor_user_id=agent.created_by_user_id,
+                                action="guardrail.approval_required",
+                                resource_type="approval_request",
+                                resource_id=approval.id,
+                                metadata={"tool_name": name, "run_id": session_id},
+                                commit=False,
                             )
                             yield {
                                 "event": "approval_required",
