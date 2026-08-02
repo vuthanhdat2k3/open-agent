@@ -763,6 +763,7 @@ async def run_agent_loop(
     session_id: str | None = None,
     current_task_id: str | None = None,
     root_run_id: str | None = None,
+    replay_cursor: ReplayCursor | None = None,
 ) -> AgentLoopResult:
     content = ""
     usage: dict[str, Any] = {"input_tokens": 0, "output_tokens": 0}
@@ -778,6 +779,7 @@ async def run_agent_loop(
         session_id,
         current_task_id=current_task_id,
         root_run_id=root_run_id,
+        replay_cursor=replay_cursor,
     ):
         if ev["event"] == "message_done":
             data = ev["data"]
