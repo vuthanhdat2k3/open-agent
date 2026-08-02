@@ -19,6 +19,7 @@ from app.core.observability import genai
 from app.core.observability.audit import log_action
 from app.core.observability.metrics import (
     agent_run_cost_usd_total,
+    guardrail_events_total,
     tool_call_duration_seconds,
     tool_calls_total,
 )
@@ -436,22 +437,78 @@ async def _agent_stream(
                                 ):
                                     result = await execute_tool_call(spec, args, ctx)
                                 tool_calls_total.labels(name, "ok").inc()
-                                if spec.risk_tier.value == "dangerous":
-                                    await log_action(
-                                        db,
-                                        org_id=agent.org_id,
-                                        actor_user_id=agent.created_by_user_id,
-                                        action="tool.dangerous.executed",
-                                        resource_type="tool",
-                                        resource_id=name,
-                                        metadata={"arguments": args},
-                                    )
+                                tool_status = "ok"
                             except Exception as e:  # noqa: BLE001
                                 tool_calls_total.labels(name, "error").inc()
                                 result = f"error executing tool: {e}"
+                                tool_status = "error"
+                            # Every tool call is auditable evidence, not just
+                            # the dangerous tier (EU AI Act Art.12). The
+                            # dangerous-tier row is kept as-is so existing
+                            # alerts and dashboards keep matching.
+                            await log_action(
+                                db,
+                                org_id=agent.org_id,
+                                actor_user_id=agent.created_by_user_id,
+                                action="tool.executed",
+                                resource_type="tool",
+                                resource_id=name,
+                                metadata={
+                                    "risk_tier": spec.risk_tier.value,
+                                    "status": tool_status,
+                                },
+                                commit=False,
+                            )
+                            if spec.risk_tier.value == "dangerous":
+                                await log_action(
+                                    db,
+                                    org_id=agent.org_id,
+                                    actor_user_id=agent.created_by_user_id,
+                                    action="tool.dangerous.executed",
+                                    resource_type="tool",
+                                    resource_id=name,
+                                    metadata={"arguments": args},
+                                    commit=False,
+                                )
                     if name in UNTRUSTED_TOOL_SOURCES:
-                        result = wrap_untrusted_if_flagged(str(result), source=name)
+                        wrapped = wrap_untrusted_if_flagged(str(result), source=name)
+                        if wrapped != str(result):
+                            guardrail_events_total.labels(
+                                agent.org_id, "injection_flagged", "wrapped"
+                            ).inc()
+                            await log_action(
+                                db,
+                                org_id=agent.org_id,
+                                actor_user_id=agent.created_by_user_id,
+                                action="guardrail.injection_flagged",
+                                resource_type="tool",
+                                resource_id=name,
+                                # Statistics only: the flagged payload is
+                                # attacker-controlled and must not be copied
+                                # into the audit trail.
+                                metadata={"source": name},
+                                commit=False,
+                            )
+                        result = wrapped
                     result, secret_findings = scan_and_redact(str(result))
+                    if secret_findings:
+                        guardrail_events_total.labels(
+                            agent.org_id, "secret_redacted", "redacted"
+                        ).inc()
+                        await log_action(
+                            db,
+                            org_id=agent.org_id,
+                            actor_user_id=agent.created_by_user_id,
+                            action="guardrail.secret_redacted",
+                            resource_type="tool",
+                            resource_id=name,
+                            # Kinds and counts only — never the secret value.
+                            metadata={
+                                "count": len(secret_findings),
+                                "kinds": sorted({f.kind for f in secret_findings}),
+                            },
+                            commit=False,
+                        )
                     yield {
                         "event": "tool_result",
                         "data": {"name": name, "result": result},
@@ -513,6 +570,10 @@ async def _agent_stream(
                             ),
                         }
                     )
+                # One flush per iteration: the tool and guardrail audit rows
+                # above were queued with commit=False to avoid a round trip
+                # per tool call. Early-return paths flush via _finish_task.
+                await db.commit()
                 continue
 
             # Final answer (no tool calls this step)
