@@ -1,12 +1,21 @@
 "use client";
 
 import * as React from "react";
+import DOMPurify from "dompurify";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { Wrench, CornerDownRight, Clock, DollarSign, Terminal, Code, CheckCircle2, XCircle, Play, FileCode, Maximize2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 
+// html here can be raw SVG returned by an LLM/tool call — treat it as
+// untrusted and sanitize before it reaches the DOM (SVG supports
+// <script>/onload/onerror just like HTML).
+function sanitizeSvg(html: string): string {
+  return DOMPurify.sanitize(html, { USE_PROFILES: { svg: true, svgFilters: true } });
+}
+
 function SvgPreview({ html }: { html: string }) {
+  const clean = sanitizeSvg(html);
   return (
     <Dialog>
       <DialogTrigger asChild>
@@ -17,7 +26,7 @@ function SvgPreview({ html }: { html: string }) {
         >
           <div
             className="max-w-full max-h-[360px] overflow-auto rounded-lg border border-border/40 bg-card p-2 shadow-sm [&>svg]:w-auto [&>svg]:h-auto [&>svg]:max-w-full [&>svg]:max-h-[340px]"
-            dangerouslySetInnerHTML={{ __html: html }}
+            dangerouslySetInnerHTML={{ __html: clean }}
           />
           <span className="absolute inset-0 flex items-center justify-center rounded-lg bg-black/0 opacity-0 transition-all group-hover:bg-black/20 group-hover:opacity-100">
             <Maximize2 className="h-6 w-6 text-white drop-shadow" />
@@ -27,7 +36,7 @@ function SvgPreview({ html }: { html: string }) {
       <DialogContent className="max-w-4xl p-3">
         <div
           className="max-h-[85vh] overflow-auto [&>svg]:w-auto [&>svg]:h-auto [&>svg]:max-w-full [&>svg]:mx-auto"
-          dangerouslySetInnerHTML={{ __html: html }}
+          dangerouslySetInnerHTML={{ __html: clean }}
         />
       </DialogContent>
     </Dialog>

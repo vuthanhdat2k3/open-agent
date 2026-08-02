@@ -26,23 +26,42 @@ services:
       timeout: 3s
       retries: 20
 
+  # Neither `api` nor `worker` mount the host Docker socket directly anymore
+  # (a raw-socket mount there is root-equivalent host access — any RCE in
+  # either service would be a full host takeover). They instead talk to this
+  # locked-down proxy, which only allows the container-create/start/logs
+  # calls the run_code/run_shell sandbox actually needs and denies
+  # everything else (swarm, plugins, volumes, networks, secrets, exec-into-
+  # other-container, etc). Note this narrows the blast radius but does not
+  # by itself prevent a sandboxed container from being created with a host
+  # bind mount — a fully isolated sandbox-runner API is the complete fix,
+  # tracked as a follow-up.
+  docker-socket-proxy:
+    image: tecnativa/docker-socket-proxy:0.3.0
+    environment:
+      CONTAINERS: 1
+      POST: 1
+      IMAGES: 1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
   api:
     build:
       context: ./backend
     environment:
+      RAG_API_KEY: ${RAG_API_KEY:-}
       OPENAGENT_HOST: 0.0.0.0
-      OPENAGENT_DB_URL: ${OPENAGENT_DB_URL:-postgresql+asyncpg://postgres.dkzfrzwevnyzhcicmtda:openagent%4019052003@aws-0-ap-northeast-1.pooler.supabase.com:5432/postgres}
+      OPENAGENT_DB_URL: ${OPENAGENT_DB_URL:?Set OPENAGENT_DB_URL in .env (see .env.example)}
       OPENAGENT_REDIS_URL: redis://redis:6379/0
       OPENAGENT_WORKFLOW_EXECUTION_MODE: ${OPENAGENT_WORKFLOW_EXECUTION_MODE:-inline}
-      OPENAGENT_JWT_SECRET_KEY: ${OPENAGENT_JWT_SECRET_KEY:-local-dev-secret-change-me-32-bytes}
+      OPENAGENT_JWT_SECRET_KEY: ${OPENAGENT_JWT_SECRET_KEY:?Set OPENAGENT_JWT_SECRET_KEY in .env to a random 32-byte secret}
       OPENAGENT_COOKIE_SECURE: ${OPENAGENT_COOKIE_SECURE:-false}
       OPENAGENT_OTEL_ENABLED: ${OPENAGENT_OTEL_ENABLED:-false}
       OPENAGENT_OTEL_EXPORTER_ENDPOINT: ${OPENAGENT_OTEL_EXPORTER_ENDPOINT:-}
       OPENAGENT_S3_ENDPOINT_URL: http://minio:9000
       OPENAGENT_S3_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
       OPENAGENT_S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
+      DOCKER_HOST: tcp://docker-socket-proxy:2375
     ports:
       - "8000:8000"
     depends_on:
@@ -50,6 +69,8 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      docker-socket-proxy:
+        condition: service_started
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8000/readyz"]
       interval: 10s
@@ -60,31 +81,33 @@ services:
     build:
       context: ./backend
     environment:
-      OPENAGENT_DB_URL: ${OPENAGENT_DB_URL:-postgresql+asyncpg://postgres.dkzfrzwevnyzhcicmtda:openagent%4019052003@aws-0-ap-northeast-1.pooler.supabase.com:5432/postgres}
+      RAG_API_KEY: ${RAG_API_KEY:-}
+      OPENAGENT_DB_URL: ${OPENAGENT_DB_URL:?Set OPENAGENT_DB_URL in .env (see .env.example)}
       OPENAGENT_REDIS_URL: redis://redis:6379/0
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
+      DOCKER_HOST: tcp://docker-socket-proxy:2375
     command: ["arq", "app.worker.WorkerSettings"]
     depends_on:
       api:
         condition: service_healthy
       redis:
         condition: service_healthy
+      docker-socket-proxy:
+        condition: service_started
 
   frontend:
     build:
       context: ./frontend
       args:
         API_INTERNAL_URL: ${API_INTERNAL_URL:-http://api:8000}
-        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-https://dkzfrzwevnyzhcicmtda.supabase.co}
-        NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:-sb_publishable_7J6Pd6G8bAgJ5wEqVSpklQ_KJhQrZsa}
-        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-sb_publishable_7J6Pd6G8bAgJ5wEqVSpklQ_KJhQrZsa}
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-https://your-project-ref.supabase.co}
+        NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:-your-supabase-publishable-key}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-your-supabase-anon-key}
     environment:
       API_INTERNAL_URL: ${API_INTERNAL_URL:-http://api:8000}
       NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
-      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-https://dkzfrzwevnyzhcicmtda.supabase.co}
-      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:-sb_publishable_7J6Pd6G8bAgJ5wEqVSpklQ_KJhQrZsa}
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-sb_publishable_7J6Pd6G8bAgJ5wEqVSpklQ_KJhQrZsa}
+      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-https://your-project-ref.supabase.co}
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:-your-supabase-publishable-key}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-your-supabase-anon-key}
     ports:
       - "3000:3000"
     depends_on:
@@ -102,8 +125,12 @@ services:
     build:
       context: ./rag-service
     environment:
+      RAG_ENV: ${RAG_ENV:-development}
+      RAG_API_KEY: ${RAG_API_KEY:-}
       RAG_VECTOR_STORE: qdrant
       RAG_QDRANT_URL: http://qdrant:6333
+    volumes:
+      - ./rag-service/rag_service:/app/rag_service
     ports:
       - "8100:8100"
       - "8101:8101"

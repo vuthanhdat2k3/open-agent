@@ -19,8 +19,30 @@ import remarkMath from "remark-math";
 import rehypeHighlight from "rehype-highlight";
 import rehypeKatex from "rehype-katex";
 import rehypeRaw from "rehype-raw";
+import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import React from "react";
 import { streamSSE } from "@/lib/api";
+
+// content is LLM output, which is attacker-influenceable via prompt
+// injection (e.g. from ingested documents). rehype-raw turns raw HTML in
+// markdown into real DOM nodes, so it must always be followed by
+// rehype-sanitize (per rehype-raw's own docs) — never render raw HTML
+// unsanitized. The schema below extends the safe default (no <script>,
+// no on* handlers, href/src limited to http/https/mailto) with the
+// className/style + MathML tags that rehype-highlight and rehype-katex's
+// own (trusted) output needs to render correctly.
+const markdownSanitizeSchema = (() => {
+  const schema = JSON.parse(JSON.stringify(defaultSchema)) as typeof defaultSchema;
+  schema.attributes = schema.attributes || {};
+  schema.attributes["*"] = [...(schema.attributes["*"] || []), "className", "style"];
+  schema.tagNames = [
+    ...(schema.tagNames || []),
+    "math", "semantics", "mrow", "mi", "mo", "mn", "msup", "msub", "msubsup",
+    "mfrac", "msqrt", "mroot", "mtable", "mtr", "mtd", "mtext", "mspace",
+    "mstyle", "mpadded", "mphantom", "menclose", "annotation",
+  ];
+  return schema;
+})();
 
 interface Props {
   content: string;
@@ -282,7 +304,7 @@ export function MarkdownRenderer({ content }: Props) {
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm, remarkMath]}
-      rehypePlugins={[rehypeHighlight, rehypeKatex, rehypeRaw]}
+      rehypePlugins={[rehypeHighlight, rehypeKatex, rehypeRaw, [rehypeSanitize, markdownSanitizeSchema]]}
       components={{
         // Headings
         h1: ({ children }) => (
@@ -340,17 +362,23 @@ export function MarkdownRenderer({ content }: Props) {
         // Horizontal rule
         hr: () => <hr className="my-3 border-border/40" />,
 
-        // Links
-        a: ({ href, children }) => (
-          <a
-            href={href}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-primary underline underline-offset-2 hover:opacity-80 transition-opacity"
-          >
-            {children}
-          </a>
-        ),
+        // Links — rehype-sanitize's schema already strips non-http(s)/mailto
+        // hrefs, but check again here so a schema regression can't silently
+        // reintroduce a javascript: URL click-to-XSS.
+        a: ({ href, children }) => {
+          const safeHref =
+            href && /^(https?:|mailto:)/i.test(href) ? href : undefined;
+          return (
+            <a
+              href={safeHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary underline underline-offset-2 hover:opacity-80 transition-opacity"
+            >
+              {children}
+            </a>
+          );
+        },
 
         // Tables (GFM)
         table: ({ children }) => (
