@@ -14,6 +14,7 @@ class AgentBase(BaseModel):
     kind: Literal["worker", "orchestrator"] = "worker"
     max_iterations: int = 12
     temperature: float = 0.7
+    a2a_exposed: bool = False
 
 
 class AgentCreate(AgentBase):
@@ -30,6 +31,7 @@ class AgentUpdate(BaseModel):
     kind: Literal["worker", "orchestrator"] | None = None
     max_iterations: int | None = None
     temperature: float | None = None
+    a2a_exposed: bool | None = None
 
 
 class AgentToolInfo(BaseModel):
@@ -44,6 +46,7 @@ class AgentOut(AgentBase):
 
     model_id: str | None = None
     id: str
+    a2a_exposed: bool = False
     active_release_id: str | None = None
     latest_release_number: int = 0
     created_at: datetime

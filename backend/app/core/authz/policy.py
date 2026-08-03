@@ -106,3 +106,32 @@ def has_permission(role: Role, permission: str) -> bool:
             if permission.startswith(prefix):
                 return True
     return False
+
+
+def evaluate_permission_intersection(
+    user_role: Role,
+    permission: str,
+    agent_allowed_risk_tiers: list[str] | None = None,
+    agent_identity_enabled: bool = True,
+) -> bool:
+    """Calculates the intersection of User permissions and Agent Identity permissions.
+
+    The effective permission is True ONLY IF both the user role has the required
+    permission AND the agent (identity) permits the operation. An agent NEVER
+    gains higher privileges than the calling user (User permissions ∩ Agent permissions).
+    """
+    if not agent_identity_enabled:
+        return False
+
+    user_has = has_permission(user_role, permission)
+    if not user_has:
+        return False
+
+    # If checking tool risk tier permission ("tools:use:<tier>")
+    if permission.startswith("tools:use:") and agent_allowed_risk_tiers is not None:
+        tier = permission.split("tools:use:", 1)[1]
+        if tier not in agent_allowed_risk_tiers and "*" not in agent_allowed_risk_tiers:
+            return False
+
+    return True
+
