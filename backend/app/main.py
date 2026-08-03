@@ -3,10 +3,11 @@ from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from redis.asyncio import from_url as redis_from_url
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 load_dotenv()  # populate os.environ from .env (used as fallback when a provider's stored api_key is empty)
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.router import api_router
@@ -15,7 +16,7 @@ from app.core.observability.logging import configure_logging, request_context_mi
 from app.core.observability.metrics import mount_metrics
 from app.core.observability.tracing import init_tracing
 from app.core.security import allowed_origins
-from app.db.session import engine, init_db
+from app.db.session import engine, get_db, init_db
 from app.schemas.common import HealthResponse
 
 
@@ -55,6 +56,31 @@ async def api_health():
 @app.get("/healthz")
 async def healthz():
     return {"status": "ok"}
+
+
+@app.get("/.well-known/agent-card.json")
+async def well_known_agent_card(
+    request: Request,
+    org_id: str | None = None,
+    db: AsyncSession = Depends(get_db),
+):
+    from sqlalchemy import select
+
+    from app.a2a.card import generate_agent_card
+    from app.models.agent import Agent
+
+    header_org_id = request.headers.get("X-Org-Id") or org_id
+    if not header_org_id:
+        return generate_agent_card([], str(request.base_url))
+
+    stmt = select(Agent).where(
+        Agent.org_id == header_org_id,
+        Agent.a2a_exposed.is_(True),
+    )
+    res = await db.execute(stmt)
+    agents = list(res.scalars().all())
+    return generate_agent_card(agents, str(request.base_url))
+
 
 
 async def _check_db() -> None:
