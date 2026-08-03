@@ -24,6 +24,16 @@ class EvaluationCaseCreate(BaseModel):
         return values
 
 
+class EvaluationCaseApprove(BaseModel):
+    """Accepting a sampled proposal requires stating the expected behaviour —
+    the sampler deliberately leaves it blank; only a human knows what should
+    have happened."""
+
+    expected_output: str | None = Field(default=None, max_length=100_000)
+    required_substrings: list[str] = Field(default_factory=list, max_length=100)
+    metadata: dict = Field(default_factory=dict)
+
+
 class EvaluationCaseOut(EvaluationCaseCreate):
     model_config = ConfigDict(from_attributes=True)
 
@@ -31,6 +41,10 @@ class EvaluationCaseOut(EvaluationCaseCreate):
     suite_id: str
     ordinal: int
     added_in_version: int
+    source: str = "manual"
+    source_run_ref: str | None = None
+    sampled_reason: str | None = None
+    approved: bool = True
     created_at: datetime
     updated_at: datetime
 
@@ -49,6 +63,10 @@ class EvaluationCaseOut(EvaluationCaseCreate):
             metadata=case.metadata_,
             ordinal=case.ordinal,
             added_in_version=case.added_in_version,
+            source=getattr(case, "source", "manual"),
+            source_run_ref=getattr(case, "source_run_ref", None),
+            sampled_reason=getattr(case, "sampled_reason", None),
+            approved=getattr(case, "approved", True),
             created_at=case.created_at,
             updated_at=case.updated_at,
         )
