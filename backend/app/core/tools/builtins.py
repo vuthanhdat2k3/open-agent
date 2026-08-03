@@ -314,24 +314,18 @@ async def _call_external_agent(args: dict[str, Any], ctx: ToolContext) -> str:
         )
         res = await ctx.db.execute(stmt)
         identity = res.scalar_one_or_none()
-        if not identity:
-            subject = f"agent:{ctx.org_id}:{ctx.agent_id}"
-            identity = AgentIdentity(
-                org_id=ctx.org_id,
-                agent_id=ctx.agent_id,
-                subject=subject,
-                allowed_audiences=["*"],
-                enabled=True,
-            )
-            ctx.db.add(identity)
-            await ctx.db.flush()
+        if not identity or not identity.enabled:
+            return "error: agent identity not configured or disabled for external A2A"
 
-        token = exchange_token_for_agent(
-            user_id=ctx.user_id,
-            org_id=ctx.org_id,
-            agent_identity=identity,
-            target_audience=endpoint_url,
-        )
+        try:
+            token = exchange_token_for_agent(
+                user_id=ctx.user_id,
+                org_id=ctx.org_id,
+                agent_identity=identity,
+                target_audience=endpoint_url,
+            )
+        except ValueError as exc:
+            return f"error: token exchange denied: {exc}"
 
     try:
         from app.a2a.client import call_external_agent_endpoint

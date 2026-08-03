@@ -9,8 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.a2a.server import get_exposed_agent_card, validate_a2a_agent_access
 from app.core.agent_loop import run_agent_loop
+from app.db.base import gen_id, utc_now
 from app.db.session import get_db
-from app.dependencies import get_current_org_id, get_current_user
+from app.dependencies import get_current_org_id, get_current_user, require_permission
 from app.models.task import Task
 from app.models.user import User
 
@@ -41,9 +42,11 @@ async def get_agent_card_endpoint(
 @router.post("/tasks", response_model=A2ATaskResponse)
 async def create_a2a_task(
     payload: A2ATaskRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     org_id: str = Depends(get_current_org_id),
     current_user: User = Depends(get_current_user),
+    _: None = Depends(require_permission("agents:run")),
 ) -> A2ATaskResponse:
     """Executes a task on an exposed agent via A2A protocol.
 
@@ -51,32 +54,57 @@ async def create_a2a_task(
     """
     agent = await validate_a2a_agent_access(db, org_id=org_id, agent_id=payload.agent_id)
 
-    # Create root Task entry
+    task_id = gen_id()
     task = Task(
+        id=task_id,
         org_id=org_id,
+        root_run_id=task_id,
         agent_id=agent.id,
+        agent_release_id=getattr(agent, "active_release_id", None),
         goal=payload.input,
         status="running",
+        started_at=utc_now(),
     )
     db.add(task)
     await db.commit()
     await db.refresh(task)
 
+    actor_agent_identity_id = getattr(request.state, "actor_agent_identity_id", None)
+    delegation_chain = getattr(request.state, "delegation_chain", None)
+
     try:
         res = await run_agent_loop(
             agent=agent,
-            user_input=payload.input,
+            message=payload.input,
             db=db,
             user_id=current_user.id,
+            actor_agent_identity_id=actor_agent_identity_id,
+            delegation_chain=delegation_chain,
+            current_task_id=task.id,
             root_run_id=task.id,
         )
+        if res.error:
+            task.status = "failed"
+            task.result = res.error
+            task.finished_at = utc_now()
+            await db.commit()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"A2A task execution failed: {res.error}",
+            )
+
         task.status = "succeeded"
-        task.result = res.output
+        task.result = res.content
+        task.cost_usd = res.cost_usd
+        task.finished_at = utc_now()
         await db.commit()
-        return A2ATaskResponse(task_id=task.id, status="succeeded", output=res.output)
+        return A2ATaskResponse(task_id=task.id, status="succeeded", output=res.content)
+    except HTTPException:
+        raise
     except Exception as e:
         task.status = "failed"
         task.result = str(e)
+        task.finished_at = utc_now()
         await db.commit()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

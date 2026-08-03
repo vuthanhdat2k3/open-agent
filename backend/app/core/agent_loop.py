@@ -175,6 +175,10 @@ async def _agent_stream(
     current_task_id: str | None = None,
     root_run_id: str | None = None,
     replay_cursor: ReplayCursor | None = None,
+    user_id: str | None = None,
+    user_role: str | None = None,
+    actor_agent_identity_id: str | None = None,
+    delegation_chain: list | dict | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     root_task: Task | None = None
     # Position of the next tool call within this run, used to line recordings
@@ -233,9 +237,11 @@ async def _agent_stream(
         agent_id=agent.id,
         session_id=session_id,
         org_id=agent.org_id,
-        user_id=agent.created_by_user_id,
+        user_id=user_id or agent.created_by_user_id,
         current_task_id=current_task_id,
         root_run_id=root_run_id or session_id or current_task_id,
+        actor_agent_identity_id=actor_agent_identity_id,
+        delegation_chain=delegation_chain,
     )
 
     specs = await _build_specs(agent, db)
@@ -382,7 +388,9 @@ async def _agent_stream(
                             await log_action(
                                 db,
                                 org_id=agent.org_id,
-                                actor_user_id=agent.created_by_user_id,
+                                actor_user_id=user_id or agent.created_by_user_id,
+                                actor_agent_identity_id=actor_agent_identity_id,
+                                delegation_chain=delegation_chain,
                                 action="guardrail.budget_exceeded",
                                 resource_type="tool",
                                 resource_id=name,
@@ -422,7 +430,9 @@ async def _agent_stream(
                             await log_action(
                                 db,
                                 org_id=agent.org_id,
-                                actor_user_id=agent.created_by_user_id,
+                                actor_user_id=user_id or agent.created_by_user_id,
+                                actor_agent_identity_id=actor_agent_identity_id,
+                                delegation_chain=delegation_chain,
                                 action="guardrail.risk_tier_denied",
                                 resource_type="tool",
                                 resource_id=name,
@@ -441,7 +451,7 @@ async def _agent_stream(
                                 run_id=session_id,
                                 tool_name=name,
                                 args_snapshot=args,
-                                requested_by=agent.created_by_user_id,
+                                requested_by=user_id or agent.created_by_user_id,
                             )
                             guardrail_events_total.labels(
                                 agent.org_id, "approval_required", "paused"
@@ -449,7 +459,9 @@ async def _agent_stream(
                             await log_action(
                                 db,
                                 org_id=agent.org_id,
-                                actor_user_id=agent.created_by_user_id,
+                                actor_user_id=user_id or agent.created_by_user_id,
+                                actor_agent_identity_id=actor_agent_identity_id,
+                                delegation_chain=delegation_chain,
                                 action="guardrail.approval_required",
                                 resource_type="approval_request",
                                 resource_id=approval.id,
@@ -534,7 +546,9 @@ async def _agent_stream(
                             await log_action(
                                 db,
                                 org_id=agent.org_id,
-                                actor_user_id=agent.created_by_user_id,
+                                actor_user_id=user_id or agent.created_by_user_id,
+                                actor_agent_identity_id=actor_agent_identity_id,
+                                delegation_chain=delegation_chain,
                                 action="tool.executed",
                                 resource_type="tool",
                                 resource_id=name,
@@ -549,7 +563,9 @@ async def _agent_stream(
                                 await log_action(
                                     db,
                                     org_id=agent.org_id,
-                                    actor_user_id=agent.created_by_user_id,
+                                    actor_user_id=user_id or agent.created_by_user_id,
+                                    actor_agent_identity_id=actor_agent_identity_id,
+                                    delegation_chain=delegation_chain,
                                     action="tool.dangerous.executed",
                                     resource_type="tool",
                                     resource_id=name,
@@ -767,6 +783,10 @@ async def run_agent_loop(
     current_task_id: str | None = None,
     root_run_id: str | None = None,
     replay_cursor: ReplayCursor | None = None,
+    user_id: str | None = None,
+    user_role: str | None = None,
+    actor_agent_identity_id: str | None = None,
+    delegation_chain: list | dict | None = None,
 ) -> AgentLoopResult:
     content = ""
     usage: dict[str, Any] = {"input_tokens": 0, "output_tokens": 0}
@@ -783,6 +803,10 @@ async def run_agent_loop(
         current_task_id=current_task_id,
         root_run_id=root_run_id,
         replay_cursor=replay_cursor,
+        user_id=user_id,
+        user_role=user_role,
+        actor_agent_identity_id=actor_agent_identity_id,
+        delegation_chain=delegation_chain,
     ):
         if ev["event"] == "message_done":
             data = ev["data"]

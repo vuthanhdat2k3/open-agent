@@ -35,18 +35,51 @@ async def get_current_user(
 
     if token:
         try:
-            payload = verify_access_token(token)
-            user_id = payload.get("sub")
-            org_id = payload.get("org_id")
-            if user_id:
-                res = await db.execute(
-                    select(User).where(User.id == user_id, User.is_active.is_(True))
-                )
-                user = res.scalar_one_or_none()
-                if user:
-                    request.state.user_id = user.id
-                    request.state.org_id = org_id or DEFAULT_ORG_ID
-                    return user
+            import jwt as pyjwt
+
+            settings = get_settings()
+            raw_payload = pyjwt.decode(
+                token,
+                settings.jwt_secret_key,
+                algorithms=[settings.jwt_algorithm],
+                options={"verify_aud": False},
+            )
+            is_agent_token = (
+                raw_payload.get("iss") == "openagent:internal"
+                or raw_payload.get("token_type") == "urn:ietf:params:oauth:token-type:access_token"
+                or "actor_agent_identity_id" in raw_payload
+                or "on_behalf_of_user_id" in raw_payload
+            )
+            if is_agent_token:
+                from app.core.auth.token_exchange import verify_agent_token
+
+                agent_payload = verify_agent_token(token)
+                user_id = agent_payload.get("on_behalf_of_user_id") or agent_payload.get("sub")
+                org_id = agent_payload.get("org_id")
+                if user_id:
+                    res = await db.execute(
+                        select(User).where(User.id == user_id, User.is_active.is_(True))
+                    )
+                    user = res.scalar_one_or_none()
+                    if user:
+                        request.state.user_id = user.id
+                        request.state.org_id = org_id or DEFAULT_ORG_ID
+                        request.state.actor_agent_identity_id = agent_payload.get("actor_agent_identity_id")
+                        request.state.delegation_chain = agent_payload.get("delegation_chain")
+                        return user
+            else:
+                payload = verify_access_token(token)
+                user_id = payload.get("sub")
+                org_id = payload.get("org_id")
+                if user_id:
+                    res = await db.execute(
+                        select(User).where(User.id == user_id, User.is_active.is_(True))
+                    )
+                    user = res.scalar_one_or_none()
+                    if user:
+                        request.state.user_id = user.id
+                        request.state.org_id = org_id or DEFAULT_ORG_ID
+                        return user
         except Exception:
             pass
 
