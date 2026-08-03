@@ -21,6 +21,10 @@ class AuditLog(Base):
     actor_api_key_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("api_keys.id", ondelete="SET NULL"), nullable=True
     )
+    actor_agent_identity_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("agent_identities.id", ondelete="SET NULL"), nullable=True
+    )
+    delegation_chain: Mapped[list | dict | None] = mapped_column(JSON, nullable=True)
     action: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     resource_type: Mapped[str] = mapped_column(String(128), nullable=False)
     resource_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
