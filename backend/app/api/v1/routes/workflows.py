@@ -131,6 +131,52 @@ async def run_workflow_endpoint(
     return StreamingResponse(gen(), media_type="text/event-stream")
 
 
+@router.post(
+    "/runs/{run_id}/replay",
+    dependencies=[Depends(require_permission("workflows:run"))],
+)
+async def replay_workflow_run(
+    run_id: str,
+    org_id: str = Depends(get_current_org_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Re-run a finished run against its recorded tool results.
+
+    Deliberately not behind agent_run_admission: a replay executes no tools
+    and makes no provider calls, so charging it against the run quota would
+    penalise debugging.
+    """
+    res = await db.execute(
+        select(WorkflowRun).where(WorkflowRun.id == run_id, WorkflowRun.org_id == org_id)
+    )
+    source = res.scalar_one_or_none()
+    if source is None:
+        raise HTTPException(404, "workflow run not found")
+
+    wf = await WorkflowService(db).get(org_id, source.workflow_id)
+    if wf is None:
+        raise HTTPException(404, "workflow not found")
+
+    output, log, replay_run_id = await run_workflow(
+        wf,
+        (source.input or {}).get("text", ""),
+        db,
+        stream=False,
+        force_inline=True,
+        replay_of_run_id=source.id,
+    )
+    # A replay that took a different path is a real finding, not an error:
+    # report it with the divergence point so the caller can see where.
+    diverged = next((e for e in log if e["event"] == "replay_diverged"), None)
+    return {
+        "workflow_run_id": replay_run_id,
+        "source_run_id": source.id,
+        "output": output,
+        "diverged": diverged["data"] if diverged else None,
+        "events": log,
+    }
+
+
 @router.get("/runs/{run_id}", dependencies=[Depends(require_permission("workflows:read"))])
 async def get_workflow_run(
     run_id: str,

@@ -16,6 +16,8 @@ from app.core.observability import genai
 from app.core.observability.metrics import workflow_run_duration_seconds
 from app.core.tools.registry import BUILTIN_TOOLS, execute_tool_call
 from app.core.tools.types import ToolContext
+from app.core.workflow import resume
+from app.core.workflow.replay import ReplayCursor, record_tool_call
 from app.db.base import utc_now
 from app.mcp.client import build_mcp_tool_spec
 from app.models.agent import Agent
@@ -109,10 +111,25 @@ async def run_workflow_events(
     db: AsyncSession,
     workflow_run_id: str | None = None,
     force_inline: bool = False,
+    replay_of_run_id: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     settings = get_settings()
     workflow_run = await _create_workflow_run(workflow, input_text, db, workflow_run_id)
     yield {"event": "workflow_start", "data": {"workflow_run_id": workflow_run.id}}
+
+    # Position of the next recorded tool call; replay lines up against it.
+    tool_sequence = 0
+    replay_cursor: ReplayCursor | None = None
+    if replay_of_run_id:
+        replay_cursor = await ReplayCursor.load(
+            db, org_id=workflow.org_id, workflow_run_id=replay_of_run_id
+        )
+        workflow_run.replay_of_run_id = replay_of_run_id
+        await db.commit()
+        yield {
+            "event": "replay_start",
+            "data": {"source_run_id": replay_of_run_id, "recorded_calls": len(replay_cursor)},
+        }
 
     if settings.workflow_execution_mode == "queued" and not force_inline:
         from app.core.workflow.queue import enqueue_workflow_run
@@ -156,6 +173,19 @@ async def run_workflow_events(
     status: dict[str, str] = {n["id"]: "pending" for n in nodes}
     outputs: dict[str, str] = {}
     active_edges: set[int] = set()
+    # Populated only when re-entering an existing run (crash recovery); empty
+    # for a fresh run, so the normal path is unaffected.
+    resumed_outputs: dict[str, str] = (
+        await resume.completed_node_outputs(db, workflow_run.id) if workflow_run_id else {}
+    )
+    if resumed_outputs:
+        yield {
+            "event": "workflow_resumed",
+            "data": {
+                "workflow_run_id": workflow_run.id,
+                "completed_nodes": sorted(resumed_outputs),
+            },
+        }
     budget = BudgetTracker(
         RunBudget(
             max_tool_calls=settings.budget_max_tool_calls,
@@ -198,6 +228,12 @@ async def run_workflow_events(
             budget_reason = budget.record_call(tool_name, args)
             if budget_reason:
                 raise RuntimeError(f"workflow budget exceeded: {budget_reason}")
+            if replay_cursor is not None:
+                # Replay never executes a tool node. Divergence propagates as
+                # an exception so the node is recorded failed rather than the
+                # tool quietly firing for real.
+                return replay_cursor.next_result(tool_name, args)
+
             ctx = ToolContext(
                 db=db,
                 depth=0,
@@ -205,7 +241,23 @@ async def run_workflow_events(
                 org_id=workflow.org_id,
                 user_id=workflow.created_by_user_id,
             )
-            return await execute_tool_call(spec, args, ctx)
+            started = time.monotonic()
+            result = await execute_tool_call(spec, args, ctx)
+            nonlocal tool_sequence
+            tool_sequence += 1
+            await record_tool_call(
+                db,
+                org_id=workflow.org_id,
+                sequence=tool_sequence,
+                tool_name=tool_name,
+                arguments=args,
+                result=str(result),
+                duration_ms=int((time.monotonic() - started) * 1000),
+                workflow_run_id=workflow_run.id,
+                node_run_id=node_run.id,
+                commit=True,
+            )
+            return result
         if kind == "approval":
             cfg = node.get("config", {}) or {}
             approval = await request_approval(
@@ -257,7 +309,14 @@ async def run_workflow_events(
             from app.core.agent_loop import run_agent_loop
 
             text = "\n\n".join(inputs.values())
-            loop = await run_agent_loop(agent, text, db, depth=0, root_run_id=workflow_run.id)
+            loop = await run_agent_loop(
+                agent,
+                text,
+                db,
+                depth=0,
+                root_run_id=workflow_run.id,
+                replay_cursor=replay_cursor,
+            )
             return loop.content
         raise RuntimeError(f"unknown node kind {kind}")
 
@@ -267,6 +326,13 @@ async def run_workflow_events(
         max_attempts = max(1, int(retry_cfg.get("max_attempts", 1) or 1))
         backoff_s = max(0.0, float(retry_cfg.get("backoff_s", 0.0) or 0.0))
         timeout_s = node.get("timeout_s") or cfg.get("timeout_s")
+
+        # Resume: a node that already succeeded in an earlier attempt of this
+        # run is not executed again — its recorded output is replayed. This
+        # makes a crashed multi-hour workflow cheap to restart, and stops
+        # side-effecting tool nodes from firing twice.
+        if node["id"] in resumed_outputs:
+            return resumed_outputs[node["id"]]
 
         last_error: Exception | None = None
         incoming = [e for e in edges_to[node["id"]] if e["_idx"] in active_edges]
@@ -344,6 +410,10 @@ async def run_workflow_events(
             tasks[n["id"]] = asyncio.create_task(run_node(n))
 
         results = await asyncio.gather(*tasks.values(), return_exceptions=True)
+        # Heartbeat between scheduling rounds: a workflow whose nodes take
+        # longer than the lease TTL would otherwise look abandoned and get
+        # picked up by another worker while it is still running.
+        await resume.extend_lease(db, workflow_run.id)
         for nid, res in zip(tasks.keys(), results, strict=False):
             if isinstance(res, WorkflowWaitingApproval):
                 status[nid] = "waiting_approval"
@@ -407,6 +477,7 @@ async def run_workflow(
     stream: bool = False,
     workflow_run_id: str | None = None,
     force_inline: bool = False,
+    replay_of_run_id: str | None = None,
 ) -> Any:
     """If stream=True, returns the async generator of events.
     Otherwise awaits and returns (final_output, event_log)."""
@@ -417,6 +488,7 @@ async def run_workflow(
             db,
             workflow_run_id=workflow_run_id,
             force_inline=force_inline,
+            replay_of_run_id=replay_of_run_id,
         )
     final = ""
     log: list[dict[str, Any]] = []
@@ -427,6 +499,7 @@ async def run_workflow(
         db,
         workflow_run_id=workflow_run_id,
         force_inline=force_inline,
+        replay_of_run_id=replay_of_run_id,
     ):
         log.append(ev)
         if ev["event"] == "workflow_start":

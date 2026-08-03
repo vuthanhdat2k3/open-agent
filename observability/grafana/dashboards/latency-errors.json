@@ -15,6 +15,17 @@
       "targets": [
         { "expr": "sum by (tool_name) (rate(tool_calls_total{status=\"error\"}[5m]))" }
       ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Guardrail Decisions",
+      "description": "Injection flags, secret redactions, approval pauses, budget and risk-tier denials. A sustained rise in injection_flagged usually means an ingested source is hostile, not that the agent is broken.",
+      "targets": [
+        {
+          "legendFormat": "{{kind}} / {{outcome}}",
+          "expr": "sum by (kind,outcome) (rate(guardrail_events_total[5m]))"
+        }
+      ]
     }
   ]
 }

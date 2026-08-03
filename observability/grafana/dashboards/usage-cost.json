@@ -15,7 +15,38 @@
       "targets": [
         { "expr": "sum by (tool_name,status) (rate(tool_calls_total[5m]))" }
       ]
+    },
+    {
+      "type": "timeseries",
+      "title": "LLM Tokens / sec (by model)",
+      "description": "Provider-reported usage where available. Spans carrying openagent.usage_estimated=true fell back to a character-count heuristic and are not measurements.",
+      "targets": [
+        {
+          "legendFormat": "{{model}} {{token_type}}",
+          "expr": "sum by (model,token_type) (rate(gen_ai_client_token_usage_sum[5m]))"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "LLM Call Latency p95 (by model)",
+      "targets": [
+        {
+          "legendFormat": "{{model}}",
+          "expr": "histogram_quantile(0.95, sum by (le,model) (rate(gen_ai_operation_duration_seconds_bucket{operation=\"chat\"}[5m])))"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Tool Call Latency p95 (by tool)",
+      "description": "Histogram was defined in M7 but never observed until M13 wired it.",
+      "targets": [
+        {
+          "legendFormat": "{{tool_name}}",
+          "expr": "histogram_quantile(0.95, sum by (le,tool_name) (rate(tool_call_duration_seconds_bucket[5m])))"
+        }
+      ]
     }
   ]
 }
-
