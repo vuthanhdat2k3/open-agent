@@ -27,6 +27,23 @@ RELEASE_CONFIG_FIELDS = (
 )
 
 
+class QualityGateBlocked(ValueError):
+    """Publishing was refused because the release regressed on its suite.
+
+    Distinct from other release errors so the API can answer 409 (a state
+    conflict the caller may knowingly override) rather than 400 (a malformed
+    request). Subclasses ValueError so existing handlers keep working.
+    """
+
+    def __init__(
+        self, message: str, *, run_id: str, pass_rate: float, min_pass_rate: float
+    ) -> None:
+        super().__init__(message)
+        self.run_id = run_id
+        self.pass_rate = pass_rate
+        self.min_pass_rate = min_pass_rate
+
+
 @dataclass(frozen=True)
 class RuntimeAgent:
     id: str
@@ -174,6 +191,7 @@ class AgentService:
         agent_id: str,
         version: int,
         user_id: str | None = None,
+        force: bool = False,
     ) -> AgentRelease:
         agent = await self._locked_agent(org_id, agent_id)
         if agent is None:
@@ -209,12 +227,22 @@ class AgentService:
                 if suite and hasattr(suite, "min_pass_rate")
                 else 0.8
             )
-            if not quality_gate_passes(
+            passed = quality_gate_passes(
                 pass_rate=latest_run.pass_rate,
                 min_pass_rate=min_pass_rate,
-            ):
-                raise ValueError(
-                    f"Release {version} failed quality gate (pass rate {latest_run.pass_rate:.2f} < {min_pass_rate:.2f})"
+            )
+            # The verdict is recorded on the release whichever way it went,
+            # so "was this shipped over a red gate?" is answerable later
+            # without re-deriving it from evaluation history.
+            release.quality_gate_status = "passed" if passed else "failed"
+            release.quality_gate_run_id = latest_run.id
+            if not passed and not force:
+                raise QualityGateBlocked(
+                    f"Release {version} failed quality gate "
+                    f"(pass rate {latest_run.pass_rate:.2f} < {min_pass_rate:.2f})",
+                    run_id=latest_run.id,
+                    pass_rate=latest_run.pass_rate,
+                    min_pass_rate=min_pass_rate,
                 )
         await self._publish_locked(agent, release, user_id)
         await self.repo.db.commit()

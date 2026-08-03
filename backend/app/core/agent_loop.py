@@ -386,7 +386,7 @@ async def _agent_stream(
                                 action="guardrail.budget_exceeded",
                                 resource_type="tool",
                                 resource_id=name,
-                                metadata={"reason": budget_reason},
+                                metadata={"reason": budget_reason, "run_id": session_id},
                                 commit=False,
                             )
                             yield {
@@ -429,6 +429,7 @@ async def _agent_stream(
                                 metadata={
                                     "required_tier": spec.risk_tier.value,
                                     "allowed_tiers": list(agent.allowed_risk_tiers or []),
+                                    "run_id": session_id,
                                 },
                                 commit=False,
                             )
@@ -540,6 +541,7 @@ async def _agent_stream(
                                 metadata={
                                     "risk_tier": spec.risk_tier.value,
                                     "status": tool_status,
+                                    "run_id": session_id,
                                 },
                                 commit=False,
                             )
@@ -570,7 +572,7 @@ async def _agent_stream(
                                 # Statistics only: the flagged payload is
                                 # attacker-controlled and must not be copied
                                 # into the audit trail.
-                                metadata={"source": name},
+                                metadata={"source": name, "run_id": session_id},
                                 commit=False,
                             )
                         result = wrapped
@@ -590,6 +592,7 @@ async def _agent_stream(
                             metadata={
                                 "count": len(secret_findings),
                                 "kinds": sorted({f.kind for f in secret_findings}),
+                                "run_id": session_id,
                             },
                             commit=False,
                         )

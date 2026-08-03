@@ -69,6 +69,24 @@ class EvaluationCase(Base):
     metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict, nullable=False)
     ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
     added_in_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+
+    # --- Provenance (M15) ---
+    # "manual" | "sampled". A sampled case starts unapproved because only a
+    # human knows what the right answer should have been; the sampler
+    # proposes, it does not decide.
+    source: Mapped[str] = mapped_column(String(16), default="manual", nullable=False)
+    source_run_ref: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    sampled_reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    approved: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    # --- Retrieval expectations (M15) ---
+    # Retrieval is the upstream cause of most multi-layer agent incidents,
+    # but nothing in M11 could measure it.
+    expected_doc_ids: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    min_recall_at_k: Mapped[float | None] = mapped_column(Float, nullable=True)
+    retrieval_k: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    min_groundedness: Mapped[float | None] = mapped_column(Float, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=utc_now, onupdate=utc_now, nullable=False
@@ -137,6 +155,9 @@ class EvaluationResult(Base):
     )
     output: Mapped[str] = mapped_column(Text, default="", nullable=False)
     observed_tools: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    # Chunks the run actually retrieved, so recall@k / MRR can be scored
+    # against expected_doc_ids without re-running retrieval.
+    retrieved_doc_ids: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     latency_ms: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     cost_usd: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     score: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)

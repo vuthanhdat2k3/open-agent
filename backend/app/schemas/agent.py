@@ -83,3 +83,5 @@ class AgentReleaseOut(BaseModel):
     published_by_user_id: str | None
     created_at: datetime
     published_at: datetime | None
+    quality_gate_status: str
+    quality_gate_run_id: str | None

@@ -43,6 +43,17 @@ class AgentRelease(Base):
     published_by_user_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+    # --- Quality gate (M15) ---
+    # "unknown" until a suite has run against this release. Publishing is
+    # blocked on "failed" unless an owner explicitly forces it, which is
+    # audited.
+    quality_gate_status: Mapped[str] = mapped_column(
+        String(16), default="unknown", nullable=False
+    )
+    # The evaluation run that decided the gate. Deliberately not a foreign
+    # key: pruning old evaluation history must not block release records.
+    quality_gate_run_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
     published_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 

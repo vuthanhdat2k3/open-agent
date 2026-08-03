@@ -21,6 +21,7 @@ from app.models.organization_quota import OrganizationQuota
 from app.models.provider import Provider
 from app.models.refresh_token import RefreshToken
 from app.models.role import Role
+from app.models.sampling_policy import SamplingPolicy
 from app.models.session import Session
 from app.models.task import Task
 from app.models.tool_call_record import ToolCallRecord
@@ -52,6 +53,7 @@ __all__ = [
     "Provider",
     "RefreshToken",
     "Role",
+    "SamplingPolicy",
     "Session",
     "Task",
     "ToolCallRecord",
