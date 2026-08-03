@@ -1,6 +1,14 @@
-# Handoff — tiếp tục AgentOS v2 từ M14
+# Handoff — tiếp tục AgentOS v2 từ M15
 
-> Copy toàn bộ file này làm prompt cho Codex. Viết ngày 2026-08-02.
+> Copy toàn bộ file này làm prompt cho Codex. Viết 2026-08-02, cập nhật 2026-08-03 sau khi M15 xong.
+>
+> **Phát hiện quan trọng nhất trong bản cập nhật này**: baseline test "3
+> failed, 39 errors" nhắc ở dưới **hoá ra hoàn toàn là do thiếu Postgres
+> local**, không phải lỗi code. Set `OPENAGENT_DB_URL` trỏ SQLite
+> (`sqlite+aiosqlite:///./somefile.db`) trước khi chạy `pytest` và toàn bộ
+> suite xanh tuyệt đối (157 passed, 0 failed, 0 errors tính đến cuối M15).
+> Đừng tin baseline error count ở phần dưới nữa — luôn tự chạy lại với
+> SQLite để biết trạng thái thật.
 
 ---
 
@@ -13,8 +21,37 @@ qua MCP, `mcp-drive-server/`).
 Roadmap đang theo: `docs/agentos-v2/ROADMAP_2026.md` (M13–M17), mỗi
 milestone có file đặc tả riêng trong `docs/agentos-v2/tasks/`.
 
-**M0–M12 đã xong từ trước. M13 và M14 vừa hoàn thành.** Việc của bạn là
-M15 → M16 → M17. Các mục tồn đọng của M13/M14 đã đóng hết (xem bên dưới).
+**M0–M14 đã xong từ trước. M15 vừa hoàn thành.** Việc của bạn là
+M16 → M17, cộng vài mục tồn đọng nhỏ của M15 (xem mục riêng bên dưới).
+
+## M15 — Khép vòng trace → eval → cổng chặn (XONG)
+
+7 commit trên nhánh `agentos-v2/m15-closed-eval-loop`:
+
+| Commit | Nội dung |
+|---|---|
+| `d4ab50b` | `SamplingPolicy` model + cột provenance trên `EvaluationCase`/`EvaluationResult`/`AgentRelease` + migration `0018` |
+| `17875f4` | Grader retrieval: `recall_at_k`, `mean_reciprocal_rank`, `groundedness` (n-gram overlap, có trần) |
+| `344bff8` | Sampler đọc `audit_logs` → đề xuất case; case đề xuất **luôn** `approved=False`, không tăng `dataset_version` cho tới khi được duyệt |
+| `f7f68d3` | Cổng chặn publish: 409 (không phải 400) khi gate fail; `force=true` chỉ owner, có audit `agent.release.gate_overridden` |
+| `34162cd` | Auto-rollback: cron 5 phút, mặc định **tắt** per-agent, cooldown đọc từ chính audit trail (không cần cột riêng) |
+| `7072d4b` | Route `GET cases/proposed`, `POST cases/{id}/approve`, `POST cases/{id}/reject` |
+
+Test mới: `test_retrieval_graders.py` (15), `test_eval_sampler.py` (12),
+`test_release_quality_gate.py` (9), cộng test lồng vào
+`test_agent_releases.py` cho force-publish.
+
+### Việc tồn đọng của M15 (nhỏ, chưa làm)
+
+- **Sampling policy chưa có route CRUD.** Model + logic (`propose_from_traces`)
+  đã có trong `EvaluationService`, nhưng chưa có `POST/GET
+  /api/evaluations/suites/{id}/sampling-policy` để tạo/sửa policy hay kích
+  hoạt sampler qua API — hiện chỉ gọi được từ code Python trực tiếp.
+- **Chưa có màn hình frontend** để duyệt case đề xuất (route backend đã có,
+  UI thì chưa).
+- **CLI chưa có cờ `--require-retrieval-gate`** như đặc tả M15 nhắc tới —
+  grader retrieval chạy được qua `grade_output()` nhưng CLI quality gate
+  (`app/evals/cli.py`) chưa expose riêng cờ này.
 
 ### ĐỌC TRƯỚC KHI VIẾT BẤT KỲ DÒNG CODE NÀO
 
@@ -36,12 +73,13 @@ M15 → M16 → M17. Các mục tồn đọng của M13/M14 đã đóng hết (x
 main
 └── docs/roadmap-2026                       (docs M13–M17)
     └── agentos-v2/m13-flight-recorder       (8 commits, XONG)
-        └── agentos-v2/m14-durable-execution (4 commits, XONG) ← HEAD
+        └── agentos-v2/m14-durable-execution (4 commits, XONG)
+            └── agentos-v2/m15-closed-eval-loop (7 commits, XONG) ← HEAD
 ```
 
-Cả ba nhánh **chưa merge và chưa mở PR**. Việc đầu tiên của bạn là mở PR
-theo thứ tự `docs/roadmap-2026` → `m13` → `m14`, dùng đúng PR checklist
-trong file task tương ứng.
+Cả bốn nhánh **chưa merge và chưa mở PR**. Việc đầu tiên của bạn là mở PR
+theo thứ tự `docs/roadmap-2026` → `m13` → `m14` → `m15`, dùng đúng PR
+checklist trong file task tương ứng.
 
 ### M13 — Flight Recorder (xong)
 
