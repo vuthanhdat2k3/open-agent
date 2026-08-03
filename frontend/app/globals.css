@@ -82,9 +82,23 @@
     color: hsl(var(--foreground));
     font-family: var(--font-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
-    font-feature-settings: "cv11", "ss01";
+    /* Inter-specific OpenType features: cv05=alt 6/9, cv11=single-story a, ss01=alt 1 */
+    font-feature-settings: "cv05" 1, "cv11" 1, "ss01" 1, "liga" 1, "calt" 1;
     position: relative;
+  }
+
+  /* Tighter tracking for display/heading sizes — matches Inter's recommended usage */
+  h1, h2, h3, h4, h5, h6 {
+    font-feature-settings: "cv05" 1, "cv11" 1, "ss01" 1;
+    letter-spacing: -0.02em;
+  }
+
+  /* JetBrains Mono — disable ligatures for technical clarity in code */
+  code, pre, kbd, samp, .font-mono {
+    font-feature-settings: "liga" 0, "calt" 0;
+    font-variant-ligatures: none;
   }
 
   ::selection {
