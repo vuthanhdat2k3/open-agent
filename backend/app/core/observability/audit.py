@@ -18,7 +18,15 @@ async def log_action(
     actor_api_key_id: str | None = None,
     metadata: dict[str, Any] | None = None,
     ip: str | None = None,
+    commit: bool = True,
 ) -> None:
+    """Append one audit row.
+
+    ``commit=False`` leaves the flush to the surrounding transaction. The
+    agent loop audits every tool call and guardrail decision, so committing
+    inside each call would mean a database round trip per tool — and would
+    also tear the caller's transaction boundary mid-run.
+    """
     db.add(
         AuditLog(
             org_id=org_id,
@@ -31,5 +39,6 @@ async def log_action(
             ip=ip,
         )
     )
-    await db.commit()
+    if commit:
+        await db.commit()
 

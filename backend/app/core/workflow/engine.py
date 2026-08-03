@@ -12,8 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.core.guardrails.approval import request_approval
 from app.core.guardrails.budget import BudgetTracker, RunBudget
+from app.core.observability import genai
 from app.core.observability.metrics import workflow_run_duration_seconds
-from app.core.observability.tracing import get_tracer
 from app.core.tools.registry import BUILTIN_TOOLS, execute_tool_call
 from app.core.tools.types import ToolContext
 from app.db.base import utc_now
@@ -22,8 +22,6 @@ from app.models.agent import Agent
 from app.models.workflow import Workflow
 from app.models.workflow_node_run import WorkflowNodeRun
 from app.models.workflow_run import WorkflowRun
-
-tracer = get_tracer(__name__)
 
 
 def _eval_condition(cond: str, output: str) -> bool:
@@ -276,9 +274,13 @@ async def run_workflow_events(
         for attempt in range(1, max_attempts + 1):
             node_run = await _start_node_run(db, workflow_run.id, node["id"], attempt, node_input)
             try:
-                with tracer.start_as_current_span(
-                    "workflow.node",
-                    attributes={"workflow_run_id": workflow_run.id, "node_id": node["id"]},
+                with genai.workflow_node_span(
+                    org_id=workflow_run.org_id,
+                    workflow_run_id=workflow_run.id,
+                    node_id=node["id"],
+                    node_type=str(node.get("kind") or node.get("type") or "unknown"),
+                    workflow_name=getattr(workflow, "name", None),
+                    agent_release_id=getattr(node_run, "agent_release_id", None),
                 ):
                     coro = run_node_once(node, node_run)
                     result = (

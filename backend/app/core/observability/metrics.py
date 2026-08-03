@@ -27,6 +27,26 @@ sandbox_executions_total = Counter(
     "Sandbox executions by status",
     ["status"],
 )
+# --- GenAI (M13) ------------------------------------------------------------
+# Label sets stay bounded on purpose: org/model/tool are low-cardinality,
+# whereas session_id or agent_id would grow without limit and blow up the
+# Prometheus series count.
+gen_ai_client_token_usage = Histogram(
+    "gen_ai_client_token_usage",
+    "LLM token usage per call",
+    ["org_id", "model", "token_type"],
+)
+gen_ai_operation_duration_seconds = Histogram(
+    "gen_ai_operation_duration_seconds",
+    "GenAI operation duration in seconds",
+    ["org_id", "operation", "model"],
+)
+guardrail_events_total = Counter(
+    "guardrail_events_total",
+    "Guardrail decisions by kind and outcome",
+    ["org_id", "kind", "outcome"],
+)
+
 queue_depth = Histogram("queue_depth", "Observed queue depth")
 quota_admission_total = Counter(
     "quota_admission_total",
