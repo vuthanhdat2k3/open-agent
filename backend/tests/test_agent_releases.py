@@ -149,8 +149,13 @@ def test_release_draft_publish_and_rollback(client: TestClient) -> None:
     fail_pub = client.post(
         f"/api/agents/{agent['id']}/releases/2/publish", headers=headers
     )
-    assert fail_pub.status_code == 400
-    assert "failed quality gate" in fail_pub.json()["detail"]
+    # 409, not 400: the request is well-formed, the release state conflicts.
+    # An owner may knowingly override it (see the force-publish tests).
+    assert fail_pub.status_code == 409
+    detail = fail_pub.json()["detail"]
+    assert "failed quality gate" in detail["message"]
+    assert detail["quality_gate_run_id"]
+    assert detail["pass_rate"] < detail["min_pass_rate"]
 
     # Pass the quality gate by creating a successful run
     pass_run = client.post(
@@ -257,6 +262,101 @@ def test_viewer_cannot_publish_release(client: TestClient) -> None:
         headers=_headers(viewer_token, org_id),
     )
     assert response.status_code == 403
+
+
+def _draft_with_failing_gate(client: TestClient, token: str, org_id: str) -> dict:
+    """Create an agent whose draft release 2 has a red quality gate."""
+    headers = _headers(token, org_id)
+    agent = _create_agent(client, token, org_id)
+    draft = client.post(
+        f"/api/agents/{agent['id']}/releases",
+        headers=headers,
+        json={"system_prompt": "version two", "change_note": "regress"},
+    ).json()
+    suite = client.post(
+        "/api/evaluations/suites",
+        headers=headers,
+        json={"name": "Force Gate Suite", "agent_id": agent["id"]},
+    ).json()
+    case = client.post(
+        f"/api/evaluations/suites/{suite['id']}/cases",
+        headers=headers,
+        json={"input": "test input", "expected_output": "correct output"},
+    ).json()
+    run = client.post(
+        f"/api/evaluations/suites/{suite['id']}/runs",
+        headers=headers,
+        json={
+            "agent_release_id": draft["id"],
+            "execution_mode": "recorded",
+            "recorded_outputs": [{"case_id": case["id"], "output": "wrong output"}],
+        },
+    )
+    assert run.status_code == 201, run.text
+    return agent
+
+
+def test_force_publish_requires_owner(client: TestClient) -> None:
+    """Publish rights are not enough to ship over a red gate."""
+    owner_token, org_id = _register(client, "force-owner@example.com", "Force Org")
+    agent = _draft_with_failing_gate(client, owner_token, org_id)
+
+    dev_token, _ = _register(client, "force-dev@example.com", "Dev Home")
+    add = client.post(
+        f"/api/orgs/{org_id}/members",
+        headers=_headers(owner_token, org_id),
+        json={"email": "force-dev@example.com", "role": "developer"},
+    )
+    assert add.status_code == 201, add.text
+
+    forced = client.post(
+        f"/api/agents/{agent['id']}/releases/2/publish",
+        headers=_headers(dev_token, org_id),
+        json={"force": True},
+    )
+    assert forced.status_code == 403
+    assert "owner" in forced.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_owner_force_publish_records_override(
+    client: TestClient, async_session_factory
+) -> None:
+    """Overriding a red gate must leave an explicit audit trail."""
+    from sqlalchemy import select
+
+    from app.models.audit_log import AuditLog
+
+    token, org_id = _register(client, "force-audit@example.com", "Force Audit Org")
+    headers = _headers(token, org_id)
+    agent = _draft_with_failing_gate(client, token, org_id)
+
+    blocked = client.post(f"/api/agents/{agent['id']}/releases/2/publish", headers=headers)
+    assert blocked.status_code == 409
+
+    forced = client.post(
+        f"/api/agents/{agent['id']}/releases/2/publish",
+        headers=headers,
+        json={"force": True},
+    )
+    assert forced.status_code == 200, forced.text
+    assert forced.json()["status"] == "published"
+    # The verdict is retained, so "was this shipped over a red gate?" stays
+    # answerable after the fact.
+    assert forced.json().get("quality_gate_status") == "failed"
+
+    async with async_session_factory() as db:
+        result = await db.execute(
+            select(AuditLog).where(
+                AuditLog.org_id == org_id,
+                AuditLog.action == "agent.release.gate_overridden",
+            )
+        )
+        overrides = list(result.scalars().all())
+
+    assert len(overrides) == 1
+    assert overrides[0].metadata_["version"] == 2
+    assert overrides[0].metadata_["quality_gate_run_id"]
 
 
 @pytest.mark.asyncio
