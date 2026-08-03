@@ -9,12 +9,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.core.compactor import compact_session
 from app.core.guardrails.approval import request_approval
 from app.core.guardrails.budget import BudgetTracker, RunBudget
 from app.core.guardrails.injection import wrap_untrusted_if_flagged
 from app.core.guardrails.secrets import scan_and_redact
 from app.core.llm import LLMClient, resolve_api_key
+from app.core.memory.tiers import compact_tiered_memory
 from app.core.observability import genai
 from app.core.observability.audit import log_action
 from app.core.observability.metrics import (
@@ -272,9 +272,18 @@ async def _agent_stream(
         )
         hist = res.scalars().all()
         if len(hist) > 20:
-            # Compact older messages via LLM summarization to save context tokens
-            compacted = await compact_session(session_id, db, model, provider, keep_last=8)
-            messages.append({"role": "system", "content": f"[Conversation context]\n{compacted}"})
+            # Compact older messages via hierarchical memory tiering (Hot/Warm/Cold)
+            tiered = await compact_tiered_memory(
+                session_id,
+                db,
+                model,
+                provider,
+                hot_window=8,
+                agent_id=agent.id,
+                org_id=agent.org_id,
+                created_by_user_id=user_id or agent.created_by_user_id,
+            )
+            messages.append({"role": "system", "content": f"[Conversation context]\n{tiered['combined']}"})
         else:
             for m in hist:
                 messages.append(_to_openai_message(m))
