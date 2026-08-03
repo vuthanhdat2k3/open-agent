@@ -265,6 +265,7 @@ async def test_agent_loop_tiered_memory_runtime_integration(async_session_factor
     from app.core.agent_loop import run_agent_loop
     from app.models.agent import Agent
     from app.models.memory import AgentMemory
+    from app.models.session import Session
     from app.models.user import User
 
     async with async_session_factory() as db:
@@ -287,7 +288,14 @@ async def test_agent_loop_tiered_memory_runtime_integration(async_session_factor
             value="FastAPI",
             importance=5,
         )
-        db.add_all([u, prov, mdl, ag, mem])
+        sess = Session(
+            id="s-runtime",
+            org_id="org-int",
+            agent_id="agent-int",
+            created_by_user_id="u-int",
+            title="Runtime Session",
+        )
+        db.add_all([u, prov, mdl, ag, mem, sess])
 
         # Create 22 messages to exceed compact_tiered_memory threshold (>20)
         for i in range(1, 23):
@@ -336,3 +344,81 @@ async def test_agent_loop_tiered_memory_runtime_integration(async_session_factor
     assert "[Warm Memory / Session Summary]" in combined_sys_text
     assert "Warm rolling transcript summary" in combined_sys_text
     assert "[Hot Memory / Recent Turn]" in combined_sys_text
+
+
+@pytest.mark.asyncio
+async def test_compact_tiered_memory_resolves_org_and_user_from_session(async_session_factory):
+    from unittest.mock import AsyncMock, patch
+
+    from sqlalchemy import select
+
+    from app.models.memory import SessionMemory
+    from app.models.organization import Organization
+    from app.models.session import Session
+
+    async with async_session_factory() as db:
+        org = Organization(id="org-resolve", name="Resolve Org", slug="resolve-org")
+        sess = Session(
+            id="s-resolve",
+            org_id="org-resolve",
+            agent_id="ag-resolve",
+            created_by_user_id="u-resolve",
+            title="Resolv Session",
+        )
+        db.add_all([org, sess])
+
+        for i in range(1, 5):
+            db.add(
+                Message(
+                    org_id="org-resolve",
+                    session_id="s-resolve",
+                    role="user" if i % 2 != 0 else "assistant",
+                    content=f"Resolv Message {i}",
+                    position=i,
+                )
+            )
+        await db.commit()
+
+        mock_model = Model(id="m-1", name="dummy-model", provider_id="p-1")
+        mock_provider = Provider(id="p-1", key="dummy-key", name="dummy", base_url="http://dummy", api_key="sk-fake")
+
+        with patch("app.core.memory.tiers.LLMClient.complete", new_callable=AsyncMock) as mock_complete:
+            mock_complete.return_value = ("Resolved warm summary", 10, 0.001)
+
+            # Call WITHOUT org_id or created_by_user_id explicitly passed
+            res = await compact_tiered_memory(
+                session_id="s-resolve",
+                db=db,
+                agent_model=mock_model,
+                provider=mock_provider,
+                hot_window=2,
+            )
+
+            assert res["warm"] == "Resolved warm summary"
+
+            smem_res = await db.execute(
+                select(SessionMemory).where(
+                    SessionMemory.session_id == "s-resolve",
+                    SessionMemory.key == "warm_summary",
+                )
+            )
+            smem = smem_res.scalar_one_or_none()
+            assert smem is not None
+            assert smem.org_id == "org-resolve"
+            assert smem.created_by_user_id == "u-resolve"
+
+
+@pytest.mark.asyncio
+async def test_compact_tiered_memory_raises_without_org_id(async_session_factory):
+    async with async_session_factory() as db:
+        mock_model = Model(id="m-1", name="dummy-model", provider_id="p-1")
+        mock_provider = Provider(id="p-1", key="dummy-key", name="dummy", base_url="http://dummy", api_key="sk-fake")
+
+        with pytest.raises(ValueError, match="org_id is required"):
+            await compact_tiered_memory(
+                session_id="s-nonexistent",
+                db=db,
+                agent_model=mock_model,
+                provider=mock_provider,
+                hot_window=2,
+            )

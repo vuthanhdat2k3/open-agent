@@ -30,22 +30,28 @@ async def compact_tiered_memory(
 
     Returns structured tiered context components.
     """
-    # Resolve org_id / user_id if not provided
-    if not org_id:
-        from app.models.session import Session
-
-        res_sess = await db.execute(select(Session).where(Session.id == session_id))
-        sess = res_sess.scalar_one_or_none()
-        if sess:
-            org_id = sess.org_id
-            created_by_user_id = created_by_user_id or sess.user_id
-    org_id = org_id or "default"
-
     # 1. Fetch Hot Tier messages
     res_msg = await db.execute(
         select(Message).where(Message.session_id == session_id).order_by(Message.position)
     )
     messages = list(res_msg.scalars().all())
+
+    # Resolve org_id / created_by_user_id if not provided
+    if not org_id or not created_by_user_id:
+        from app.models.session import Session
+
+        res_sess = await db.execute(select(Session).where(Session.id == session_id))
+        sess = res_sess.scalar_one_or_none()
+        if sess:
+            org_id = org_id or sess.org_id
+            created_by_user_id = created_by_user_id or sess.created_by_user_id
+
+    if not org_id and messages:
+        org_id = messages[0].org_id
+        created_by_user_id = created_by_user_id or messages[0].created_by_user_id
+
+    if not org_id:
+        raise ValueError("org_id is required for tiered memory persistence")
 
     if len(messages) <= hot_window:
         hot_text = "\n\n".join(f"{m.role}: {m.content}" for m in messages)
