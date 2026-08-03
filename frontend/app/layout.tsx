@@ -21,7 +21,7 @@ import type {
 import { Toaster } from "sonner";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Fira_Sans, Fira_Code } from "next/font/google";
+import { Inter, JetBrains_Mono } from "next/font/google";
 import {
   LayoutDashboard,
   Server,
@@ -51,13 +51,13 @@ import { getAccessToken, refreshAccessToken, subscribeAuth } from "@/lib/auth";
 import { useApprovals } from "@/hooks";
 import { OrgSwitcher } from "@/components/org-switcher";
 
-const sans = Fira_Sans({
+const sans = Inter({
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+  weight: ["300", "400", "500", "600", "700"],
   variable: "--font-sans",
   display: "swap",
 });
-const mono = Fira_Code({
+const mono = JetBrains_Mono({
   subsets: ["latin"],
   weight: ["400", "500", "600"],
   variable: "--font-mono",
