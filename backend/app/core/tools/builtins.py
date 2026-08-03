@@ -288,3 +288,79 @@ register(
         risk_tier=RiskTier.execute,
     )
 )
+
+
+async def _call_external_agent(args: dict[str, Any], ctx: ToolContext) -> str:
+    endpoint_url = args.get("endpoint_url", "")
+    target_agent_id = args.get("agent_id")
+    task_input = args.get("input", "")
+
+    if not endpoint_url or not task_input:
+        return "error: missing 'endpoint_url' or 'input'"
+
+    if safe_url(endpoint_url) is None:
+        return "error: url blocked (must be http/https and resolve to a public address)"
+
+    token = "a2a_token"
+    if ctx.db and ctx.org_id and ctx.agent_id and ctx.user_id:
+        from sqlalchemy import select
+
+        from app.core.auth.token_exchange import exchange_token_for_agent
+        from app.models.agent_identity import AgentIdentity
+
+        stmt = select(AgentIdentity).where(
+            AgentIdentity.org_id == ctx.org_id,
+            AgentIdentity.agent_id == ctx.agent_id,
+        )
+        res = await ctx.db.execute(stmt)
+        identity = res.scalar_one_or_none()
+        if not identity:
+            subject = f"agent:{ctx.org_id}:{ctx.agent_id}"
+            identity = AgentIdentity(
+                org_id=ctx.org_id,
+                agent_id=ctx.agent_id,
+                subject=subject,
+                allowed_audiences=["*"],
+                enabled=True,
+            )
+            ctx.db.add(identity)
+            await ctx.db.flush()
+
+        token = exchange_token_for_agent(
+            user_id=ctx.user_id,
+            org_id=ctx.org_id,
+            agent_identity=identity,
+            target_audience=endpoint_url,
+        )
+
+    try:
+        from app.a2a.client import call_external_agent_endpoint
+        result = await call_external_agent_endpoint(
+            endpoint_url=endpoint_url,
+            token=token,
+            task_input=task_input,
+            agent_id=target_agent_id,
+        )
+        return result
+    except Exception as e:  # noqa: BLE001
+        return f"error calling external agent: {e}"
+
+
+register(
+    ToolSpec(
+        name="call_external_agent",
+        description="Call an external agent exposed via A2A protocol or task endpoint URL.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "endpoint_url": {"type": "string", "description": "A2A task endpoint URL"},
+                "agent_id": {"type": "string", "description": "Optional target agent ID"},
+                "input": {"type": "string", "description": "Task input prompt"},
+            },
+            "required": ["endpoint_url", "input"],
+        },
+        run=_call_external_agent,
+        risk_tier=RiskTier.network,
+    )
+)
+

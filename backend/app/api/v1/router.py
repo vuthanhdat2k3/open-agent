@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends
 
 from app.api.v1.routes import (
+    a2a,
     agents,
     approvals,
     auth,
@@ -38,4 +39,5 @@ protected_router.include_router(files.router)
 protected_router.include_router(sessions.router)
 protected_router.include_router(sandbox.router)
 protected_router.include_router(workspace.router)
+protected_router.include_router(a2a.router)
 api_router.include_router(protected_router)
