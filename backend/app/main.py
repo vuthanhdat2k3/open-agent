@@ -61,6 +61,7 @@ async def healthz():
 @app.get("/.well-known/agent-card.json")
 async def well_known_agent_card(
     request: Request,
+    org_id: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
     from sqlalchemy import select
@@ -68,7 +69,14 @@ async def well_known_agent_card(
     from app.a2a.card import generate_agent_card
     from app.models.agent import Agent
 
-    stmt = select(Agent).where(Agent.a2a_exposed.is_(True))
+    header_org_id = request.headers.get("X-Org-Id") or org_id
+    if not header_org_id:
+        return generate_agent_card([], str(request.base_url))
+
+    stmt = select(Agent).where(
+        Agent.org_id == header_org_id,
+        Agent.a2a_exposed.is_(True),
+    )
     res = await db.execute(stmt)
     agents = list(res.scalars().all())
     return generate_agent_card(agents, str(request.base_url))

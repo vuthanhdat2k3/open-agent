@@ -66,6 +66,7 @@ export default function AgentA2APage() {
   return (
     <div className="p-6 max-w-4xl space-y-6">
       <PageHeader
+        icon={Network}
         title={`A2A Settings — ${agent.name}`}
         description="Configure Agent-to-Agent (A2A) exposure and identity delegation policies."
       />
@@ -81,7 +82,7 @@ export default function AgentA2APage() {
               </Badge>
             </div>
             <p className="text-sm text-muted-foreground max-w-xl">
-              When enabled, this agent will be listed in the organization's Agent Card
+              When enabled, this agent will be listed in the organization&apos;s Agent Card
               (<code className="text-xs bg-muted px-1 py-0.5 rounded">/.well-known/agent-card.json</code>)
               and can be invoked by peer agents over the A2A protocol.
             </p>
@@ -106,7 +107,7 @@ export default function AgentA2APage() {
           </h4>
           <ul className="text-xs text-muted-foreground space-y-2 list-disc list-inside">
             <li>A2A requests pass through full authentication, quota, and guardrail enforcement.</li>
-            <li>Effective permission is capped at the calling user's permission (User ∩ Agent Identity).</li>
+            <li>Effective permission is capped at the calling user&apos;s permission (User ∩ Agent Identity).</li>
             <li>RFC 8693 token exchange attaches delegation chain to all audit trail records.</li>
           </ul>
         </div>

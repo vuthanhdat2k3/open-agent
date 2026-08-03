@@ -124,8 +124,8 @@ class AgentService:
             await self._validate_model(org_id, data["model_id"])
 
         config_changes = {k: v for k, v in data.items() if k in RELEASE_CONFIG_FIELDS}
-        for field in ("name",):
-            if field in data:
+        for field in ("name", "a2a_exposed", "auto_rollback_enabled"):
+            if field in data and data[field] is not None:
                 setattr(agent, field, data[field])
         if config_changes:
             await self._create_release_locked(

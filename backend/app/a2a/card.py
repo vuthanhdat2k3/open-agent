@@ -22,7 +22,7 @@ def generate_agent_card(agents: list[Agent], host_url: str = "") -> dict[str, An
                 "name": agent.name,
                 "description": agent.description or "",
                 "skills": agent.tools or [],
-                "endpoint": f"{base_url}/a2a/tasks",
+                "endpoint": f"{base_url}/api/a2a/tasks",
                 "capabilities": {
                     "kind": agent.kind,
                     "allowed_risk_tiers": agent.allowed_risk_tiers or ["safe", "read"],
