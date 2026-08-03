@@ -58,6 +58,7 @@ export async function streamSSE(
   path: string,
   body: unknown,
   onEvent: (ev: SseEvent) => void,
+  signal?: AbortSignal,
 ): Promise<void> {
   // Call the backend directly (not through next.config.mjs rewrites): Next's
   // rewrite proxy does not reliably forward incremental SSE chunks — it can
@@ -71,6 +72,7 @@ export async function streamSSE(
       ...(getAccessToken() ? { Authorization: `Bearer ${getAccessToken()}` } : {}),
     },
     body: JSON.stringify(body),
+    signal,
   });
   if (!res.ok || !res.body) {
     throw new Error(`stream failed: ${res.status}`);
@@ -79,6 +81,10 @@ export async function streamSSE(
   const decoder = new TextDecoder();
   let buffer = "";
   while (true) {
+    if (signal?.aborted) {
+      await reader.cancel().catch(() => {});
+      return;
+    }
     const { done, value } = await reader.read();
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
@@ -89,6 +95,8 @@ export async function streamSSE(
       let event = "message";
       let dataStr = "";
       for (const line of lines) {
+        // SSE comment lines (heartbeat `: ping`) carry no event/data and are ignored.
+        if (line.startsWith(":")) continue;
         if (line.startsWith("event:")) event = line.slice(6).trim();
         else if (line.startsWith("data:")) dataStr += line.slice(5).trim();
       }

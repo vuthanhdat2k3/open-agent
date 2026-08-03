@@ -59,11 +59,30 @@ async def test_run_code_workspace_archive_includes_existing_files(tmp_path: Path
 
 
 async def test_run_shell_echo(tmp_path: Path, monkeypatch) -> None:
+    class FakeReader:
+        def __init__(self) -> None:
+            self._lines = iter([b"hello-agent\n"])
+
+        async def readline(self) -> bytes:
+            return next(self._lines, b"")
+
+    class FakeWriter:
+        async def write(self, _b: bytes) -> None:
+            return None
+
+        async def drain(self) -> None:
+            return None
+
+        def close(self) -> None:
+            return None
+
     class FakeProcess:
         returncode = 0
+        stdin = FakeWriter()
+        stdout = FakeReader()
 
-        async def communicate(self, _archive: bytes):
-            return b"hello-agent\n", None
+        async def wait(self) -> None:
+            return None
 
     async def fake_create_subprocess_exec(*_args, **_kwargs):
         return FakeProcess()

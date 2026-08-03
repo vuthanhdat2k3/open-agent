@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import asyncio
+import copy
 import json
 import time
 from collections.abc import AsyncIterator
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -131,8 +133,10 @@ async def _persist(
     content, findings = scan_and_redact(content)
     if findings:
         meta = {**meta, "redacted_secret_findings": [f.kind for f in findings]}
-    res = await db.execute(select(Message).where(Message.session_id == session_id))
-    count = len(res.scalars().all())
+    res = await db.execute(
+        select(func.count()).select_from(Message).where(Message.session_id == session_id)
+    )
+    count = res.scalar() or 0
     db.add(
         Message(
             org_id=org_id,
@@ -317,6 +321,7 @@ async def _agent_stream(
 
     for _ in range(agent.max_iterations):
         content_parts: list[str] = []
+        reasoning_parts: list[str] = []
         tc_map: dict[int, dict[str, Any]] = {}
         # Real provider usage when available; the char-count heuristic below
         # is only a fallback for providers that do not report it.
@@ -339,6 +344,9 @@ async def _agent_stream(
                     if ev["type"] == "content":
                         content_parts.append(ev["text"])
                         yield {"event": "token", "data": {"content": ev["text"]}}
+                    elif ev["type"] == "reasoning":
+                        reasoning_parts.append(ev["text"])
+                        yield {"event": "reasoning", "data": {"content": ev["text"]}}
                     elif ev["type"] == "tool_calls":
                         for tc in ev["tool_calls"]:
                             idx = tc.index
@@ -348,7 +356,21 @@ async def _agent_stream(
                             if tc.function and tc.function.name:
                                 entry["name"] = tc.function.name
                             if tc.function and tc.function.arguments:
-                                entry["arguments"] += tc.function.arguments
+                                fragment = tc.function.arguments
+                                entry["arguments"] += fragment
+                                # Stream the raw fragment so the UI can render
+                                # tool-call arguments as they are composed,
+                                # like ChatGPT/DeepSeek do — not after the
+                                # whole completion finishes.
+                                yield {
+                                    "event": "tool_call_delta",
+                                    "data": {
+                                        "index": idx,
+                                        "id": entry["id"],
+                                        "name": entry["name"],
+                                        "arguments": fragment,
+                                    },
+                                }
                     elif ev["type"] == "usage":
                         stream_usage = ev["usage"]
                         usage_estimated = bool(ev.get("estimated", True))
@@ -516,6 +538,16 @@ async def _agent_stream(
                                 return
                         else:
                             tool_started = time.monotonic()
+                            emit_q: asyncio.Queue = asyncio.Queue()
+
+                            async def _emit(ev: dict[str, Any]) -> None:
+                                await emit_q.put(ev)
+
+                            run_ctx = copy.copy(ctx)
+                            run_ctx.emit = _emit
+                            run_task = asyncio.create_task(
+                                execute_tool_call(spec, args, run_ctx)
+                            )
                             try:
                                 with (
                                     genai.tool_span(
@@ -527,10 +559,33 @@ async def _agent_stream(
                                     ),
                                     tool_call_duration_seconds.labels(name).time(),
                                 ):
-                                    result = await execute_tool_call(spec, args, ctx)
+                                    while True:
+                                        if run_task.done():
+                                            break
+                                        try:
+                                            item = await asyncio.wait_for(
+                                                emit_q.get(), timeout=0.25
+                                            )
+                                        except asyncio.TimeoutError:
+                                            continue
+                                        yield {
+                                            "event": "tool_progress",
+                                            "data": {"name": name, **item},
+                                        }
+                                    while not emit_q.empty():
+                                        yield {
+                                            "event": "tool_progress",
+                                            "data": {"name": name, **emit_q.get_nowait()},
+                                        }
+                                    result = run_task.result()
                                 tool_calls_total.labels(name, "ok").inc()
                                 tool_status = "ok"
+                            except asyncio.CancelledError:
+                                run_task.cancel()
+                                raise
                             except Exception as e:  # noqa: BLE001
+                                if not run_task.done():
+                                    run_task.cancel()
                                 tool_calls_total.labels(name, "error").inc()
                                 result = f"error executing tool: {e}"
                                 tool_status = "error"
@@ -711,6 +766,7 @@ async def _agent_stream(
                 "estimated": usage_estimated,
             }
             model_label = model.display_name or model.name
+            reasoning_text = "".join(reasoning_parts)
             yield {
                 "event": "message_done",
                 "data": {
@@ -721,6 +777,7 @@ async def _agent_stream(
                     "tools": tool_calls_log,
                     "session_id": session_id,
                     "model": model_label,
+                    "reasoning": reasoning_text,
                 },
             }
             if session_id:
@@ -735,6 +792,7 @@ async def _agent_stream(
                         "latency_ms": elapsed,
                         "tools": tool_calls_log,
                         "model": model_label,
+                        "reasoning": reasoning_text,
                     },
                     org_id=agent.org_id,
                     created_by_user_id=agent.created_by_user_id,

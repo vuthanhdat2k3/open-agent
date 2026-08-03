@@ -123,6 +123,16 @@ class LLMClient:
             delta = choice.delta
             if delta and delta.content:
                 yield {"type": "content", "text": delta.content}
+            # Reasoning-class models (DeepSeek-R1, o1/o3) stream their
+            # chain-of-thought in a non-content field; surface it so the UI
+            # can render live "thinking" instead of an opaque spinner.
+            reasoning = (
+                getattr(delta, "reasoning_content", None)
+                or getattr(delta, "reasoning", None)
+                or ""
+            )
+            if reasoning:
+                yield {"type": "reasoning", "text": reasoning}
             tcs = getattr(delta, "tool_calls", None)
             if tcs:
                 yield {"type": "tool_calls", "tool_calls": tcs}

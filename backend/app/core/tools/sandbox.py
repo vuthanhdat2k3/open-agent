@@ -5,6 +5,7 @@ import io
 import os
 import shlex
 import tarfile
+import uuid
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
@@ -44,11 +45,33 @@ def _docker_cli_present() -> bool:
     return which("docker") is not None
 
 
+async def _kill_container(name: str) -> None:
+    """Force-remove a sandbox container by name.
+
+    Killing the ``docker run`` CLI client alone (``proc.kill()``) leaves the
+    detached container running in the daemon forever — ``--rm`` only fires
+    when the container's main process actually exits, and a script that
+    hangs (infinite loop / blocking stdin) never does. Removing it by name
+    from the daemon side guarantees the orphan is cleaned up.
+    """
+    for args in (("docker", "kill", name), ("docker", "rm", "-f", name)):
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *args,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            await proc.wait()
+        except Exception:  # noqa: BLE001 - best effort cleanup
+            continue
+
+
 def build_docker_args(
     language: str,
     filename: str | None = None,
     *,
     stdin_mode: str = "code",
+    name: str | None = None,
 ) -> list[str]:
     image, cmd = _LANG_IMAGES[language]
     fname = filename or f"script.{'py' if language == 'python' else 'sh'}"
@@ -61,11 +84,15 @@ def build_docker_args(
         runner = f"tar -xzf - -C /work && {cmd} {safe_path}"
     else:
         runner = f"cat > {safe_path} && {cmd} {safe_path}"
-    return [
+    args = [
         "docker",
         "run",
         "-i",
         "--rm",
+    ]
+    if name:
+        args += ["--name", name]
+    args += [
         "--network",
         network,
         "--security-opt",
@@ -86,6 +113,7 @@ def build_docker_args(
         "-c",
         runner,
     ]
+    return args
 
 
 def build_workspace_archive(workspace_dir: str, filename: str, code: str) -> bytes:
@@ -154,7 +182,8 @@ async def stream_sandbox_execution(
         return
 
     tout = timeout if timeout is not None else float(settings.sandbox_default_timeout)
-    docker_args = build_docker_args(lang, filename)
+    cname = f"oa-sandbox-{uuid.uuid4().hex[:12]}"
+    docker_args = build_docker_args(lang, filename, name=cname)
 
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -211,6 +240,7 @@ async def stream_sandbox_execution(
                 yield {"event": "stdout", "data": {"line": line_str}}
 
         if timed_out:
+            await _kill_container(cname)
             try:
                 proc.kill()
                 await proc.wait()
@@ -221,6 +251,7 @@ async def stream_sandbox_execution(
             return
 
         if truncated:
+            await _kill_container(cname)
             try:
                 proc.kill()
                 await proc.wait()
@@ -235,9 +266,11 @@ async def stream_sandbox_execution(
         yield {"event": "exit", "data": {"code": proc.returncode}}
 
     except FileNotFoundError:
+        await _kill_container(cname)
         sandbox_executions_total.labels("docker_missing").inc()
         yield {"event": "error", "data": {"message": "Docker CLI not found on the backend host"}}
     except Exception as e:  # noqa: BLE001
+        await _kill_container(cname)
         sandbox_executions_total.labels("error").inc()
         yield {"event": "error", "data": {"message": f"Error executing sandbox: {e}"}}
 
@@ -294,7 +327,8 @@ async def _run_code(args: dict[str, Any], ctx: ToolContext) -> str:
         await finish_execution_record(ctx.db, execution, status="failed", output=msg, error=msg)
         return msg
 
-    docker_args = build_docker_args(language, filename, stdin_mode="archive")
+    cname = f"oa-sandbox-{uuid.uuid4().hex[:12]}"
+    docker_args = build_docker_args(language, filename, stdin_mode="archive", name=cname)
 
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -303,14 +337,57 @@ async def _run_code(args: dict[str, Any], ctx: ToolContext) -> str:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
         )
-        try:
-            out, _ = await asyncio.wait_for(
-                proc.communicate(archive),
-                timeout=timeout,
-            )
-        except TimeoutError:
-            proc.kill()
-            await proc.wait()
+        if proc.stdin:
+            await proc.stdin.write(archive)
+            await proc.stdin.drain()
+            proc.stdin.close()
+
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout
+        timed_out = False
+        truncated = False
+        total_chars = 0
+        lines: list[str] = []
+        if proc.stdout:
+            while True:
+                remaining = deadline - loop.time()
+                if remaining <= 0:
+                    timed_out = True
+                    break
+                try:
+                    line_bytes = await asyncio.wait_for(
+                        proc.stdout.readline(),
+                        timeout=max(0.1, remaining),
+                    )
+                except TimeoutError:
+                    timed_out = True
+                    break
+                if not line_bytes:
+                    break
+                line = line_bytes.decode("utf-8", errors="replace")
+                total_chars += len(line)
+                if total_chars > MAX_SANDBOX_OUTPUT:
+                    truncated = True
+                    overflow = total_chars - MAX_SANDBOX_OUTPUT
+                    if overflow < len(line):
+                        line = line[:-overflow] + "\n...[truncated output limit reached]"
+                    else:
+                        line = "\n...[truncated output limit reached]"
+                    lines.append(line)
+                    if ctx.emit:
+                        await ctx.emit({"kind": "stdout", "line": line})
+                    break
+                lines.append(line)
+                if ctx.emit:
+                    await ctx.emit({"kind": "stdout", "line": line})
+
+        if timed_out:
+            await _kill_container(cname)
+            try:
+                proc.kill()
+                await proc.wait()
+            except Exception:  # noqa: BLE001
+                pass
             sandbox_executions_total.labels("timeout").inc()
             msg = f"error: sandbox timed out after {timeout}s [exit code: -1]"
             await finish_execution_record(
@@ -322,12 +399,47 @@ async def _run_code(args: dict[str, Any], ctx: ToolContext) -> str:
                 exit_code=-1,
             )
             return msg
+
+        if truncated:
+            await _kill_container(cname)
+            try:
+                proc.kill()
+                await proc.wait()
+            except Exception:  # noqa: BLE001
+                pass
+            text = "".join(lines) + "\n[exit code: -1]"
+            sandbox_executions_total.labels("error").inc()
+            await finish_execution_record(
+                ctx.db,
+                execution,
+                status="failed",
+                output=text,
+                exit_code=-1,
+            )
+            return text
+
+        await proc.wait()
+        text = "".join(lines)
+        if len(text) > MAX_SANDBOX_OUTPUT:
+            text = text[:MAX_SANDBOX_OUTPUT] + "\n...[truncated]"
+        text += f"\n[exit code: {proc.returncode}]"
+        sandbox_executions_total.labels("ok" if proc.returncode == 0 else "error").inc()
+        await finish_execution_record(
+            ctx.db,
+            execution,
+            status="succeeded" if proc.returncode == 0 else "failed",
+            output=text,
+            exit_code=proc.returncode,
+        )
+        return text
     except FileNotFoundError:
+        await _kill_container(cname)
         sandbox_executions_total.labels("docker_missing").inc()
         msg = "error: docker CLI not found on the backend host"
         await finish_execution_record(ctx.db, execution, status="failed", output=msg, error=msg)
         return msg
     except Exception as e:  # noqa: BLE001
+        await _kill_container(cname)
         sandbox_executions_total.labels("error").inc()
         msg = f"error executing sandbox: {e}"
         await finish_execution_record(ctx.db, execution, status="failed", output=msg, error=str(e))
