@@ -25,6 +25,7 @@ from app.core.observability.metrics import (
 )
 from app.core.tools.registry import BUILTIN_TOOLS, execute_tool_call
 from app.core.tools.types import ToolContext, tool_to_openai_schema
+from app.core.workflow.replay import ReplayCursor, ReplayDiverged, record_tool_call
 from app.db.base import gen_id, utc_now
 from app.mcp.client import build_mcp_tool_spec, get_mcp_manager
 from app.models.agent import Agent
@@ -173,8 +174,12 @@ async def _agent_stream(
     session_id: str | None,
     current_task_id: str | None = None,
     root_run_id: str | None = None,
+    replay_cursor: ReplayCursor | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     root_task: Task | None = None
+    # Position of the next tool call within this run, used to line recordings
+    # up with the replay that reads them back.
+    tool_sequence = 0
     if current_task_id is None:
         resolved_root_run_id = root_run_id or session_id or gen_id()
         root_task = Task(
@@ -465,7 +470,30 @@ async def _agent_stream(
                                 result=f"approval required for tool '{name}'",
                             )
                             return
+                        elif replay_cursor is not None:
+                            # Replay never executes a tool. If the run takes a
+                            # different path than the recording, stop and say
+                            # where — falling through to a live call would
+                            # spend money and cause side effects the operator
+                            # never asked for.
+                            try:
+                                result = replay_cursor.next_result(name, args)
+                                tool_status = "replayed"
+                            except ReplayDiverged as exc:
+                                yield {
+                                    "event": "replay_diverged",
+                                    "data": {
+                                        "sequence": exc.sequence,
+                                        "expected": exc.expected,
+                                        "requested": exc.requested,
+                                    },
+                                }
+                                await _finish_task(
+                                    db, root_task, status="diverged", result=str(exc)
+                                )
+                                return
                         else:
+                            tool_started = time.monotonic()
                             try:
                                 with (
                                     genai.tool_span(
@@ -484,6 +512,20 @@ async def _agent_stream(
                                 tool_calls_total.labels(name, "error").inc()
                                 result = f"error executing tool: {e}"
                                 tool_status = "error"
+                            # Recorded so this run can be replayed later
+                            # without calling the tool again.
+                            tool_sequence += 1
+                            await record_tool_call(
+                                db,
+                                org_id=agent.org_id,
+                                sequence=tool_sequence,
+                                tool_name=name,
+                                arguments=args,
+                                result=str(result),
+                                status=tool_status,
+                                duration_ms=int((time.monotonic() - tool_started) * 1000),
+                                session_id=session_id,
+                            )
                             # Every tool call is auditable evidence, not just
                             # the dangerous tier (EU AI Act Art.12). The
                             # dangerous-tier row is kept as-is so existing
@@ -721,6 +763,7 @@ async def run_agent_loop(
     session_id: str | None = None,
     current_task_id: str | None = None,
     root_run_id: str | None = None,
+    replay_cursor: ReplayCursor | None = None,
 ) -> AgentLoopResult:
     content = ""
     usage: dict[str, Any] = {"input_tokens": 0, "output_tokens": 0}
@@ -736,6 +779,7 @@ async def run_agent_loop(
         session_id,
         current_task_id=current_task_id,
         root_run_id=root_run_id,
+        replay_cursor=replay_cursor,
     ):
         if ev["event"] == "message_done":
             data = ev["data"]

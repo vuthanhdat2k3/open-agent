@@ -23,6 +23,7 @@ from app.models.refresh_token import RefreshToken
 from app.models.role import Role
 from app.models.session import Session
 from app.models.task import Task
+from app.models.tool_call_record import ToolCallRecord
 from app.models.usage import UsageEvent
 from app.models.user import User
 from app.models.workflow import Workflow
@@ -53,6 +54,7 @@ __all__ = [
     "Role",
     "Session",
     "Task",
+    "ToolCallRecord",
     "UploadedFile",
     "UsageEvent",
     "User",
