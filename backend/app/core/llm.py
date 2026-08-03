@@ -80,27 +80,59 @@ class LLMClient:
         temperature: float = 0.7,
     ) -> AsyncIterator[dict[str, Any]]:
         """Streaming completion. Yields dicts:
-        {"type": "content", "text": str} or
-        {"type": "tool_calls", "tool_calls": [delta, ...]}.
+        {"type": "content", "text": str},
+        {"type": "tool_calls", "tool_calls": [delta, ...]}, or
+        {"type": "usage", "usage": {...}, "estimated": bool,
+         "finish_reasons": [...]} as the final event.
+
+        ``stream_options.include_usage`` asks the provider for real token
+        counts on the terminal chunk. Providers that ignore the option (or
+        reject it) still get a usage event, flagged ``estimated=True`` so
+        callers never present a guess as a measurement.
         """
         kwargs: dict[str, Any] = {
             "model": self.model_name,
             "messages": messages,
             "temperature": temperature,
+            "stream_options": {"include_usage": True},
         }
         if tools:
             kwargs["tools"] = tools
             kwargs["tool_choice"] = "auto"
-        stream = await self._client.chat.completions.create(stream=True, **kwargs)
+        try:
+            stream = await self._client.chat.completions.create(stream=True, **kwargs)
+        except TypeError:
+            # Servers that are not fully OpenAI-compatible reject stream_options.
+            kwargs.pop("stream_options", None)
+            stream = await self._client.chat.completions.create(stream=True, **kwargs)
+
+        usage: dict[str, int] | None = None
+        finish_reasons: list[str] = []
         async for chunk in stream:
+            chunk_usage = getattr(chunk, "usage", None)
+            if chunk_usage:
+                usage = {
+                    "input_tokens": chunk_usage.prompt_tokens or 0,
+                    "output_tokens": chunk_usage.completion_tokens or 0,
+                }
             if not chunk.choices:
                 continue
-            delta = chunk.choices[0].delta
+            choice = chunk.choices[0]
+            if getattr(choice, "finish_reason", None):
+                finish_reasons.append(choice.finish_reason)
+            delta = choice.delta
             if delta and delta.content:
                 yield {"type": "content", "text": delta.content}
             tcs = getattr(delta, "tool_calls", None)
             if tcs:
                 yield {"type": "tool_calls", "tool_calls": tcs}
+
+        yield {
+            "type": "usage",
+            "usage": usage or {"input_tokens": 0, "output_tokens": 0},
+            "estimated": usage is None,
+            "finish_reasons": finish_reasons,
+        }
 
     @staticmethod
     def estimate_cost(model_row: Any, usage: dict[str, int]) -> float:

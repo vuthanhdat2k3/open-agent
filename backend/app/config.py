@@ -44,6 +44,10 @@ class Settings(BaseSettings):
     quota_usage_cache_seconds: int = 15
     otel_enabled: bool = False
     otel_exporter_endpoint: str = ""
+    # Attaching prompt/completion bodies to spans is opt-in: message content
+    # routinely carries user PII and provider secrets, and the GenAI semantic
+    # conventions treat content capture as an explicit choice.
+    otel_capture_message_content: bool = False
     log_format: Literal["json", "console"] = "json"
     budget_max_tool_calls: int = 40
     budget_max_cost_usd: float = 2.0
