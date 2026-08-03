@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.base import utc_now
 from app.evals.executor import EvaluationExecutor, ExecutionOutput
 from app.evals.grader import grade_output
+from app.evals.sampler import propose_cases
 from app.models.agent import Agent
 from app.models.agent_release import AgentRelease
 from app.models.evaluation import (
@@ -14,6 +15,7 @@ from app.models.evaluation import (
     EvaluationRun,
     EvaluationSuite,
 )
+from app.models.sampling_policy import SamplingPolicy
 
 
 class EvaluationService:
@@ -110,10 +112,107 @@ class EvaluationService:
                 EvaluationCase.org_id == org_id,
                 EvaluationCase.suite_id == suite_id,
                 EvaluationCase.added_in_version <= version,
+                # Sampled proposals are excluded until reviewed: grading a
+                # case whose expected answer nobody has confirmed would turn
+                # an incident into a meaningless assertion.
+                EvaluationCase.approved.is_(True),
             )
             .order_by(EvaluationCase.ordinal)
         )
         return list(result.scalars().all())
+
+    async def list_proposed_cases(self, org_id: str, suite_id: str) -> list[EvaluationCase]:
+        """Sampled cases still awaiting review."""
+        suite = await self.get_suite(org_id, suite_id)
+        if suite is None:
+            raise ValueError("evaluation suite not found")
+        result = await self.db.execute(
+            select(EvaluationCase)
+            .where(
+                EvaluationCase.org_id == org_id,
+                EvaluationCase.suite_id == suite_id,
+                EvaluationCase.approved.is_(False),
+            )
+            .order_by(EvaluationCase.ordinal)
+        )
+        return list(result.scalars().all())
+
+    async def propose_from_traces(self, org_id: str, policy_id: str) -> list[EvaluationCase]:
+        """Run the sampler for one policy. Proposals are not gradeable yet."""
+        result = await self.db.execute(
+            select(SamplingPolicy).where(
+                SamplingPolicy.id == policy_id, SamplingPolicy.org_id == org_id
+            )
+        )
+        policy = result.scalar_one_or_none()
+        if policy is None:
+            raise ValueError("sampling policy not found")
+        return await propose_cases(self.db, policy)
+
+    async def approve_case(self, org_id: str, case_id: str, data: dict) -> EvaluationCase:
+        """Accept a proposal into the dataset.
+
+        This is the only path that turns a sampled case into a graded one,
+        and it demands the reviewer supply the expected behaviour — the
+        sampler deliberately left it blank.
+        """
+        result = await self.db.execute(
+            select(EvaluationCase).where(
+                EvaluationCase.id == case_id, EvaluationCase.org_id == org_id
+            )
+        )
+        case = result.scalar_one_or_none()
+        if case is None:
+            raise ValueError("evaluation case not found")
+        if case.approved:
+            return case
+
+        expected_output = data.get("expected_output")
+        required_substrings = data.get("required_substrings") or []
+        if not expected_output and not required_substrings:
+            raise ValueError(
+                "approving a sampled case requires expected_output or required_substrings"
+            )
+
+        suite_result = await self.db.execute(
+            select(EvaluationSuite)
+            .where(EvaluationSuite.id == case.suite_id, EvaluationSuite.org_id == org_id)
+            .with_for_update()
+        )
+        suite = suite_result.scalar_one_or_none()
+        if suite is None:
+            raise ValueError("evaluation suite not found")
+
+        for field, value in data.items():
+            if field == "metadata":
+                case.metadata_ = value
+            elif hasattr(case, field):
+                setattr(case, field, value)
+
+        # The dataset version moves at approval, not at proposal: that is the
+        # moment the gradeable set actually changed.
+        suite.dataset_version += 1
+        case.added_in_version = suite.dataset_version
+        case.approved = True
+        await self.db.commit()
+        await self.db.refresh(case)
+        return case
+
+    async def reject_case(self, org_id: str, case_id: str) -> bool:
+        """Discard a proposal. Never touches dataset_version."""
+        result = await self.db.execute(
+            select(EvaluationCase).where(
+                EvaluationCase.id == case_id,
+                EvaluationCase.org_id == org_id,
+                EvaluationCase.approved.is_(False),
+            )
+        )
+        case = result.scalar_one_or_none()
+        if case is None:
+            return False
+        await self.db.delete(case)
+        await self.db.commit()
+        return True
 
     async def add_case(
         self, org_id: str, suite_id: str, data: dict
