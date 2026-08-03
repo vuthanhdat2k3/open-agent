@@ -44,8 +44,8 @@ async def create_a2a_task(
     payload: A2ATaskRequest,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    org_id: str = Depends(get_current_org_id),
     current_user: User = Depends(get_current_user),
+    org_id: str = Depends(get_current_org_id),
     _: None = Depends(require_permission("agents:run")),
 ) -> A2ATaskResponse:
     """Executes a task on an exposed agent via A2A protocol.

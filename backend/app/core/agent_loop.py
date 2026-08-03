@@ -581,7 +581,9 @@ async def _agent_stream(
                             await log_action(
                                 db,
                                 org_id=agent.org_id,
-                                actor_user_id=agent.created_by_user_id,
+                                actor_user_id=user_id or agent.created_by_user_id,
+                                actor_agent_identity_id=actor_agent_identity_id,
+                                delegation_chain=delegation_chain,
                                 action="guardrail.injection_flagged",
                                 resource_type="tool",
                                 resource_id=name,
@@ -600,7 +602,9 @@ async def _agent_stream(
                         await log_action(
                             db,
                             org_id=agent.org_id,
-                            actor_user_id=agent.created_by_user_id,
+                            actor_user_id=user_id or agent.created_by_user_id,
+                            actor_agent_identity_id=actor_agent_identity_id,
+                            delegation_chain=delegation_chain,
                             action="guardrail.secret_redacted",
                             resource_type="tool",
                             resource_id=name,

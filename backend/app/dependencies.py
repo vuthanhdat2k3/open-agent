@@ -156,6 +156,31 @@ async def get_current_org_id(
     state_org = getattr(request.state, "org_id", None)
     user_id = getattr(request.state, "user_id", None)
 
+    if not state_org:
+        auth_header = request.headers.get("Authorization")
+        token = None
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header[7:].strip()
+        elif "access_token" in request.cookies:
+            token = request.cookies["access_token"]
+
+        if token:
+            try:
+                import jwt as pyjwt
+
+                settings = get_settings()
+                raw_payload = pyjwt.decode(
+                    token,
+                    settings.jwt_secret_key,
+                    algorithms=[settings.jwt_algorithm],
+                    options={"verify_aud": False},
+                )
+                if raw_payload.get("org_id"):
+                    state_org = raw_payload.get("org_id")
+                    request.state.org_id = state_org
+            except Exception:
+                pass
+
     if user_id and header_org:
         if header_org != state_org:
             res = await db.execute(
