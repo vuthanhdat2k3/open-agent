@@ -5,6 +5,7 @@ from typing import Any
 
 import regex
 
+from app.evals.graders.retrieval import grade_retrieval
 from app.models.evaluation import EvaluationCase
 
 
@@ -26,6 +27,8 @@ def grade_output(
     observed_tools: list[str],
     latency_ms: int,
     cost_usd: float,
+    retrieved_doc_ids: list[str] | None = None,
+    retrieved_texts: list[str] | None = None,
 ) -> Grade:
     checks: dict[str, bool] = {}
 
@@ -62,6 +65,14 @@ def grade_output(
     if case.max_cost_usd is not None:
         checks["max_cost_usd"] = cost_usd <= case.max_cost_usd
 
+    retrieval_checks, retrieval_details = grade_retrieval(
+        case,
+        output=output,
+        retrieved_doc_ids=retrieved_doc_ids or [],
+        retrieved_texts=retrieved_texts or [],
+    )
+    checks.update(retrieval_checks)
+
     if not checks:
         checks["execution_succeeded"] = True
     passed_count = sum(checks.values())
@@ -69,4 +80,8 @@ def grade_output(
     details: dict[str, Any] = {"checks": checks}
     if regex_errors:
         details["regex_errors"] = regex_errors
+    if retrieval_details:
+        # Kept even when no threshold was set: recall/MRR are worth seeing
+        # before deciding what the threshold should be.
+        details["retrieval"] = retrieval_details
     return Grade(score=score, passed=all(checks.values()), details=details)

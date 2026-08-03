@@ -9,6 +9,7 @@ from app.core.quota.dependencies import agent_run_admission
 from app.dependencies import get_current_org_id, get_db, require_permission
 from app.evals.executor import LiveAgentExecutor, RecordedOutputExecutor
 from app.schemas.evaluation import (
+    EvaluationCaseApprove,
     EvaluationCaseCreate,
     EvaluationCaseOut,
     EvaluationComparisonOut,
@@ -170,6 +171,66 @@ async def add_case(
     except ValueError as exc:
         raise _not_found_or_bad_request(exc) from exc
     return EvaluationCaseOut.from_orm_case(case)
+
+
+@router.get(
+    "/suites/{suite_id}/cases/proposed",
+    response_model=list[EvaluationCaseOut],
+    dependencies=[Depends(require_permission("evaluations:manage"))],
+)
+async def list_proposed_cases(
+    suite_id: str,
+    org_id: str = Depends(get_current_org_id),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        cases = await EvaluationService(db).list_proposed_cases(org_id, suite_id)
+    except ValueError as exc:
+        raise _not_found_or_bad_request(exc) from exc
+    return [EvaluationCaseOut.from_orm_case(c) for c in cases]
+
+
+@router.post(
+    "/cases/{case_id}/approve",
+    response_model=EvaluationCaseOut,
+    dependencies=[Depends(require_permission("evaluations:manage"))],
+)
+async def approve_case(
+    case_id: str,
+    body: EvaluationCaseApprove,
+    request: Request,
+    org_id: str = Depends(get_current_org_id),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        case = await EvaluationService(db).approve_case(org_id, case_id, body.model_dump())
+    except ValueError as exc:
+        raise _not_found_or_bad_request(exc) from exc
+    await log_action(
+        db,
+        org_id=org_id,
+        actor_user_id=getattr(request.state, "user_id", None),
+        action="evaluation.case.approved",
+        resource_type="evaluation_case",
+        resource_id=case.id,
+        metadata={"suite_id": case.suite_id, "sampled_reason": case.sampled_reason},
+    )
+    return EvaluationCaseOut.from_orm_case(case)
+
+
+@router.post(
+    "/cases/{case_id}/reject",
+    dependencies=[Depends(require_permission("evaluations:manage"))],
+)
+async def reject_case(
+    case_id: str,
+    org_id: str = Depends(get_current_org_id),
+    db: AsyncSession = Depends(get_db),
+):
+    removed = await EvaluationService(db).reject_case(org_id, case_id)
+    if not removed:
+        raise HTTPException(404, "proposed evaluation case not found")
+    return {"ok": True}
 
 
 @router.get(
