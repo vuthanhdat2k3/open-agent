@@ -11,6 +11,7 @@ import {
   MessageSquare,
   Plus,
   Send,
+  Square,
   Cpu,
   Trash2,
   Sparkles,
@@ -35,6 +36,13 @@ export default function ChatPage() {
   const [modelOverrideId, setModelOverrideId] = React.useState("");
   const [draft, setDraft] = React.useState("");
   const [messages, setMessages] = React.useState<UIMessage[]>([]);
+  // Live message store mutated during a stream, flushed to React state via
+  // requestAnimationFrame so per-token events coalesce into one render per
+  // frame instead of an O(n²) re-map for every token.
+  const liveRef = React.useRef<UIMessage[]>([]);
+  const rafRef = React.useRef<number | null>(null);
+  const composeRef = React.useRef<Map<number, string>>(new Map());
+  const deltaArgsRef = React.useRef<Map<number, string>>(new Map());
   const [streaming, setStreaming] = React.useState(false);
   const [phase, setPhase] = React.useState<string>("");
   const [debug, setDebug] = React.useState(true);
@@ -53,14 +61,14 @@ export default function ChatPage() {
 
   React.useEffect(() => {
     if (messagesQuery.data) {
-      setMessages(
-        messagesQuery.data.map((m) => ({
-          id: m.id,
-          role: m.role,
-          content: m.content,
-          meta: m.meta,
-        })),
-      );
+      const initial = messagesQuery.data.map((m) => ({
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        meta: m.meta,
+      }));
+      liveRef.current = initial;
+      setMessages(initial);
     }
   }, [messagesQuery.data]);
 
@@ -73,14 +81,28 @@ export default function ChatPage() {
   const effectiveModelId = modelOverrideId || currentAgent?.model_id || "";
   const effectiveModel = models.data?.find((m) => m.id === effectiveModelId);
 
+  const commit = React.useCallback(() => {
+    rafRef.current = null;
+    setMessages([...liveRef.current]);
+  }, []);
+
+  const touch = React.useCallback(() => {
+    if (rafRef.current == null) rafRef.current = requestAnimationFrame(commit);
+  }, [commit]);
+
+  const abortRef = React.useRef<AbortController | null>(null);
+
   const send = async () => {
     if (!draft.trim() || !agentId) return;
     const userMsg: UIMessage = { id: `u-${Date.now()}`, role: "user", content: draft };
     const assistantId = `a-${Date.now()}`;
-    setMessages((m) => [...m, userMsg, { id: assistantId, role: "assistant", content: "" }]);
+    liveRef.current = [...liveRef.current, userMsg, { id: assistantId, role: "assistant", content: "" }];
+    commit();
     const sentDraft = draft;
     setDraft("");
     setStreaming(true);
+    composeRef.current.clear();
+    deltaArgsRef.current.clear();
 
     const payload: Record<string, any> = {
       agent_id: agentId,
@@ -90,64 +112,119 @@ export default function ChatPage() {
     };
     if (modelOverrideId) payload.model_id = modelOverrideId;
 
+    abortRef.current = new AbortController();
     try {
       await streamSSE(
         `/api/chat`,
         payload,
         (ev) => {
           const d = ev.data;
+          const msgs = liveRef.current;
+          const aIdx = msgs.findIndex((x) => x.id === assistantId);
           if (ev.event === "message_start") {
             setPhase("thinking");
+          } else if (ev.event === "reasoning") {
+            setPhase("thinking");
+            if (aIdx >= 0) {
+              const cur = msgs[aIdx];
+              msgs[aIdx] = {
+                ...cur,
+                meta: { ...cur.meta, reasoning: (cur.meta?.reasoning ?? "") + (d.content ?? "") },
+              };
+            }
+            touch();
           } else if (ev.event === "token") {
             setPhase("");
-            setMessages((m) =>
-              m.map((x) =>
-                x.id === assistantId ? { ...x, content: x.content + (d.delta ?? d.content ?? "") } : x,
-              ),
-            );
+            if (aIdx >= 0) {
+              const cur = msgs[aIdx];
+              msgs[aIdx] = { ...cur, content: cur.content + (d.delta ?? d.content ?? "") };
+            }
+            touch();
+          } else if (ev.event === "tool_call_delta") {
+            const idx = d.index ?? 0;
+            const prev = deltaArgsRef.current.get(idx) ?? "";
+            deltaArgsRef.current.set(idx, prev + (d.arguments ?? ""));
+            let toolId = composeRef.current.get(idx);
+            if (!toolId) {
+              toolId = `tc-${Date.now()}-${idx}`;
+              composeRef.current.set(idx, toolId);
+              msgs.push({
+                id: toolId,
+                role: "tool_call",
+                content: deltaArgsRef.current.get(idx) ?? "",
+                meta: { toolName: d.name || "tool" },
+              });
+            } else {
+              const ti = msgs.findIndex((x) => x.id === toolId);
+              if (ti >= 0) {
+                msgs[ti] = { ...msgs[ti], content: deltaArgsRef.current.get(idx) ?? "" };
+              }
+            }
+            touch();
           } else if (ev.event === "tool_call") {
             setPhase(`tool:${d.name}`);
-            setMessages((m) => [
-              ...m,
-              {
-                id: `tc-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-                role: "tool_call",
-                content: JSON.stringify(d.args ?? d.arguments ?? {}, null, 2),
-                meta: { toolName: d.name },
-              },
-            ]);
+            const idx = d.index ?? 0;
+            const toolId = composeRef.current.get(idx);
+            const card = {
+              id: toolId ?? `tc-${Date.now()}-${idx}`,
+              role: "tool_call",
+              content: JSON.stringify(d.args ?? d.arguments ?? {}, null, 2),
+              meta: { toolName: d.name },
+            };
+            if (toolId) {
+              const ti = msgs.findIndex((x) => x.id === toolId);
+              if (ti >= 0) msgs[ti] = card;
+              else msgs.push(card);
+            } else {
+              composeRef.current.set(idx, card.id);
+              msgs.push(card);
+            }
+            touch();
+          } else if (ev.event === "tool_progress") {
+            setPhase(`tool:${d.name}`);
+            const toolId = composeRef.current.get(d.index ?? 0);
+            const line = d.line ?? "";
+            if (toolId) {
+              const ti = msgs.findIndex((x) => x.id === toolId);
+              if (ti >= 0) {
+                const cur = msgs[ti];
+                const progress = (cur.meta?.progress ?? "") + line;
+                msgs[ti] = { ...cur, meta: { ...cur.meta, progress } };
+              }
+            }
+            touch();
           } else if (ev.event === "tool_result") {
             setPhase("result");
-            setMessages((m) => [
-              ...m,
-              {
-                id: `tr-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-                role: "tool_result",
-                content: `${d.result ?? d.output ?? ""}`,
-                meta: { toolName: d.name },
-              },
-            ]);
+            msgs.push({
+              id: `tr-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+              role: "tool_result",
+              content: `${d.result ?? d.output ?? ""}`,
+              meta: { toolName: d.name },
+            });
+            touch();
           } else if (ev.event === "message_done") {
             setPhase("");
-            setMessages((m) =>
-              m
-                .filter((x) => x.role !== "tool_call" && x.role !== "tool_result")
-                .map((x) =>
-                  x.id === assistantId
-                    ? {
-                        ...x,
-                        meta: {
-                          in_tokens: d.usage?.input_tokens,
-                          out_tokens: d.usage?.output_tokens,
-                          cost_usd: d.cost_usd,
-                          latency_ms: d.latency_ms,
-                          tools: d.tools,
-                          model: d.model,
-                        },
-                      }
-                    : x,
-                ),
-            );
+            const filtered = msgs
+              .filter((x) => x.role !== "tool_call" && x.role !== "tool_result")
+              .map((x) =>
+                x.id === assistantId
+                  ? {
+                      ...x,
+                      meta: {
+                        ...x.meta,
+                        in_tokens: d.usage?.input_tokens,
+                        out_tokens: d.usage?.output_tokens,
+                        cost_usd: d.cost_usd,
+                        latency_ms: d.latency_ms,
+                        tools: d.tools,
+                        model: d.model,
+                        ...(d.reasoning ? { reasoning: d.reasoning } : {}),
+                      },
+                    }
+                  : x,
+              );
+            liveRef.current = filtered;
+            commit();
             if (d.session_id) {
               setSession(d.session_id);
             }
@@ -157,15 +234,22 @@ export default function ChatPage() {
             toast.error(d.message ?? "Stream error");
           }
         },
+        abortRef.current.signal,
       );
     } catch (e: any) {
-      toast.error(e.message);
+      if (e.name !== "AbortError") toast.error(e.message);
     } finally {
+      abortRef.current = null;
       setStreaming(false);
     }
   };
 
+  const stop = () => {
+    abortRef.current?.abort();
+  };
+
   const clearMessages = () => {
+    liveRef.current = [];
     setMessages([]);
     setSession(null);
   };
@@ -370,29 +454,39 @@ export default function ChatPage() {
             className="min-h-[48px] flex-1 text-xs resize-none"
           />
           <Button
-            disabled={streaming || !agentId || !draft.trim()}
-            onClick={send}
+            onClick={streaming ? stop : send}
+            disabled={!agentId || (!streaming && !draft.trim())}
             className="gap-2 px-5 active-tactile transition-transform h-10 text-xs self-end"
+            variant={streaming ? "outline" : "default"}
+            title={streaming ? "Stop streaming" : "Send message"}
           >
-            <Send className="h-3.5 w-3.5" />
-            {streaming ? "…" : "Send"}
+            {streaming ? (
+              <>
+                <Square className="h-3.5 w-3.5" />
+                Stop
+              </>
+            ) : (
+              <>
+                <Send className="h-3.5 w-3.5" />
+                Send
+              </>
+            )}
           </Button>
         </div>
 
         {streaming && (
-          <div className="mt-2 flex items-center gap-2 text-[10px] text-muted-foreground animate-pulse">
-            {phase === "thinking" ? (
-              <Sparkles className="h-3 w-3 text-primary" />
-            ) : (
-              <span className="h-1.5 w-1.5 rounded-full bg-info animate-pulse" />
-            )}
-            {phase === "thinking"
-              ? "Thinking…"
-              : phase.startsWith("tool:")
-                ? `Using tool: ${phase.slice(5)}…`
-                : phase === "result"
-                  ? "Processing result…"
-                  : "Agent is responding"}
+          <div className="mt-2 flex items-center gap-2 text-[10px] text-muted-foreground">
+            {phase.startsWith("tool:") ? (
+              <>
+                <span className="h-1.5 w-1.5 rounded-full bg-info animate-pulse" />
+                Using tool: {phase.slice(5)}…
+              </>
+            ) : phase === "result" ? (
+              <>
+                <span className="h-1.5 w-1.5 rounded-full bg-info animate-pulse" />
+                Processing result…
+              </>
+            ) : null}
             {effectiveModel && <span className="font-mono text-muted-foreground/60">· {effectiveModel.display_name || effectiveModel.name}</span>}
           </div>
         )}

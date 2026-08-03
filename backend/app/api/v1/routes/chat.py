@@ -1,8 +1,11 @@
+import asyncio
+from contextlib import aclosing
+
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.sse import format_sse
+from app.api.v1.sse import SSE_HEARTBEAT_SECONDS, format_sse
 from app.core.quota.dependencies import agent_run_admission
 from app.dependencies import get_current_org_id, get_db, require_permission
 from app.schemas.chat import ChatRequest
@@ -30,7 +33,22 @@ async def chat(
         return result.model_dump()
 
     async def gen():
-        async for ev in svc.stream(org_id, body):
-            yield format_sse(ev)
+        async with aclosing(svc.stream(org_id, body)) as stream:
+            while True:
+                try:
+                    ev = await asyncio.wait_for(stream.__anext__(), timeout=SSE_HEARTBEAT_SECONDS)
+                except StopAsyncIteration:
+                    break
+                except TimeoutError:
+                    yield ": ping\n\n"
+                    continue
+                yield format_sse(ev)
 
-    return StreamingResponse(gen(), media_type="text/event-stream")
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={
+            "X-Accel-Buffering": "no",
+            "Cache-Control": "no-cache",
+        },
+    )

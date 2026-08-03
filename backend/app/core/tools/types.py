@@ -26,6 +26,11 @@ class ToolContext:
     root_run_id: str | None = None
     actor_agent_identity_id: str | None = None
     delegation_chain: list | dict | None = None
+    # Optional async callback for streaming incremental progress (e.g. stdout
+    # lines from sandbox tools) back to the caller. Tools that support it
+    # await ctx.emit({"event": ..., "data": ...}); callers that do not set it
+    # must still work, so every call site guards with `if ctx.emit:`.
+    emit: Callable[..., Awaitable[None]] | None = None
 
 
 @dataclass

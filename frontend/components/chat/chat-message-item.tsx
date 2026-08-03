@@ -3,7 +3,7 @@
 import * as React from "react";
 import DOMPurify from "dompurify";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
-import { Wrench, CornerDownRight, Clock, DollarSign, Terminal, Code, CheckCircle2, XCircle, Play, FileCode, Maximize2 } from "lucide-react";
+import { Wrench, CornerDownRight, Clock, DollarSign, Terminal, Code, CheckCircle2, XCircle, Play, FileCode, Maximize2, ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 
@@ -55,6 +55,8 @@ export type UIMessage = {
     latency_ms?: number;
     toolName?: string;
     tools?: any[];
+    reasoning?: string;
+    progress?: string;
   };
 };
 
@@ -124,6 +126,16 @@ export function ChatMessageItem({ message: m, debug, hasLiveTools }: ChatMessage
         <pre className="block w-full min-h-[60px] max-h-60 overflow-y-auto overflow-x-auto p-3 font-mono text-[10.5px] text-foreground leading-relaxed scrollbar-thin whitespace-pre-wrap break-all bg-black/40">
           {codeStr}
         </pre>
+        {m.meta?.progress ? (
+          <div className="border-t border-border/40">
+            <div className="flex items-center gap-1.5 bg-muted/20 px-3 py-1 text-[9px] uppercase tracking-wider text-muted-foreground/70">
+              <Play className="h-2.5 w-2.5 text-primary animate-pulse" /> Live output
+            </div>
+            <pre className="block max-h-40 overflow-y-auto overflow-x-auto p-3 font-mono text-[10.5px] text-muted-foreground leading-relaxed scrollbar-thin whitespace-pre-wrap break-all bg-black/40">
+              {m.meta.progress}
+            </pre>
+          </div>
+        ) : null}
       </div>
     );
   }
@@ -220,9 +232,30 @@ export function ChatMessageItem({ message: m, debug, hasLiveTools }: ChatMessage
       })}
 
       <div className="animate-scale-in self-start max-w-[85%] space-y-1">
+        {debug && m.meta?.reasoning ? (
+          <details className="group rounded-xl border border-border/50 bg-muted/20 px-3 py-2 text-xs text-muted-foreground/80 shadow-inner">
+            <summary className="flex cursor-pointer items-center gap-1.5 select-none text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              {!m.content ? (
+                <span className="inline-flex gap-0.5">
+                  <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
+                  <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse [animation-delay:150ms]" />
+                  <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse [animation-delay:300ms]" />
+                </span>
+              ) : (
+                <ChevronRight className="h-3 w-3 transition-transform group-open:rotate-90" />
+              )}
+              Reasoning
+            </summary>
+            <pre className="mt-2 whitespace-pre-wrap font-mono text-[10.5px] leading-relaxed break-words border-t border-border/40 pt-2">
+              {m.meta.reasoning}
+            </pre>
+          </details>
+        ) : null}
         <div className="rounded-2xl rounded-bl-sm border border-border/80 bg-card/90 px-4 py-3 text-xs shadow-3d-card select-text leading-relaxed backdrop-blur-md">
           {m.content ? (
             <MarkdownRenderer content={m.content} />
+          ) : m.meta?.reasoning ? (
+            <span className="text-muted-foreground text-[11px]">Generating answer…</span>
           ) : (
             <span className="flex items-center gap-2 text-muted-foreground">
               <span className="inline-flex gap-0.5">
