@@ -274,6 +274,110 @@ async def test_a2a_task_execution_with_agent_token_and_audit(async_session_facto
         )
         logs = list(res.scalars().all())
         assert len(logs) >= 1
+        tool_executed_log = next(log for log in logs if log.action == "tool.executed")
+        assert tool_executed_log.actor_user_id == "u-token"
+        assert tool_executed_log.delegation_chain is not None
+        assert tool_executed_log.delegation_chain[0]["id"] == "u-token"
+        assert tool_executed_log.delegation_chain[1]["identity_id"] == "ident-token-1"
+
+    app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_a2a_guardrail_secret_audit_delegation(async_session_factory):
+    from types import SimpleNamespace
+
+    from sqlalchemy import select
+
+    from app.core.auth.token_exchange import exchange_token_for_agent
+    from app.core.tools.registry import register
+    from app.core.tools.risk_tier import RiskTier
+    from app.core.tools.types import ToolSpec
+    from app.models.agent_identity import AgentIdentity
+    from app.models.audit_log import AuditLog
+    from app.models.membership import Membership
+
+    async def _secret_tool(args, ctx):
+        return "api_key=sk-proj-1234567890123456789012345678901234567890"
+
+    register(
+        ToolSpec(
+            name="test_secret_tool",
+            description="Returns a secret for testing redaction audit",
+            input_schema={"type": "object", "properties": {}},
+            run=_secret_tool,
+            risk_tier=RiskTier.safe,
+        )
+    )
+
+    async with async_session_factory() as db:
+        user = User(id="u-sec", email="sec@example.com", display_name="Sec User", is_active=True)
+        mem = Membership(org_id="org-sec", user_id="u-sec", role="admin")
+        prov = Provider(id="p-sec", org_id="org-sec", key="t-sec", name="t-sec", base_url="http://test", api_key="sk-test-fake")
+        mdl = Model(id="m-sec", org_id="org-sec", provider_id="p-sec", name="t-m", display_name="t-m")
+        agent = Agent(
+            id="agent-sec-1",
+            org_id="org-sec",
+            name="Exposed Sec Agent",
+            model_id="m-sec",
+            tools=["test_secret_tool"],
+            allowed_risk_tiers=["safe", "network", "read"],
+            a2a_exposed=True,
+        )
+        identity = AgentIdentity(
+            id="ident-sec-1",
+            org_id="org-sec",
+            agent_id="agent-sec-1",
+            subject="agent:org-sec:agent-sec-1",
+            allowed_audiences=["*"],
+            enabled=True,
+        )
+        db.add_all([user, mem, prov, mdl, agent, identity])
+        await db.commit()
+
+        token = exchange_token_for_agent(
+            user_id="u-sec",
+            org_id="org-sec",
+            agent_identity=identity,
+            target_audience="http://testserver",
+        )
+
+    async def _override_get_db():
+        async with async_session_factory() as session:
+            yield session
+
+    app.dependency_overrides.clear()
+    app.dependency_overrides[get_db] = _override_get_db
+
+    async def mock_stream(*args, **kwargs):
+        fn = SimpleNamespace(name="test_secret_tool", arguments="{}")
+        tc = SimpleNamespace(index=0, id="tc-sec", function=fn)
+        yield {
+            "type": "tool_calls",
+            "tool_calls": [tc],
+        }
+        yield {"type": "content", "text": "Redaction tested"}
+        yield {"type": "usage", "usage": {"input_tokens": 10, "output_tokens": 10}, "estimated": False}
+
+    with patch("app.core.llm.LLMClient.stream", side_effect=mock_stream), TestClient(app) as test_client:
+        resp = test_client.post(
+            "/api/a2a/tasks",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"agent_id": "agent-sec-1", "input": "Test secret redaction"},
+        )
+        assert resp.status_code == 200
+
+    async with async_session_factory() as db:
+        res = await db.execute(
+            select(AuditLog).where(
+                AuditLog.action == "guardrail.secret_redacted",
+                AuditLog.actor_agent_identity_id == "ident-sec-1",
+            )
+        )
+        logs = list(res.scalars().all())
+        assert len(logs) >= 1
+        assert logs[0].actor_user_id == "u-sec"
         assert logs[0].delegation_chain is not None
+        assert logs[0].delegation_chain[0]["id"] == "u-sec"
 
     app.dependency_overrides.clear()
