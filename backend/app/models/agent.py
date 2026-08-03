@@ -55,5 +55,8 @@ class Agent(Base):
         Integer, default=60, nullable=False
     )
 
+    # --- A2A Exposure (M16) ---
+    a2a_exposed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
     created_at: Mapped["utc_now"] = mapped_column(DateTime, default=utc_now)
     updated_at: Mapped["utc_now"] = mapped_column(DateTime, default=utc_now, onupdate=utc_now)

@@ -1,4 +1,5 @@
 from app.models.agent import Agent
+from app.models.agent_identity import AgentIdentity
 from app.models.agent_release import AgentRelease
 from app.models.api_key import ApiKey
 from app.models.approval_request import ApprovalRequest
@@ -9,6 +10,7 @@ from app.models.evaluation import (
     EvaluationRun,
     EvaluationSuite,
 )
+from app.models.external_agent import ExternalAgent
 from app.models.files import UploadedFile
 from app.models.mcp import McpServer, McpTool
 from app.models.membership import Membership
@@ -34,6 +36,7 @@ from app.models.workspace import SandboxExecution, WorkspaceArtifact
 
 __all__ = [
     "Agent",
+    "AgentIdentity",
     "AgentRelease",
     "ApiKey",
     "ApprovalRequest",
@@ -42,6 +45,7 @@ __all__ = [
     "EvaluationResult",
     "EvaluationRun",
     "EvaluationSuite",
+    "ExternalAgent",
     "McpServer",
     "McpTool",
     "Membership",
@@ -68,3 +72,4 @@ __all__ = [
     "SandboxExecution",
     "WorkspaceArtifact",
 ]
+
