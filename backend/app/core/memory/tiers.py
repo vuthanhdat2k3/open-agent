@@ -19,15 +19,28 @@ async def compact_tiered_memory(
     provider: Provider,
     hot_window: int = 6,
     agent_id: str | None = None,
+    org_id: str | None = None,
+    created_by_user_id: str | None = None,
 ) -> dict[str, Any]:
     """Hierarchical memory management (Hot / Warm / Cold tiering).
 
     - Hot Tier: Last N verbatim messages.
     - Warm Tier: Rolling conversation summary persisted in SessionMemory.
-    - Cold Tier: Semantic facts and user profile entries retrieved from AgentMemory.
+    - Cold Tier: Top structured facts and user profile entries retrieved from AgentMemory (ordered by importance).
 
     Returns structured tiered context components.
     """
+    # Resolve org_id / user_id if not provided
+    if not org_id:
+        from app.models.session import Session
+
+        res_sess = await db.execute(select(Session).where(Session.id == session_id))
+        sess = res_sess.scalar_one_or_none()
+        if sess:
+            org_id = sess.org_id
+            created_by_user_id = created_by_user_id or sess.user_id
+    org_id = org_id or "default"
+
     # 1. Fetch Hot Tier messages
     res_msg = await db.execute(
         select(Message).where(Message.session_id == session_id).order_by(Message.position)
@@ -80,20 +93,27 @@ async def compact_tiered_memory(
     smem = res_mem.scalar_one_or_none()
     if smem:
         smem.value = warm_summary
+        if created_by_user_id:
+            smem.created_by_user_id = created_by_user_id
     else:
         smem = SessionMemory(
             session_id=session_id,
+            org_id=org_id,
+            created_by_user_id=created_by_user_id,
             key="warm_summary",
             value=warm_summary,
         )
         db.add(smem)
     await db.flush()
 
-    # 3. Cold Tier: Extract agent memory facts if agent_id is present
+    # 3. Cold Tier: Extract top structured agent memory facts if agent_id is present
     cold_facts = []
     if agent_id:
         res_agent_mem = await db.execute(
-            select(AgentMemory).where(AgentMemory.agent_id == agent_id).limit(10)
+            select(AgentMemory)
+            .where(AgentMemory.agent_id == agent_id)
+            .order_by(AgentMemory.importance.desc(), AgentMemory.updated_at.desc())
+            .limit(10)
         )
         cold_facts = [
             f"{mem.memory_type}.{mem.attribute}: {mem.value}"
