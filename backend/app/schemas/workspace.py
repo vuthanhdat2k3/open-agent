@@ -42,3 +42,19 @@ class SandboxExecutionOut(BaseModel):
     started_at: datetime
     finished_at: datetime | None = None
     created_at: datetime
+
+
+class SandboxRunOut(BaseModel):
+    execution_id: str
+    artifact_id: str
+    max_seconds: float
+
+
+class ActiveRunOut(BaseModel):
+    id: str
+    status: str
+    path: str
+    language: str
+    started_at: datetime
+    remaining_seconds: float
+    max_seconds: float

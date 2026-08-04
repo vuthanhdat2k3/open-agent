@@ -30,6 +30,7 @@ import type {
   UploadedFile,
   UsageSummary,
   Workflow,
+  ChatRunDetail,
   WorkflowRunDetail,
   WorkspaceArtifact,
   UserProfile,
@@ -282,10 +283,10 @@ export function useDeleteSession() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["sessions"] }),
   });
 }
-export function useSessionMessages(sessionId: string | null) {
+export function useSessionMessages(sessionId: string | null, enabled = true) {
   return useQuery({
     queryKey: ["messages", sessionId],
-    enabled: !!sessionId,
+    enabled: enabled && !!sessionId,
     queryFn: () => api.get<Message[]>(`/api/sessions/${sessionId}/messages`),
   });
 }
@@ -510,6 +511,26 @@ export function useWorkflowRun(runId: string | null) {
     queryKey: ["workflow-run", runId],
     enabled: !!runId,
     queryFn: () => api.get<WorkflowRunDetail>(`/api/workflows/runs/${runId}`),
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status && ["succeeded", "failed", "diverged", "cancelled", "waiting_approval"].includes(status)
+        ? false
+        : 2000;
+    },
+  });
+}
+
+export function useChatRun(runId: string | null) {
+  return useQuery({
+    queryKey: ["chat-run", runId],
+    enabled: !!runId,
+    queryFn: () => api.get<ChatRunDetail>(`/api/chat/runs/${runId}`),
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status && ["succeeded", "failed", "diverged", "cancelled"].includes(status)
+        ? false
+        : 2000;
+    },
   });
 }
 

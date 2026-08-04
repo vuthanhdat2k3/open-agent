@@ -10,6 +10,7 @@ class ChatRequest(BaseModel):
     agent_id: str
     message: str
     session_id: str | None = None
+    run_id: str | None = None
     stream: bool = True
 
 

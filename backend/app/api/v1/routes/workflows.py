@@ -1,11 +1,15 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.sse import format_sse
+from app.config import get_settings
 from app.core.quota.dependencies import agent_run_admission, enforce_resource_quota
-from app.core.workflow.engine import run_workflow
+from app.core.workflow.engine import create_workflow_run, run_workflow
+from app.core.workflow.queue import enqueue_workflow_run
+from app.db.base import utc_now
+from app.db.session import SessionLocal
 from app.dependencies import get_current_org_id, get_db, require_permission
 from app.models.workflow_node_run import WorkflowNodeRun
 from app.models.workflow_run import WorkflowRun
@@ -23,6 +27,28 @@ router = APIRouter(
     prefix="/api/workflows",
     tags=["workflows"],
 )
+
+
+async def _run_workflow_detached(workflow_id: str, org_id: str, workflow_run_id: str) -> None:
+    async with SessionLocal() as db:
+        wf = await WorkflowService(db).get(org_id, workflow_id)
+        run = await db.get(WorkflowRun, workflow_run_id)
+        if wf is None or run is None or run.org_id != org_id:
+            return
+        try:
+            await run_workflow(
+                wf,
+                str((run.input or {}).get("text", "")),
+                db,
+                stream=False,
+                workflow_run_id=workflow_run_id,
+                force_inline=True,
+            )
+        except Exception as exc:  # noqa: BLE001
+            run.status = "failed"
+            run.error = str(exc)
+            run.finished_at = utc_now()
+            await db.commit()
 
 
 @router.get("", response_model=list[WorkflowOut], dependencies=[Depends(require_permission("workflows:read"))])
@@ -114,6 +140,7 @@ async def delete_workflow(
 async def run_workflow_endpoint(
     id: str,
     body: RunWorkflowRequest,
+    background_tasks: BackgroundTasks,
     org_id: str = Depends(get_current_org_id),
     db: AsyncSession = Depends(get_db),
 ):
@@ -121,12 +148,38 @@ async def run_workflow_endpoint(
     if wf is None:
         raise HTTPException(404, "workflow not found")
     if not body.stream:
-        output, log, workflow_run_id = await run_workflow(wf, body.input, db, stream=False)
+        output, log, workflow_run_id = await run_workflow(
+            wf, body.input, db, stream=False, workflow_run_id=body.workflow_run_id
+        )
         return {"workflow_run_id": workflow_run_id, "output": output, "events": log}
 
+    try:
+        run = await create_workflow_run(wf, body.input, db, body.workflow_run_id)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    run_id = run.id
+    if run.status in {"succeeded", "failed", "diverged", "cancelled"}:
+        run_status = run.status
+    elif get_settings().workflow_execution_mode == "queued":
+        run.status = "queued"
+        await db.commit()
+        await enqueue_workflow_run(run.id)
+        run_status = "queued"
+    else:
+        background_tasks.add_task(_run_workflow_detached, wf.id, org_id, run.id)
+        run_status = "running"
+
     async def gen():
-        async for ev in await run_workflow(wf, body.input, db, stream=True):
-            yield format_sse(ev)
+        yield format_sse(
+            {
+                "event": "workflow_start",
+                "data": {"workflow_run_id": run.id, "workflow_id": wf.id, "status": run_status},
+            }
+        )
+        if run_status == "queued":
+            yield format_sse({"event": "workflow_queued", "data": {"workflow_run_id": run.id}})
+        elif run_status == "running":
+            yield format_sse({"event": "workflow_attached", "data": {"workflow_run_id": run.id}})
 
     return StreamingResponse(gen(), media_type="text/event-stream")
 

@@ -64,6 +64,7 @@ class Settings(BaseSettings):
     sandbox_memory: str = "256m"
     sandbox_cpus: float = 1.0
     sandbox_default_timeout: float = 30.0
+    sandbox_max_run_seconds: float = 600.0
     sandbox_allow_network: bool = False
     sandbox_max_retries: int = 3
 

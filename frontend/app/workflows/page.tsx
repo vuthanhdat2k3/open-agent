@@ -17,7 +17,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { streamSSE } from "@/lib/api";
-import { useWorkflows, useCreateWorkflow, useAgents, useModels, useGenerateWorkflow } from "@/hooks";
+import { useWorkflows, useCreateWorkflow, useAgents, useModels, useGenerateWorkflow, useWorkflowRun } from "@/hooks";
 import { useWorkflowStore } from "@/stores";
 import { Button } from "@/components/ui/button";
 import { Input, Label, Textarea } from "@/components/ui/input";
@@ -72,7 +72,16 @@ export default function WorkflowsPage() {
   const agents = useAgents();
   const models = useModels();
   const generate = useGenerateWorkflow();
-  const { nodes, edges, selectedNodeId, setGraph, setSelectedNode } = useWorkflowStore();
+  const {
+    nodes,
+    edges,
+    selectedNodeId,
+    activeRunId,
+    setGraph,
+    setSelectedNode,
+    setActiveRun,
+  } = useWorkflowStore();
+  const workflowRun = useWorkflowRun(activeRunId);
 
   const [wfName, setWfName] = React.useState("");
   const [aiPrompt, setAiPrompt] = React.useState("");
@@ -207,6 +216,7 @@ export default function WorkflowsPage() {
     setOutput("");
     setLogs([]);
     setNodeStatus({});
+    setActiveRun(null);
     setGraph([], []);
     setSelectedNode(null);
     toast.success("New workflow — canvas cleared");
@@ -237,6 +247,30 @@ export default function WorkflowsPage() {
   React.useEffect(() => {
     if (!aiModelId && models.data?.length) setAiModelId(models.data[0].id);
   }, [models.data, aiModelId]);
+
+  React.useEffect(() => {
+    const run = workflowRun.data;
+    if (!run) return;
+    setActiveRun(run.id, run.status);
+    const statuses: Record<string, string> = {};
+    const restoredLogs: WorkflowLogItem[] = [];
+    for (const node of run.nodes || []) {
+      statuses[node.node_id] = node.status === "succeeded" ? "done" : node.status;
+      restoredLogs.push({
+        id: node.id,
+        ts: node.started_at ? new Date(node.started_at).getTime() : Date.now(),
+        event: node.status === "succeeded" ? "node_done" : node.status === "failed" ? "node_error" : "node_start",
+        node_id: node.node_id,
+        message: `Node "${node.node_id}" ${node.status}`,
+        output: typeof node.output?.text === "string" ? node.output.text : undefined,
+      });
+    }
+    setNodeStatus(statuses);
+    if (run.output?.text) setOutput(String(run.output.text));
+    setRunning(!["succeeded", "failed", "diverged", "cancelled", "waiting_approval"].includes(run.status));
+    setLogs((previous) => (previous.length === 0 ? restoredLogs : previous));
+  }, [workflowRun.data, setActiveRun]);
+
 
   const handleGenerate = async () => {
     if (!aiPrompt.trim() || !aiModelId) return;
@@ -290,7 +324,9 @@ export default function WorkflowsPage() {
           const ts = Date.now();
           const logId = Math.random().toString(36).slice(2, 9);
 
-          if (ev.event === "node_start") {
+          if (ev.event === "workflow_start") {
+            setActiveRun(d.workflow_run_id, d.status);
+          } else if (ev.event === "node_start") {
             setNodeStatus((s) => ({ ...s, [d.node_id]: "running" }));
             setLogs((prev) => [
               ...prev,
@@ -386,7 +422,7 @@ export default function WorkflowsPage() {
         },
       ]);
     } finally {
-      setRunning(false);
+      // The durable run owns the lifecycle; polling will update the UI.
     }
   };
 

@@ -109,6 +109,39 @@ Permissions:
 - Execution deletes require `usage:read` in the first implementation; a future
   admin-only cleanup permission can split this out.
 
+### Run/Stop
+
+Long-lived artifact execution: runs an artifact file in an ephemeral sandbox
+container and streams its output. At most one concurrent run per organization.
+
+- `POST /api/workspace/artifacts/{artifact_id}/run` — starts a run; body empty;
+  `202` → `{execution_id, artifact_id, max_seconds}`.
+  - `400` unsupported extension (only `.py` / `.sh`).
+  - `404` unknown artifact.
+  - `409` if another execution already runs for the org.
+  - `401` / `403` unauthenticated / insufficient permission (`files:read`).
+- `GET /api/workspace/executions/active` — `200` → `ActiveRunOut | null`
+  (fields: `execution_id, artifact_id, path, language, started_at,
+  remaining_seconds, max_seconds`).
+- `GET /api/workspace/executions/{execution_id}/stream` — SSE
+  (`text/event-stream`); events `stdout` (line), `stopped`, `timeout`, `exit`
+  (code); heartbeat every 15s.
+- `POST /api/workspace/executions/{execution_id}/stop` — `200` →
+  `{"ok": true}`; `404` if the execution is not active.
+
+Operational notes:
+
+- The run executes the artifact file in an ephemeral sandbox container (tmpfs
+  only, `--network none`, read-only root) — it does NOT write back to the host
+  workspace.
+- At most 1 concurrent run per organization.
+- Default time limit `sandbox_max_run_seconds` = 600s with auto-stop → status
+  `timed_out`.
+- User Stop → status `stopped`.
+- Clean exit → status `succeeded` / `failed`.
+- The in-memory run registry is lost on backend restart; orphaned `oa-run-*`
+  containers may remain.
+
 ## Tool Integration
 
 - `write_file` upserts `workspace_artifacts` when a DB/org context exists.
