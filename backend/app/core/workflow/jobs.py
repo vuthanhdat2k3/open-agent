@@ -3,18 +3,20 @@ from __future__ import annotations
 from sqlalchemy import select
 
 from app.core.workflow.engine import run_workflow as run_workflow_engine
+from app.db.base import utc_now
 from app.db.session import SessionLocal
+from app.models.task import Task
 from app.models.workflow import Workflow
 from app.models.workflow_run import WorkflowRun
+from app.schemas.chat import ChatRequest
+from app.services.chat_service import ChatService
 
 
 async def run_workflow(ctx, workflow_run_id: str) -> None:  # noqa: ARG001
     async with SessionLocal() as session:
         res = await session.execute(select(WorkflowRun).where(WorkflowRun.id == workflow_run_id))
         workflow_run = res.scalar_one_or_none()
-        if workflow_run is None:
-            return
-        if workflow_run.status == "succeeded":
+        if workflow_run is None or workflow_run.status == "succeeded":
             return
         wf_res = await session.execute(
             select(Workflow).where(
@@ -28,11 +30,40 @@ async def run_workflow(ctx, workflow_run_id: str) -> None:  # noqa: ARG001
             workflow_run.error = "workflow not found"
             await session.commit()
             return
-        await run_workflow_engine(
-            workflow,
-            str((workflow_run.input or {}).get("text", "")),
-            session,
-            stream=False,
-            workflow_run_id=workflow_run.id,
-            force_inline=True,
+        try:
+            await run_workflow_engine(
+                workflow,
+                str((workflow_run.input or {}).get("text", "")),
+                session,
+                stream=False,
+                workflow_run_id=workflow_run.id,
+                force_inline=True,
+            )
+        except Exception as exc:  # noqa: BLE001
+            workflow_run.status = "failed"
+            workflow_run.error = str(exc)
+            await session.commit()
+
+
+async def run_chat(ctx, payload: dict) -> None:  # noqa: ARG001
+    async with SessionLocal() as session:
+        request = ChatRequest.model_validate(payload)
+        res = await session.execute(
+            select(Task).where(Task.id == request.run_id, Task.org_id == payload["org_id"])
         )
+        task = res.scalar_one_or_none()
+        if task is None:
+            return
+        try:
+            await ChatService(session).run(
+                payload["org_id"],
+                request,
+                user_id=payload.get("user_id"),
+                root_run_id=request.run_id,
+                current_task_id=task.id,
+            )
+        except Exception as exc:  # noqa: BLE001
+            task.status = "failed"
+            task.result = str(exc)
+            task.finished_at = utc_now()
+            await session.commit()

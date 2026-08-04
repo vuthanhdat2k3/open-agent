@@ -39,7 +39,7 @@ class WorkflowWaitingApproval(RuntimeError):
         self.approval_id = approval_id
 
 
-async def _create_workflow_run(
+async def create_workflow_run(
     workflow: Any,
     input_text: str,
     db: AsyncSession,
@@ -50,11 +50,13 @@ async def _create_workflow_run(
             select(WorkflowRun).where(
                 WorkflowRun.id == workflow_run_id,
                 WorkflowRun.org_id == workflow.org_id,
+                WorkflowRun.workflow_id == workflow.id,
             )
         )
         existing = res.scalar_one_or_none()
         if existing is not None:
             return existing
+        raise ValueError("workflow run not found")
     run = WorkflowRun(
         org_id=workflow.org_id,
         workflow_id=workflow.id,
@@ -105,7 +107,7 @@ async def _finish_node_run(
     await db.commit()
 
 
-async def run_workflow_events(
+async def _run_workflow_events(
     workflow: Any,
     input_text: str,
     db: AsyncSession,
@@ -114,8 +116,46 @@ async def run_workflow_events(
     replay_of_run_id: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     settings = get_settings()
-    workflow_run = await _create_workflow_run(workflow, input_text, db, workflow_run_id)
-    yield {"event": "workflow_start", "data": {"workflow_run_id": workflow_run.id}}
+    workflow_run = await create_workflow_run(workflow, input_text, db, workflow_run_id)
+    yield {
+        "event": "workflow_start",
+        "data": {
+            "workflow_run_id": workflow_run.id,
+            "workflow_id": workflow.id,
+            "status": workflow_run.status,
+        },
+    }
+
+    # Queued execution is deliberately detached from this HTTP/SSE request.
+    # The worker owns the durable run; the client can poll/reconnect later.
+    if settings.workflow_execution_mode == "queued" and not force_inline:
+        from app.core.workflow.queue import enqueue_workflow_run
+
+        if workflow_run.status not in {"queued", "running"} or workflow_run_id is None:
+            await enqueue_workflow_run(workflow_run.id)
+            workflow_run.status = "queued"
+            await db.commit()
+            yield {"event": "workflow_queued", "data": {"workflow_run_id": workflow_run.id}}
+        else:
+            yield {"event": "workflow_attached", "data": {"workflow_run_id": workflow_run.id}}
+        return
+
+    # An inline reconnect may race with the original request or a worker.
+    # Claiming the DB lease prevents two executors from running side effects.
+    if workflow_run_id and workflow_run.status in {"succeeded", "failed", "diverged"}:
+        yield {
+            "event": "workflow_finished",
+            "data": {"workflow_run_id": workflow_run.id, "status": workflow_run.status},
+        }
+        return
+    if not await resume.acquire_lease(db, workflow_run.id):
+        yield {
+            "event": "workflow_busy",
+            "data": {"workflow_run_id": workflow_run.id, "status": workflow_run.status},
+        }
+        return
+    workflow_run.status = "running"
+    await db.commit()
 
     # Position of the next recorded tool call; replay lines up against it.
     tool_sequence = 0
@@ -131,15 +171,6 @@ async def run_workflow_events(
             "data": {"source_run_id": replay_of_run_id, "recorded_calls": len(replay_cursor)},
         }
 
-    if settings.workflow_execution_mode == "queued" and not force_inline:
-        from app.core.workflow.queue import enqueue_workflow_run
-
-        await enqueue_workflow_run(workflow_run.id)
-        workflow_run.status = "queued"
-        await db.commit()
-        yield {"event": "workflow_queued", "data": {"workflow_run_id": workflow_run.id}}
-        return
-
     graph = workflow.graph or {}
     nodes = graph.get("nodes", [])
     edges = [{**edge, "_idx": idx} for idx, edge in enumerate(graph.get("edges", []))]
@@ -148,6 +179,7 @@ async def run_workflow_events(
         workflow_run.error = "workflow has no nodes"
         workflow_run.finished_at = utc_now()
         await db.commit()
+        await resume.release_lease(db, workflow_run.id)
         yield {"event": "error", "data": {"message": "workflow has no nodes"}}
         return
 
@@ -164,6 +196,7 @@ async def run_workflow_events(
         workflow_run.error = "workflow must have exactly one input node"
         workflow_run.finished_at = utc_now()
         await db.commit()
+        await resume.release_lease(db, workflow_run.id)
         yield {
             "event": "error",
             "data": {"message": "workflow must have exactly one input node"},
@@ -178,6 +211,22 @@ async def run_workflow_events(
     resumed_outputs: dict[str, str] = (
         await resume.completed_node_outputs(db, workflow_run.id) if workflow_run_id else {}
     )
+    # Rebuild the in-memory scheduler from durable node checkpoints. Without
+    # this, a reconnect knows the outputs but still treats every node as
+    # pending and cannot make downstream nodes ready.
+    for node in nodes:
+        node_id = node["id"]
+        if node_id in resumed_outputs:
+            status[node_id] = "done"
+            outputs[node_id] = resumed_outputs[node_id]
+    for node in nodes:
+        if status[node["id"]] != "done":
+            continue
+        for edge in edges_from[node["id"]]:
+            if edge.get("condition") is None or _eval_condition(
+                edge["condition"], outputs.get(node["id"], "")
+            ):
+                active_edges.add(edge["_idx"])
     if resumed_outputs:
         yield {
             "event": "workflow_resumed",
@@ -424,6 +473,7 @@ async def run_workflow_events(
                     "event": "approval_required",
                     "data": {"node_id": nid, "approval_id": res.approval_id},
                 }
+                await resume.release_lease(db, workflow_run.id)
                 return
             if isinstance(res, Exception):
                 status[nid] = "error"
@@ -465,9 +515,39 @@ async def run_workflow_events(
     workflow_run.output = {"text": final_output}
     workflow_run.finished_at = utc_now()
     await db.commit()
+    await resume.release_lease(db, workflow_run.id)
     workflow_run_duration_seconds.observe(
         max(0.0, time.monotonic() - budget.started_at)
     )
+
+
+async def run_workflow_events(
+    workflow: Any,
+    input_text: str,
+    db: AsyncSession,
+    workflow_run_id: str | None = None,
+    force_inline: bool = False,
+    replay_of_run_id: str | None = None,
+) -> AsyncIterator[dict[str, Any]]:
+    """Stream workflow events and release any executor lease on close."""
+    run_id = workflow_run_id
+    try:
+        async for event in _run_workflow_events(
+            workflow,
+            input_text,
+            db,
+            workflow_run_id=workflow_run_id,
+            force_inline=force_inline,
+            replay_of_run_id=replay_of_run_id,
+        ):
+            if event.get("event") == "workflow_start":
+                run_id = event.get("data", {}).get("workflow_run_id") or run_id
+            yield event
+    finally:
+        # Conditional release is idempotent and only clears this process's
+        # lease. This also covers cancellation/client disconnect and errors.
+        if run_id is not None:
+            await resume.release_lease(db, run_id)
 
 
 async def run_workflow(

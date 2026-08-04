@@ -185,6 +185,21 @@ async def _agent_stream(
     delegation_chain: list | dict | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     root_task: Task | None = None
+    # A detached chat creates its durable Task before starting model work. Reuse
+    # that row so status/result survive an SSE disconnect and no duplicate root
+    # task is created.
+    if current_task_id is not None:
+        task_res = await db.execute(
+            select(Task).where(Task.id == current_task_id, Task.org_id == agent.org_id)
+        )
+        root_task = task_res.scalar_one_or_none()
+        if root_task is None:
+            yield {"event": "error", "data": {"message": "chat run not found"}}
+            return
+        root_task.status = "running"
+        root_task.started_at = root_task.started_at or utc_now()
+        root_run_id = root_task.root_run_id
+        await db.commit()
     # Position of the next tool call within this run, used to line recordings
     # up with the replay that reads them back.
     tool_sequence = 0
@@ -541,7 +556,7 @@ async def _agent_stream(
                             emit_q: asyncio.Queue = asyncio.Queue()
 
                             async def _emit(ev: dict[str, Any]) -> None:
-                                await emit_q.put(ev)
+                                await emit_q.put(ev)  # noqa: B023
 
                             run_ctx = copy.copy(ctx)
                             run_ctx.emit = _emit
@@ -566,7 +581,7 @@ async def _agent_stream(
                                             item = await asyncio.wait_for(
                                                 emit_q.get(), timeout=0.25
                                             )
-                                        except asyncio.TimeoutError:
+                                        except asyncio.TimeoutError:  # noqa: UP041
                                             continue
                                         yield {
                                             "event": "tool_progress",
@@ -840,8 +855,20 @@ async def stream_agent(
     message: str,
     db: AsyncSession,
     session_id: str | None = None,
+    root_run_id: str | None = None,
+    current_task_id: str | None = None,
+    user_id: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
-    async for ev in _agent_stream(agent, message, db, 0, session_id):
+    async for ev in _agent_stream(
+        agent,
+        message,
+        db,
+        0,
+        session_id,
+        current_task_id=current_task_id,
+        root_run_id=root_run_id,
+        user_id=user_id,
+    ):
         yield ev
 
 

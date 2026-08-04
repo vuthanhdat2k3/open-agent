@@ -54,6 +54,7 @@ class WorkflowOut(WorkflowBase):
 class RunWorkflowRequest(BaseModel):
     input: str
     stream: bool = True
+    workflow_run_id: str | None = None
 
 
 class WorkflowGenerateRequest(BaseModel):

@@ -369,13 +369,25 @@ export interface TaskTree {
   tasks: TaskTreeNode[];
 }
 
+export interface ChatRunDetail {
+  id: string;
+  status: string;
+  result: string | null;
+  error: string | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+}
+
 export interface WorkflowRunDetail {
   id: string;
+  org_id?: string;
   workflow_id: string;
   status: string;
   input: Record<string, unknown>;
   output: Record<string, unknown>;
   error: string | null;
+  started_at?: string | null;
+  finished_at?: string | null;
   nodes: Array<{
     id: string;
     node_id: string;

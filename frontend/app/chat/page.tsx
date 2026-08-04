@@ -4,7 +4,7 @@ import * as React from "react";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { streamSSE } from "@/lib/api";
-import { useAgents, useSessions, useSessionMessages, useDeleteSession, useModels } from "@/hooks";
+import { useAgents, useSessions, useSessionMessages, useDeleteSession, useModels, useChatRun } from "@/hooks";
 import { useChatStore } from "@/stores";
 import {
   Bot,
@@ -27,12 +27,27 @@ export default function ChatPage() {
   const searchParams = useSearchParams();
   const agents = useAgents();
   const models = useModels();
-  const { sessionId, setSession } = useChatStore();
+  const {
+    agentId,
+    sessionId,
+    activeRunId,
+    hydrated: chatHydrated,
+    setAgent,
+    setSession,
+    setActiveRun,
+  } = useChatStore();
+  const chatRun = useChatRun(activeRunId);
   const sessions = useSessions();
   const delSession = useDeleteSession();
-  const messagesQuery = useSessionMessages(sessionId);
-
-  const [agentId, setAgentId] = React.useState("");
+  const [agentReady, setAgentReady] = React.useState(false);
+  const selectedSession = sessions.data?.find((s) => s.id === sessionId);
+  const sessionBelongsToAgent = Boolean(
+    agentReady && selectedSession && selectedSession.agent_id === agentId,
+  );
+  const messagesQuery = useSessionMessages(
+    sessionId,
+    agentReady && sessions.isSuccess && sessionBelongsToAgent,
+  );
   const [modelOverrideId, setModelOverrideId] = React.useState("");
   const [draft, setDraft] = React.useState("");
   const [messages, setMessages] = React.useState<UIMessage[]>([]);
@@ -49,17 +64,41 @@ export default function ChatPage() {
   const bottomRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
-    if (!agents.data?.length) return;
+    if (!chatHydrated || !agents.data?.length) return;
     const preselect = searchParams.get("agent");
-    const valid = preselect && agents.data.some((a) => a.id === preselect);
-    setAgentId((current) => current || (valid ? preselect! : agents.data![0].id));
-  }, [agents.data, searchParams]);
+    const resolvedAgentId =
+      preselect && agents.data.some((a) => a.id === preselect)
+        ? preselect
+        : agentId && agents.data.some((a) => a.id === agentId)
+          ? agentId
+          : agents.data[0].id;
+    if (agentId !== resolvedAgentId) setAgent(resolvedAgentId);
+    setAgentReady(true);
+  }, [agentId, agents.data, chatHydrated, searchParams, setAgent]);
 
   React.useEffect(() => {
     setModelOverrideId("");
   }, [agentId]);
 
   React.useEffect(() => {
+    if (!agentReady || !sessions.isSuccess || !sessionId) return;
+    const session = sessions.data?.find((s) => s.id === sessionId);
+    if (!session || session.agent_id !== agentId) {
+      liveRef.current = [];
+      setMessages([]);
+      setSession(null);
+      setActiveRun(null);
+    }
+  }, [agentId, agentReady, sessionId, sessions.data, sessions.isSuccess, setActiveRun, setSession]);
+
+  React.useEffect(() => {
+    if (!agentReady || !sessionId || !sessionBelongsToAgent) {
+      liveRef.current = [];
+      setMessages([]);
+      composeRef.current.clear();
+      deltaArgsRef.current.clear();
+      return;
+    }
     if (messagesQuery.data) {
       const initial = messagesQuery.data.map((m) => ({
         id: m.id,
@@ -70,11 +109,22 @@ export default function ChatPage() {
       liveRef.current = initial;
       setMessages(initial);
     }
-  }, [messagesQuery.data]);
+  }, [agentReady, messagesQuery.data, sessionBelongsToAgent, sessionId]);
 
   React.useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    const run = chatRun.data;
+    if (!run) return;
+    if (["succeeded", "failed", "diverged", "cancelled"].includes(run.status)) {
+      setStreaming(false);
+      setPhase("");
+      messagesQuery.refetch();
+      sessions.refetch?.();
+      if (run.status !== "succeeded" && run.error) toast.error(run.error);
+    } else {
+      setStreaming(true);
+    }
+  }, [chatRun.data, messagesQuery, sessions, setActiveRun]);
+
 
   const currentAgent = agents.data?.find((a) => a.id === agentId);
   const currentAgentModel = models.data?.find((m) => m.id === currentAgent?.model_id);
@@ -121,7 +171,13 @@ export default function ChatPage() {
           const d = ev.data;
           const msgs = liveRef.current;
           const aIdx = msgs.findIndex((x) => x.id === assistantId);
-          if (ev.event === "message_start") {
+          if (ev.event === "session_start") {
+            setSession(d.session_id);
+          } else if (ev.event === "chat_run_start") {
+            setActiveRun(d.run_id);
+            setStreaming(true);
+            setPhase("thinking");
+          } else if (ev.event === "message_start") {
             setPhase("thinking");
           } else if (ev.event === "reasoning") {
             setPhase("thinking");
@@ -237,10 +293,14 @@ export default function ChatPage() {
         abortRef.current.signal,
       );
     } catch (e: any) {
+      setStreaming(false);
       if (e.name !== "AbortError") toast.error(e.message);
     } finally {
       abortRef.current = null;
-      setStreaming(false);
+      // The POST/SSE connection only bootstraps a durable run. Its state is
+      // controlled by useChatRun polling, including after a page reload.
+      // Do not clear streaming here: the bootstrap request ending is not the
+      // same thing as the agent run finishing.
     }
   };
 
@@ -248,10 +308,39 @@ export default function ChatPage() {
     abortRef.current?.abort();
   };
 
-  const clearMessages = () => {
+  const handleAgentChange = (nextAgentId: string) => {
+    if (nextAgentId === agentId) return;
+    abortRef.current?.abort();
     liveRef.current = [];
     setMessages([]);
     setSession(null);
+    setActiveRun(null);
+    setStreaming(false);
+    setPhase("");
+    setAgent(nextAgentId);
+    setAgentReady(true);
+  };
+
+  const handleSessionChange = (nextSessionId: string) => {
+    const nextSession = sessions.data?.find((s) => s.id === nextSessionId);
+    if (!nextSession || nextSession.agent_id !== agentId) return;
+    abortRef.current?.abort();
+    liveRef.current = [];
+    setMessages([]);
+    setActiveRun(null);
+    setSession(nextSessionId);
+    setStreaming(false);
+    setPhase("");
+  };
+
+  const clearMessages = () => {
+    abortRef.current?.abort();
+    liveRef.current = [];
+    setMessages([]);
+    setSession(null);
+    setActiveRun(null);
+    setStreaming(false);
+    setPhase("");
   };
 
   const hasLiveTools = messages.some((x) => x.role === "tool_call" || x.role === "tool_result");
@@ -265,7 +354,7 @@ export default function ChatPage() {
             <Label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">
               <Bot className="h-3.5 w-3.5 text-primary" /> Active Agent
             </Label>
-            <Select value={agentId} onChange={(e) => setAgentId(e.target.value)} className="w-full text-xs">
+            <Select value={agentId ?? ""} onChange={(e) => handleAgentChange(e.target.value)} className="w-full text-xs">
               {agents.data?.map((a) => (
                 <option key={a.id} value={a.id}>{a.name}</option>
               ))}
@@ -337,7 +426,7 @@ export default function ChatPage() {
                     }`}
                   >
                     <button
-                      onClick={() => setSession(s.id)}
+                      onClick={() => handleSessionChange(s.id)}
                       className="block flex-1 truncate px-3 py-2 text-left text-xs"
                     >
                       {s.title}
@@ -349,7 +438,6 @@ export default function ChatPage() {
                         await delSession.mutateAsync(s.id);
                         if (sessionId === s.id) {
                           clearMessages();
-                          setSession(null);
                         }
                       }}
                       className="shrink-0 rounded-md p-1.5 text-current/70 opacity-0 transition-opacity hover:bg-destructive/15 hover:text-destructive group-hover:opacity-100"
