@@ -96,6 +96,10 @@ export default function IntegrationsPage() {
     );
   }
 
+  const connectedEmail = email.find((item) => item.status === "connected");
+  const connectedCalendar = calendar.find((item) => item.status === "connected");
+  const connectedDrive = drive.find((item) => item.status === "connected");
+
   return (
     <div className="space-y-8">
       <div>
@@ -108,23 +112,20 @@ export default function IntegrationsPage() {
         <Card>
           <CardHeader><CardTitle className="flex items-center gap-2"><Mail className="h-5 w-5 text-primary" />Email accounts</CardTitle></CardHeader>
           <CardContent className="space-y-3">
-            {email.map((item) => <ConnectionCard key={item.id} kind="email" item={item} />)}
-            <ConnectCard kind="email" provider="google" />
+            {connectedEmail ? <ConnectionCard kind="email" item={connectedEmail} /> : <ConnectCard kind="email" provider="google" />}
           </CardContent>
         </Card>
         <Card>
           <CardHeader><CardTitle className="flex items-center gap-2"><CalendarDays className="h-5 w-5 text-primary" />Calendar accounts</CardTitle></CardHeader>
           <CardContent className="space-y-3">
-            {calendar.map((item) => <ConnectionCard key={item.id} kind="calendar" item={item} />)}
-            <ConnectCard kind="calendar" provider="google" />
+            {connectedCalendar ? <ConnectionCard kind="calendar" item={connectedCalendar} /> : <ConnectCard kind="calendar" provider="google" />}
           </CardContent>
         </Card>
         <Card>
           <CardHeader><CardTitle className="flex items-center gap-2"><HardDrive className="h-5 w-5 text-primary" />Google Drive</CardTitle></CardHeader>
           <CardContent className="space-y-3">
             <p className="text-sm text-muted-foreground">List, read, create, update and delete files through the approval-gated Drive connector.</p>
-            {drive.map((item) => <ConnectionCard key={item.id} kind="drive" item={item} />)}
-            <ConnectCard kind="drive" provider="google" />
+            {connectedDrive ? <ConnectionCard kind="drive" item={connectedDrive} /> : <ConnectCard kind="drive" provider="google" />}
           </CardContent>
         </Card>
       </div>

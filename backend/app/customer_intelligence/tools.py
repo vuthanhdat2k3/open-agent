@@ -37,9 +37,20 @@ def _enabled() -> bool:
 
 
 async def _connected_provider(ctx: ToolContext, org_id: str, provider: str = "gmail"):
+    if not ctx.user_id:
+        raise ValueError("user context is required for email connection access")
     conn_repo = EmailConnectionRepository(ctx.db)
     conns = await conn_repo.list(org_id)
-    conn = next((c for c in conns if c.status == "connected" and c.provider == provider), None)
+    conn = next(
+        (
+            c
+            for c in conns
+            if c.status == "connected"
+            and c.provider == provider
+            and c.created_by_user_id == ctx.user_id
+        ),
+        None,
+    )
     if conn is None or not conn.credentials_enc:
         raise ValueError("no connected email account")
     creds = await load_fresh_credentials(ctx.db, conn)
@@ -47,7 +58,7 @@ async def _connected_provider(ctx: ToolContext, org_id: str, provider: str = "gm
 
 
 async def _connected_calendar(ctx: ToolContext, org_id: str):
-    conn = await CalendarConnectionRepository(ctx.db).get_connected(org_id)
+    conn = await CalendarConnectionRepository(ctx.db).get_connected(org_id, ctx.user_id)
     if conn is None or not conn.credentials_enc:
         raise ValueError("no connected calendar account")
     from app.customer_intelligence.providers.research import (
@@ -60,7 +71,7 @@ async def _connected_calendar(ctx: ToolContext, org_id: str):
 
 
 async def _connected_drive(ctx: ToolContext, org_id: str):
-    conn = await DriveConnectionRepository(ctx.db).get_connected(org_id)
+    conn = await DriveConnectionRepository(ctx.db).get_connected(org_id, ctx.user_id)
     if conn is None or not conn.credentials_enc:
         raise ValueError("no connected Google Drive account")
     from app.customer_intelligence.providers.drive import McpDriveProvider
