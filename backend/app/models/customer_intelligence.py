@@ -127,7 +127,7 @@ class ResearchCase(Base):
         String(36), ForeignKey("ci_connections.id", ondelete="SET NULL"), nullable=True
     )
     calendar_connection_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("ci_calendar_connections.id", ondelete="SET NULL"), nullable=True
+        String(36), ForeignKey("ci_calendar_connections.id", ondelete="SET NULL", name="fk_ci_cases_calendar_connection"), nullable=True
     )
     company_name: Mapped[str | None] = mapped_column(String(320), nullable=True)
     company_domain: Mapped[str | None] = mapped_column(String(255), nullable=True)
