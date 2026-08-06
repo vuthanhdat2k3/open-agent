@@ -151,7 +151,32 @@ Conversation history. Block-based to support tool calls & images.
 Indexes: `ix_messages_session_seq`, `ix_messages_session`.
 Note: `content` holds text; for multimodal, `meta` may carry refs (v1 text-only).
 
-### 2.9 `usage_events`
+### 2.8b `tasks` — chat-run durability columns
+The `tasks` table (root row = a chat run, `root_run_id == id`, `parent_task_id IS NULL`)
+gained a live checkpoint used for stream recovery:
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `progress` | JSON | `{phase, last_seq, content_chars, reasoning_chars, updated_at}`; heartbeated by the running loop. `updated_at` is what the worker's orphan sweep uses to detect a dead run. |
+
+### 2.8c `chat_run_events`
+Append-only, per-run SSE-shaped event log. Powers reload recovery: drain it
+to rebuild the in-flight UI, then follow new rows.
+
+| Column | Type | Constraints | Notes |
+|--------|------|-------------|-------|
+| `id` | String(36) | PK | UUID |
+| `org_id` | String(36) | FK → organizations.id, NOT NULL | |
+| `run_id` | String(128) | NOT NULL | = `tasks.root_run_id` |
+| `seq` | Integer | NOT NULL | monotonic per `run_id` |
+| `event` | String(48) | NOT NULL | frame name |
+| `data` | JSON | | frame payload |
+| `created_at` | DateTime | NOT NULL | |
+
+Unique: `(run_id, seq)`. Indexes: `ix_chat_run_events_run_seq`,
+`ix_chat_run_events_org_run`. Cascade-deleted with the org.
+
+
 Metering / cost log.
 
 | Column | Type | Constraints | Notes |

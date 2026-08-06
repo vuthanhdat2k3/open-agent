@@ -374,6 +374,17 @@ export interface ChatRunDetail {
   status: string;
   result: string | null;
   error: string | null;
+  message?: string | null;
+  session_id?: string | null;
+  // Live checkpoint written by the running loop (see backend chat_events).
+  progress?: {
+    session_id?: string;
+    phase?: string;
+    last_seq?: number;
+    content_chars?: number;
+    reasoning_chars?: number;
+    updated_at?: string;
+  };
   started_at?: string | null;
   finished_at?: string | null;
 }

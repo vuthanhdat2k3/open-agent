@@ -182,6 +182,9 @@ export function ChatMessageItem({ message: m, debug, hasLiveTools }: ChatMessage
   }
 
   // Assistant message
+  // The live activity row owns the empty-state status, so do not render a
+  // second placeholder bubble for the same run.
+  if (!m.content && !m.meta?.reasoning && m.meta?.cost_usd == null) return null;
   const showHistoricalTools = debug && !hasLiveTools && m.meta?.tools && m.meta.tools.length > 0;
 
   return (
@@ -251,7 +254,8 @@ export function ChatMessageItem({ message: m, debug, hasLiveTools }: ChatMessage
             </pre>
           </details>
         ) : null}
-        <div className="rounded-2xl rounded-bl-sm border border-border/80 bg-card/90 px-4 py-3 text-xs shadow-3d-card select-text leading-relaxed backdrop-blur-md">
+        {m.content && (
+          <div className="rounded-2xl rounded-bl-sm border border-border/80 bg-card/90 px-4 py-3 text-xs shadow-3d-card select-text leading-relaxed backdrop-blur-md">
           {m.content ? (
             <MarkdownRenderer content={m.content} />
           ) : m.meta?.reasoning ? (
@@ -266,7 +270,8 @@ export function ChatMessageItem({ message: m, debug, hasLiveTools }: ChatMessage
               {debug && <span className="text-[11px]">Thinking…</span>}
             </span>
           )}
-        </div>
+          </div>
+        )}
         {m.meta?.cost_usd != null && (
           <div className="flex items-center gap-3 px-1 text-[10px] text-muted-foreground/60">
             {m.meta.latency_ms != null && (

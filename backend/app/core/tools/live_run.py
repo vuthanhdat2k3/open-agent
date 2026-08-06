@@ -64,7 +64,7 @@ async def _make_factory(db: AsyncSession) -> async_sessionmaker[AsyncSession] | 
     to the same engine (critical for the in-memory sqlite used in tests).
     """
     try:
-        engine = db.get_bind()
+        engine = db.bind
         return async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     except Exception:  # noqa: BLE001
         return None
@@ -276,7 +276,7 @@ async def stream_live_run(
     while True:
         try:
             event = await asyncio.wait_for(live_run.queue.get(), timeout=heartbeat)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             yield {"event": "heartbeat", "data": {}}
             continue
         yield event

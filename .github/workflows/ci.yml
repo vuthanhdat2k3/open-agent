@@ -61,11 +61,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: docker compose --env-file .env.example up -d --build postgres redis api worker frontend
+      - run: docker compose -f docker-compose.yml -f .github/ci-compose.yml --env-file .env.example up -d --build postgres redis api worker frontend
       - run: python scripts/e2e_agent_releases.py
       - run: python scripts/e2e_evaluations.py
       - run: python scripts/e2e_tenant_quotas.py
       - if: always()
-        run: docker compose --env-file .env.example logs --no-color api worker frontend
+        run: docker compose -f docker-compose.yml -f .github/ci-compose.yml --env-file .env.example logs --no-color api worker frontend
       - if: always()
-        run: docker compose --env-file .env.example down -v
+        run: docker compose -f docker-compose.yml -f .github/ci-compose.yml --env-file .env.example down -v

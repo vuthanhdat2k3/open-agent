@@ -11,6 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
+from app.core.chat_events import ChatEventRecorder
 from app.core.guardrails.approval import request_approval
 from app.core.guardrails.budget import BudgetTracker, RunBudget
 from app.core.guardrails.injection import wrap_untrusted_if_flagged
@@ -162,12 +163,21 @@ async def _finish_task(
 ) -> None:
     if task is None:
         return
+    if task.status == "cancelled" and status != "cancelled":
+        return
     task.status = status
     task.result = result
     task.cost_usd = cost_usd
     task.token_usage = token_usage or {}
     task.finished_at = utc_now()
     await db.commit()
+
+
+async def _is_cancelled(db: AsyncSession, task: Task | None) -> bool:
+    if task is None:
+        return False
+    await db.refresh(task, attribute_names=["status"])
+    return task.status == "cancelled"
 
 
 async def _agent_stream(
@@ -183,6 +193,7 @@ async def _agent_stream(
     user_role: str | None = None,
     actor_agent_identity_id: str | None = None,
     delegation_chain: list | dict | None = None,
+    record_stream: bool = True,
 ) -> AsyncIterator[dict[str, Any]]:
     root_task: Task | None = None
     # A detached chat creates its durable Task before starting model work. Reuse
@@ -195,6 +206,8 @@ async def _agent_stream(
         root_task = task_res.scalar_one_or_none()
         if root_task is None:
             yield {"event": "error", "data": {"message": "chat run not found"}}
+            return
+        if await _is_cancelled(db, root_task):
             return
         root_task.status = "running"
         root_task.started_at = root_task.started_at or utc_now()
@@ -306,7 +319,7 @@ async def _agent_stream(
         else:
             for m in hist:
                 messages.append(_to_openai_message(m))
-    messages.append({"role": "user", "content": message})
+        messages.append({"role": "user", "content": message})
 
     if session_id:
         await _persist(
@@ -319,7 +332,20 @@ async def _agent_stream(
             created_by_user_id=agent.created_by_user_id,
         )
 
+    # Only the chat root task gets a durable event log: it is the one a
+    # browser reconnects to. Subagent loops (call_agent) just emit in-process.
+    rec: ChatEventRecorder | None = (
+        ChatEventRecorder(agent.org_id, root_run_id, session_id=session_id)
+        if (depth == 0 and root_run_id and record_stream)
+        else None
+    )
+    if rec is not None:
+        rec.start_liveness()
+
     start = time.monotonic()
+    if rec is not None:
+        await rec.record({"event": "message_start", "data": {}})
+        await rec.flush_progress(phase="thinking", content_chars=0, reasoning_chars=0)
     yield {"event": "message_start", "data": {}}
 
     tool_calls_log: list[dict[str, Any]] = []
@@ -356,12 +382,30 @@ async def _agent_stream(
             ) as chat_span:
                 stream_iter = llm.stream(messages, tools=tool_schemas, temperature=agent.temperature)
                 async for ev in stream_iter:
+                    if await _is_cancelled(db, root_task):
+                        if rec is not None:
+                            await rec.close()
+                        return
                     if ev["type"] == "content":
                         content_parts.append(ev["text"])
-                        yield {"event": "token", "data": {"content": ev["text"]}}
+                        out_ev = {"event": "token", "data": {"content": ev["text"]}}
+                        if rec is not None:
+                            await rec.record(out_ev)
+                            await rec.heartbeat(
+                                phase="answering", content_chars=sum(map(len, content_parts))
+                            )
+                        yield out_ev
                     elif ev["type"] == "reasoning":
                         reasoning_parts.append(ev["text"])
-                        yield {"event": "reasoning", "data": {"content": ev["text"]}}
+                        out_ev = {"event": "reasoning", "data": {"content": ev["text"]}}
+                        if rec is not None:
+                            await rec.record(out_ev)
+                            await rec.heartbeat(
+                                phase="thinking",
+                                content_chars=sum(map(len, content_parts)),
+                                reasoning_chars=sum(map(len, reasoning_parts)),
+                            )
+                        yield out_ev
                     elif ev["type"] == "tool_calls":
                         for tc in ev["tool_calls"]:
                             idx = tc.index
@@ -377,7 +421,7 @@ async def _agent_stream(
                                 # tool-call arguments as they are composed,
                                 # like ChatGPT/DeepSeek do — not after the
                                 # whole completion finishes.
-                                yield {
+                                out_ev = {
                                     "event": "tool_call_delta",
                                     "data": {
                                         "index": idx,
@@ -386,6 +430,9 @@ async def _agent_stream(
                                         "arguments": fragment,
                                     },
                                 }
+                                if rec is not None:
+                                    await rec.record(out_ev)
+                                yield out_ev
                     elif ev["type"] == "usage":
                         stream_usage = ev["usage"]
                         usage_estimated = bool(ev.get("estimated", True))
@@ -414,14 +461,22 @@ async def _agent_stream(
                         }
                     )
                 messages.append({"role": "assistant", "content": None, "tool_calls": openai_tcs})
-                for entry in tc_map.values():
+                for idx, entry in enumerate(tc_map.values()):
                     name = entry["name"]
                     try:
                         args = json.loads(entry["arguments"] or "{}")
                     except json.JSONDecodeError:
                         args = {}
                     spec = tool_by_name.get(name)
-                    yield {"event": "tool_call", "data": {"name": name, "arguments": args}}
+                    tool_index = idx
+                    call_ev = {
+                        "event": "tool_call",
+                        "data": {"index": tool_index, "name": name, "arguments": args},
+                    }
+                    if rec is not None:
+                        await rec.record(call_ev)
+                        await rec.flush_progress(phase=f"tool:{name}")
+                    yield call_ev
                     if spec is None:
                         result = f"error: tool '{name}' not available"
                     else:
@@ -443,14 +498,19 @@ async def _agent_stream(
                                 metadata={"reason": budget_reason, "run_id": session_id},
                                 commit=False,
                             )
-                            yield {
+                            budget_ev = {
                                 "event": "budget_exceeded",
                                 "data": {"reason": budget_reason, "tool": name},
                             }
-                            yield {
+                            result_ev = {
                                 "event": "tool_result",
                                 "data": {"name": name, "result": result},
                             }
+                            if rec is not None:
+                                await rec.record(budget_ev)
+                                await rec.record(result_ev)
+                            yield budget_ev
+                            yield result_ev
                             tool_calls_log.append(
                                 {"name": name, "arguments": args, "result": result}
                             )
@@ -514,7 +574,7 @@ async def _agent_stream(
                                 metadata={"tool_name": name, "run_id": session_id},
                                 commit=False,
                             )
-                            yield {
+                            approval_ev = {
                                 "event": "approval_required",
                                 "data": {
                                     "approval_id": approval.id,
@@ -522,12 +582,15 @@ async def _agent_stream(
                                     "run_id": session_id,
                                 },
                             }
+                            if rec is not None:
+                                await rec.record(approval_ev)
                             await _finish_task(
                                 db,
                                 root_task,
                                 status="waiting_approval",
                                 result=f"approval required for tool '{name}'",
                             )
+                            yield approval_ev
                             return
                         elif replay_cursor is not None:
                             # Replay never executes a tool. If the run takes a
@@ -539,7 +602,7 @@ async def _agent_stream(
                                 result = replay_cursor.next_result(name, args)
                                 tool_status = "replayed"
                             except ReplayDiverged as exc:
-                                yield {
+                                diverged_ev = {
                                     "event": "replay_diverged",
                                     "data": {
                                         "sequence": exc.sequence,
@@ -547,9 +610,12 @@ async def _agent_stream(
                                         "requested": exc.requested,
                                     },
                                 }
+                                if rec is not None:
+                                    await rec.record(diverged_ev)
                                 await _finish_task(
                                     db, root_task, status="diverged", result=str(exc)
                                 )
+                                yield diverged_ev
                                 return
                         else:
                             tool_started = time.monotonic()
@@ -583,15 +649,21 @@ async def _agent_stream(
                                             )
                                         except asyncio.TimeoutError:  # noqa: UP041
                                             continue
-                                        yield {
+                                        progress_ev = {
                                             "event": "tool_progress",
-                                            "data": {"name": name, **item},
+                                            "data": {"index": tool_index, "name": name, **item},
                                         }
+                                        if rec is not None:
+                                            await rec.record(progress_ev)
+                                        yield progress_ev
                                     while not emit_q.empty():
-                                        yield {
+                                        progress_ev = {
                                             "event": "tool_progress",
-                                            "data": {"name": name, **emit_q.get_nowait()},
+                                            "data": {"index": tool_index, "name": name, **emit_q.get_nowait()},
                                         }
+                                        if rec is not None:
+                                            await rec.record(progress_ev)
+                                        yield progress_ev
                                     result = run_task.result()
                                 tool_calls_total.labels(name, "ok").inc()
                                 tool_status = "ok"
@@ -695,10 +767,14 @@ async def _agent_stream(
                             },
                             commit=False,
                         )
-                    yield {
+                    result_ev = {
                         "event": "tool_result",
-                        "data": {"name": name, "result": result},
+                        "data": {"index": tool_index, "name": name, "result": result},
                     }
+                    if rec is not None:
+                        await rec.record(result_ev)
+                        await rec.heartbeat(phase="thinking")
+                    yield result_ev
                     log_entry: dict[str, Any] = {"name": name, "arguments": args, "result": result}
                     if secret_findings:
                         log_entry["redacted_secret_findings"] = [f.kind for f in secret_findings]
@@ -717,14 +793,19 @@ async def _agent_stream(
                         consecutive_failures = 0
                     iter_results.append({"name": name, "result": str(result)})
                 if iter_failures > 0 and consecutive_failures < max_retries:
-                    yield {
+                    retry_ev = {
                         "event": "retry",
                         "data": {"attempt": consecutive_failures, "max": max_retries},
                     }
-                    yield {
+                    correct_ev = {
                         "event": "self_correct",
                         "data": {"status": "retrying", "failures": consecutive_failures},
                     }
+                    if rec is not None:
+                        await rec.record(retry_ev)
+                        await rec.record(correct_ev)
+                    yield retry_ev
+                    yield correct_ev
                     messages.append(
                         {
                             "role": "user",
@@ -741,10 +822,13 @@ async def _agent_stream(
                         }
                     )
                 elif iter_failures > 0:
-                    yield {
+                    breaker_ev = {
                         "event": "self_correct",
                         "data": {"status": "circuit_breaker", "failures": consecutive_failures},
                     }
+                    if rec is not None:
+                        await rec.record(breaker_ev)
+                    yield breaker_ev
                     messages.append(
                         {
                             "role": "user",
@@ -764,6 +848,10 @@ async def _agent_stream(
 
             # Final answer (no tool calls this step)
             final = "".join(content_parts)
+            if await _is_cancelled(db, root_task):
+                if rec is not None:
+                    await rec.close()
+                return
             elapsed = int((time.monotonic() - start) * 1000)
             # Prefer the provider's reported token counts; the char-count
             # heuristic is only a fallback, and cost derived from it is a
@@ -782,7 +870,7 @@ async def _agent_stream(
             }
             model_label = model.display_name or model.name
             reasoning_text = "".join(reasoning_parts)
-            yield {
+            done_ev = {
                 "event": "message_done",
                 "data": {
                     "content": final,
@@ -795,6 +883,13 @@ async def _agent_stream(
                     "reasoning": reasoning_text,
                 },
             }
+            if rec is not None:
+                # Record before yielding so a reconnecting client that drains
+                # the log always sees the terminal event.
+                await rec.record(done_ev)
+                await rec.flush_progress(phase="done")
+                await rec.close()
+            yield done_ev
             if session_id:
                 await _persist(
                     db,
@@ -844,10 +939,14 @@ async def _agent_stream(
         status="failed",
         result=f"max iterations ({agent.max_iterations}) exceeded",
     )
-    yield {
+    err_ev = {
         "event": "error",
         "data": {"message": f"max iterations ({agent.max_iterations}) exceeded"},
     }
+    if rec is not None:
+        await rec.record(err_ev)
+        await rec.close()
+    yield err_ev
 
 
 async def stream_agent(
@@ -858,6 +957,7 @@ async def stream_agent(
     root_run_id: str | None = None,
     current_task_id: str | None = None,
     user_id: str | None = None,
+    record_stream: bool = True,
 ) -> AsyncIterator[dict[str, Any]]:
     async for ev in _agent_stream(
         agent,
@@ -868,6 +968,7 @@ async def stream_agent(
         current_task_id=current_task_id,
         root_run_id=root_run_id,
         user_id=user_id,
+        record_stream=record_stream,
     ):
         yield ev
 
@@ -885,6 +986,7 @@ async def run_agent_loop(
     user_role: str | None = None,
     actor_agent_identity_id: str | None = None,
     delegation_chain: list | dict | None = None,
+    record_stream: bool = True,
 ) -> AgentLoopResult:
     content = ""
     usage: dict[str, Any] = {"input_tokens": 0, "output_tokens": 0}
@@ -905,6 +1007,7 @@ async def run_agent_loop(
         user_role=user_role,
         actor_agent_identity_id=actor_agent_identity_id,
         delegation_chain=delegation_chain,
+        record_stream=record_stream,
     ):
         if ev["event"] == "message_done":
             data = ev["data"]

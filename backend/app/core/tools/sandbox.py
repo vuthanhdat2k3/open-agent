@@ -445,21 +445,6 @@ async def _run_code(args: dict[str, Any], ctx: ToolContext) -> str:
         await finish_execution_record(ctx.db, execution, status="failed", output=msg, error=str(e))
         return msg
 
-    text = out.decode("utf-8", errors="replace") if out else ""
-    if len(text) > MAX_SANDBOX_OUTPUT:
-        text = text[:MAX_SANDBOX_OUTPUT] + "\n...[truncated]"
-    text += f"\n[exit code: {proc.returncode}]"
-    sandbox_executions_total.labels("ok" if proc.returncode == 0 else "error").inc()
-    await finish_execution_record(
-        ctx.db,
-        execution,
-        status="succeeded" if proc.returncode == 0 else "failed",
-        output=text,
-        exit_code=proc.returncode,
-    )
-    return text
-
-
 register(
     ToolSpec(
         name="run_code",

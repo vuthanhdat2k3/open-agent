@@ -166,20 +166,6 @@ async def _run_shell(args: dict[str, Any], ctx: ToolContext) -> str:
         await finish_execution_record(ctx.db, execution, status="failed", output=msg, error=str(e))
         return msg
 
-    text = out.decode("utf-8", errors="replace") if out else ""
-    if len(text) > MAX_SHELL_OUTPUT:
-        text = text[:MAX_SHELL_OUTPUT] + "\n...[truncated]"
-    text += f"\n[exit code: {proc.returncode}]"
-    await finish_execution_record(
-        ctx.db,
-        execution,
-        status="succeeded" if proc.returncode == 0 else "failed",
-        output=text,
-        exit_code=proc.returncode,
-    )
-    return text
-
-
 register(
     ToolSpec(
         name="run_shell",
