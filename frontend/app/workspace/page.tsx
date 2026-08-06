@@ -67,6 +67,10 @@ function isRunnableArtifact(path: string) {
   return /\.(py|sh)$/i.test(path);
 }
 
+function isRenderableArtifact(path: string) {
+  return /\.(html?|svg)$/i.test(path);
+}
+
 async function fetchText(path: string) {
   const token = getAccessToken();
   const res = await fetch(path, {
@@ -102,12 +106,14 @@ export default function WorkspacePage() {
   const runArtifact = useRunWorkspaceArtifact();
   const deleteExecution = useDeleteSandboxExecution();
   const [previewTitle, setPreviewTitle] = React.useState("");
+  const [previewPath, setPreviewPath] = React.useState("");
   const [previewContent, setPreviewContent] = React.useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = React.useState(false);
 
   async function openArtifact(artifact: WorkspaceArtifact) {
     try {
       setPreviewTitle(artifact.path);
+      setPreviewPath(artifact.path);
       setPreviewContent(await fetchText(`/api/workspace/artifacts/${artifact.id}/content`));
       setPreviewOpen(true);
     } catch (err: any) {
@@ -117,6 +123,7 @@ export default function WorkspacePage() {
 
   function openExecution(execution: SandboxExecution) {
     setPreviewTitle(`${execution.source} ${execution.status}`);
+    setPreviewPath("");
     setPreviewContent(execution.stdout_preview || execution.error || "(no output)");
     setPreviewOpen(true);
   }
@@ -194,20 +201,23 @@ export default function WorkspacePage() {
                       </TableCell>
                       <TableCell>
                         <div className="flex justify-end gap-1.5">
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-8 w-8 text-primary"
-                            disabled={!artifact.exists || !isRunnableArtifact(artifact.path) || runArtifact.isPending}
-                            onClick={() => runWorkspaceArtifact(artifact)}
-                            title={isRunnableArtifact(artifact.path) ? "Run file" : "Only .py and .sh files can run"}
-                            aria-label={`Run ${artifact.path}`}
-                          >
-                            <Play className="h-4 w-4" />
-                          </Button>
-                          <Button size="icon" variant="ghost" className="h-8 w-8" disabled={!artifact.exists} onClick={() => openArtifact(artifact)}>
-                            <Eye className="h-4 w-4" />
-                          </Button>
+                          {(() => {
+                            const runnable = isRunnableArtifact(artifact.path);
+                            const renderable = isRenderableArtifact(artifact.path);
+                            return (
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8 text-primary"
+                                disabled={!artifact.exists || (!runnable && !renderable) || runArtifact.isPending}
+                                onClick={() => (runnable ? runWorkspaceArtifact(artifact) : openArtifact(artifact))}
+                                title={runnable ? "Run file" : renderable ? "Open file" : "Preview file"}
+                                aria-label={`${runnable ? "Run" : "Open"} ${artifact.path}`}
+                              >
+                                {runnable ? <Play className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                              </Button>
+                            );
+                          })()}
                           <Button
                             size="icon"
                             variant="ghost"
@@ -330,9 +340,18 @@ export default function WorkspacePage() {
             <DialogTitle className="font-mono text-sm">{previewTitle}</DialogTitle>
             <DialogDescription>Read-only preview</DialogDescription>
           </DialogHeader>
-          <pre className="max-h-[65vh] overflow-auto rounded-xl border border-border/70 bg-background/80 p-4 text-xs leading-relaxed text-foreground">
-            {previewContent}
-          </pre>
+          {previewPath && isRenderableArtifact(previewPath) ? (
+            <iframe
+              title={`Preview ${previewPath}`}
+              sandbox="allow-scripts"
+              srcDoc={previewContent || ""}
+              className="h-[65vh] w-full rounded-xl border border-border/70 bg-white"
+            />
+          ) : (
+            <pre className="max-h-[65vh] overflow-auto rounded-xl border border-border/70 bg-background/80 p-4 text-xs leading-relaxed text-foreground">
+              {previewContent}
+            </pre>
+          )}
         </DialogContent>
       </Dialog>
     </div>
