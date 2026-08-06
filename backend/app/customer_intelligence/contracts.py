@@ -230,6 +230,42 @@ CALENDAR_GET_EVENT_SCHEMA: dict[str, Any] = {
     "additionalProperties": False,
 }
 
+CALENDAR_CREATE_EVENT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "summary": {"type": "string", "minLength": 1, "maxLength": 500},
+        "start": {"type": "string", "format": "date-time"},
+        "end": {"type": "string", "format": "date-time"},
+        "description": {"type": "string", "maxLength": 10000},
+        "location": {"type": "string", "maxLength": 1000},
+        "attendees": {"type": "array", "items": {"type": "string"}, "maxItems": 100},
+    },
+    "required": ["summary", "start", "end"],
+    "additionalProperties": False,
+}
+
+CALENDAR_UPDATE_EVENT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "provider_event_id": {"type": "string", "maxLength": 128},
+        "summary": {"type": "string", "maxLength": 500},
+        "start": {"type": "string", "format": "date-time"},
+        "end": {"type": "string", "format": "date-time"},
+        "description": {"type": "string", "maxLength": 10000},
+        "location": {"type": "string", "maxLength": 1000},
+        "attendees": {"type": "array", "items": {"type": "string"}, "maxItems": 100},
+    },
+    "required": ["provider_event_id"],
+    "additionalProperties": False,
+}
+
+CALENDAR_DELETE_EVENT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {"provider_event_id": {"type": "string", "maxLength": 128}},
+    "required": ["provider_event_id"],
+    "additionalProperties": False,
+}
+
 
 
 DRIVE_LIST_FILES_SCHEMA: dict[str, Any] = {

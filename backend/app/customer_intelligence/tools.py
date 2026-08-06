@@ -8,8 +8,11 @@ from app.core.tools.registry import register
 from app.core.tools.risk_tier import RiskTier
 from app.core.tools.types import ToolContext, ToolSpec
 from app.customer_intelligence.contracts import (
+    CALENDAR_CREATE_EVENT_SCHEMA,
+    CALENDAR_DELETE_EVENT_SCHEMA,
     CALENDAR_GET_EVENT_SCHEMA,
     CALENDAR_LIST_EVENTS_SCHEMA,
+    CALENDAR_UPDATE_EVENT_SCHEMA,
     COMPANY_GET_SCHEMA,
     COMPANY_SEARCH_SCHEMA,
     DRIVE_CREATE_FILE_SCHEMA,
@@ -239,7 +242,51 @@ async def _calendar_list_events(args: dict[str, Any], ctx: ToolContext) -> str:
 
 
 async def _calendar_get_event(args: dict[str, Any], ctx: ToolContext) -> str:
-    return "error: provider_event_id lookup requires a bound calendar connection"
+    if not _enabled():
+        return "error: customer intelligence is disabled"
+    try:
+        _, cal = await _connected_calendar(ctx, ctx.org_id or "")
+        event = await cal.get_event(args["provider_event_id"])
+        return "event not found" if event is None else f"{event.start_at} {event.title} | {event.provider_event_id}"
+    except Exception as exc:  # noqa: BLE001
+        return f"error: calendar get failed: {type(exc).__name__}"
+
+
+async def _calendar_create_event(args: dict[str, Any], ctx: ToolContext) -> str:
+    if not _enabled():
+        return "error: customer intelligence is disabled"
+    try:
+        _, cal = await _connected_calendar(ctx, ctx.org_id or "")
+        result = await cal.create_event(
+            summary=args["summary"], start=args["start"], end=args["end"],
+            description=args.get("description", ""), location=args.get("location", ""), attendees=args.get("attendees", []),
+        )
+        return f"created calendar event {result.get('provider_event_id', '')}"
+    except Exception as exc:  # noqa: BLE001
+        return f"error: calendar create failed: {type(exc).__name__}"
+
+
+async def _calendar_update_event(args: dict[str, Any], ctx: ToolContext) -> str:
+    if not _enabled():
+        return "error: customer intelligence is disabled"
+    try:
+        _, cal = await _connected_calendar(ctx, ctx.org_id or "")
+        updates = {key: value for key, value in args.items() if key != "provider_event_id"}
+        result = await cal.update_event(args["provider_event_id"], **updates)
+        return f"updated calendar event {result.get('provider_event_id', args['provider_event_id'])}"
+    except Exception as exc:  # noqa: BLE001
+        return f"error: calendar update failed: {type(exc).__name__}"
+
+
+async def _calendar_delete_event(args: dict[str, Any], ctx: ToolContext) -> str:
+    if not _enabled():
+        return "error: customer intelligence is disabled"
+    try:
+        _, cal = await _connected_calendar(ctx, ctx.org_id or "")
+        await cal.delete_event(args["provider_event_id"])
+        return f"deleted calendar event {args['provider_event_id']}"
+    except Exception as exc:  # noqa: BLE001
+        return f"error: calendar delete failed: {type(exc).__name__}"
 
 
 def register_customer_intelligence_tools() -> None:
@@ -341,6 +388,9 @@ def register_customer_intelligence_tools() -> None:
             risk_tier=RiskTier.read,
         )
     )
+    register(ToolSpec(name="calendar_create_event", description="Create a calendar event after approval.", input_schema=CALENDAR_CREATE_EVENT_SCHEMA, run=_calendar_create_event, risk_tier=RiskTier.write, requires_approval=True))
+    register(ToolSpec(name="calendar_update_event", description="Update a calendar event after approval.", input_schema=CALENDAR_UPDATE_EVENT_SCHEMA, run=_calendar_update_event, risk_tier=RiskTier.write, requires_approval=True))
+    register(ToolSpec(name="calendar_delete_event", description="Delete a calendar event after approval.", input_schema=CALENDAR_DELETE_EVENT_SCHEMA, run=_calendar_delete_event, risk_tier=RiskTier.dangerous, requires_approval=True))
 
 
 register_customer_intelligence_tools()
