@@ -448,6 +448,9 @@ export default function ChatPage() {
 
     // Persist the run identity before the network request starts. A reload
     // before the bootstrap SSE frames arrive must still be able to attach.
+    // The POST stream is bootstrap-only; always let the follow-stream effect
+    // attach to this new durable run.
+    attachedRunRef.current = null;
     setActiveRun(payload.run_id);
 
     abortRef.current = new AbortController();
@@ -466,7 +469,10 @@ export default function ChatPage() {
           }
           if (ev.event === "chat_run_start") {
             setActiveRun(ev.data.run_id);
-            attachedRunRef.current = ev.data.run_id;
+            // The POST response only bootstraps the durable run. The
+            // reattach effect owns the GET follow stream that carries live
+            // tool_call/tool_progress/tool_result events.
+            attachedRunRef.current = null;
             setStreaming(true);
             setPhase("thinking");
             return;
