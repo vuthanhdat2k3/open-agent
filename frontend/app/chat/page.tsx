@@ -43,15 +43,6 @@ export default function ChatPage() {
   const delSession = useDeleteSession();
   const [agentReady, setAgentReady] = React.useState(false);
   const selectedSession = sessions.data?.find((s) => s.id === sessionId);
-  const sessionBelongsToAgent = Boolean(
-    agentReady && selectedSession && selectedSession.agent_id === agentId,
-  );
-  const messagesQuery = useSessionMessages(
-    sessionId,
-    agentReady && sessions.isSuccess && sessionBelongsToAgent,
-  );
-  const { refetch: refetchMessages } = messagesQuery;
-  const { refetch: refetchSessions } = sessions;
   const [modelOverrideId, setModelOverrideId] = React.useState("");
   const [draft, setDraft] = React.useState("");
   const [messages, setMessages] = React.useState<UIMessage[]>([]);
@@ -87,6 +78,22 @@ export default function ChatPage() {
   const nearBottomRef = React.useRef(true);
   const scrollHostRef = React.useRef<HTMLDivElement>(null);
 
+  // A newly-created session is announced by the stream before the sessions
+  // query has refreshed. Keep the optimistic messages alive during that gap.
+  const pendingSession = Boolean(
+    agentReady && streaming && (!sessionId || !selectedSession),
+  );
+  const sessionBelongsToAgent = Boolean(
+    agentReady &&
+      ((selectedSession && selectedSession.agent_id === agentId) || pendingSession),
+  );
+  const messagesQuery = useSessionMessages(
+    sessionId,
+    agentReady && sessions.isSuccess && sessionBelongsToAgent,
+  );
+  const { refetch: refetchMessages } = messagesQuery;
+  const { refetch: refetchSessions } = sessions;
+
   React.useEffect(() => {
     if (!chatHydrated || !agents.data?.length) return;
     const preselect = searchParams.get("agent");
@@ -110,17 +117,18 @@ export default function ChatPage() {
     // A streamed first message creates its session on the backend. The
     // session list can briefly lag behind the session_start event; do not
     // discard the persisted run while that new session is being indexed.
-    if (!session && activeRunId) return;
+    if (!session && (activeRunId || pendingSession)) return;
     if (!session || session.agent_id !== agentId) {
       liveRef.current = [];
       setMessages([]);
       setSession(null);
       setActiveRun(null);
     }
-  }, [activeRunId, agentId, agentReady, sessionId, sessions.data, sessions.isSuccess, setActiveRun, setSession]);
+  }, [activeRunId, agentId, agentReady, pendingSession, sessionId, sessions.data, sessions.isSuccess, setActiveRun, setSession]);
 
   React.useEffect(() => {
-    if (!agentReady || !sessionId || !sessionBelongsToAgent) {
+    if (!agentReady || pendingSession) return;
+    if (!sessionId || !sessionBelongsToAgent) {
       liveRef.current = [];
       setMessages([]);
       composeRef.current.clear();
@@ -154,7 +162,7 @@ export default function ChatPage() {
         setMessages(merged);
       }
     }
-  }, [agentReady, messagesQuery.data, sessionBelongsToAgent, sessionId]);
+  }, [agentReady, messagesQuery.data, pendingSession, sessionBelongsToAgent, sessionId, streaming]);
 
   React.useEffect(() => {
     const run = chatRun.data;
@@ -453,6 +461,7 @@ export default function ChatPage() {
           // everything else to the shared reducer used by both paths.
           if (ev.event === "session_start") {
             setSession(ev.data.session_id);
+            void refetchSessions();
             return;
           }
           if (ev.event === "chat_run_start") {
