@@ -22,3 +22,46 @@ def _skip_lifespan_db_init(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(main, "init_db", _noop_init_db)
     yield
+
+
+@pytest.fixture(autouse=True)
+def ci_mcp_stub(monkeypatch: pytest.MonkeyPatch):
+    state = {"drafts": {}, "sent": {}, "next": 0}
+
+    async def call(tool: str, args: dict):
+        if tool == "email_list_new":
+            state["next"] += 1
+            return {
+                "messages": [{
+                    "provider": args["provider"],
+                    "provider_message_id": f"mcp-message-{state['next']}",
+                    "thread_id": None,
+                    "sender_name": "Sales",
+                    "sender_email": "sales@acme.example",
+                    "sender_domain": "acme.example",
+                    "recipients": ["user@example.com"],
+                    "subject": "Customer request",
+                    "body_text": "Please send a quote.",
+                    "body_html": None,
+                    "attachments": [],
+                    "received_at": "2026-08-06T00:00:00+00:00",
+                    "headers": {},
+                }],
+                "new_cursor": "1",
+                "has_more": False,
+            }
+        if tool == "email_create_draft":
+            draft_id = f"draft-{len(state['drafts']) + 1}"
+            state["drafts"][draft_id] = args
+            return {"draft_id": draft_id}
+        if tool == "email_send":
+            key = args["idempotency_key"]
+            state["sent"].setdefault(key, f"send-{len(state['sent']) + 1}")
+            return {"send_id": state["sent"][key]}
+        if tool == "email_get":
+            return (await call("email_list_new", args))["messages"][0]
+        raise AssertionError(f"unexpected MCP tool: {tool}")
+
+    monkeypatch.setattr("app.customer_intelligence.providers.email.call_customer_intelligence_mcp", call)
+    monkeypatch.setattr("app.customer_intelligence.providers.research.call_customer_intelligence_mcp", call)
+    return state
