@@ -280,7 +280,20 @@ export function useDeleteSession() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => api.delete(`/api/sessions/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["sessions"] }),
+    onMutate: async (id) => {
+      await qc.cancelQueries({ queryKey: ["sessions"] });
+      const previous = qc.getQueryData<Session[]>(["sessions"]);
+      qc.setQueryData<Session[]>(["sessions"], (sessions) =>
+        sessions?.filter((session) => session.id !== id),
+      );
+      qc.removeQueries({ queryKey: ["messages", id], exact: true });
+      return { previous };
+    },
+    onError: (_error, _id, context) => {
+      if (context?.previous) qc.setQueryData(["sessions"], context.previous);
+    },
+    // The successful DELETE response is authoritative. Avoid a second full
+    // sessions request just to redraw an item already removed optimistically.
   });
 }
 export function useSessionMessages(sessionId: string | null, enabled = true) {
@@ -388,14 +401,9 @@ export function useDeleteSandboxExecution() {
 
 export function useMe(enabled: boolean = true) {
   return useQuery({
-    queryKey: ["me"],
+    queryKey: ["auth-me"],
     queryFn: () =>
-      api.get<{
-        id: string;
-        email: string;
-        display_name: string;
-        memberships: Array<{ org_id: string; org_name: string; role: string }>;
-      }>("/api/auth/me"),
+      api.get<UserProfile>("/api/auth/me"),
     enabled,
   });
 }
@@ -484,7 +492,8 @@ export function useApprovals(enabled: boolean = true) {
   return useQuery({
     queryKey: ["approvals"],
     queryFn: () => api.get<ApprovalRequest[]>("/api/approvals"),
-    refetchInterval: 15000,
+    refetchInterval: enabled ? 60000 : false,
+    refetchIntervalInBackground: false,
     enabled,
   });
 }
@@ -527,7 +536,7 @@ export function useChatRun(runId: string | null) {
     queryFn: () => api.get<ChatRunDetail>(`/api/chat/runs/${runId}`),
     refetchInterval: (query) => {
       const status = query.state.data?.status;
-      return status && ["succeeded", "failed", "diverged", "cancelled"].includes(status)
+      return status && ["succeeded", "failed", "diverged", "cancelled", "waiting_approval"].includes(status)
         ? false
         : 2000;
     },
@@ -536,7 +545,7 @@ export function useChatRun(runId: string | null) {
 
 export function useProfile(enabled: boolean = true) {
   return useQuery({
-    queryKey: ["profile"],
+    queryKey: ["auth-me"],
     queryFn: () => api.get<UserProfile>("/api/auth/me"),
     enabled,
   });

@@ -67,6 +67,14 @@ class ChatService:
         if task is not None:
             if task.agent_id != agent.id or task.root_run_id != run_id:
                 raise ValueError("chat run belongs to a different agent or organization")
+            if not task.progress:
+                task.progress = {
+                    "session_id": session.id,
+                    "phase": task.status,
+                    "last_seq": 0,
+                    "updated_at": utc_now().isoformat(),
+                }
+                await self.db.commit()
             return session, agent, task
         task = Task(
             id=run_id,
@@ -77,6 +85,12 @@ class ChatService:
             agent_release_id=getattr(agent, "active_release_id", None),
             goal=request.message,
             status="queued",
+            progress={
+                "session_id": session.id,
+                "phase": "queued",
+                "last_seq": 0,
+                "updated_at": utc_now().isoformat(),
+            },
             depth=0,
             created_at=utc_now(),
         )

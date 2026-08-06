@@ -175,29 +175,37 @@ event: error          data: {"node_id":"n2","message":"..."}
 | GET | `/api/sessions` | query `?agent_id=` | `SessionList` |
 | POST | `/api/sessions` | `{ "agent_id": "uuid", "title": "..." }` | `Session` |
 | GET | `/api/sessions/{id}/messages` | — | `MessageList` |
-| POST | `/api/agents/{id}/message` | `ChatMessage` | `AgentLoopResult` (or SSE) |
-| POST | `/api/sessions/{id}/message` | `ChatMessage` | `AgentLoopResult` (or SSE) |
+| POST | `/api/chat` | `ChatMessage` (`stream:true`) | durable `Task` + 2 bootstrap SSE frames (`session_start`, `chat_run_start`) |
+| GET | `/api/chat/runs/{run_id}` | — | run status + `progress` checkpoint (phase, last_seq, counters) |
+| GET | `/api/chat/runs/{run_id}/events?follow=<bool>&after_seq=<int>` | — | durable event log (see below) |
 | DELETE | `/api/sessions/{id}` | — | `204` |
 
 **ChatMessage**
 ```json
-{ "session_id": "uuid|null", "message": "Summarize this PDF",
-  "attachments": ["/workspace/report.pdf"], "stream": true }
+{ "session_id": "uuid|null", "run_id": "uuid|null", "message": "Summarize this PDF",
+  "model_id": "uuid|null", "attachments": ["/workspace/report.pdf"], "stream": true }
 ```
-**AgentLoopResult**
-```json
-{ "session_id": "uuid", "response": "Here is the summary...",
-  "iterations": 3, "usage": { "in_tokens": 1200, "out_tokens": 400, "cost_usd": 0.0021 },
-  "tool_calls": [ { "name": "read_attachment", "args": {...}, "result": "..." } ] }
+**SSE frames** for `stream:true` (live POST only bootstraps the run):
 ```
-**SSE frames** for `stream:true`:
+event: session_start   data: {"session_id":"uuid"}
+event: chat_run_start  data: {"run_id":"uuid","session_id":"uuid","status":"running|queued"}
 ```
-event: token      data: {"delta":"Here "}
-event: token      data: {"delta":"is the "}
-event: tool_call  data: {"name":"read_attachment","args":{...}}
-event: tool_result data: {"name":"read_attachment","result":"..."}
-event: done       data: {"response":"...","usage":{...}}
+The agent loop itself runs in a background task / arq worker and emits a
+**durable event log** (`chat_run_events`) instead of an SSE the browser holds.
+To render or recover a run the client opens
+`GET /api/chat/runs/{run_id}/events?follow=true` — it drains every recorded
+frame (rebuild partial text, reasoning, running tool cards, live progress) and
+then follows new frames until a terminal event. `follow=false` returns a
+one-shot JSON snapshot (`{run_id, status, events:[{seq,event,data}]}`).
+
+Full event vocabulary (idempotent — safe to replay):
 ```
+message_start | reasoning* | token* | tool_call_delta* | tool_call |
+tool_progress* | tool_result | retry | self_correct | message_done |
+error | approval_required | budget_exceeded | replay_diverged
+```
+Each event's `data` carries a `seq` (monotonic per run) so a reconnect can
+resume from `after_seq`.
 
 ---
 

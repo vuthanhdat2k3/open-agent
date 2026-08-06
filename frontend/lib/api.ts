@@ -110,3 +110,51 @@ export async function streamSSE(
     }
   }
 }
+
+// GET variant of streamSSE: the chat event-log endpoint is a GET with query
+// params (replay + follow), so it cannot reuse the JSON-POST reader above.
+export async function streamSSEGet(
+  url: string,
+  onEvent: (ev: SseEvent) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const res = await fetch(`${apiBaseUrl}${url}`, {
+    credentials: "include",
+    headers: getAccessToken() ? { Authorization: `Bearer ${getAccessToken()}` } : {},
+    signal,
+  });
+  if (!res.ok || !res.body) {
+    throw new Error(`stream failed: ${res.status}`);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    if (signal?.aborted) {
+      await reader.cancel().catch(() => {});
+      return;
+    }
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const chunks = buffer.split("\n\n");
+    buffer = chunks.pop() || "";
+    for (const chunk of chunks) {
+      const lines = chunk.split("\n");
+      let event = "message";
+      let dataStr = "";
+      for (const line of lines) {
+        if (line.startsWith(":")) continue;
+        if (line.startsWith("event:")) event = line.slice(6).trim();
+        else if (line.startsWith("data:")) dataStr += line.slice(5).trim();
+      }
+      if (dataStr) {
+        try {
+          onEvent({ event, data: JSON.parse(dataStr) });
+        } catch {
+          // ignore malformed
+        }
+      }
+    }
+  }
+}

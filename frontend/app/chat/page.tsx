@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { streamSSE } from "@/lib/api";
+import { api, streamSSE, streamSSEGet } from "@/lib/api";
 import { useAgents, useSessions, useSessionMessages, useDeleteSession, useModels, useChatRun } from "@/hooks";
 import { useChatStore } from "@/stores";
 import {
@@ -16,6 +16,8 @@ import {
   Trash2,
   Sparkles,
   Bug,
+  Wrench,
+  ShieldAlert,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -48,6 +50,8 @@ export default function ChatPage() {
     sessionId,
     agentReady && sessions.isSuccess && sessionBelongsToAgent,
   );
+  const { refetch: refetchMessages } = messagesQuery;
+  const { refetch: refetchSessions } = sessions;
   const [modelOverrideId, setModelOverrideId] = React.useState("");
   const [draft, setDraft] = React.useState("");
   const [messages, setMessages] = React.useState<UIMessage[]>([]);
@@ -59,9 +63,29 @@ export default function ChatPage() {
   const composeRef = React.useRef<Map<number, string>>(new Map());
   const deltaArgsRef = React.useRef<Map<number, string>>(new Map());
   const [streaming, setStreaming] = React.useState(false);
+  React.useEffect(() => {
+    streamingRef.current = streaming;
+  }, [streaming]);
   const [phase, setPhase] = React.useState<string>("");
   const [debug, setDebug] = React.useState(true);
   const bottomRef = React.useRef<HTMLDivElement>(null);
+  // Stable id of the in-flight assistant message for the *current* run. `send`
+  // seeds it from Date.now(); a reattach seeds it from the run id so a rebuild
+  // is deterministic. The shared event reducer reads it.
+  const assistantIdRef = React.useRef<string>("");
+  // Guards the messages-loading effect: while a stream is live we must not let
+  // a `refetch` wipe the partially-built UI.
+  const streamingRef = React.useRef(false);
+  // Tracks which run we already (re)attached a follow-stream to, so the
+  // reattach effect runs at most once per run.
+  const attachedRunRef = React.useRef<string | null>(null);
+  const terminalRunRef = React.useRef<string | null>(null);
+  const reattachAbortRef = React.useRef<AbortController | null>(null);
+  const lastEventSeqRef = React.useRef(0);
+  // Tracks whether the user is pinned to the bottom of the thread so we only
+  // auto-scroll while they are reading along (no yanking when they scroll up).
+  const nearBottomRef = React.useRef(true);
+  const scrollHostRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
     if (!chatHydrated || !agents.data?.length) return;
@@ -83,13 +107,17 @@ export default function ChatPage() {
   React.useEffect(() => {
     if (!agentReady || !sessions.isSuccess || !sessionId) return;
     const session = sessions.data?.find((s) => s.id === sessionId);
+    // A streamed first message creates its session on the backend. The
+    // session list can briefly lag behind the session_start event; do not
+    // discard the persisted run while that new session is being indexed.
+    if (!session && activeRunId) return;
     if (!session || session.agent_id !== agentId) {
       liveRef.current = [];
       setMessages([]);
       setSession(null);
       setActiveRun(null);
     }
-  }, [agentId, agentReady, sessionId, sessions.data, sessions.isSuccess, setActiveRun, setSession]);
+  }, [activeRunId, agentId, agentReady, sessionId, sessions.data, sessions.isSuccess, setActiveRun, setSession]);
 
   React.useEffect(() => {
     if (!agentReady || !sessionId || !sessionBelongsToAgent) {
@@ -99,37 +127,79 @@ export default function ChatPage() {
       deltaArgsRef.current.clear();
       return;
     }
+    // While a stream is live (send or reattached follow) the partial UI is
+    // authoritative; a background refetch must not overwrite it.
     if (messagesQuery.data) {
-      const initial = messagesQuery.data.map((m) => ({
+      const initial: UIMessage[] = messagesQuery.data.map((m) => ({
         id: m.id,
         role: m.role,
         content: m.content,
         meta: m.meta,
       }));
-      liveRef.current = initial;
-      setMessages(initial);
+      if (!streamingRef.current) {
+        liveRef.current = initial;
+        setMessages(initial);
+      } else {
+        // Recovery may start before history finishes loading. Merge the
+        // persisted transcript behind the already-replayed live events.
+        const existing = liveRef.current;
+        const merged = [...initial];
+        for (const message of existing) {
+          const duplicate = merged.some(
+            (item) => item.role === message.role && item.content === message.content,
+          );
+          if (!duplicate) merged.push(message);
+        }
+        liveRef.current = merged;
+        setMessages(merged);
+      }
     }
   }, [agentReady, messagesQuery.data, sessionBelongsToAgent, sessionId]);
 
   React.useEffect(() => {
     const run = chatRun.data;
     if (!run) return;
-    if (["succeeded", "failed", "diverged", "cancelled"].includes(run.status)) {
+    const recoveredSessionId = run.session_id || run.progress?.session_id;
+    if (recoveredSessionId && recoveredSessionId !== sessionId) {
+      setSession(recoveredSessionId);
+    }
+    if (run.status === "running" || run.status === "queued") {
+      setPhase(run.progress?.phase && run.progress.phase !== "queued" ? run.progress.phase : "thinking");
+    }
+    if (["succeeded", "failed", "diverged", "cancelled", "waiting_approval"].includes(run.status)) {
+      if (terminalRunRef.current === run.id) return;
+      terminalRunRef.current = run.id;
       setStreaming(false);
-      setPhase("");
-      messagesQuery.refetch();
-      sessions.refetch?.();
+      setPhase(run.status === "waiting_approval" ? "approval" : "");
+      void refetchMessages();
       if (run.status !== "succeeded" && run.error) toast.error(run.error);
     } else {
+      if (terminalRunRef.current !== run.id) terminalRunRef.current = null;
       setStreaming(true);
     }
-  }, [chatRun.data, messagesQuery, sessions, setActiveRun]);
+  }, [chatRun.data, refetchMessages, sessionId, setSession]);
+
+  // Smooth auto-scroll: follow the bottom only while the user is already
+  // reading along, so streaming tokens don't yank them up if they scroll back.
+  React.useEffect(() => {
+    if (nearBottomRef.current && bottomRef.current) {
+      bottomRef.current.scrollIntoView({ block: "end" });
+    }
+  }, [messages]);
+
+  const onThreadScroll = React.useCallback(() => {
+    const el = scrollHostRef.current;
+    if (!el) return;
+    const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+    nearBottomRef.current = distance < 80;
+  }, []);
 
 
   const currentAgent = agents.data?.find((a) => a.id === agentId);
   const currentAgentModel = models.data?.find((m) => m.id === currentAgent?.model_id);
   const effectiveModelId = modelOverrideId || currentAgent?.model_id || "";
   const effectiveModel = models.data?.find((m) => m.id === effectiveModelId);
+  const statusPhase = phase || (streaming ? "answering" : "");
 
   const commit = React.useCallback(() => {
     rafRef.current = null;
@@ -140,12 +210,217 @@ export default function ChatPage() {
     if (rafRef.current == null) rafRef.current = requestAnimationFrame(commit);
   }, [commit]);
 
+  // Shared SSE event reducer for chat runs. Used by both `send` (live POST
+  // stream) and the reattach follow-stream, so a reload rebuilds the exact
+  // same UI the user would have seen live. `assistantIdRef` carries the id of
+  // the in-flight assistant message for the current run.
+  const handleChatEvent = React.useCallback(
+    (ev: { event: string; data: any }) => {
+      const d = ev.data;
+      const msgs = liveRef.current;
+      const assistantId = assistantIdRef.current;
+      const ensureAssistant = () => {
+        const i = msgs.findIndex((x) => x.id === assistantId);
+        if (i >= 0) return i;
+        msgs.push({ id: assistantId, role: "assistant", content: "" });
+        return msgs.length - 1;
+      };
+      if (ev.event === "message_start") {
+        setPhase("thinking");
+      } else if (ev.event === "reasoning") {
+        setPhase("thinking");
+        const i = ensureAssistant();
+        const cur = msgs[i];
+        msgs[i] = {
+          ...cur,
+          meta: { ...cur.meta, reasoning: (cur.meta?.reasoning ?? "") + (d.content ?? "") },
+        };
+      } else if (ev.event === "token") {
+        setPhase("");
+        const i = ensureAssistant();
+        const cur = msgs[i];
+        msgs[i] = { ...cur, content: cur.content + (d.delta ?? d.content ?? "") };
+      } else if (ev.event === "tool_call_delta") {
+        const idx = d.index ?? 0;
+        const prev = deltaArgsRef.current.get(idx) ?? "";
+        deltaArgsRef.current.set(idx, prev + (d.arguments ?? ""));
+        let toolId = composeRef.current.get(idx);
+        if (!toolId) {
+          toolId = `tc-${Date.now()}-${idx}`;
+          composeRef.current.set(idx, toolId);
+          msgs.push({
+            id: toolId,
+            role: "tool_call",
+            content: deltaArgsRef.current.get(idx) ?? "",
+            meta: { toolName: d.name || "tool" },
+          });
+        } else {
+          const ti = msgs.findIndex((x) => x.id === toolId);
+          if (ti >= 0) msgs[ti] = { ...msgs[ti], content: deltaArgsRef.current.get(idx) ?? "" };
+        }
+      } else if (ev.event === "tool_call") {
+        setPhase(`tool:${d.name}`);
+        const idx = d.index ?? 0;
+        const toolId = composeRef.current.get(idx);
+        const card = {
+          id: toolId ?? `tc-${Date.now()}-${idx}`,
+          role: "tool_call",
+          content: JSON.stringify(d.args ?? d.arguments ?? {}, null, 2),
+          meta: { toolName: d.name },
+        };
+        if (toolId) {
+          const ti = msgs.findIndex((x) => x.id === toolId);
+          if (ti >= 0) msgs[ti] = card;
+          else msgs.push(card);
+        } else {
+          composeRef.current.set(idx, card.id);
+          msgs.push(card);
+        }
+      } else if (ev.event === "tool_progress") {
+        setPhase(`tool:${d.name}`);
+        const toolId = composeRef.current.get(d.index ?? 0);
+        const line = d.line ?? "";
+        if (toolId) {
+          const ti = msgs.findIndex((x) => x.id === toolId);
+          if (ti >= 0) {
+            const cur = msgs[ti];
+            const progress = (cur.meta?.progress ?? "") + line;
+            msgs[ti] = { ...cur, meta: { ...cur.meta, progress } };
+          }
+        }
+      } else if (ev.event === "tool_result") {
+        setPhase("result");
+        msgs.push({
+          id: `tr-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          role: "tool_result",
+          content: `${d.result ?? d.output ?? ""}`,
+          meta: { toolName: d.name },
+        });
+      } else if (ev.event === "message_done") {
+        setPhase("");
+        const filtered = msgs
+          .filter((x) => x.role !== "tool_call" && x.role !== "tool_result")
+          .map((x) =>
+            x.id === assistantId
+              ? {
+                  ...x,
+                  meta: {
+                    ...x.meta,
+                    in_tokens: d.usage?.input_tokens,
+                    out_tokens: d.usage?.output_tokens,
+                    cost_usd: d.cost_usd,
+                    latency_ms: d.latency_ms,
+                    tools: d.tools,
+                    model: d.model,
+                    ...(d.reasoning ? { reasoning: d.reasoning } : {}),
+                  },
+                }
+              : x,
+          );
+        liveRef.current = filtered;
+        commit();
+        if (d.session_id) setSession(d.session_id);
+        void refetchSessions();
+      } else if (ev.event === "error") {
+        setPhase("");
+        toast.error(d.message ?? "Stream error");
+      } else if (ev.event === "approval_required") {
+        setPhase("approval");
+      } else if (ev.event === "budget_exceeded") {
+        setPhase("");
+        toast.error(d.reason ?? "Run budget exceeded");
+      } else if (ev.event === "replay_diverged") {
+        setPhase("");
+        toast.error("Run replay diverged and was stopped");
+      }
+      touch();
+    },
+    [commit, refetchSessions, setSession, touch],
+  );
+
+  // Stream recovery: after a reload / tab switch while a run is still in
+  // flight, rebuild the exact UI from the durable event log and keep following
+  // it live. The run id (and thus the log) survives in localStorage, so the
+  // client reconnects instead of waiting blind until message_done.
+  React.useEffect(() => {
+    if (!chatHydrated || !agentReady) return;
+    if (!activeRunId) return;
+    if (attachedRunRef.current === activeRunId) return;
+    const run = chatRun.data;
+    if (!run) return;
+    const TERMINAL = ["succeeded", "failed", "diverged", "cancelled", "waiting_approval"];
+    if (TERMINAL.includes(run.status)) return;
+    attachedRunRef.current = activeRunId;
+    setStreaming(true);
+    assistantIdRef.current = `a-${activeRunId}`;
+    lastEventSeqRef.current = 0;
+    composeRef.current.clear();
+    deltaArgsRef.current.clear();
+    if (liveRef.current.length === 0 && run.message) {
+      liveRef.current = [{ id: `u-${activeRunId}`, role: "user", content: run.message }];
+      commit();
+    }
+
+    const ctrl = new AbortController();
+    reattachAbortRef.current = ctrl;
+    let stopped = false;
+    const terminalEvents = new Set(["message_done", "error", "approval_required", "replay_diverged"]);
+    const follow = async () => {
+      let backoffMs = 500;
+      while (!stopped && !ctrl.signal.aborted) {
+        let terminalSeen = false;
+        try {
+          await streamSSEGet(
+            `/api/chat/runs/${activeRunId}/events?follow=true&after_seq=${lastEventSeqRef.current}`,
+            (ev) => {
+              if (typeof ev.data?.seq === "number") lastEventSeqRef.current = ev.data.seq;
+              if (terminalEvents.has(ev.event)) terminalSeen = true;
+              handleChatEvent(ev);
+            },
+            ctrl.signal,
+          );
+          if (terminalSeen) break;
+        } catch {
+          if (stopped || ctrl.signal.aborted) break;
+        }
+        if (stopped || ctrl.signal.aborted) break;
+        await new Promise((resolve) => window.setTimeout(resolve, backoffMs));
+        backoffMs = Math.min(backoffMs * 2, 5000);
+      }
+    };
+    void follow();
+    return () => {
+      stopped = true;
+      ctrl.abort();
+      if (attachedRunRef.current === activeRunId) attachedRunRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    chatHydrated,
+    agentReady,
+    sessionId,
+    sessionBelongsToAgent,
+    activeRunId,
+    chatRun.data?.status,
+  ]);
+
   const abortRef = React.useRef<AbortController | null>(null);
+  const pageUnloadingRef = React.useRef(false);
+
+  React.useEffect(() => {
+    const markUnloading = () => {
+      pageUnloadingRef.current = true;
+    };
+    window.addEventListener("pagehide", markUnloading);
+    return () => window.removeEventListener("pagehide", markUnloading);
+  }, []);
 
   const send = async () => {
     if (!draft.trim() || !agentId) return;
     const userMsg: UIMessage = { id: `u-${Date.now()}`, role: "user", content: draft };
     const assistantId = `a-${Date.now()}`;
+    assistantIdRef.current = assistantId;
+    lastEventSeqRef.current = 0;
     liveRef.current = [...liveRef.current, userMsg, { id: assistantId, role: "assistant", content: "" }];
     commit();
     const sentDraft = draft;
@@ -156,11 +431,16 @@ export default function ChatPage() {
 
     const payload: Record<string, any> = {
       agent_id: agentId,
+      run_id: crypto.randomUUID(),
       message: sentDraft,
       session_id: sessionId || undefined,
       stream: true,
     };
     if (modelOverrideId) payload.model_id = modelOverrideId;
+
+    // Persist the run identity before the network request starts. A reload
+    // before the bootstrap SSE frames arrive must still be able to attach.
+    setActiveRun(payload.run_id);
 
     abortRef.current = new AbortController();
     try {
@@ -168,133 +448,30 @@ export default function ChatPage() {
         `/api/chat`,
         payload,
         (ev) => {
-          const d = ev.data;
-          const msgs = liveRef.current;
-          const aIdx = msgs.findIndex((x) => x.id === assistantId);
+          // session_start / chat_run_start only arrive on the live POST stream
+          // (not on the reattach follow-stream); handle them, then delegate
+          // everything else to the shared reducer used by both paths.
           if (ev.event === "session_start") {
-            setSession(d.session_id);
-          } else if (ev.event === "chat_run_start") {
-            setActiveRun(d.run_id);
+            setSession(ev.data.session_id);
+            return;
+          }
+          if (ev.event === "chat_run_start") {
+            setActiveRun(ev.data.run_id);
+            attachedRunRef.current = ev.data.run_id;
             setStreaming(true);
             setPhase("thinking");
-          } else if (ev.event === "message_start") {
-            setPhase("thinking");
-          } else if (ev.event === "reasoning") {
-            setPhase("thinking");
-            if (aIdx >= 0) {
-              const cur = msgs[aIdx];
-              msgs[aIdx] = {
-                ...cur,
-                meta: { ...cur.meta, reasoning: (cur.meta?.reasoning ?? "") + (d.content ?? "") },
-              };
-            }
-            touch();
-          } else if (ev.event === "token") {
-            setPhase("");
-            if (aIdx >= 0) {
-              const cur = msgs[aIdx];
-              msgs[aIdx] = { ...cur, content: cur.content + (d.delta ?? d.content ?? "") };
-            }
-            touch();
-          } else if (ev.event === "tool_call_delta") {
-            const idx = d.index ?? 0;
-            const prev = deltaArgsRef.current.get(idx) ?? "";
-            deltaArgsRef.current.set(idx, prev + (d.arguments ?? ""));
-            let toolId = composeRef.current.get(idx);
-            if (!toolId) {
-              toolId = `tc-${Date.now()}-${idx}`;
-              composeRef.current.set(idx, toolId);
-              msgs.push({
-                id: toolId,
-                role: "tool_call",
-                content: deltaArgsRef.current.get(idx) ?? "",
-                meta: { toolName: d.name || "tool" },
-              });
-            } else {
-              const ti = msgs.findIndex((x) => x.id === toolId);
-              if (ti >= 0) {
-                msgs[ti] = { ...msgs[ti], content: deltaArgsRef.current.get(idx) ?? "" };
-              }
-            }
-            touch();
-          } else if (ev.event === "tool_call") {
-            setPhase(`tool:${d.name}`);
-            const idx = d.index ?? 0;
-            const toolId = composeRef.current.get(idx);
-            const card = {
-              id: toolId ?? `tc-${Date.now()}-${idx}`,
-              role: "tool_call",
-              content: JSON.stringify(d.args ?? d.arguments ?? {}, null, 2),
-              meta: { toolName: d.name },
-            };
-            if (toolId) {
-              const ti = msgs.findIndex((x) => x.id === toolId);
-              if (ti >= 0) msgs[ti] = card;
-              else msgs.push(card);
-            } else {
-              composeRef.current.set(idx, card.id);
-              msgs.push(card);
-            }
-            touch();
-          } else if (ev.event === "tool_progress") {
-            setPhase(`tool:${d.name}`);
-            const toolId = composeRef.current.get(d.index ?? 0);
-            const line = d.line ?? "";
-            if (toolId) {
-              const ti = msgs.findIndex((x) => x.id === toolId);
-              if (ti >= 0) {
-                const cur = msgs[ti];
-                const progress = (cur.meta?.progress ?? "") + line;
-                msgs[ti] = { ...cur, meta: { ...cur.meta, progress } };
-              }
-            }
-            touch();
-          } else if (ev.event === "tool_result") {
-            setPhase("result");
-            msgs.push({
-              id: `tr-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-              role: "tool_result",
-              content: `${d.result ?? d.output ?? ""}`,
-              meta: { toolName: d.name },
-            });
-            touch();
-          } else if (ev.event === "message_done") {
-            setPhase("");
-            const filtered = msgs
-              .filter((x) => x.role !== "tool_call" && x.role !== "tool_result")
-              .map((x) =>
-                x.id === assistantId
-                  ? {
-                      ...x,
-                      meta: {
-                        ...x.meta,
-                        in_tokens: d.usage?.input_tokens,
-                        out_tokens: d.usage?.output_tokens,
-                        cost_usd: d.cost_usd,
-                        latency_ms: d.latency_ms,
-                        tools: d.tools,
-                        model: d.model,
-                        ...(d.reasoning ? { reasoning: d.reasoning } : {}),
-                      },
-                    }
-                  : x,
-              );
-            liveRef.current = filtered;
-            commit();
-            if (d.session_id) {
-              setSession(d.session_id);
-            }
-            sessions.refetch?.();
-          } else if (ev.event === "error") {
-            setPhase("");
-            toast.error(d.message ?? "Stream error");
+            return;
           }
+          handleChatEvent(ev);
         },
         abortRef.current.signal,
       );
     } catch (e: any) {
       setStreaming(false);
-      if (e.name !== "AbortError") toast.error(e.message);
+      if (e.name !== "AbortError" && !pageUnloadingRef.current) {
+        setActiveRun(null);
+        toast.error(e.message);
+      }
     } finally {
       abortRef.current = null;
       // The POST/SSE connection only bootstraps a durable run. Its state is
@@ -304,13 +481,30 @@ export default function ChatPage() {
     }
   };
 
+  const resetReattach = () => {
+    reattachAbortRef.current?.abort();
+    reattachAbortRef.current = null;
+    attachedRunRef.current = null;
+  };
+
   const stop = () => {
+    const runId = activeRunId;
     abortRef.current?.abort();
+    resetReattach();
+    setStreaming(false);
+    setPhase("");
+    setActiveRun(null);
+    if (runId) {
+      void api.post(`/api/chat/runs/${runId}/cancel`).catch(() => {
+        // The local stream is already stopped; a missing/finished run needs no UI recovery.
+      });
+    }
   };
 
   const handleAgentChange = (nextAgentId: string) => {
     if (nextAgentId === agentId) return;
     abortRef.current?.abort();
+    resetReattach();
     liveRef.current = [];
     setMessages([]);
     setSession(null);
@@ -325,6 +519,7 @@ export default function ChatPage() {
     const nextSession = sessions.data?.find((s) => s.id === nextSessionId);
     if (!nextSession || nextSession.agent_id !== agentId) return;
     abortRef.current?.abort();
+    resetReattach();
     liveRef.current = [];
     setMessages([]);
     setActiveRun(null);
@@ -335,6 +530,7 @@ export default function ChatPage() {
 
   const clearMessages = () => {
     abortRef.current?.abort();
+    resetReattach();
     liveRef.current = [];
     setMessages([]);
     setSession(null);
@@ -497,7 +693,11 @@ export default function ChatPage() {
             </div>
           </CardHeader>
 
-          <CardContent className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4 scrollbar-thin">
+          <CardContent
+            ref={scrollHostRef}
+            onScroll={onThreadScroll}
+            className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4 scrollbar-thin"
+          >
             {messages.length === 0 ? (
               <div className="m-auto text-center max-w-sm animate-scale-in">
                 <div className="grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-primary/25 via-primary/10 to-transparent text-primary shadow-3d-card border border-primary/20 mx-auto mb-4">
@@ -522,6 +722,38 @@ export default function ChatPage() {
                 {messages.map((m) => (
                   <ChatMessageItem key={m.id} message={m} debug={debug} hasLiveTools={hasLiveTools} />
                 ))}
+                {(streaming || statusPhase === "approval") && (
+                  <div className="self-start flex max-w-[92%] items-center gap-2 rounded-xl border border-primary/20 bg-primary/[0.04] px-3 py-2 text-[10px] text-muted-foreground shadow-sm">
+                    {statusPhase === "approval" ? (
+                      <ShieldAlert className="h-3.5 w-3.5 shrink-0 animate-pulse text-warning" />
+                    ) : statusPhase.startsWith("tool:") ? (
+                      <Wrench className="h-3.5 w-3.5 shrink-0 animate-pulse text-info" />
+                    ) : (
+                      <Sparkles className="h-3.5 w-3.5 shrink-0 animate-pulse text-primary" />
+                    )}
+                    <span>
+                      {statusPhase === "approval"
+                        ? "Waiting for approval"
+                        : statusPhase.startsWith("tool:")
+                          ? `Using tool: ${statusPhase.slice(5)}`
+                          : statusPhase === "result"
+                            ? "Processing result"
+                            : statusPhase === "answering"
+                              ? "Generating answer"
+                              : "Thinking"}
+                    </span>
+                    {effectiveModel && (
+                      <span className="font-mono text-muted-foreground/60">
+                        · {effectiveModel.display_name || effectiveModel.name}
+                      </span>
+                    )}
+                    <span className="ml-auto flex gap-0.5" aria-hidden="true">
+                      <span className="h-1 w-1 rounded-full bg-current animate-pulse" />
+                      <span className="h-1 w-1 rounded-full bg-current animate-pulse [animation-delay:150ms]" />
+                      <span className="h-1 w-1 rounded-full bg-current animate-pulse [animation-delay:300ms]" />
+                    </span>
+                  </div>
+                )}
                 <div ref={bottomRef} />
               </>
             )}
@@ -562,9 +794,14 @@ export default function ChatPage() {
           </Button>
         </div>
 
-        {streaming && (
-          <div className="mt-2 flex items-center gap-2 text-[10px] text-muted-foreground">
-            {phase.startsWith("tool:") ? (
+        {(streaming || phase === "approval") && (
+          <div className="hidden mt-2 flex items-center gap-2 text-[10px] text-muted-foreground">
+            {phase === "approval" ? (
+              <>
+                <span className="h-1.5 w-1.5 rounded-full bg-warning animate-pulse" />
+                Waiting for approval…
+              </>
+            ) : phase.startsWith("tool:") ? (
               <>
                 <span className="h-1.5 w-1.5 rounded-full bg-info animate-pulse" />
                 Using tool: {phase.slice(5)}…
@@ -574,7 +811,17 @@ export default function ChatPage() {
                 <span className="h-1.5 w-1.5 rounded-full bg-info animate-pulse" />
                 Processing result…
               </>
-            ) : null}
+            ) : phase === "answering" ? (
+              <>
+                <span className="h-1.5 w-1.5 rounded-full bg-info animate-pulse" />
+                Generating...
+              </>
+            ) : (
+              <>
+                <span className="h-1.5 w-1.5 rounded-full bg-info animate-pulse" />
+                Thinking...
+              </>
+            )}
             {effectiveModel && <span className="font-mono text-muted-foreground/60">· {effectiveModel.display_name || effectiveModel.name}</span>}
           </div>
         )}

@@ -39,15 +39,37 @@ per-turn cost. One session = one agent in v1.
 5. Persist messages + `usage_events`.
 6. Return/stream `AgentLoopResult`.
 
-## Streaming (SSE)
-`stream:true` → `text/event-stream`:
+## Streaming & durability (event-sourced run)
+`POST /api/chat` (`stream:true`) no longer returns the agent's token/tool
+frames over the HTTP response. The POST only creates a durable `Task` (the
+run) and returns two bootstrap frames — `session_start`, `chat_run_start` —
+so the client learns the `run_id` and `session_id` immediately, then the agent
+loop runs in a background task / arq worker.
+
+Every frame the loop emits is also appended to a durable event log
+(`chat_run_events`, per `run_id`, monotonic `seq`). A client that reloads the
+page mid-run reconnects via `GET /api/chat/runs/{run_id}/events?follow=true`
+which **drains the log and rebuilds the exact UI** (partial assistant text,
+reasoning in progress, running tool cards, live tool progress) and then keeps
+following new frames until a terminal event. `follow=false` returns the log
+as a JSON snapshot. This makes in-flight chat state survivable across reloads
+and tab switches, not just the final transcript.
+
+Event vocabulary (idempotent / replayable):
 ```
-event: token       data: {"delta":"Here "}
-event: token       data: {"delta":"is the "}
-event: tool_call   data: {"name":"read_attachment","args":{...}}
-event: tool_result data: {"name":"read_attachment","result":"..."}
-event: done        data: {"response":"...","usage":{...}}
+message_start | reasoning* | token* | tool_call_delta* | tool_call |
+tool_progress* | tool_result | retry | self_correct | message_done |
+error | approval_required | budget_exceeded | replay_diverged
 ```
+
+`GET /api/chat/runs/{run_id}` additionally returns a `progress` checkpoint
+(`phase`, `last_seq`, `content_chars`, …) updated by the loop, so a polling
+client can show "Using tool X…" without touching the event log, and the
+worker's orphan sweep can tell a live run from a dead one.
+
+> A chat `Task` stuck `running`/`queued` with no progress heartbeat for
+> ~2 min is failed by the worker cron (`worker.py::_fail_orphaned_chat_runs`)
+> with reason "worker lost", so the UI never spins forever.
 
 ## Attachments
 `attachments` are local workspace paths. The first tool the model typically uses
