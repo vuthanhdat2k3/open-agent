@@ -43,10 +43,12 @@ CREDENTIALS_PATH = os.environ.get("GOOGLE_CREDENTIALS_PATH", "credentials.json")
 TOKEN_PATH = os.environ.get("GOOGLE_TOKEN_PATH", "token.json")
 SERVICE_ACCOUNT_PATH = os.environ.get("GOOGLE_SERVICE_ACCOUNT_PATH")
 DRIVE_ROOT_FOLDER_ID = os.environ.get("DRIVE_ROOT_FOLDER_ID", "")
+MCP_HOST = os.environ.get("MCP_HOST", "127.0.0.1")
+MCP_PORT = int(os.environ.get("MCP_PORT", "8001"))
 DEFAULT_PAGE_SIZE = int(os.environ.get("DRIVE_PAGE_SIZE", "20"))
 MAX_OUTPUT_CHARS = int(os.environ.get("DRIVE_MAX_OUTPUT_CHARS", "40000"))
 
-mcp = FastMCP("drive-mcp")
+mcp = FastMCP("drive-mcp", host=MCP_HOST, port=MCP_PORT)
 
 # Lazily-initialised Drive API service (created on first tool call).
 _drive_service = None
@@ -307,8 +309,6 @@ if __name__ == "__main__":
     if transport == "sse":
         # Network mode: open-agent connects via transport="sse", url="http://host:port/sse".
         # Requires GOOGLE_TOKEN_PATH to already exist (run `python auth.py` on the host first).
-        mcp.settings.host = os.environ.get("MCP_HOST", "0.0.0.0")
-        mcp.settings.port = int(os.environ.get("MCP_PORT", "8001"))
         mcp.run(transport="sse")
     else:
         mcp.run(transport="stdio")

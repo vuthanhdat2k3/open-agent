@@ -141,6 +141,15 @@ services:
     profiles: ["optional"]
     build:
       context: ./mcp-drive-server
+    environment:
+      MCP_TRANSPORT: sse
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: 8200
+      GOOGLE_CREDENTIALS_PATH: /app/credentials.json
+      GOOGLE_TOKEN_PATH: /app/token.json
+    volumes:
+      - ./mcp-drive-server/credentials.json:/app/credentials.json:ro
+      - ./mcp-drive-server/token.json:/app/token.json:ro
     ports:
       - "8200:8200"
 
