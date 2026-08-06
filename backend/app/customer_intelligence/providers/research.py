@@ -19,6 +19,10 @@ class CompanyProvider(Protocol):
 
 class CalendarProvider(Protocol):
     async def list_events(self, *, from_: datetime, to: datetime, max_results: int = 25) -> list[CalendarEvent]: ...
+    async def get_event(self, provider_event_id: str) -> CalendarEvent | None: ...
+    async def create_event(self, **kwargs: Any) -> dict[str, Any]: ...
+    async def update_event(self, provider_event_id: str, **kwargs: Any) -> dict[str, Any]: ...
+    async def delete_event(self, provider_event_id: str) -> None: ...
 
 
 def _search_hit(data: dict[str, Any]) -> SearchHit:
@@ -84,19 +88,48 @@ class McpCalendarProvider:
             },
         )
         return [
-            CalendarEvent(
-                provider_event_id=item.get("provider_event_id", ""),
-                title=item.get("title", ""),
-                start_at=datetime.fromisoformat(item["start_at"].replace("Z", "+00:00")),
-                end_at=datetime.fromisoformat(item["end_at"].replace("Z", "+00:00")),
-                attendees=item.get("attendees", []),
-                organizer=item.get("organizer"),
-                description=item.get("description"),
-                location=item.get("location"),
-            )
+            self._event(item)
             for item in data
             if item.get("start_at") and item.get("end_at")
         ]
+
+    @staticmethod
+    def _event(item: dict[str, Any]) -> CalendarEvent:
+        return CalendarEvent(
+            provider_event_id=item.get("provider_event_id", ""),
+            title=item.get("title", ""),
+            start_at=datetime.fromisoformat(item["start_at"].replace("Z", "+00:00")),
+            end_at=datetime.fromisoformat(item["end_at"].replace("Z", "+00:00")),
+            attendees=item.get("attendees", []),
+            organizer=item.get("organizer"),
+            description=item.get("description"),
+            location=item.get("location"),
+        )
+
+    async def get_event(self, provider_event_id: str) -> CalendarEvent | None:
+        data = await call_customer_intelligence_mcp(
+            "calendar_get_event",
+            {"provider": self._credentials.get("calendar_provider", "google"), "access_token": self._credentials.get("access_token", ""), "provider_event_id": provider_event_id},
+        )
+        return self._event(data) if data and data.get("start_at") and data.get("end_at") else None
+
+    async def create_event(self, **kwargs: Any) -> dict[str, Any]:
+        return await call_customer_intelligence_mcp(
+            "calendar_create_event",
+            {"provider": self._credentials.get("calendar_provider", "google"), "access_token": self._credentials.get("access_token", ""), **kwargs},
+        )
+
+    async def update_event(self, provider_event_id: str, **kwargs: Any) -> dict[str, Any]:
+        return await call_customer_intelligence_mcp(
+            "calendar_update_event",
+            {"provider": self._credentials.get("calendar_provider", "google"), "access_token": self._credentials.get("access_token", ""), "provider_event_id": provider_event_id, **kwargs},
+        )
+
+    async def delete_event(self, provider_event_id: str) -> None:
+        await call_customer_intelligence_mcp(
+            "calendar_delete_event",
+            {"provider": self._credentials.get("calendar_provider", "google"), "access_token": self._credentials.get("access_token", ""), "provider_event_id": provider_event_id},
+        )
 
 
 def get_web_provider() -> WebSearchProvider:

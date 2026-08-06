@@ -90,6 +90,21 @@ def _multipart_body(metadata: dict[str, Any], content: str, mime_type: str) -> t
     return body, f"multipart/related; boundary={boundary}"
 
 
+def _calendar_event(raw: dict[str, Any]) -> dict[str, Any]:
+    start = raw.get("start", {}).get("dateTime") or raw.get("start", {}).get("date")
+    end = raw.get("end", {}).get("dateTime") or raw.get("end", {}).get("date")
+    return {
+        "provider_event_id": raw.get("id", ""),
+        "title": raw.get("summary", ""),
+        "start_at": start,
+        "end_at": end,
+        "attendees": [a.get("email", "") for a in raw.get("attendees", [])],
+        "organizer": raw.get("organizer", {}).get("email"),
+        "description": raw.get("description"),
+        "location": raw.get("location"),
+    }
+
+
 async def _drive_upload(method: str, path: str, access_token: str, *, content: str, mime_type: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
     body, content_type = _multipart_body(metadata or {}, content, mime_type)
     async with httpx.AsyncClient(timeout=25.0) as client:
@@ -233,13 +248,71 @@ async def calendar_list_events(
             data = await _request("GET", CALENDAR_API, access_token, params={"timeMin": from_, "timeMax": to, "singleEvents": "true", "orderBy": "startTime", "maxResults": max_results})
             events = []
             for item in data.get("items", []):
-                start = item.get("start", {}).get("dateTime") or item.get("start", {}).get("date")
-                end = item.get("end", {}).get("dateTime") or item.get("end", {}).get("date")
-                events.append({"provider_event_id": item.get("id", ""), "title": item.get("summary", ""), "start_at": start, "end_at": end, "attendees": [a.get("email", "") for a in item.get("attendees", [])], "organizer": item.get("organizer", {}).get("email"), "description": item.get("description"), "location": item.get("location")})
+                events.append(_calendar_event(item))
             return _ok(events)
         return _error(f"unsupported calendar provider: {provider}; only google is enabled")
     except Exception as exc:  # noqa: BLE001
         return _error(f"calendar lookup failed: {type(exc).__name__}")
+
+
+@mcp.tool()
+async def calendar_get_event(provider: str, access_token: str, provider_event_id: str) -> str:
+    try:
+        if provider != "google":
+            return _error(f"unsupported calendar provider: {provider}; only google is enabled")
+        return _ok(_calendar_event(await _request("GET", f"{CALENDAR_API}/{provider_event_id}", access_token)))
+    except Exception as exc:  # noqa: BLE001
+        return _error(f"calendar get failed: {type(exc).__name__}")
+
+
+def _calendar_body(summary: str, start: str | None = None, end: str | None = None, description: str = "", location: str = "", attendees: list[str] | None = None) -> dict[str, Any]:
+    body: dict[str, Any] = {"summary": summary}
+    if start:
+        body["start"] = {"dateTime": start}
+    if end:
+        body["end"] = {"dateTime": end}
+    if description:
+        body["description"] = description
+    if location:
+        body["location"] = location
+    if attendees is not None:
+        body["attendees"] = [{"email": email} for email in attendees]
+    return body
+
+
+@mcp.tool()
+async def calendar_create_event(provider: str, access_token: str, summary: str, start: str, end: str, description: str = "", location: str = "", attendees: list[str] | None = None) -> str:
+    try:
+        if provider != "google":
+            return _error(f"unsupported calendar provider: {provider}; only google is enabled")
+        created = await _request("POST", CALENDAR_API, access_token, body=_calendar_body(summary, start, end, description, location, attendees or []))
+        return _ok(_calendar_event(created))
+    except Exception as exc:  # noqa: BLE001
+        return _error(f"calendar create failed: {type(exc).__name__}")
+
+
+@mcp.tool()
+async def calendar_update_event(provider: str, access_token: str, provider_event_id: str, summary: str | None = None, start: str | None = None, end: str | None = None, description: str = "", location: str = "", attendees: list[str] | None = None) -> str:
+    try:
+        if provider != "google":
+            return _error(f"unsupported calendar provider: {provider}; only google is enabled")
+        current = await _request("GET", f"{CALENDAR_API}/{provider_event_id}", access_token)
+        body = _calendar_body(summary or current.get("summary", ""), start or current.get("start", {}).get("dateTime"), end or current.get("end", {}).get("dateTime"), description or current.get("description", ""), location or current.get("location", ""), attendees if attendees is not None else [a.get("email", "") for a in current.get("attendees", [])])
+        updated = await _request("PATCH", f"{CALENDAR_API}/{provider_event_id}", access_token, body=body)
+        return _ok(_calendar_event(updated))
+    except Exception as exc:  # noqa: BLE001
+        return _error(f"calendar update failed: {type(exc).__name__}")
+
+
+@mcp.tool()
+async def calendar_delete_event(provider: str, access_token: str, provider_event_id: str) -> str:
+    try:
+        if provider != "google":
+            return _error(f"unsupported calendar provider: {provider}; only google is enabled")
+        await _request("DELETE", f"{CALENDAR_API}/{provider_event_id}", access_token)
+        return _ok({"provider_event_id": provider_event_id, "deleted": True})
+    except Exception as exc:  # noqa: BLE001
+        return _error(f"calendar delete failed: {type(exc).__name__}")
 
 
 async def _ddg(query: str, limit: int) -> list[dict[str, Any]]:
