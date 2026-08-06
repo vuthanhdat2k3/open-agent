@@ -639,7 +639,6 @@ export default function ChatPage() {
                     <button
                       onClick={async (e) => {
                         e.stopPropagation();
-                        if (!window.confirm(`Xóa phiên trò chuyện "${s.title}"? Hành động này không thể hoàn tác.`)) return;
                         await delSession.mutateAsync(s.id);
                         if (sessionId === s.id) {
                           clearMessages();
