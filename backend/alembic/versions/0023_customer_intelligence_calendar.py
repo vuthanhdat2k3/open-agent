@@ -36,9 +36,15 @@ def upgrade() -> None:
             sa.Column(
                 "calendar_connection_id",
                 sa.String(length=36),
-                sa.ForeignKey("ci_calendar_connections.id", ondelete="SET NULL"),
                 nullable=True,
             )
+        )
+        batch_op.create_foreign_key(
+            "fk_ci_cases_calendar_connection",
+            "ci_calendar_connections",
+            ["calendar_connection_id"],
+            ["id"],
+            ondelete="SET NULL",
         )
         batch_op.create_index("ix_ci_cases_calendar_connection_id", ["calendar_connection_id"])
 
