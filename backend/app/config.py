@@ -88,6 +88,9 @@ class Settings(BaseSettings):
     ci_mcp_url: str = "http://customer-intelligence-mcp:8301/sse"
     ci_mcp_command: str = ""
     ci_mcp_args: list[str] = []
+    # Public API origin used in OAuth redirect URIs. This must be browser-
+    # reachable and must match the URI registered in Google Cloud Console.
+    ci_backend_public_url: str = "http://localhost:8000"
     ci_frontend_redirect_url: str = "http://localhost:3000/integrations"
     # News lookback window for web research (7/30/90 days).
     ci_news_window_days: int = 30

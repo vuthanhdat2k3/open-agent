@@ -46,6 +46,12 @@ def _guard_enabled() -> None:
         raise HTTPException(status_code=404, detail="customer intelligence is disabled")
 
 
+def _ci_oauth_redirect_uri(kind: str, provider: str) -> str:
+    """Build the browser-reachable callback, not the Docker service hostname."""
+    base_url = get_settings().ci_backend_public_url.rstrip("/")
+    return f"{base_url}/api/customer-intelligence/oauth/{kind}/{provider}/callback"
+
+
 @oauth_router.get("/oauth/{kind}/{provider}/start")
 async def start_ci_oauth(
     kind: str,
@@ -60,7 +66,7 @@ async def start_ci_oauth(
     from app.customer_intelligence.oauth import authorization_url, create_oauth_state
 
     state = create_oauth_state(current_user.id, org_id, kind, provider)
-    redirect_uri = str(request.url_for("ci_oauth_callback", kind=kind, provider=provider))
+    redirect_uri = _ci_oauth_redirect_uri(kind, provider)
     try:
         url = authorization_url(provider, kind, state, redirect_uri)
     except ValueError as exc:
@@ -88,7 +94,7 @@ async def ci_oauth_callback(kind: str, provider: str, request: Request, db: Asyn
     code = request.query_params.get("code")
     if not code:
         raise HTTPException(400, request.query_params.get("error", "OAuth authorization failed"))
-    redirect_uri = str(request.url_for("ci_oauth_callback", kind=kind, provider=provider))
+    redirect_uri = _ci_oauth_redirect_uri(kind, provider)
     try:
         token = await exchange_code(provider, code, redirect_uri, kind)
         email = await account_email(provider, token.get("access_token", ""))
