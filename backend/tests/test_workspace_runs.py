@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import time
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -228,7 +227,7 @@ def test_run_unknown_artifact_404(client, workspace_env, monkeypatch) -> None:
     _patch_live_run(monkeypatch, FakeProc(lines=[b"x\n"]))
 
     resp = client.post(
-        f"/api/workspace/artifacts/does-not-exist/run",
+        "/api/workspace/artifacts/does-not-exist/run",
         headers=_auth_headers(env.token, env.org_id),
     )
 
