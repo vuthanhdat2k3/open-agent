@@ -10,7 +10,7 @@ He thong phai giam thao tac thu cong, nhung khong duoc tu dong gui thong tin ra 
 
 ### Trong pham vi
 
-- Gmail va Outlook thong qua OAuth2.
+- Gmail va Google Calendar/Drive thong qua OAuth2.
 - Polling va webhook/delta sync cho email, co checkpoint va idempotency.
 - Trich xuat nguoi gui, cong ty, domain, noi dung, muc dich va dau hieu lich hop.
 - Tra cuu website, tin tuc gan day va thong tin cong ty noi bo.
@@ -62,7 +62,7 @@ Neu mot nhanh research loi, report van phai ghi ro phan nao khong co du lieu. Kh
 ### FR-001 Ket noi email
 
 - Ho tro OAuth2, token encryption, refresh token va revoke.
-- Gmail dung historyId/page token; Outlook dung deltaLink neu provider ho tro.
+- Gmail dung historyId/page token cho polling.
 - Luu `provider_message_id`, `thread_id`, `received_at`, `sync_cursor`.
 - Cung mot email chi duoc tao mot `ResearchCase`, ke ca khi worker retry.
 - Khong log access token, refresh token, body nhay cam hoac attachment binary.

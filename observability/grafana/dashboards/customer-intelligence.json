@@ -1,0 +1,41 @@
+{
+  "title": "Customer Intelligence",
+  "schemaVersion": 39,
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Sync Rate",
+      "targets": [
+        { "expr": "sum by (result) (rate(ci_syncs_total[5m]))" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Cases Ingested",
+      "targets": [
+        { "expr": "sum by (trigger) (rate(ci_cases_ingested_total[5m]))" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Sync Duration p95",
+      "targets": [
+        { "expr": "histogram_quantile(0.95, rate(ci_sync_duration_seconds_bucket[5m]))" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Approval Age (p95 by decision)",
+      "targets": [
+        { "expr": "histogram_quantile(0.95, rate(ci_approval_age_seconds_bucket[5m]))" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Approval Age Decisions (count)",
+      "targets": [
+        { "expr": "sum by (decision) (rate(ci_approval_age_seconds_count[5m]))" }
+      ]
+    }
+  ]
+}

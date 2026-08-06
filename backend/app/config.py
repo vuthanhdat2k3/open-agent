@@ -75,6 +75,43 @@ class Settings(BaseSettings):
     s3_bucket: str = "openagent-uploads"
     s3_region: str = "us-east-1"
     rag_mcp_server_name: str = "rag"
+
+    # --- Customer Intelligence (email-driven company research) ---
+    # Master switch for the feature; when disabled the API returns 404 for the
+    # customer-intelligence router. Defaults OFF so the surface stays inert
+    # until explicitly enabled.
+    customer_intelligence_enabled: bool = False
+    # Customer Intelligence MCP connector. Credentials are never stored here;
+    # they are passed to the stateless MCP service for one call only.
+    ci_mcp_server_name: str = "customer-intelligence"
+    ci_mcp_transport: Literal["stdio", "sse"] = "sse"
+    ci_mcp_url: str = "http://customer-intelligence-mcp:8301/sse"
+    ci_mcp_command: str = ""
+    ci_mcp_args: list[str] = []
+    ci_frontend_redirect_url: str = "http://localhost:3000/integrations"
+    # News lookback window for web research (7/30/90 days).
+    ci_news_window_days: int = 30
+    # Hard per-branch timeout for a single research call.
+    ci_research_timeout_s: float = 30.0
+    # Upper bound on persisted research sources per case (rate-limit guard).
+    ci_max_sources_per_case: int = 25
+    # Attachment size limit accepted during ingestion (defense-in-depth).
+    ci_max_attachment_bytes: int = 10 * 1024 * 1024
+    # How long a pending approval stays valid before it expires.
+    ci_approval_expiry_hours: int = 72
+    # 32-byte key (urlsafe base64) for AES-GCM credential encryption at rest.
+    # Empty => derive a stable dev key from jwt_secret_key (never in prod).
+    ci_credential_encryption_key: str = ""
+    # Default daily run time (HH:MM, user timezone) for new connections.
+    ci_daily_schedule_default: str = "08:00"
+    # Google OAuth client credentials used by the real Gmail/Calendar/Drive connectors.
+    ci_google_oauth_client_id: str = ""
+    ci_google_oauth_client_secret: str = ""
+    # Optional keyed company-identity source for the real company provider.
+    # Empty => provider degrades to research_unavailable (no fabricated data).
+    ci_company_api_url: str = ""
+    ci_company_api_key: str = ""
+
     allowed_extensions: list[str] = [
         ".pdf",
         ".txt",
