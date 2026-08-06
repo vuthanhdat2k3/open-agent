@@ -16,6 +16,7 @@ from app.core.tools.paths import safe_resolve, safe_url
 from app.core.tools.registry import register
 from app.core.tools.risk_tier import RiskTier
 from app.core.tools.types import ToolContext, ToolSpec
+from app.customer_intelligence.tools import register_customer_intelligence_tools  # noqa: F401
 
 settings = get_settings()
 

@@ -6,6 +6,7 @@ from app.api.v1.routes import (
     approvals,
     auth,
     chat,
+    customer_intelligence,
     debug,
     evaluations,
     files,
@@ -30,6 +31,7 @@ protected_router.include_router(providers.router)
 protected_router.include_router(models.router)
 protected_router.include_router(agents.router)
 protected_router.include_router(approvals.router)
+protected_router.include_router(customer_intelligence.router)
 protected_router.include_router(mcp.router)
 protected_router.include_router(workflows.router)
 protected_router.include_router(chat.router)
@@ -40,4 +42,5 @@ protected_router.include_router(sessions.router)
 protected_router.include_router(sandbox.router)
 protected_router.include_router(workspace.router)
 protected_router.include_router(a2a.router)
+api_router.include_router(customer_intelligence.oauth_router)
 api_router.include_router(protected_router)
