@@ -383,6 +383,19 @@ export function useDeleteWorkspaceArtifact() {
   });
 }
 
+export function useRunWorkspaceArtifact() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (artifactId: string) =>
+      api.post<{ execution_id: string; artifact_id: string; max_seconds: number }>(
+        `/api/workspace/artifacts/${artifactId}/run`,
+      ),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["sandbox-executions"] });
+    },
+  });
+}
+
 export function useSandboxExecutions() {
   return useQuery({
     queryKey: ["sandbox-executions"],
