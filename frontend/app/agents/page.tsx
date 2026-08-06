@@ -10,6 +10,7 @@ import {
   Thermometer,
   RotateCcw,
   History,
+  Search,
   Upload,
 } from "lucide-react";
 import {
@@ -39,7 +40,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import type { Agent } from "@/types";
+import type { Agent, AgentToolInfo } from "@/types";
 
 type AgentForm = {
   name: string;
@@ -48,6 +49,7 @@ type AgentForm = {
   model_id: string;
   max_iterations: number;
   temperature: number;
+  allowed_risk_tiers: string[];
 };
 
 const DEFAULT_FORM: AgentForm = {
@@ -57,7 +59,39 @@ const DEFAULT_FORM: AgentForm = {
   model_id: "",
   max_iterations: 12,
   temperature: 0.7,
+  allowed_risk_tiers: ["safe", "read"],
 };
+
+const TOOL_GROUPS: Record<string, string> = {
+  customer: "Customer intelligence",
+  memory: "Memory",
+  workspace: "Workspace & files",
+  execution: "Execution",
+  research: "Web & research",
+  agents: "Agents & delegation",
+  knowledge: "Knowledge & MCP",
+  other: "Other tools",
+};
+
+function toolGroup(name: string): string {
+  if (/^(email_|calendar_|drive_|company_|news_)/.test(name)) return "customer";
+  if (/memory|save_memory|call_memory/.test(name)) return "memory";
+  if (/^(write_file|list_dir|search_files|read_attachment|workspace_)/.test(name)) return "workspace";
+  if (/^(run_shell|run_code|sandbox_)/.test(name)) return "execution";
+  if (/^(web_|rag_)/.test(name)) return name.startsWith("rag_") ? "knowledge" : "research";
+  if (/^(call_agent|call_external_agent)/.test(name)) return "agents";
+  if (name.startsWith("mcp:")) return "knowledge";
+  return "other";
+}
+
+const RISK_TIERS = [
+  { key: "safe", label: "Safe", description: "No side effects" },
+  { key: "read", label: "Read", description: "Read data and files" },
+  { key: "write", label: "Write", description: "Create or change data" },
+  { key: "network", label: "Network", description: "Outbound network calls" },
+  { key: "execute", label: "Execute", description: "Run sandboxed code" },
+  { key: "dangerous", label: "Dangerous", description: "High-impact operations" },
+] as const;
 
 export default function AgentsPage() {
   const [open, setOpen] = React.useState(false);
@@ -77,7 +111,19 @@ export default function AgentsPage() {
   const rollbackRelease = useRollbackAgentRelease();
 
   const [selectedTools, setSelectedTools] = React.useState<string[]>([]);
+  const [toolSearch, setToolSearch] = React.useState("");
   const [form, setForm] = React.useState<AgentForm>(DEFAULT_FORM);
+
+  const groupedTools = React.useMemo(() => {
+    const query = toolSearch.trim().toLowerCase();
+    const groups: Record<string, AgentToolInfo[]> = {};
+    for (const tool of tools.data ?? []) {
+      if (query && !`${tool.name} ${tool.description}`.toLowerCase().includes(query)) continue;
+      const group = toolGroup(tool.name);
+      (groups[group] ??= []).push(tool);
+    }
+    return groups;
+  }, [tools.data, toolSearch]);
 
   React.useEffect(() => {
     if (!models.data?.length || editingAgent) return;
@@ -95,6 +141,7 @@ export default function AgentsPage() {
       model_id: agent.model_id,
       max_iterations: agent.max_iterations,
       temperature: agent.temperature,
+      allowed_risk_tiers: agent.allowed_risk_tiers ?? ["safe", "read"],
     });
     setSelectedTools(agent.tools ?? []);
     setOpen(true);
@@ -153,6 +200,14 @@ export default function AgentsPage() {
 
   const toggleTool = (t: string) =>
     setSelectedTools((cur) => (cur.includes(t) ? cur.filter((x) => x !== t) : [...cur, t]));
+
+  const toggleRiskTier = (tier: string) =>
+    setForm((current) => ({
+      ...current,
+      allowed_risk_tiers: current.allowed_risk_tiers.includes(tier)
+        ? current.allowed_risk_tiers.filter((item) => item !== tier)
+        : [...current.allowed_risk_tiers, tier],
+    }));
 
   const handleSubmit = async () => {
     try {
@@ -254,40 +309,98 @@ export default function AgentsPage() {
                   />
                 </div>
 
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80 flex items-center gap-1.5">
-                    <Wrench className="h-3.5 w-3.5 text-primary" /> Tools
-                    {selectedTools.length > 0 && (
-                      <span className="ml-auto text-[10px] text-muted-foreground font-normal">{selectedTools.length} selected</span>
-                    )}
-                  </Label>
-                  <div className="flex flex-wrap gap-2 p-3 rounded-xl border border-border/40 bg-muted/10 min-h-[56px]">
-                    {tools.data?.map((t) => {
-                      const on = selectedTools.includes(t.name);
+                <div className="space-y-2 rounded-xl border border-border/50 bg-muted/10 p-3">
+                  <div className="flex items-start gap-2">
+                    <div>
+                      <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">Execution permissions</Label>
+                      <p className="mt-1 text-[11px] text-muted-foreground">Allow risk tiers before selecting tools that require them.</p>
+                    </div>
+                    <Badge variant="outline" className="ml-auto text-[10px]">{form.allowed_risk_tiers.length} / {RISK_TIERS.length} enabled</Badge>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                    {RISK_TIERS.map((tier) => {
+                      const enabled = form.allowed_risk_tiers.includes(tier.key);
                       return (
                         <button
-                          key={t.name}
+                          key={tier.key}
                           type="button"
-                          onClick={() => toggleTool(t.name)}
-                          className="transition-transform active:scale-[0.96]"
-                          title={t.description}
+                          aria-pressed={enabled}
+                          onClick={() => toggleRiskTier(tier.key)}
+                          className={`rounded-lg border p-2 text-left transition-colors ${enabled ? "border-primary/50 bg-primary/10" : "border-border/50 bg-background/30 hover:border-primary/30"}`}
                         >
-                          <Badge
-                            variant={on ? "default" : "outline"}
-                            className={`cursor-pointer gap-1 text-[11px] transition-colors ${
-                              on ? "shadow-sm" : "opacity-60 hover:opacity-100"
-                            }`}
-                          >
-                            <Wrench className="h-2.5 w-2.5" /> {t.name}
-                            {t.risk_tier && (
-                              <span className={`ml-1 rounded-full border px-1.5 py-0.5 ${riskColor[t.risk_tier]}`}>
-                                {t.risk_tier}
-                              </span>
-                            )}
-                          </Badge>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className={`text-xs font-semibold ${enabled ? "text-foreground" : "text-muted-foreground"}`}>{tier.label}</span>
+                            <span className="text-[9px] uppercase tracking-wider text-muted-foreground">{enabled ? "Allowed" : "Blocked"}</span>
+                          </div>
+                          <span className="mt-1 block text-[10px] text-muted-foreground">{tier.description}</span>
                         </button>
                       );
                     })}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Label className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">
+                      <Wrench className="h-3.5 w-3.5 text-primary" /> Tools
+                    </Label>
+                    <Badge variant="outline" className="ml-auto text-[10px]">
+                      {selectedTools.length} selected · {tools.data?.length ?? 0} total
+                    </Badge>
+                  </div>
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      value={toolSearch}
+                      onChange={(event) => setToolSearch(event.target.value)}
+                      placeholder="Search tools by name or description"
+                      aria-label="Search tools"
+                      className="h-9 pl-9 text-xs"
+                    />
+                  </div>
+                  <div className="max-h-[320px] space-y-3 overflow-y-auto rounded-xl border border-border/40 bg-muted/10 p-3">
+                    {Object.entries(groupedTools).length === 0 ? (
+                      <p className="py-8 text-center text-xs text-muted-foreground">No tools match your search.</p>
+                    ) : (
+                      Object.entries(groupedTools).map(([group, items]) => (
+                        <section key={group} className="space-y-2">
+                          <div className="flex items-center gap-2 border-b border-border/40 pb-1.5">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{TOOL_GROUPS[group] ?? group}</span>
+                            <span className="text-[10px] text-muted-foreground/60">{items.length}</span>
+                          </div>
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            {items.map((tool) => {
+                              const selected = selectedTools.includes(tool.name);
+                              const tierAllowed = !tool.risk_tier || form.allowed_risk_tiers.includes(tool.risk_tier);
+                              const disabled = (!tool.available || !tierAllowed) && !selected;
+                              return (
+                                <button
+                                  key={tool.name}
+                                  type="button"
+                                  disabled={disabled}
+                                  aria-pressed={selected}
+                                  onClick={() => toggleTool(tool.name)}
+                                  title={tool.available && tierAllowed ? tool.description : !tool.available ? "Connection unavailable. Connect the integration before using this tool." : `Enable the ${tool.risk_tier} permission above before selecting this tool.`}
+                                  className={`flex min-w-0 items-start justify-between gap-2 rounded-lg border p-2 text-left transition-colors ${
+                                    selected ? "border-primary/50 bg-primary/10" : "border-border/50 bg-background/30 hover:border-primary/30"
+                                  } ${disabled ? "cursor-not-allowed opacity-45" : "active-tactile"}`}
+                                >
+                                  <span className="min-w-0">
+                                    <span className="block truncate font-mono text-[11px] font-medium">{tool.name}</span>
+                                    <span className="mt-0.5 block line-clamp-1 text-[10px] text-muted-foreground">{tool.description}</span>
+                                  </span>
+                                  <span className="flex shrink-0 flex-col items-end gap-1">
+                                    {tool.risk_tier && <span className={`rounded-full border px-1.5 py-0.5 text-[9px] ${riskColor[tool.risk_tier]}`}>{tool.risk_tier}</span>}
+                                    {!tool.available && <span className="text-[9px] text-warning">Unavailable</span>}
+                                    {tool.available && !tierAllowed && <span className="text-[9px] text-warning">Permission required</span>}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </section>
+                      ))
+                    )}
                   </div>
                 </div>
 

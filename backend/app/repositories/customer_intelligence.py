@@ -60,10 +60,13 @@ class CalendarConnectionRepository(BaseRepository[CalendarConnection]):
         )
         return res.scalar_one_or_none()
 
-    async def get_connected(self, org_id: str) -> CalendarConnection | None:
+    async def get_connected(self, org_id: str, user_id: str | None = None) -> CalendarConnection | None:
+        filters = [CalendarConnection.org_id == org_id, CalendarConnection.status == "connected"]
+        if user_id:
+            filters.append(CalendarConnection.created_by_user_id == user_id)
         res = await self.db.execute(
             select(CalendarConnection)
-            .where(CalendarConnection.org_id == org_id, CalendarConnection.status == "connected")
+            .where(*filters)
             .order_by(CalendarConnection.created_at.desc())
             .limit(1)
         )
@@ -84,10 +87,13 @@ class DriveConnectionRepository(BaseRepository[DriveConnection]):
         return res.scalar_one_or_none()
 
 
-    async def get_connected(self, org_id: str) -> DriveConnection | None:
+    async def get_connected(self, org_id: str, user_id: str | None = None) -> DriveConnection | None:
+        filters = [DriveConnection.org_id == org_id, DriveConnection.status == "connected"]
+        if user_id:
+            filters.append(DriveConnection.created_by_user_id == user_id)
         res = await self.db.execute(
             select(DriveConnection)
-            .where(DriveConnection.org_id == org_id, DriveConnection.status == "connected")
+            .where(*filters)
             .order_by(DriveConnection.created_at.desc())
             .limit(1)
         )
