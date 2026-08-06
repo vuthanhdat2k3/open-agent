@@ -28,6 +28,12 @@ class Task(Base):
     result: Mapped[str | None] = mapped_column(Text, nullable=True)
     cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
     token_usage: Mapped[dict] = mapped_column(JSON, default=dict)
+    # Small live checkpoint written by the running chat agent loop:
+    # {"last_seq": int, "phase": "thinking"|"tool:<name>"|..., "content_chars",
+    #  "reasoning_chars", "updated_at": iso}. Lets polling clients (and the
+    # orphan sweep) tell a live run from a dead one without reading the
+    # chat_run_events log.
+    progress: Mapped[dict] = mapped_column(JSON, default=dict)
     depth: Mapped[int] = mapped_column(Integer, default=0)
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

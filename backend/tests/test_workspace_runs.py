@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import time
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -228,7 +227,7 @@ def test_run_unknown_artifact_404(client, workspace_env, monkeypatch) -> None:
     _patch_live_run(monkeypatch, FakeProc(lines=[b"x\n"]))
 
     resp = client.post(
-        f"/api/workspace/artifacts/does-not-exist/run",
+        "/api/workspace/artifacts/does-not-exist/run",
         headers=_auth_headers(env.token, env.org_id),
     )
 
@@ -377,10 +376,16 @@ async def test_timeout_autostops_with_timed_out(
     deadline = time.monotonic() + 5.0
     status: str | None = None
     while time.monotonic() < deadline:
+        # TestClient owns the event loop where the detached timeout task runs.
+        # Drive that loop while polling the isolated SQLite record.
+        active = client.get(
+            "/api/workspace/executions/active",
+            headers=_auth_headers(env.token, env.org_id),
+        )
         async with async_session_factory() as db:
             record = await db.get(SandboxExecution, execution_id)
             status = record.status if record else None
-        if status == "timed_out":
+        if status == "timed_out" or active.json() is None:
             break
         await asyncio.sleep(0.05)
 

@@ -1,6 +1,7 @@
 "use client";
 
 let accessToken: string | null = null;
+let refreshPromise: Promise<string | null> | null = null;
 const listeners = new Set<(token: string | null) => void>();
 
 export function getAccessToken() {
@@ -32,12 +33,18 @@ export function subscribeAuth(listener: (token: string | null) => void) {
 }
 
 export async function refreshAccessToken() {
-  const res = await fetch("/api/auth/refresh", { method: "POST", credentials: "include" });
-  if (!res.ok) {
-    setAccessToken(null);
-    return null;
-  }
-  const data = (await res.json()) as { access_token: string };
-  setAccessToken(data.access_token);
-  return data.access_token;
+  if (refreshPromise) return refreshPromise;
+  refreshPromise = (async () => {
+    const res = await fetch("/api/auth/refresh", { method: "POST", credentials: "include" });
+    if (!res.ok) {
+      setAccessToken(null);
+      return null;
+    }
+    const data = (await res.json()) as { access_token: string };
+    setAccessToken(data.access_token);
+    return data.access_token;
+  })().finally(() => {
+    refreshPromise = null;
+  });
+  return refreshPromise;
 }

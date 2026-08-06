@@ -4,6 +4,7 @@ from app.models.agent_release import AgentRelease
 from app.models.api_key import ApiKey
 from app.models.approval_request import ApprovalRequest
 from app.models.audit_log import AuditLog
+from app.models.chat_run_event import ChatRunEvent
 from app.models.evaluation import (
     EvaluationCase,
     EvaluationResult,
@@ -41,6 +42,7 @@ __all__ = [
     "ApiKey",
     "ApprovalRequest",
     "AuditLog",
+    "ChatRunEvent",
     "EvaluationCase",
     "EvaluationResult",
     "EvaluationRun",
