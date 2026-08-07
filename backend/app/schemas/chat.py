@@ -8,6 +8,9 @@ ChatRole = Literal["user", "assistant", "system", "tool"]
 
 class ChatRequest(BaseModel):
     agent_id: str
+    # One-shot signal from Chat model selection. The request repins only this
+    # session to the Agent default already persisted through the Agent API.
+    model_id: str | None = None
     message: str
     session_id: str | None = None
     run_id: str | None = None

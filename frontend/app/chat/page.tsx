@@ -4,7 +4,7 @@ import * as React from "react";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { api, ApiError, streamSSE, streamSSEGet } from "@/lib/api";
-import { useAgents, useSessions, useSessionMessages, useDeleteSession, useModels, useChatRun, useApprovals } from "@/hooks";
+import { useAgents, useSessions, useSessionMessages, useDeleteSession, useModels, useChatRun, useApprovals, useUpdateAgent } from "@/hooks";
 import { useChatStore } from "@/stores";
 import {
   Bot,
@@ -39,13 +39,19 @@ export default function ChatPage() {
     setActiveRun,
   } = useChatStore();
   const chatRun = useChatRun(activeRunId);
+
+  // Destructured so the identity stays stable across polls: callbacks that
+  // depend on the whole query object would change every 2s and defeat the
+  // message-level memoisation in the thread.
+  const { refetch: refetchChatRun } = chatRun;
   const approvals = useApprovals(Boolean(activeRunId));
   const sessions = useSessions();
   const delSession = useDeleteSession();
+  const updateAgent = useUpdateAgent();
   const [agentReady, setAgentReady] = React.useState(false);
   const selectedSession = sessions.data?.find((s) => s.id === sessionId);
-  const [modelOverrideId, setModelOverrideId] = React.useState("");
   const [draft, setDraft] = React.useState("");
+  const [pendingSessionModelId, setPendingSessionModelId] = React.useState("");
   const [messages, setMessages] = React.useState<UIMessage[]>([]);
   // Live message store mutated during a stream, flushed to React state via
   // requestAnimationFrame so per-token events coalesce into one render per
@@ -54,6 +60,14 @@ export default function ChatPage() {
   const rafRef = React.useRef<number | null>(null);
   const composeRef = React.useRef<Map<number, string>>(new Map());
   const deltaArgsRef = React.useRef<Map<number, string>>(new Map());
+  // Typewriter drip buffer (declared here, used further down) — some
+  // providers stream multi-word chunks per delta rather than single tokens;
+  // this decouples display speed from provider chunk size. Hoisted above the
+  // session/agent reset effects below so they can clear it directly.
+  const typewriterRef = React.useRef<
+    Map<string, { field: "content" | "reasoning"; full: string; shown: number }>
+  >(new Map());
+  const typewriterRafRef = React.useRef<number | null>(null);
   const [streaming, setStreaming] = React.useState(false);
   React.useEffect(() => {
     streamingRef.current = streaming;
@@ -88,6 +102,7 @@ export default function ChatPage() {
     agentReady &&
       ((selectedSession && selectedSession.agent_id === agentId) || pendingSession),
   );
+
   React.useEffect(() => {
     if (!activeRunId || !(chatRun.error instanceof ApiError) || chatRun.error.status !== 404) {
       return;
@@ -102,6 +117,7 @@ export default function ChatPage() {
     setPhase("");
     setActiveRun(null);
   }, [activeRunId, chatRun.error, setActiveRun]);
+
   const messagesQuery = useSessionMessages(
     sessionId,
     agentReady && sessions.isSuccess && sessionBelongsToAgent,
@@ -123,7 +139,7 @@ export default function ChatPage() {
   }, [agentId, agents.data, chatHydrated, searchParams, setAgent]);
 
   React.useEffect(() => {
-    setModelOverrideId("");
+    setPendingSessionModelId("");
   }, [agentId]);
 
   React.useEffect(() => {
@@ -135,6 +151,7 @@ export default function ChatPage() {
     if (!session && (activeRunId || pendingSession)) return;
     if (!session || session.agent_id !== agentId) {
       liveRef.current = [];
+      typewriterRef.current.clear();
       setMessages([]);
       setSession(null);
       setActiveRun(null);
@@ -145,6 +162,7 @@ export default function ChatPage() {
     if (!agentReady || pendingSession) return;
     if (!sessionId || !sessionBelongsToAgent) {
       liveRef.current = [];
+      typewriterRef.current.clear();
       setMessages([]);
       composeRef.current.clear();
       deltaArgsRef.current.clear();
@@ -221,7 +239,7 @@ export default function ChatPage() {
 
   const currentAgent = agents.data?.find((a) => a.id === agentId);
   const currentAgentModel = models.data?.find((m) => m.id === currentAgent?.model_id);
-  const effectiveModelId = modelOverrideId || currentAgent?.model_id || "";
+  const effectiveModelId = pendingSessionModelId || currentAgent?.model_id || "";
   const effectiveModel = models.data?.find((m) => m.id === effectiveModelId);
   const statusPhase = phase || (streaming ? "answering" : "");
 
@@ -233,6 +251,80 @@ export default function ChatPage() {
   const touch = React.useCallback(() => {
     if (rafRef.current == null) rafRef.current = requestAnimationFrame(commit);
   }, [commit]);
+
+  // Typewriter drip: some providers stream multi-word chunks per delta
+  // (observed: 3-5 words/~20 chars every ~90ms) rather than single tokens.
+  // Appending each chunk whole makes text visibly jump in clumps. This
+  // buffers the *received* text separately per field and reveals it to the
+  // DOM a few characters per animation frame, so display speed is decoupled
+  // from provider chunk size — a fast provider still looks like smooth
+  // character-by-character typing instead of racing ahead in bursts.
+  // Characters revealed per frame. At 60fps this is ~900 chars/s, comfortably
+  // faster than any real provider's token rate, so the buffer only smooths
+  // bursts — it never falls behind and queues up a backlog.
+  const TYPEWRITER_CHARS_PER_FRAME = 3;
+
+  const applyTypewriterFrame = React.useCallback(() => {
+    typewriterRafRef.current = null;
+    let dirty = false;
+    for (const [id, buf] of typewriterRef.current) {
+      if (buf.shown >= buf.full.length) {
+        typewriterRef.current.delete(id);
+        continue;
+      }
+      buf.shown = Math.min(buf.full.length, buf.shown + TYPEWRITER_CHARS_PER_FRAME);
+      const i = liveRef.current.findIndex((x) => x.id === id);
+      if (i >= 0) {
+        const cur = liveRef.current[i];
+        const shownText = buf.full.slice(0, buf.shown);
+        liveRef.current[i] =
+          buf.field === "content"
+            ? { ...cur, content: shownText }
+            : { ...cur, meta: { ...cur.meta, reasoning: shownText } };
+        dirty = true;
+      }
+    }
+    if (dirty) commit();
+    if (typewriterRef.current.size > 0) {
+      typewriterRafRef.current = requestAnimationFrame(applyTypewriterFrame);
+    }
+  }, [commit]);
+
+  const feedTypewriter = React.useCallback(
+    (id: string, field: "content" | "reasoning", appended: string) => {
+      const key = `${id}:${field}`;
+      const existing = typewriterRef.current.get(key);
+      if (existing) {
+        existing.full += appended;
+      } else {
+        // Start from empty, not from whatever is already committed to
+        // `messages` — the caller keeps the full text out of the message
+        // object until the drip reveals it, so there is exactly one source
+        // of "how much has actually been shown".
+        typewriterRef.current.set(key, { field, full: appended, shown: 0 });
+      }
+      if (typewriterRafRef.current == null) {
+        typewriterRafRef.current = requestAnimationFrame(applyTypewriterFrame);
+      }
+    },
+    [applyTypewriterFrame],
+  );
+
+  const flushTypewriter = React.useCallback((id?: string) => {
+    for (const [key, buf] of typewriterRef.current) {
+      if (id && !key.startsWith(`${id}:`)) continue;
+      buf.shown = buf.full.length;
+      const i = liveRef.current.findIndex((x) => x.id === key.split(":")[0]);
+      if (i >= 0) {
+        const cur = liveRef.current[i];
+        liveRef.current[i] =
+          buf.field === "content"
+            ? { ...cur, content: buf.full }
+            : { ...cur, meta: { ...cur.meta, reasoning: buf.full } };
+      }
+      typewriterRef.current.delete(key);
+    }
+  }, []);
 
   // Shared SSE event reducer for chat runs. Used by both `send` (live POST
   // stream) and the reattach follow-stream, so a reload rebuilds the exact
@@ -254,16 +346,11 @@ export default function ChatPage() {
       } else if (ev.event === "reasoning") {
         setPhase("thinking");
         const i = ensureAssistant();
-        const cur = msgs[i];
-        msgs[i] = {
-          ...cur,
-          meta: { ...cur.meta, reasoning: (cur.meta?.reasoning ?? "") + (d.content ?? "") },
-        };
+        feedTypewriter(msgs[i].id, "reasoning", d.content ?? "");
       } else if (ev.event === "token") {
         setPhase("");
         const i = ensureAssistant();
-        const cur = msgs[i];
-        msgs[i] = { ...cur, content: cur.content + (d.delta ?? d.content ?? "") };
+        feedTypewriter(msgs[i].id, "content", d.delta ?? d.content ?? "");
       } else if (ev.event === "tool_call_delta") {
         const idx = d.index ?? 0;
         const prev = deltaArgsRef.current.get(idx) ?? "";
@@ -322,6 +409,7 @@ export default function ChatPage() {
         });
       } else if (ev.event === "message_done") {
         setPhase("");
+        flushTypewriter(assistantId);
         const filtered = msgs
           .filter((x) => x.role !== "tool_call" && x.role !== "tool_result")
           .map((x) =>
@@ -376,7 +464,7 @@ export default function ChatPage() {
       }
       touch();
     },
-    [commit, refetchSessions, setSession, touch],
+    [commit, feedTypewriter, flushTypewriter, refetchSessions, setSession, touch],
   );
 
   // Stream recovery: after a reload / tab switch while a run is still in
@@ -482,7 +570,7 @@ export default function ChatPage() {
       terminalRunRef.current = null;
       setStreaming(true);
       setPhase("thinking");
-      await chatRun.refetch();
+      await refetchChatRun();
     } catch (error) {
       liveRef.current = liveRef.current.map((item) => item.id === messageId
         ? { ...item, meta: { ...item.meta, approvalStatus: "pending" } }
@@ -490,7 +578,7 @@ export default function ChatPage() {
       commit();
       toast.error(error instanceof Error ? error.message : "Could not decide approval");
     }
-  }, [chatRun, commit]);
+  }, [commit, refetchChatRun]);
 
   const abortRef = React.useRef<AbortController | null>(null);
   const pageUnloadingRef = React.useRef(false);
@@ -524,8 +612,7 @@ export default function ChatPage() {
       session_id: sessionId || undefined,
       stream: true,
     };
-    if (modelOverrideId) payload.model_id = modelOverrideId;
-
+    if (pendingSessionModelId) payload.model_id = pendingSessionModelId;
     // The POST creates the durable Task and then emits chat_run_start. Do not
     // publish the run id before that frame: useChatRun would poll a row that
     // does not exist yet and produce a visible 404 race. Once the bootstrap
@@ -544,6 +631,9 @@ export default function ChatPage() {
           // (not on the reattach follow-stream); handle them, then delegate
           // everything else to the shared reducer used by both paths.
           if (ev.event === "session_start") {
+            // The backend has persisted the selected model's release on this
+            // session; subsequent requests use the normal pinned release.
+            setPendingSessionModelId("");
             setSession(ev.data.session_id);
             void refetchSessions();
             return;
@@ -583,10 +673,19 @@ export default function ChatPage() {
     attachedRunRef.current = null;
   };
 
+  const resetTypewriter = () => {
+    if (typewriterRafRef.current != null) {
+      cancelAnimationFrame(typewriterRafRef.current);
+      typewriterRafRef.current = null;
+    }
+    typewriterRef.current.clear();
+  };
+
   const stop = () => {
     const runId = activeRunId;
     abortRef.current?.abort();
     resetReattach();
+    resetTypewriter();
     setStreaming(false);
     setPhase("");
     setActiveRun(null);
@@ -601,6 +700,7 @@ export default function ChatPage() {
     if (nextAgentId === agentId) return;
     abortRef.current?.abort();
     resetReattach();
+    resetTypewriter();
     liveRef.current = [];
     setMessages([]);
     setSession(null);
@@ -616,6 +716,7 @@ export default function ChatPage() {
     if (!nextSession || nextSession.agent_id !== agentId) return;
     abortRef.current?.abort();
     resetReattach();
+    resetTypewriter();
     liveRef.current = [];
     setMessages([]);
     setActiveRun(null);
@@ -627,12 +728,28 @@ export default function ChatPage() {
   const clearMessages = () => {
     abortRef.current?.abort();
     resetReattach();
+    resetTypewriter();
     liveRef.current = [];
     setMessages([]);
     setSession(null);
     setActiveRun(null);
     setStreaming(false);
     setPhase("");
+  };
+
+  const setDefaultModel = async (modelId: string) => {
+    if (!agentId || modelId === currentAgent?.model_id) return;
+    try {
+      await updateAgent.mutateAsync({ id: agentId, model_id: modelId });
+      setPendingSessionModelId(modelId);
+      toast.success(
+        sessionId
+          ? "Agent default model updated. It will be used in this session on the next message."
+          : "Agent default model updated.",
+      );
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not update agent model");
+    }
   };
 
   const hasLiveTools = messages.some((x) => x.role === "tool_call" || x.role === "tool_result");
@@ -666,14 +783,14 @@ export default function ChatPage() {
 
           <div className="space-y-1.5">
             <Label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">
-              <Cpu className="h-3.5 w-3.5 text-primary" /> Model Override
+              <Cpu className="h-3.5 w-3.5 text-primary" /> Agent Default Model
             </Label>
             <Select
-              value={modelOverrideId}
-              onChange={(e) => setModelOverrideId(e.target.value)}
+              value={pendingSessionModelId || currentAgent?.model_id || ""}
+              onChange={(e) => void setDefaultModel(e.target.value)}
+              disabled={streaming || updateAgent.isPending}
               className="w-full text-xs"
             >
-              <option value="">— Agent default —</option>
               {models.data
                 ?.filter((m) => m.active)
                 .map((m) => (
@@ -682,16 +799,6 @@ export default function ChatPage() {
                   </option>
                 ))}
             </Select>
-            {modelOverrideId && effectiveModel && (
-              <div className="flex items-center gap-1 px-2 py-1 rounded-md bg-primary/10 border border-primary/25">
-                <span className="text-[10px] text-primary font-medium">
-                  Override active
-                </span>
-                <span className="text-[10px] font-mono text-primary/80 ml-auto truncate">
-                  {effectiveModel.display_name || effectiveModel.name}
-                </span>
-              </div>
-            )}
           </div>
 
           <div className="space-y-2">
