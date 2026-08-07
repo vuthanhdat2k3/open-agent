@@ -55,10 +55,23 @@ export default function ChatPage() {
     Map<string, { field: "content" | "reasoning"; full: string; shown: number }>
   >(new Map());
   const typewriterRafRef = React.useRef<number | null>(null);
-  const [streaming, setStreaming] = React.useState(false);
-  React.useEffect(() => {
-    streamingRef.current = streaming;
-  }, [streaming]);
+  const [streaming, setStreamingState] = React.useState(false);
+  // Guards the messages-loading effect: while a stream is live we must not let
+  // a `refetch` wipe the partially-built UI.
+  const streamingRef = React.useRef(false);
+  // streamingRef must never lag one tick behind the streaming state: the
+  // messages-merge effect below reads streamingRef.current synchronously to
+  // decide whether a background refetch may overwrite the live optimistic
+  // transcript. Updating it only from a useEffect(() => { ... }, [streaming])
+  // means any effect that runs in the same commit before that effect (e.g.
+  // right after send() calls setStreaming(true)) still sees the previous
+  // value and can wipe out the just-sent user message + assistant
+  // placeholder with stale DB data. Setting the ref inline here removes that
+  // window entirely.
+  const setStreaming = React.useCallback((value: boolean) => {
+    streamingRef.current = value;
+    setStreamingState(value);
+  }, []);
   const [phase, setPhase] = React.useState<string>("");
   const [debug, setDebug] = React.useState(true);
   const [connectionState, setConnectionState] = React.useState<ConnectionState>("connected");
@@ -67,9 +80,6 @@ export default function ChatPage() {
   // seeds it from Date.now(); a reattach seeds it from the run id so a rebuild
   // is deterministic. The shared event reducer reads it.
   const assistantIdRef = React.useRef<string>("");
-  // Guards the messages-loading effect: while a stream is live we must not let
-  // a `refetch` wipe the partially-built UI.
-  const streamingRef = React.useRef(false);
   // Tracks which run we already (re)attached a follow-stream to, so the
   // reattach effect runs at most once per run.
   const attachedRunRef = React.useRef<string | null>(null);
@@ -104,7 +114,7 @@ export default function ChatPage() {
     setStreaming(false);
     setPhase("");
     setActiveRun(null);
-  }, [activeRunId, chatRun.error, setActiveRun]);
+  }, [activeRunId, chatRun.error, setActiveRun, setStreaming]);
 
   const messagesQuery = useSessionMessages(
     sessionId,
@@ -207,7 +217,7 @@ export default function ChatPage() {
       if (terminalRunRef.current !== run.id) terminalRunRef.current = null;
       setStreaming(true);
     }
-  }, [chatRun.data, refetchMessages, sessionId, setSession]);
+  }, [chatRun.data, refetchMessages, sessionId, setSession, setStreaming]);
 
   // Smooth auto-scroll: follow the bottom only while the user is already
   // reading along, so streaming tokens don't yank them up if they scroll back.
@@ -598,7 +608,7 @@ export default function ChatPage() {
       commit();
       toast.error(error instanceof Error ? error.message : "Could not decide approval");
     }
-  }, [commit, refetchChatRun]);
+  }, [commit, refetchChatRun, setStreaming]);
 
   const abortRef = React.useRef<AbortController | null>(null);
   const pageUnloadingRef = React.useRef(false);
