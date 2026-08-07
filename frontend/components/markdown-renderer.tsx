@@ -13,6 +13,10 @@
  */
 "use client";
 
+// Scoped here rather than in the root layout: only this module renders KaTeX
+// output, so the ~50KB stylesheet ships with this chunk instead of on every
+// page in the app.
+import "katex/dist/katex.min.css";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -298,8 +302,8 @@ function CodeBlockWithAction({ className, children, ...props }: any) {
   );
 }
 
-export function MarkdownRenderer({ content }: Props) {
-  const normalized = normalizeLatex(content);
+function MarkdownRendererBase({ content }: Props) {
+  const normalized = React.useMemo(() => normalizeLatex(content), [content]);
 
   return (
     <ReactMarkdown
@@ -435,3 +439,10 @@ export function MarkdownRenderer({ content }: Props) {
     </ReactMarkdown>
   );
 }
+
+// Re-parsing markdown costs ~5ms per message (remark + rehype-highlight +
+// KaTeX + sanitize). The chat thread re-renders on every streamed frame and
+// on each run poll, so without this every historical message would be
+// re-parsed each time. `content` is the only prop, so referential equality is
+// exactly the right bail-out condition.
+export const MarkdownRenderer = React.memo(MarkdownRendererBase);

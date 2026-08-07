@@ -1,7 +1,6 @@
 "use client";
 
 import "./globals.css";
-import "katex/dist/katex.min.css";
 import * as React from "react";
 import { QueryClient, QueryClientProvider, type QueryKey } from "@tanstack/react-query";
 import { api } from "@/lib/api";

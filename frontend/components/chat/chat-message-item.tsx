@@ -2,7 +2,14 @@
 
 import * as React from "react";
 import DOMPurify from "dompurify";
-import { MarkdownRenderer } from "@/components/markdown-renderer";
+
+// react-markdown pulls in highlight.js and KaTeX, which together dominate the
+// Chat entry bundle. Only assistant messages need them, so the stack is split
+// out and loaded on demand; the Suspense fallback below keeps the message text
+// readable while that chunk arrives.
+const LazyMarkdownRenderer = React.lazy(() =>
+  import("@/components/markdown-renderer").then((m) => ({ default: m.MarkdownRenderer })),
+);
 import { Wrench, CornerDownRight, Clock, DollarSign, Terminal, Code, Copy, Check, CheckCircle2, XCircle, Play, FileCode, Maximize2, ChevronRight, ShieldAlert, ShieldCheck, ShieldX } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
@@ -72,7 +79,7 @@ interface ChatMessageItemProps {
   onApprovalDecision?: (messageId: string, decision: "approved" | "rejected") => void;
 }
 
-export function ChatMessageItem({ message: m, debug, hasLiveTools, onApprovalDecision }: ChatMessageItemProps) {
+function ChatMessageItemBase({ message: m, debug, hasLiveTools, onApprovalDecision }: ChatMessageItemProps) {
   const [copied, setCopied] = React.useState(false);
 
   const copyMessage = React.useCallback(async () => {
@@ -329,7 +336,11 @@ export function ChatMessageItem({ message: m, debug, hasLiveTools, onApprovalDec
         {m.content && (
           <div className="rounded-2xl rounded-bl-sm border border-border/80 bg-card/90 px-4 py-3 text-xs shadow-3d-card select-text leading-relaxed backdrop-blur-md">
           {m.content ? (
-            <MarkdownRenderer content={m.content} />
+            <React.Suspense
+              fallback={<span className="whitespace-pre-wrap break-words">{m.content}</span>}
+            >
+              <LazyMarkdownRenderer content={m.content} />
+            </React.Suspense>
           ) : m.meta?.reasoning ? (
             <span className="text-muted-foreground text-[11px]">Generating answer…</span>
           ) : (
@@ -376,3 +387,10 @@ export function ChatMessageItem({ message: m, debug, hasLiveTools, onApprovalDec
     </React.Fragment>
   );
 }
+
+// The thread re-renders on every streamed frame and every run poll, but the
+// event reducer only replaces the message objects it actually changed. Memoing
+// on those references keeps historical messages (and their markdown/tool-JSON
+// parsing) out of the hot path, so cost scales with what changed rather than
+// with thread length.
+export const ChatMessageItem = React.memo(ChatMessageItemBase);
