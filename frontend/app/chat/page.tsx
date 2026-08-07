@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { api, streamSSE, streamSSEGet } from "@/lib/api";
+import { api, ApiError, streamSSE, streamSSEGet } from "@/lib/api";
 import { useAgents, useSessions, useSessionMessages, useDeleteSession, useModels, useChatRun, useApprovals } from "@/hooks";
 import { useChatStore } from "@/stores";
 import {
@@ -88,6 +88,20 @@ export default function ChatPage() {
     agentReady &&
       ((selectedSession && selectedSession.agent_id === agentId) || pendingSession),
   );
+  React.useEffect(() => {
+    if (!activeRunId || !(chatRun.error instanceof ApiError) || chatRun.error.status !== 404) {
+      return;
+    }
+    // A run can disappear after an API restart, or be an old localStorage
+    // value. Stop polling it and let the next send establish a fresh run.
+    reattachAbortRef.current?.abort();
+    reattachAbortRef.current = null;
+    attachedRunRef.current = null;
+    terminalRunRef.current = null;
+    setStreaming(false);
+    setPhase("");
+    setActiveRun(null);
+  }, [activeRunId, chatRun.error, setActiveRun]);
   const messagesQuery = useSessionMessages(
     sessionId,
     agentReady && sessions.isSuccess && sessionBelongsToAgent,
@@ -512,12 +526,13 @@ export default function ChatPage() {
     };
     if (modelOverrideId) payload.model_id = modelOverrideId;
 
-    // Persist the run identity before the network request starts. A reload
-    // before the bootstrap SSE frames arrive must still be able to attach.
-    // The POST stream is bootstrap-only; always let the follow-stream effect
-    // attach to this new durable run.
+    // The POST creates the durable Task and then emits chat_run_start. Do not
+    // publish the run id before that frame: useChatRun would poll a row that
+    // does not exist yet and produce a visible 404 race. Once the bootstrap
+    // frame is received, the id is persisted and reload recovery remains
+    // available.
     attachedRunRef.current = null;
-    setActiveRun(payload.run_id);
+    setActiveRun(null);
 
     abortRef.current = new AbortController();
     try {
