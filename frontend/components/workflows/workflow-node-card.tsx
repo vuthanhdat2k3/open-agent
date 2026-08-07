@@ -53,13 +53,13 @@ export function WorkflowNodeCard({
 
   return (
     <div
-      className={`absolute flex w-[160px] h-[70px] select-none cursor-grab active:cursor-grabbing flex-col justify-between rounded-xl border bg-card/95 dark:bg-card/85 p-3 text-xs shadow-3d-card transition-all duration-200 backdrop-blur-md ${borderColor}`}
+      className={`absolute flex w-[160px] h-[70px] select-none cursor-grab active:cursor-grabbing flex-col justify-between rounded-xl border bg-card/95 dark:bg-card/85 p-3 text-xs shadow-3d-card transition-[border-color,box-shadow,transform,background-color] duration-200 backdrop-blur-md ${borderColor}`}
       style={{ left: p.x, top: p.y }}
       onMouseDown={(e) => onNodeMouseDown(e, n.id)}
     >
       {/* Target Port handle (Top) */}
       <div
-        className={`absolute -top-2 left-[72px] h-4 w-4 rounded-full border border-border bg-background flex items-center justify-center cursor-crosshair z-30 transition-all hover:scale-125 hover:border-primary shadow-sm ${
+        className={`absolute -top-2 left-[72px] h-4 w-4 rounded-full border border-border bg-background flex items-center justify-center cursor-crosshair z-30 transition-[transform,border-color,background-color] hover:scale-125 hover:border-primary shadow-sm ${
           connectingFromId && connectingFromId !== n.id ? "animate-pulse-soft border-primary/80 bg-primary/20 scale-110" : ""
         }`}
         onMouseUp={(e) => onInputPortMouseUp(e, n.id)}
@@ -70,7 +70,7 @@ export function WorkflowNodeCard({
 
       {/* Source Port handle (Bottom) */}
       <div
-        className="absolute -bottom-2 left-[72px] h-4 w-4 rounded-full border border-border bg-background flex items-center justify-center cursor-crosshair z-30 transition-all hover:scale-125 hover:border-primary shadow-sm"
+        className="absolute -bottom-2 left-[72px] h-4 w-4 rounded-full border border-border bg-background flex items-center justify-center cursor-crosshair z-30 transition-[transform,border-color,background-color] hover:scale-125 hover:border-primary shadow-sm"
         onMouseDown={(e) => onOutputPortMouseDown(e, n.id)}
         title="Drag to child input"
       >
@@ -88,6 +88,7 @@ export function WorkflowNodeCard({
             e.stopPropagation();
             onDeleteNode(n.id);
           }}
+          aria-label={`Delete node ${n.label}`}
           title="Delete node"
         >
           <Trash2 className="h-3 w-3" />

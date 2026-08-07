@@ -8,7 +8,6 @@ import type { Provider } from "@/types";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
 import {
@@ -19,9 +18,10 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { ProviderForm } from "@/components/providers/provider-form";
+import { ConfirmDialog, ErrorState, LoadingSkeleton } from "@/components/shared";
 
 export default function ProvidersPage() {
-  const { data, isLoading } = useProviders();
+  const { data, isLoading, isError, refetch } = useProviders();
   const create = useCreateProvider();
   const del = useDeleteProvider();
   const test = useTestProvider();
@@ -86,19 +86,13 @@ export default function ProvidersPage() {
         </DialogContent>
       </Dialog>
 
-      {isLoading ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-32 w-full" />
-          ))}
-        </div>
-      ) : data && data.length > 0 ? (
+      {isLoading ? <LoadingSkeleton variant="grid" /> : isError ? <ErrorState title="Unable to load providers" description="Provider data could not be loaded." onRetry={() => void refetch()} /> : data && data.length > 0 ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 stagger">
           {data.map((p) => (
             <Card key={p.id} glass className="card-lift flex flex-col p-5">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex min-w-0 items-center gap-3">
-                  <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-primary/25 via-primary/10 to-transparent text-primary shadow-3d-card border border-primary/20">
+                  <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary shadow-inner-edge border border-primary/25">
                     <Server className="h-5 w-5" />
                   </div>
                   <div className="min-w-0">
@@ -159,18 +153,14 @@ export default function ProvidersPage() {
                 >
                   <CheckCircle2 className="h-3.5 w-3.5" /> Test
                 </Button>
-                <Button
-                  size="sm"
-                  variant="destructive"
-                  className="gap-1.5 active-tactile transition-transform"
-                  onClick={() => {
-                    if (window.confirm(`Xóa nhà cung cấp "${p.name}"? Hành động này không thể hoàn tác.`)) {
-                      del.mutate(p.id);
-                    }
-                  }}
-                >
-                  <Trash2 className="h-3.5 w-3.5" /> Delete
-                </Button>
+                <ConfirmDialog
+                  trigger={<Button size="sm" variant="destructive" className="gap-1.5"><Trash2 className="h-3.5 w-3.5" /> Delete</Button>}
+                  title={`Delete ${p.name}?`}
+                  description="This provider and its connection settings will be permanently removed."
+                  confirmLabel="Delete provider"
+                  destructive
+                  onConfirm={() => del.mutateAsync(p.id).then(() => undefined)}
+                />
               </div>
             </Card>
           ))}

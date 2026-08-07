@@ -14,9 +14,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
+import { ConfirmDialog, ErrorState, LoadingSkeleton } from "@/components/shared";
 import {
   Table,
   TableBody,
@@ -43,7 +43,7 @@ function formatSize(bytes: number) {
 }
 
 export default function FilesPage() {
-  const { data, isLoading } = useFiles();
+  const { data, isLoading, isError, refetch } = useFiles();
   const upload = useUploadFile();
   const del = useDeleteFile();
   const ingest = useIngestFile();
@@ -96,13 +96,7 @@ export default function FilesPage() {
 
       <Card glass className="shadow-3d-card overflow-hidden">
         <CardContent className="p-0">
-          {isLoading ? (
-            <div className="space-y-2 p-6">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <Skeleton key={i} className="h-10 w-full" />
-              ))}
-            </div>
-          ) : data && data.length > 0 ? (
+          {isLoading ? <div className="p-6"><LoadingSkeleton variant="table" /></div> : isError ? <div className="p-6"><ErrorState title="Unable to load files" description="File data could not be loaded." onRetry={() => void refetch()} /></div> : data && data.length > 0 ? (
             <Table>
               <TableHeader>
                 <TableRow>
@@ -163,18 +157,14 @@ export default function FilesPage() {
                           ) : null}
                           Ingest
                         </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-8 w-8 text-muted-foreground hover:text-destructive active-tactile transition-transform"
-                          onClick={() => {
-                            if (window.confirm(`Xóa file "${f.original_name}"? Hành động này không thể hoàn tác.`)) {
-                              del.mutate(f.id);
-                            }
-                          }}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        <ConfirmDialog
+                          trigger={<Button size="icon" variant="ghost" className="h-10 w-10 text-muted-foreground hover:text-destructive" aria-label={`Delete ${f.original_name}`}><Trash2 className="h-4 w-4" /></Button>}
+                          title={`Delete ${f.original_name}?`}
+                          description="This uploaded file will be permanently removed."
+                          confirmLabel="Delete file"
+                          destructive
+                          onConfirm={() => del.mutateAsync(f.id).then(() => undefined)}
+                        />
                       </div>
                     </TableCell>
                   </TableRow>

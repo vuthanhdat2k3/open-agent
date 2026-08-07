@@ -10,6 +10,7 @@ import { Input, Label } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/page-header";
+import { ErrorState } from "@/components/shared";
 
 export default function ProfilePage() {
   const profile = useProfile();
@@ -93,20 +94,22 @@ export default function ProfilePage() {
           <CardContent>
             <form onSubmit={handleUpdateProfile} className="space-y-4">
               <div className="space-y-1.5">
-                <Label>Email</Label>
-                <Input value={user?.email || ""} disabled className="bg-muted/50" />
+                <Label htmlFor="profile-email">Email</Label>
+                <Input id="profile-email" value={user?.email || ""} disabled className="bg-muted/50" />
               </div>
               <div className="space-y-1.5">
-                <Label>Display Name</Label>
+                <Label htmlFor="profile-display-name">Display Name</Label>
                 <Input
+                  id="profile-display-name"
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
                   placeholder="Your display name"
                 />
               </div>
               <div className="space-y-1.5">
-                <Label>Account Created</Label>
+                <Label htmlFor="profile-created">Account Created</Label>
                 <Input
+                  id="profile-created"
                   value={user?.created_at ? new Date(user.created_at).toLocaleDateString() : ""}
                   disabled
                   className="bg-muted/50"
@@ -135,18 +138,19 @@ export default function ProfilePage() {
           <CardContent>
             <form onSubmit={handleChangePassword} className="space-y-4">
               <div className="space-y-1.5">
-                <Label>Current Password</Label>
+                <Label htmlFor="profile-current-password">Current Password</Label>
                 <Input
-                  type="password"
-                  value={oldPassword}
+                  id="profile-current-password"
+                  type="password"                  value={oldPassword}
                   onChange={(e) => setOldPassword(e.target.value)}
                   placeholder="••••••••"
                   required
                 />
               </div>
               <div className="space-y-1.5">
-                <Label>New Password</Label>
+                <Label htmlFor="profile-new-password">New Password</Label>
                 <Input
+                  id="profile-new-password"
                   type="password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
@@ -155,8 +159,9 @@ export default function ProfilePage() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label>Confirm New Password</Label>
+                <Label htmlFor="profile-confirm-password">Confirm New Password</Label>
                 <Input
+                  id="profile-confirm-password"
                   type="password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}

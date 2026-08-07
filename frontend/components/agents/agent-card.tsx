@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import type { Agent, AgentToolInfo, Model } from "@/types";
+import { ConfirmDialog } from "@/components/shared";
 
 interface AgentCardProps {
   agent: Agent;
@@ -32,18 +33,12 @@ export function AgentCard({
 }: AgentCardProps) {
   const agentModel = models?.find((m) => m.id === agent.model_id);
 
-  const handleDelete = () => {
-    if (window.confirm(`Xóa agent "${agent.name}"? Hành động này không thể hoàn tác.`)) {
-      onDelete(agent.id);
-    }
-  };
-
   return (
     <Card glass className="card-lift flex flex-col p-5 group">
       {/* Header */}
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 items-center gap-3">
-          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-primary/25 via-primary/10 to-transparent text-primary shadow-3d-card border border-primary/20">
+          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary shadow-inner-edge border border-primary/25">
             <Bot className="h-5 w-5" />
           </div>
           <div className="min-w-0">
@@ -75,15 +70,14 @@ export function AgentCard({
           >
             <Pencil className="h-3.5 w-3.5" />
           </Button>
-          <Button
-            size="icon"
-            variant="ghost"
-            className="h-7 w-7 text-muted-foreground hover:text-destructive active-tactile transition-transform"
-            onClick={handleDelete}
-            aria-label={`Delete ${agent.name}`}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
+          <ConfirmDialog
+            trigger={<Button size="icon" variant="ghost" className="h-10 w-10 text-muted-foreground hover:text-destructive" aria-label={`Delete ${agent.name}`}><Trash2 className="h-3.5 w-3.5" /></Button>}
+            title={`Delete ${agent.name}?`}
+            description="This agent and its configuration will be permanently removed."
+            confirmLabel="Delete agent"
+            destructive
+            onConfirm={() => onDelete(agent.id)}
+          />
         </div>
       </div>
 

@@ -1,18 +1,5 @@
-import { Skeleton } from "@/components/ui/skeleton";
+import { LoadingSkeleton } from "@/components/shared";
 
 export default function Loading() {
-  return (
-    <div className="space-y-6 p-6">
-      <div className="space-y-2">
-        <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-4 w-96" />
-      </div>
-      <div className="grid gap-4 md:grid-cols-3">
-        <Skeleton className="h-32 rounded-xl" />
-        <Skeleton className="h-32 rounded-xl" />
-        <Skeleton className="h-32 rounded-xl" />
-      </div>
-      <Skeleton className="h-64 rounded-xl" />
-    </div>
-  );
+  return <div className="p-6 lg:p-8"><LoadingSkeleton /></div>;
 }

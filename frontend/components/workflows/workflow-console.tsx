@@ -92,7 +92,7 @@ export function WorkflowConsole({ logs, output, running }: WorkflowConsoleProps)
     <Card glass className="overflow-hidden shadow-3d-card border-border/80">
       <CardHeader className="flex flex-row items-center justify-between border-b border-border/60 bg-muted/20 px-4 py-2.5">
         <div className="flex items-center gap-3">
-          <div className="grid h-8 w-8 place-items-center rounded-xl bg-gradient-to-br from-primary/25 via-primary/10 to-transparent text-primary shadow-3d-card border border-primary/20">
+          <div className="grid h-8 w-8 place-items-center rounded-xl bg-primary/10 text-primary shadow-inner-edge border border-primary/25">
             <Terminal className="h-4 w-4" />
           </div>
           <div>
@@ -105,7 +105,7 @@ export function WorkflowConsole({ logs, output, running }: WorkflowConsoleProps)
           <div className="flex rounded-lg bg-muted/50 p-1 border border-border/40 text-xs font-medium">
             <button
               onClick={() => setActiveTab("logs")}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md transition-all ${
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md transition-[background-color,color,border-color] ${
                 activeTab === "logs"
                   ? "bg-card text-foreground shadow-inner-edge font-semibold"
                   : "text-muted-foreground hover:text-foreground"
@@ -121,7 +121,7 @@ export function WorkflowConsole({ logs, output, running }: WorkflowConsoleProps)
             </button>
             <button
               onClick={() => setActiveTab("output")}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md transition-all ${
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md transition-[background-color,color,border-color] ${
                 activeTab === "output"
                   ? "bg-card text-foreground shadow-inner-edge font-semibold"
                   : "text-muted-foreground hover:text-foreground"

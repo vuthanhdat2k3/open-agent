@@ -3,115 +3,39 @@
 import * as React from "react";
 import { useParams } from "next/navigation";
 import { toast } from "sonner";
-import { Network, ShieldCheck, RefreshCw, CheckCircle2 } from "lucide-react";
+import { CheckCircle2, Network, ShieldCheck } from "lucide-react";
 import { useAgents, useUpdateAgent } from "@/hooks";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
 import { PageHeader } from "@/components/page-header";
-import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState, ErrorState, LoadingSkeleton } from "@/components/shared";
 
 export default function AgentA2APage() {
   const params = useParams();
   const agentId = params.id as string;
-
-  const { data: agents = [], isLoading } = useAgents();
+  const agents = useAgents();
   const updateAgent = useUpdateAgent();
-
-  const agent = agents.find((a) => a.id === agentId);
-
-  const [a2aExposed, setA2aExposed] = React.useState<boolean>(false);
+  const agent = agents.data?.find((item) => item.id === agentId);
+  const [a2aExposed, setA2aExposed] = React.useState(false);
 
   React.useEffect(() => {
-    if (agent) {
-      setA2aExposed(Boolean((agent as any).a2a_exposed));
-    }
+    if (agent) setA2aExposed(Boolean((agent as any).a2a_exposed));
   }, [agent]);
 
-  const handleToggleA2A = async () => {
+  async function handleToggleA2A() {
     if (!agent) return;
     const nextState = !a2aExposed;
     try {
-      await updateAgent.mutateAsync({
-        id: agent.id,
-        a2a_exposed: nextState,
-      } as any);
+      await updateAgent.mutateAsync({ id: agent.id, a2a_exposed: nextState } as any);
       setA2aExposed(nextState);
-      toast.success(
-        nextState
-          ? "Agent is now exposed via A2A protocol"
-          : "Agent A2A exposure has been disabled"
-      );
-    } catch (err: any) {
-      toast.error(err?.message || "Failed to update A2A exposure setting");
-    }
-  };
-
-  if (isLoading) {
-    return (
-      <div className="p-6 space-y-4">
-        <Skeleton className="h-8 w-64" />
-        <Skeleton className="h-32 w-full" />
-      </div>
-    );
+      toast.success(nextState ? "Agent is now exposed via A2A protocol" : "Agent A2A exposure has been disabled");
+    } catch (error: any) { toast.error(error?.message || "Failed to update A2A exposure setting"); }
   }
 
-  if (!agent) {
-    return (
-      <div className="p-6">
-        <p className="text-muted-foreground">Agent not found.</p>
-      </div>
-    );
-  }
+  if (agents.isLoading) return <LoadingSkeleton />;
+  if (agents.isError) return <div className="space-y-6"><PageHeader icon={Network} title="A2A Settings" description="Configure Agent-to-Agent exposure." /><ErrorState title="Unable to load agent" description="The agent could not be loaded." onRetry={() => void agents.refetch()} /></div>;
+  if (!agent) return <EmptyState icon={Network} title="Agent not found" description="This agent may have been removed or you may not have access to it." />;
 
-  return (
-    <div className="p-6 max-w-4xl space-y-6">
-      <PageHeader
-        icon={Network}
-        title={`A2A Settings — ${agent.name}`}
-        description="Configure Agent-to-Agent (A2A) exposure and identity delegation policies."
-      />
-
-      <div className="rounded-xl border bg-card p-6 shadow-sm space-y-6">
-        <div className="flex items-start justify-between">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <Network className="h-5 w-5 text-primary" />
-              <h3 className="text-lg font-semibold">Expose Agent via A2A</h3>
-              <Badge variant={a2aExposed ? "default" : "outline"}>
-                {a2aExposed ? "Exposed" : "Internal Only"}
-              </Badge>
-            </div>
-            <p className="text-sm text-muted-foreground max-w-xl">
-              When enabled, this agent will be listed in the organization&apos;s Agent Card
-              (<code className="text-xs bg-muted px-1 py-0.5 rounded">/.well-known/agent-card.json</code>)
-              and can be invoked by peer agents over the A2A protocol.
-            </p>
-          </div>
-
-          <Button
-            variant={a2aExposed ? "destructive" : "default"}
-            onClick={handleToggleA2A}
-            disabled={updateAgent.isPending}
-          >
-            {updateAgent.isPending && (
-              <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-            )}
-            {a2aExposed ? "Disable A2A Exposure" : "Enable A2A Exposure"}
-          </Button>
-        </div>
-
-        <div className="border-t pt-6 space-y-4">
-          <h4 className="font-medium text-sm flex items-center gap-2">
-            <ShieldCheck className="h-4 w-4 text-emerald-5-500" />
-            A2A Security & Identity Policy
-          </h4>
-          <ul className="text-xs text-muted-foreground space-y-2 list-disc list-inside">
-            <li>A2A requests pass through full authentication, quota, and guardrail enforcement.</li>
-            <li>Effective permission is capped at the calling user&apos;s permission (User ∩ Agent Identity).</li>
-            <li>RFC 8693 token exchange attaches delegation chain to all audit trail records.</li>
-          </ul>
-        </div>
-      </div>
-    </div>
-  );
+  return <div className="space-y-6"><PageHeader icon={Network} title={`A2A Settings — ${agent.name}`} description="Configure Agent-to-Agent exposure and identity delegation policies." /><Card><CardContent className="space-y-8 p-6"><div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between"><div className="max-w-2xl space-y-3"><div className="flex flex-wrap items-center gap-2"><Network className="h-5 w-5 text-primary" aria-hidden="true" /><h2 className="text-lg font-semibold">Expose Agent via A2A</h2><Badge variant={a2aExposed ? "success" : "outline"}>{a2aExposed ? "Exposed" : "Internal Only"}</Badge></div><p className="text-sm leading-relaxed text-muted-foreground">When enabled, this agent will be listed in the organization&apos;s Agent Card (<code className="rounded bg-muted px-1 py-0.5 text-xs">/.well-known/agent-card.json</code>) and can be invoked by peer agents over the A2A protocol.</p></div><Button variant={a2aExposed ? "destructive" : "default"} onClick={handleToggleA2A} loading={updateAgent.isPending}>{a2aExposed ? "Disable A2A Exposure" : "Enable A2A Exposure"}</Button></div><div className="border-t border-border/70 pt-6"><h3 className="flex items-center gap-2 text-sm font-semibold"><ShieldCheck className="h-4 w-4 text-primary" aria-hidden="true" />A2A Security &amp; Identity Policy</h3><ul className="mt-3 space-y-2 text-sm leading-relaxed text-muted-foreground"><li className="flex gap-2"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" aria-hidden="true" />A2A requests pass through full authentication, quota, and guardrail enforcement.</li><li className="flex gap-2"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" aria-hidden="true" />Effective permission is capped at the calling user&apos;s permission.</li><li className="flex gap-2"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" aria-hidden="true" />Delegation chain is attached to audit records.</li></ul></div></CardContent></Card></div>;
 }

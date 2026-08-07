@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Label, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { PageHeader } from "@/components/page-header";
+import { ErrorState, LoadingSkeleton } from "@/components/shared";
 import { WorkflowNodeCard, type GNode } from "@/components/workflows/workflow-node-card";
 import { WorkflowConsole, type WorkflowLogItem } from "@/components/workflows/workflow-console";
 import {
@@ -33,8 +34,21 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 type GEdge = { from_: string; to: string; condition?: string };
+type DeleteRequest =
+  | { type: "node"; id: string; name: string }
+  | { type: "edge"; index: number };
 
 function layout(nodes: GNode[], edges: GEdge[]) {
   const adj: Record<string, string[]> = {};
@@ -67,7 +81,8 @@ function layout(nodes: GNode[], edges: GEdge[]) {
 }
 
 export default function WorkflowsPage() {
-  const { data } = useWorkflows();
+  const workflows = useWorkflows();
+  const { data } = workflows;
   const create = useCreateWorkflow();
   const agents = useAgents();
   const models = useModels();
@@ -108,6 +123,7 @@ export default function WorkflowsPage() {
 
   const [connectingFromId, setConnectingFromId] = React.useState<string | null>(null);
   const [mousePosition, setMousePosition] = React.useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [deleteRequest, setDeleteRequest] = React.useState<DeleteRequest | null>(null);
 
   const pos = React.useMemo(() => {
     const layoutPos = layout(nodes, edges);
@@ -483,15 +499,24 @@ export default function WorkflowsPage() {
   };
 
   const deleteNode = (id: string) => {
-    const target = nodes.find((n) => n.id === id);
-    const name = target?.label || id;
-    if (!window.confirm(`Xóa node "${name}"? Hành động này sẽ làm mất cấu hình của node trên canvas.`)) return;
-    setGraph(
-      nodes.filter((x) => x.id !== id),
-      edges.filter((edge) => edge.from_ !== id && edge.to !== id)
-    );
-    if (selectedNodeId === id) setSelectedNode(null);
-    toast.success("Node deleted");
+    const target = nodes.find((node) => node.id === id);
+    setDeleteRequest({ type: "node", id, name: target?.label || id });
+  };
+
+  const confirmDelete = () => {
+    if (!deleteRequest) return;
+    if (deleteRequest.type === "node") {
+      setGraph(
+        nodes.filter((node) => node.id !== deleteRequest.id),
+        edges.filter((edge) => edge.from_ !== deleteRequest.id && edge.to !== deleteRequest.id),
+      );
+      if (selectedNodeId === deleteRequest.id) setSelectedNode(null);
+      toast.success("Node deleted");
+    } else {
+      setGraph(nodes, edges.filter((_, index) => index !== deleteRequest.index));
+      toast.success("Connection deleted");
+    }
+    setDeleteRequest(null);
   };
 
   return (
@@ -516,7 +541,7 @@ export default function WorkflowsPage() {
                   <DialogTitle>Load workflow</DialogTitle>
                 </DialogHeader>
                 <div className="space-y-2">
-                  {data?.map((wf) => (
+                  {workflows.isLoading ? <LoadingSkeleton variant="table" /> : workflows.isError ? <ErrorState title="Unable to load workflows" description="Saved workflows could not be loaded." onRetry={() => void workflows.refetch()} /> : data?.map((wf) => (
                     <DialogClose asChild key={wf.id}>
                       <Button
                         variant="outline"
@@ -674,18 +699,15 @@ export default function WorkflowsPage() {
                       strokeWidth={12}
                       fill="none"
                       className="cursor-pointer"
-                      onClick={() => {
-                        if (!window.confirm("Xóa kết nối này?")) return;
-                        setGraph(nodes, edges.filter((_, j) => j !== i));
-                      }}
+                      onClick={() => setDeleteRequest({ type: "edge", index: i })}
                     />
                     <g
-                      className="opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-                      onClick={() => {
-                        if (!window.confirm("Xóa kết nối này?")) return;
-                        setGraph(nodes, edges.filter((_, j) => j !== i));
-                        toast.success("Connection deleted");
-                      }}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`Delete connection ${i + 1}`}
+                      className="cursor-pointer opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100"
+                      onClick={() => setDeleteRequest({ type: "edge", index: i })}
+                      onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setDeleteRequest({ type: "edge", index: i }); } }}
                     >
                       <circle cx={mx} cy={my} r={8} fill="hsl(var(--destructive))" />
                       <line x1={mx - 3.5} y1={my - 3.5} x2={mx + 3.5} y2={my + 3.5} stroke="white" strokeWidth={1.5} />
@@ -817,12 +839,8 @@ export default function WorkflowsPage() {
                       <span className="truncate max-w-[80%] font-mono text-muted-foreground">
                         {nodes.find((n) => n.id === e.from_)?.label} → {nodes.find((n) => n.id === e.to)?.label}
                       </span>
-                      <button 
-                        onClick={() => {
-                          if (!window.confirm("Xóa kết nối này?")) return;
-                          setGraph(nodes, edges.filter((_, j) => j !== i));
-                        }} 
-                        className="text-destructive hover:scale-115 transition-transform font-bold px-1 text-xs"
+                      <button type="button" aria-label={`Delete connection ${i + 1}`} onClick={() => setDeleteRequest({ type: "edge", index: i })}
+                        className="rounded p-2 text-xs font-bold text-destructive transition-colors hover:bg-destructive/10"
                       >
                         ×
                       </button>
@@ -838,6 +856,19 @@ export default function WorkflowsPage() {
       <div className="animate-slide-up" style={{ animationDelay: "150ms" }}>
         <WorkflowConsole logs={logs} output={output} running={running} />
       </div>
+
+      <AlertDialog open={Boolean(deleteRequest)} onOpenChange={(open) => !open && setDeleteRequest(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{deleteRequest?.type === "node" ? `Delete ${deleteRequest.name}?` : "Delete this connection?"}</AlertDialogTitle>
+            <AlertDialogDescription>{deleteRequest?.type === "node" ? "The node and its connected edges will be removed from the canvas." : "This edge will be removed from the workflow graph."}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={confirmDelete}>Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

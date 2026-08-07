@@ -10,6 +10,7 @@ import {
   useUpdateOrganizationQuota,
 } from "@/hooks";
 import { PageHeader } from "@/components/page-header";
+import { ErrorState } from "@/components/shared";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -88,9 +89,10 @@ export default function QuotasPage() {
     }
   };
 
-  if (quota.isLoading || usage.isLoading) {
-    return <Skeleton className="h-[520px] w-full" />;
+  if (quota.isError || usage.isError) {
+    return <div className="space-y-6"><PageHeader icon={Gauge} title="Tenant quotas" description="Admission and spend controls" /><ErrorState title="Unable to load quota data" description="Quota policy or usage data could not be loaded." onRetry={() => { void quota.refetch(); void usage.refetch(); }} /></div>;
   }
+
 
   const usageRows = usage.data
     ? [

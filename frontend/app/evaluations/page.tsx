@@ -13,12 +13,11 @@ import {
 } from "@/hooks";
 import type { EvaluationSuite } from "@/types";
 import { PageHeader } from "@/components/page-header";
-import { EmptyState } from "@/components/empty-state";
+import { EmptyState, ErrorState, LoadingSkeleton } from "@/components/shared";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input, Label, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Card } from "@/components/ui/card";
 import {
   Dialog,
@@ -142,12 +141,7 @@ export default function EvaluationsPage() {
         }
       />
 
-      {suites.isLoading ? (
-        <div className="space-y-3">
-          <Skeleton className="h-32 w-full" />
-          <Skeleton className="h-32 w-full" />
-        </div>
-      ) : suites.data?.length ? (
+      {suites.isLoading ? <LoadingSkeleton variant="table" /> : suites.isError ? <ErrorState title="Unable to load evaluation suites" description="Evaluation data could not be loaded." onRetry={() => void suites.refetch()} /> : suites.data?.length ? (
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px] stagger">
           <div className="space-y-4">
             {suites.data.map((suite) => {
