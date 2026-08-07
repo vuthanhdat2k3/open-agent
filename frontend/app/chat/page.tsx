@@ -353,6 +353,11 @@ export default function ChatPage() {
             content: deltaArgsRef.current.get(idx) ?? "",
             meta: { toolName: d.name || "tool" },
           });
+          // A brand-new tool card must land on screen before any later event
+          // in this same batch (e.g. tool_result arriving in the same SSE
+          // read/flush) can replace it — flush synchronously instead of
+          // waiting for the shared end-of-handler touch()/RAF below.
+          commit();
         } else {
           const ti = msgs.findIndex((x) => x.id === toolId);
           if (ti >= 0) msgs[ti] = { ...msgs[ti], content: deltaArgsRef.current.get(idx) ?? "" };
@@ -375,6 +380,11 @@ export default function ChatPage() {
           composeRef.current.set(idx, card.id);
           msgs.push(card);
         }
+        // Same reasoning as tool_call_delta above: the "Running" state must
+        // be committed to React state before a fast tool's tool_result (which
+        // can arrive in the same network read, i.e. the same synchronous
+        // pass through this reducer) overwrites/appends past it.
+        commit();
       } else if (ev.event === "tool_progress") {
         setPhase(`tool:${d.name}`);
         const toolId = composeRef.current.get(d.index ?? 0);
