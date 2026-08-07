@@ -1,5 +1,17 @@
 from __future__ import annotations
 
+import os
+
+os.environ["OPENAGENT_DB_URL"] = "sqlite+aiosqlite:///:memory:"
+os.environ["OPENAGENT_REDIS_URL"] = "redis://127.0.0.1:6379/15"
+os.environ["OPENAGENT_WORKFLOW_EXECUTION_MODE"] = "inline"
+os.environ["OPENAGENT_OTEL_ENABLED"] = "false"
+os.environ["OPENAI_API_KEY"] = ""
+
+from app.config import get_settings
+
+get_settings.cache_clear()
+
 import pytest
 
 

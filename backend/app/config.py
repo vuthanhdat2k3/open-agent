@@ -13,6 +13,19 @@ class Settings(BaseSettings):
 
     # Database (async). SQLite for dev; postgres+asyncpg later.
     db_url: str = "sqlite+aiosqlite:///./openagent.db"
+    # Postgres connection pool (per process — api and worker each hold their
+    # own engine). Managed poolers (e.g. Supabase's pgbouncer in session mode)
+    # cap total client connections; pool_size + max_overflow across every
+    # process must stay under that cap or new connections start failing with
+    # "max clients reached" — which also blocks unrelated requests like login.
+    # Defaults: 2 processes * (3 + 2) = 10, leaving headroom under a 15-slot
+    # pooler for psql/migrations/one-off scripts.
+    db_pool_size: int = 3
+    db_max_overflow: int = 2
+    # Recycle connections periodically so a pooler-side idle/max-lifetime
+    # disconnect surfaces as a clean reconnect instead of a stale-connection
+    # error under load.
+    db_pool_recycle_seconds: int = 1800
 
     # API key; empty => localhost-only mode.
     api_key: str = ""

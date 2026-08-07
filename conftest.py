@@ -29,6 +29,15 @@ os.environ["RAG_BM25_BACKEND"] = "memory"
 os.environ["RAG_EMBEDDER"] = "simple"
 os.environ["OPENAI_API_KEY"] = ""
 
+
+def pytest_configure(config) -> None:
+    os.environ["OPENAGENT_DB_URL"] = "sqlite+aiosqlite:///:memory:"
+    os.environ["OPENAGENT_REDIS_URL"] = "redis://127.0.0.1:6379/15"
+    from app.config import get_settings
+
+    get_settings.cache_clear()
+
+
 # A few backend migration tests construct Config("alembic.ini") relative to
 # their package root. Collection resolves test paths first; the session-start
 # hook below handles those relative migration commands afterward.

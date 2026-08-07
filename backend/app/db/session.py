@@ -17,6 +17,16 @@ settings = get_settings()
 engine_kwargs = {"echo": False, "future": True}
 if "postgresql" in settings.db_url:
     engine_kwargs["connect_args"] = {"statement_cache_size": 0}
+    # SQLAlchemy's unbounded default (pool_size=5, max_overflow=10) lets a
+    # single process open up to 15 connections — the entire budget of a
+    # 15-slot managed pooler (e.g. Supabase pgbouncer session mode) — and the
+    # api and worker processes each hold their own engine. Bound it from
+    # settings so both processes together stay under the pooler's cap;
+    # exceeding it fails every new connection, including the login query.
+    engine_kwargs["pool_size"] = settings.db_pool_size
+    engine_kwargs["max_overflow"] = settings.db_max_overflow
+    engine_kwargs["pool_recycle"] = settings.db_pool_recycle_seconds
+    engine_kwargs["pool_pre_ping"] = True
 
 engine = create_async_engine(settings.db_url, **engine_kwargs)
 
