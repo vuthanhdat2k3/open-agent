@@ -28,10 +28,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input, Label, Textarea } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Select, Slider } from "@/components/ui/select";
+import { Select } from "@/components/ui/select";
+import { Slider } from "@/components/ui/slider";
 import { Skeleton } from "@/components/ui/skeleton";
-import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
+import { EmptyState, ErrorState, LoadingSkeleton } from "@/components/shared";
 import { AgentCard } from "@/components/agents/agent-card";
 import {
   Dialog,
@@ -99,7 +100,7 @@ export default function AgentsPage() {
   const [releaseAgent, setReleaseAgent] = React.useState<Agent | null>(null);
   const [draftPrompt, setDraftPrompt] = React.useState("");
   const [changeNote, setChangeNote] = React.useState("");
-  const { data, isLoading } = useAgents();
+  const { data, isLoading, isError, refetch } = useAgents();
   const models = useModels(open);
   const tools = useAgentTools(open);
   const create = useCreateAgent();
@@ -229,8 +230,8 @@ export default function AgentsPage() {
     safe: "border-muted-foreground/40 bg-muted/30 text-muted-foreground",
     read: "border-info/50 bg-info/10 text-info",
     write: "border-warning/50 bg-warning/10 text-warning",
-    execute: "border-orange-500/50 bg-orange-500/10 text-orange-400",
-    network: "border-violet-500/50 bg-violet-500/10 text-violet-400",
+    execute: "border-warning/50 bg-warning/10 text-warning",
+    network: "border-info/50 bg-info/10 text-info",
     dangerous: "border-destructive/50 bg-destructive/10 text-destructive",
   };
 
@@ -422,7 +423,7 @@ export default function AgentsPage() {
                       <Thermometer className="h-3.5 w-3.5 text-primary" /> Temperature
                       <span className="ml-auto font-mono text-foreground">{form.temperature.toFixed(2)}</span>
                     </Label>
-                    <Slider value={form.temperature} onChange={(v) => setForm({ ...form, temperature: v })} />
+                    <Slider value={[form.temperature]} min={0} max={2} step={0.1} onValueChange={([value]) => setForm({ ...form, temperature: value })} aria-label="Temperature" />
                   </div>
                 </div>
 
@@ -535,13 +536,7 @@ export default function AgentsPage() {
         </DialogContent>
       </Dialog>
 
-      {isLoading ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-48 w-full" />
-          ))}
-        </div>
-      ) : data && data.length > 0 ? (
+      {isLoading ? <LoadingSkeleton variant="grid" /> : isError ? <ErrorState title="Unable to load agents" description="Agent data could not be loaded." onRetry={() => void refetch()} /> : data && data.length > 0 ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 stagger">
           {data.map((a) => (
             <AgentCard
@@ -551,11 +546,7 @@ export default function AgentsPage() {
               tools={tools.data}
               onEdit={openEdit}
               onReleases={openReleases}
-              onDelete={(id) => {
-                if (window.confirm(`Xóa agent "${a.name}"? Hành động này không thể hoàn tác.`)) {
-                  del.mutate(id);
-                }
-              }}
+              onDelete={(id) => del.mutate(id)}
             />
           ))}
         </div>

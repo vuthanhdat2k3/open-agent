@@ -6,6 +6,10 @@ import { api } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { PageHeader } from "@/components/page-header";
+import { LoadingSkeleton } from "@/components/shared";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
 interface Connection {
   id: string;
@@ -24,17 +28,25 @@ export default function IntegrationsPage() {
   const [calendar, setCalendar] = React.useState<Connection[]>([]);
   const [drive, setDrive] = React.useState<Connection[]>([]);
   const [busy, setBusy] = React.useState<string | null>(null);
+  const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState("");
+  const [disconnectRequest, setDisconnectRequest] = React.useState<{ kind: "email" | "calendar" | "drive"; id: string; label: string } | null>(null);
 
   const load = React.useCallback(async () => {
-    const [mail, dates, drives] = await Promise.all([
-      api.get<Connection[]>("/api/customer-intelligence/connections"),
-      api.get<Connection[]>("/api/customer-intelligence/calendar-connections"),
-      api.get<Connection[]>("/api/customer-intelligence/drive-connections"),
-    ]);
-    setEmail(mail);
-    setCalendar(dates);
-    setDrive(drives);
+    setLoading(true);
+    try {
+      const [mail, dates, drives] = await Promise.all([
+        api.get<Connection[]>("/api/customer-intelligence/connections"),
+        api.get<Connection[]>("/api/customer-intelligence/calendar-connections"),
+        api.get<Connection[]>("/api/customer-intelligence/drive-connections"),
+      ]);
+      setEmail(mail);
+      setCalendar(dates);
+      setDrive(drives);
+      setError("");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   React.useEffect(() => {
@@ -54,7 +66,7 @@ export default function IntegrationsPage() {
     }
   }
 
-  async function disconnect(kind: "email" | "calendar" | "drive", id: string) {
+  async function performDisconnect(kind: "email" | "calendar" | "drive", id: string) {
     setBusy(id);
     try {
       const resource = kind === "email" ? "connections" : kind === "calendar" ? "calendar-connections" : "drive-connections";
@@ -64,6 +76,7 @@ export default function IntegrationsPage() {
       setError(err instanceof Error ? err.message : "Could not disconnect");
     } finally {
       setBusy(null);
+      setDisconnectRequest(null);
     }
   }
 
@@ -71,14 +84,14 @@ export default function IntegrationsPage() {
     return (
       <div className="flex items-center justify-between rounded-xl border border-border/70 bg-background/40 p-4">
         <div className="flex min-w-0 items-center gap-3">
-          <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-500" />
+          <CheckCircle2 className="h-5 w-5 shrink-0 text-success" />
           <div className="min-w-0">
             <p className="truncate font-medium">{providerLabel[item.provider] ?? item.provider}</p>
             <p className="truncate text-sm text-muted-foreground">{item.account_email}</p>
           </div>
           <Badge variant="outline">{item.status}</Badge>
         </div>
-        <Button variant="ghost" size="sm" onClick={() => disconnect(kind, item.id)} disabled={busy === item.id}>
+        <Button variant="ghost" size="sm" onClick={() => setDisconnectRequest({ kind, id: item.id, label: item.account_email })} disabled={busy === item.id} aria-label={`Disconnect ${item.account_email}`}>
           {busy === item.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Unplug className="h-4 w-4" />}
           <span className="sr-only">Disconnect</span>
         </Button>
@@ -102,33 +115,16 @@ export default function IntegrationsPage() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <p className="text-xs font-bold uppercase tracking-[0.2em] text-primary">Integrations</p>
-        <h2 className="mt-2 text-3xl font-bold tracking-tight">Connect your work accounts</h2>
-        <p className="mt-2 max-w-2xl text-muted-foreground">OAuth stays with OpenAgent. Tokens are encrypted and passed to the stateless MCP connector only when a tool runs.</p>
-      </div>
-      {error && <div role="alert" className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{error}</div>}
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader><CardTitle className="flex items-center gap-2"><Mail className="h-5 w-5 text-primary" />Email accounts</CardTitle></CardHeader>
-          <CardContent className="space-y-3">
-            {connectedEmail ? <ConnectionCard kind="email" item={connectedEmail} /> : <ConnectCard kind="email" provider="google" />}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader><CardTitle className="flex items-center gap-2"><CalendarDays className="h-5 w-5 text-primary" />Calendar accounts</CardTitle></CardHeader>
-          <CardContent className="space-y-3">
-            {connectedCalendar ? <ConnectionCard kind="calendar" item={connectedCalendar} /> : <ConnectCard kind="calendar" provider="google" />}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader><CardTitle className="flex items-center gap-2"><HardDrive className="h-5 w-5 text-primary" />Google Drive</CardTitle></CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-sm text-muted-foreground">List, read, create, update and delete files through the approval-gated Drive connector.</p>
-            {connectedDrive ? <ConnectionCard kind="drive" item={connectedDrive} /> : <ConnectCard kind="drive" provider="google" />}
-          </CardContent>
-        </Card>
-      </div>
+      <PageHeader icon={CalendarDays} title="Integrations" description="Connect work accounts through encrypted, approval-aware OAuth connectors." />
+      {error && <Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert>}
+      {loading ? <LoadingSkeleton variant="grid" /> : <div className="grid gap-6 lg:grid-cols-2">
+        <Card><CardHeader><CardTitle className="flex items-center gap-2"><Mail className="h-5 w-5 text-primary" aria-hidden="true" />Email accounts</CardTitle></CardHeader><CardContent className="space-y-3">{connectedEmail ? <ConnectionCard kind="email" item={connectedEmail} /> : <ConnectCard kind="email" provider="google" />}</CardContent></Card>
+        <Card><CardHeader><CardTitle className="flex items-center gap-2"><CalendarDays className="h-5 w-5 text-primary" aria-hidden="true" />Calendar accounts</CardTitle></CardHeader><CardContent className="space-y-3">{connectedCalendar ? <ConnectionCard kind="calendar" item={connectedCalendar} /> : <ConnectCard kind="calendar" provider="google" />}</CardContent></Card>
+        <Card><CardHeader><CardTitle className="flex items-center gap-2"><HardDrive className="h-5 w-5 text-primary" aria-hidden="true" />Google Drive</CardTitle></CardHeader><CardContent className="space-y-3"><p className="text-sm leading-relaxed text-muted-foreground">List, read, create, update and delete files through the approval-gated Drive connector.</p>{connectedDrive ? <ConnectionCard kind="drive" item={connectedDrive} /> : <ConnectCard kind="drive" provider="google" />}</CardContent></Card>
+      </div>}
+      <AlertDialog open={Boolean(disconnectRequest)} onOpenChange={(open) => !open && setDisconnectRequest(null)}>
+        <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Disconnect {disconnectRequest?.label}?</AlertDialogTitle><AlertDialogDescription>OpenAgent will stop using this account for the selected connector. You can reconnect it later.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => disconnectRequest && void performDisconnect(disconnectRequest.kind, disconnectRequest.id)}>Disconnect</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

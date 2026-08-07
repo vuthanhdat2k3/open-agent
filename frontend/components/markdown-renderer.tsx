@@ -236,11 +236,11 @@ function CodeBlockWithAction({ className, children, ...props }: any) {
             onClick={handleRunBackend}
             disabled={isRunning}
             type="button"
-            className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-[10px] font-medium bg-emerald-500/15 text-emerald-500 hover:bg-emerald-500/25 border border-emerald-500/30 disabled:opacity-50 transition-colors cursor-pointer"
+            className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-[10px] font-medium bg-success/15 text-success hover:bg-success/25 border border-success/30 disabled:opacity-50 transition-colors cursor-pointer"
           >
             {isRunning ? (
               <>
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-ping" />
+                <span className="h-1.5 w-1.5 rounded-full bg-success animate-ping" />
                 Running...
               </>
             ) : (
@@ -270,14 +270,14 @@ function CodeBlockWithAction({ className, children, ...props }: any) {
       )}
 
       {isRunnable && (logs.length > 0 || exitCode !== null || errorMessage !== null || isRunning) && (
-        <div className="mt-2 rounded-lg border border-border/60 bg-black/80 overflow-hidden font-mono text-[10.5px] text-foreground shadow-md">
+              <div className="mt-2 rounded-lg border border-border/60 bg-background/95 overflow-hidden font-mono text-[10.5px] text-foreground shadow-card">
           <div className="bg-muted/40 px-3 py-1 text-[10px] text-muted-foreground border-b border-border/40 flex items-center justify-between">
             <span className="font-semibold text-foreground flex items-center gap-1.5">
-              <span className={`h-2 w-2 rounded-full ${isRunning ? "bg-amber-400 animate-pulse" : exitCode === 0 ? "bg-emerald-400" : "bg-red-400"}`} />
+              <span className={`h-2 w-2 rounded-full ${isRunning ? "bg-warning animate-pulse" : exitCode === 0 ? "bg-success" : "bg-destructive"}`} />
               Output Console
             </span>
             {exitCode !== null && (
-              <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${exitCode === 0 ? "bg-emerald-500/20 text-emerald-400" : "bg-red-500/20 text-red-400"}`}>
+              <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${exitCode === 0 ? "bg-success/20 text-success" : "bg-destructive/20 text-destructive"}`}>
                 exit code: {exitCode}
               </span>
             )}
@@ -287,10 +287,10 @@ function CodeBlockWithAction({ className, children, ...props }: any) {
               <span key={i}>{l}</span>
             ))}
             {errorMessage && (
-              <span className="text-red-400 block font-semibold">{errorMessage}</span>
+              <span className="text-destructive block font-semibold">{errorMessage}</span>
             )}
             {exitCode !== null && (
-              <span className={`block font-bold mt-1.5 pt-1.5 border-t border-white/10 ${exitCode === 0 ? "text-emerald-400" : "text-red-400"}`}>
+              <span className={`block font-bold mt-1.5 pt-1.5 border-t border-white/10 ${exitCode === 0 ? "text-success" : "text-destructive"}`}>
                 [exit code: {exitCode}]
               </span>
             )}

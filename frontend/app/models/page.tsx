@@ -7,10 +7,10 @@ import { useModels, useCreateModel, useDeleteModel, useUpdateModel, useProviders
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
 import { ModelForm } from "@/components/models/model-form";
+import { ConfirmDialog, ErrorState, LoadingSkeleton } from "@/components/shared";
 import type { Model } from "@/types";
 import {
   Dialog,
@@ -24,7 +24,7 @@ export default function ModelsPage() {
   const [open, setOpen] = React.useState(false);
   const [editOpen, setEditOpen] = React.useState(false);
   const [editTarget, setEditTarget] = React.useState<Model | null>(null);
-  const { data, isLoading } = useModels();
+  const { data, isLoading, isError, refetch } = useModels();
   const providers = useProviders(open);
   const create = useCreateModel();
   const del = useDeleteModel();
@@ -88,13 +88,7 @@ export default function ModelsPage() {
         </DialogContent>
       </Dialog>
 
-      {isLoading ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-32 w-full" />
-          ))}
-        </div>
-      ) : data && data.length > 0 ? (
+      {isLoading ? <LoadingSkeleton variant="grid" /> : isError ? <ErrorState title="Unable to load models" description="Model data could not be loaded." onRetry={() => void refetch()} /> : data && data.length > 0 ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 stagger">
           {data.map((m) => {
             const provider = providers.data?.find((p) => p.id === m.provider_id);
@@ -102,7 +96,7 @@ export default function ModelsPage() {
               <Card key={m.id} glass className="card-lift flex flex-col p-5">
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex min-w-0 items-center gap-3">
-                    <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-primary/25 via-primary/10 to-transparent text-primary shadow-3d-card border border-primary/20">
+                    <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary shadow-inner-edge border border-primary/25">
                       <Cpu className="h-5 w-5" />
                     </div>
                     <div className="min-w-0">
@@ -123,19 +117,14 @@ export default function ModelsPage() {
                     >
                       <Pencil className="h-4 w-4" />
                     </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-8 w-8 text-muted-foreground hover:text-destructive active-tactile transition-transform"
-                      onClick={() => {
-                        if (window.confirm(`Xóa model "${m.display_name || m.name}"? Hành động này không thể hoàn tác.`)) {
-                          del.mutate(m.id);
-                        }
-                      }}
-                      aria-label={`Delete ${m.display_name}`}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    <ConfirmDialog
+                      trigger={<Button size="icon" variant="ghost" className="h-10 w-10 text-muted-foreground hover:text-destructive" aria-label={`Delete ${m.display_name}`}><Trash2 className="h-4 w-4" /></Button>}
+                      title={`Delete ${m.display_name || m.name}?`}
+                      description="This model configuration will be permanently removed."
+                      confirmLabel="Delete model"
+                      destructive
+                      onConfirm={() => del.mutateAsync(m.id).then(() => undefined)}
+                    />
                   </div>
                 </div>
                 <div className="mt-4 flex flex-wrap gap-1.5">

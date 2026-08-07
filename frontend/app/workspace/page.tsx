@@ -33,8 +33,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/empty-state";
+import { ConfirmDialog, ErrorState, LoadingSkeleton } from "@/components/shared";
 import { PageHeader } from "@/components/page-header";
-import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
   TableBody,
@@ -165,13 +165,7 @@ export default function WorkspacePage() {
             <CardTitle className="text-sm font-semibold">Artifacts</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            {artifacts.isLoading ? (
-              <div className="space-y-2 p-6">
-                {Array.from({ length: 4 }).map((_, i) => (
-                  <Skeleton key={i} className="h-11 w-full" />
-                ))}
-              </div>
-            ) : artifacts.data?.length ? (
+            {artifacts.isLoading ? <div className="p-6"><LoadingSkeleton variant="table" /></div> : artifacts.isError ? <div className="p-6"><ErrorState title="Unable to load artifacts" description="Workspace artifacts could not be loaded." onRetry={() => void artifacts.refetch()} /></div> : artifacts.data?.length ? (
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -218,12 +212,7 @@ export default function WorkspacePage() {
                               </Button>
                             );
                           })()}
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-8 w-8"
-                            disabled={!artifact.exists}
-                            onClick={async () => {
+                          <Button size="icon" variant="ghost" className="h-10 w-10" disabled={!artifact.exists} aria-label={`Download ${artifact.path}`} onClick={async () => {
                               try {
                                 await downloadArtifact(artifact);
                               } catch (err: any) {
@@ -233,14 +222,14 @@ export default function WorkspacePage() {
                           >
                             <Download className="h-4 w-4" />
                           </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                            onClick={() => deleteArtifact.mutate(artifact.id)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                          <ConfirmDialog
+                            trigger={<Button size="icon" variant="ghost" className="h-10 w-10 text-muted-foreground hover:text-destructive" aria-label={`Delete ${artifact.path}`}><Trash2 className="h-4 w-4" /></Button>}
+                            title={`Delete ${artifact.path}?`}
+                            description="This workspace artifact will be permanently removed."
+                            confirmLabel="Delete artifact"
+                            destructive
+                            onConfirm={() => deleteArtifact.mutateAsync(artifact.id).then(() => undefined)}
+                          />
                         </div>
                       </TableCell>
                     </TableRow>
@@ -263,13 +252,7 @@ export default function WorkspacePage() {
             <CardTitle className="text-sm font-semibold">Executions</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            {executions.isLoading ? (
-              <div className="space-y-2 p-6">
-                {Array.from({ length: 4 }).map((_, i) => (
-                  <Skeleton key={i} className="h-11 w-full" />
-                ))}
-              </div>
-            ) : executions.data?.length ? (
+            {executions.isLoading ? <div className="p-6"><LoadingSkeleton variant="table" /></div> : executions.isError ? <div className="p-6"><ErrorState title="Unable to load executions" description="Sandbox execution history could not be loaded." onRetry={() => void executions.refetch()} /></div> : executions.data?.length ? (
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -306,17 +289,17 @@ export default function WorkspacePage() {
                       </TableCell>
                       <TableCell>
                         <div className="flex justify-end gap-1.5">
-                          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => openExecution(execution)}>
+                          <Button size="icon" variant="ghost" className="h-10 w-10" onClick={() => openExecution(execution)} aria-label={`View execution ${execution.id}`}>
                             <Eye className="h-4 w-4" />
                           </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                            onClick={() => deleteExecution.mutate(execution.id)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                          <ConfirmDialog
+                            trigger={<Button size="icon" variant="ghost" className="h-10 w-10 text-muted-foreground hover:text-destructive" aria-label={`Delete execution ${execution.id}`}><Trash2 className="h-4 w-4" /></Button>}
+                            title="Delete this execution?"
+                            description="The execution record and its output preview will be removed."
+                            confirmLabel="Delete execution"
+                            destructive
+                            onConfirm={() => deleteExecution.mutateAsync(execution.id).then(() => undefined)}
+                          />
                         </div>
                       </TableCell>
                     </TableRow>

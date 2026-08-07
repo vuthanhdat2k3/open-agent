@@ -1,36 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import {
-  Activity,
-  ArrowRight,
-  BarChart3,
-  Bot,
-  Cpu,
-  MessageSquare,
-  Network,
-  Sparkles,
-  Workflow,
-  type LucideIcon,
-} from "lucide-react";
-import { useUsageSummary, useProviders, useModels, useAgents, useWorkflows, useMcpServers, useMe } from "@/hooks";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Activity, ArrowRight, BarChart3, Bot, Cpu, MessageSquare, Network, Sparkles, Workflow, type LucideIcon } from "lucide-react";
+import { useAgents, useMcpServers, useMe, useModels, useProviders, useUsageSummary, useWorkflows } from "@/hooks";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import { EmptyState } from "@/components/empty-state";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { EmptyState, ErrorState, LoadingSkeleton, SectionHeader } from "@/components/shared";
 
 function greeting() {
-  const h = new Date().getHours();
-  if (h < 12) return "Chào buổi sáng";
-  if (h < 18) return "Chào buổi chiều";
+  const hour = new Date().getHours();
+  if (hour < 12) return "Chào buổi sáng";
+  if (hour < 18) return "Chào buổi chiều";
   return "Chào buổi tối";
 }
 
@@ -43,8 +24,9 @@ export default function Dashboard() {
   const workflows = useWorkflows();
   const mcp = useMcpServers();
   const grafanaUrl = process.env.NEXT_PUBLIC_GRAFANA_URL;
-
   const name = me.data?.display_name || me.data?.email?.split("@")[0] || "";
+  const resourceQueries = [providers, models, agents, workflows, mcp];
+  const hasResourceError = resourceQueries.some((query) => query.isError);
 
   const stats: { label: string; value: number; icon: LucideIcon }[] = [
     { label: "Providers", value: providers.data?.length ?? 0, icon: Network },
@@ -53,198 +35,48 @@ export default function Dashboard() {
     { label: "MCP Servers", value: mcp.data?.length ?? 0, icon: Activity },
   ];
 
+  async function retryResources() {
+    await Promise.all(resourceQueries.map((query) => query.refetch()));
+  }
+
   return (
-    <div className="space-y-10">
-      {/* Hero */}
-      <div className="relative overflow-hidden rounded-2xl border border-border/60 bg-gradient-to-br from-primary/10 via-card to-card p-8 shadow-3d-elevated sm:p-10">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute -right-24 -top-24 h-64 w-64 rounded-full bg-primary/20 blur-3xl"
-        />
-        <div
-          aria-hidden
-          className="pointer-events-none absolute -bottom-32 -left-16 h-64 w-64 rounded-full bg-info/10 blur-3xl"
-        />
-        <div className="relative animate-slide-up">
-          <p className="text-sm font-semibold text-primary">
-            {greeting()}
-            {name ? `, ${name}` : ""}
-          </p>
-          <h1 className="mt-2 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-            Đội ngũ agent của bạn đang sẵn sàng
-          </h1>
-          <p className="mt-2 max-w-xl text-sm text-muted-foreground">
-            {agents.data?.length ?? 0} agent · {workflows.data?.length ?? 0} workflow đã cấu hình.
-            Bắt đầu trò chuyện hoặc chạy một workflow.
-          </p>
-          <div className="mt-6 flex flex-wrap gap-3">
-            <Button asChild size="lg" className="gap-2 shadow-3d-card">
-              <Link href="/chat">
-                <MessageSquare className="h-4 w-4" />
-                Bắt đầu Chat
-              </Link>
-            </Button>
-            <Button asChild variant="outline" size="lg" className="gap-2">
-              <Link href="/workflows">
-                <Workflow className="h-4 w-4" />
-                Chạy Workflow
-              </Link>
-            </Button>
-            {grafanaUrl && (
-              <Button asChild variant="ghost" size="lg" className="gap-2">
-                <a href={grafanaUrl} target="_blank" rel="noreferrer">
-                  <BarChart3 className="h-4 w-4" />
-                  Grafana
-                </a>
-              </Button>
-            )}
-          </div>
+    <div className="space-y-8">
+      <section className="flex flex-col gap-6 rounded-xl border border-primary/20 bg-card/70 p-6 shadow-card sm:p-8 lg:flex-row lg:items-end lg:justify-between">
+        <div className="max-w-2xl space-y-3">
+          <p className="text-sm font-semibold text-primary">{greeting()}{name ? `, ${name}` : ""}</p>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Đội ngũ agent của bạn đang sẵn sàng</h1>
+          <p className="max-w-xl text-sm leading-relaxed text-muted-foreground">{agents.data?.length ?? 0} agent · {workflows.data?.length ?? 0} workflow đã cấu hình. Bắt đầu trò chuyện hoặc chạy một workflow.</p>
         </div>
-      </div>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <Button asChild className="gap-2"><Link href="/chat"><MessageSquare className="h-4 w-4" aria-hidden="true" />Bắt đầu Chat</Link></Button>
+          <Button asChild variant="outline" className="gap-2"><Link href="/workflows"><Workflow className="h-4 w-4" aria-hidden="true" />Chạy Workflow</Link></Button>
+          {grafanaUrl && <Button asChild variant="ghost" className="gap-2"><a href={grafanaUrl} target="_blank" rel="noreferrer"><BarChart3 className="h-4 w-4" aria-hidden="true" />Grafana</a></Button>}
+        </div>
+      </section>
 
-      {/* Agent quick-launch grid */}
-      <div>
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-foreground">Agent của bạn</h2>
-          <Button asChild variant="ghost" size="sm" className="gap-1 text-muted-foreground">
-            <Link href="/agents">
-              Quản lý tất cả <ArrowRight className="h-3.5 w-3.5" />
-            </Link>
-          </Button>
-        </div>
-        {agents.isLoading ? (
+      {hasResourceError && <ErrorState title="Không thể tải toàn bộ tài nguyên" description="Một số số liệu hoặc agent chưa tải được. Hãy thử lại." onRetry={() => void retryResources()} />}
+
+      <section className="space-y-4">
+        <SectionHeader title="Agent của bạn" description="Truy cập nhanh vào những agent đang được cấu hình." actions={<Button asChild variant="ghost" size="sm" className="gap-1"><Link href="/agents">Quản lý tất cả<ArrowRight className="h-3.5 w-3.5" aria-hidden="true" /></Link></Button>} />
+        {agents.isLoading ? <LoadingSkeleton variant="grid" /> : agents.data?.length ? (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <Skeleton key={i} className="h-32 rounded-xl" />
-            ))}
+            {agents.data.map((agent) => <Link key={agent.id} href={`/chat?agent=${agent.id}`} className="group block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><Card glass className="h-full p-5 transition-colors group-hover:border-primary/40"><div className="flex items-start gap-3"><div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-primary/25 bg-primary/10 text-primary"><>{agent.kind === "orchestrator" ? <Sparkles className="h-4 w-4" aria-hidden="true" /> : <Bot className="h-4 w-4" aria-hidden="true" />}</></div><div className="min-w-0"><p className="truncate font-semibold text-foreground">{agent.name}</p><p className="mt-1 line-clamp-2 text-sm leading-relaxed text-muted-foreground">{agent.description || "Chưa có mô tả"}</p></div></div><div className="mt-5 flex items-center justify-between"><span className="rounded-full bg-muted px-2 py-1 text-xs font-medium text-muted-foreground">{agent.kind === "orchestrator" ? "Điều phối" : "Chuyên trách"}</span><span className="flex items-center gap-1 text-xs font-medium text-primary">Trò chuyện<ArrowRight className="h-3 w-3" aria-hidden="true" /></span></div></Card></Link>)}
           </div>
-        ) : agents.data && agents.data.length > 0 ? (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 stagger">
-            {agents.data.map((a) => (
-              <Link key={a.id} href={`/chat?agent=${a.id}`} className="group block">
-                <Card
-                  glass
-                  className="h-full overflow-hidden p-5 transition-all duration-300 ease-spring hover:-translate-y-1 hover:shadow-3d-elevated"
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-primary/20 bg-gradient-to-br from-primary/25 via-primary/10 to-transparent text-primary shadow-3d-card">
-                      {a.kind === "orchestrator" ? (
-                        <Sparkles className="h-4 w-4" />
-                      ) : (
-                        <Bot className="h-4 w-4" />
-                      )}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="truncate font-semibold text-foreground">{a.name}</p>
-                      <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
-                        {a.description || "Chưa có mô tả"}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="mt-4 flex items-center justify-between">
-                    <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                      {a.kind === "orchestrator" ? "Điều phối" : "Chuyên trách"}
-                    </span>
-                    <span className="flex items-center gap-1 text-xs font-medium text-primary opacity-0 transition-opacity group-hover:opacity-100">
-                      Trò chuyện <ArrowRight className="h-3 w-3" />
-                    </span>
-                  </div>
-                </Card>
-              </Link>
-            ))}
-          </div>
-        ) : (
-          <EmptyState
-            icon={Bot}
-            title="Chưa có agent nào"
-            description="Tạo agent đầu tiên để bắt đầu."
-            action={
-              <Button asChild>
-                <Link href="/agents">Tạo agent</Link>
-              </Button>
-            }
-          />
-        )}
-      </div>
+        ) : <EmptyState icon={Bot} title="Chưa có agent nào" description="Tạo agent đầu tiên để bắt đầu." action={<Button asChild><Link href="/agents">Tạo agent</Link></Button>} />}
+      </section>
 
-      {/* Compact system stats strip */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {stats.map((s) => {
-          const Icon = s.icon;
-          return (
-            <Card key={s.label} className="flex items-center gap-3 p-4">
-              <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
-                <Icon className="h-4 w-4" />
-              </div>
-              <div>
-                <p className="text-lg font-bold leading-none tabular-nums text-foreground">{s.value}</p>
-                <p className="mt-1 text-[11px] text-muted-foreground">{s.label}</p>
-              </div>
-            </Card>
-          );
-        })}
-      </div>
+      <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {stats.map(({ label, value, icon: Icon }) => <Card key={label} className="flex items-center gap-3 p-4"><div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground"><Icon className="h-4 w-4" aria-hidden="true" /></div><div><p className="text-xl font-bold leading-none tabular-nums text-foreground">{value}</p><p className="mt-1 text-xs text-muted-foreground">{label}</p></div></Card>)}
+      </section>
 
-      {/* Usage summary, secondary */}
-      <div className="animate-slide-up" style={{ animationDelay: "150ms" }}>
+      <section>
         <Card glass className="overflow-hidden">
-          <CardHeader className="flex flex-row items-center gap-3 border-b border-border/80 bg-muted/20">
-            <div className="grid h-9 w-9 place-items-center rounded-xl border border-primary/20 bg-gradient-to-br from-primary/25 via-primary/10 to-transparent text-primary shadow-3d-card">
-              <BarChart3 className="h-4 w-4" />
-            </div>
-            <div>
-              <CardTitle className="text-lg">Usage Summary</CardTitle>
-              <p className="mt-0.5 text-xs text-muted-foreground">Agent activity and token usage analytics</p>
-            </div>
-          </CardHeader>
-          <CardContent className="pt-6">
-            {usage.isLoading ? (
-              <div className="space-y-2">
-                {Array.from({ length: 4 }).map((_, i) => (
-                  <Skeleton key={i} className="h-11 w-full" />
-                ))}
-              </div>
-            ) : usage.data && usage.data.length > 0 ? (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Agent</TableHead>
-                    <TableHead>Model</TableHead>
-                    <TableHead className="text-right">Calls</TableHead>
-                    <TableHead className="text-right">In Tokens</TableHead>
-                    <TableHead className="text-right">Out Tokens</TableHead>
-                    <TableHead className="text-right">Cost</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {usage.data.map((u, i) => (
-                    <TableRow key={i}>
-                      <TableCell className="font-medium">{u.agent_name}</TableCell>
-                      <TableCell className="text-muted-foreground">{u.model_name}</TableCell>
-                      <TableCell className="text-right tabular-nums font-mono text-muted-foreground">{u.calls}</TableCell>
-                      <TableCell className="text-right tabular-nums font-mono text-muted-foreground">
-                        {u.input_tokens.toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums font-mono text-muted-foreground">
-                        {u.output_tokens.toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums font-mono font-semibold text-primary">
-                        ${u.cost_usd.toFixed(6)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            ) : (
-              <EmptyState
-                icon={BarChart3}
-                title="No usage recorded yet"
-                description="Start by creating an agent or running a chat."
-              />
-            )}
+          <CardHeader className="border-b border-border/70 bg-muted/20"><CardTitle className="flex items-center gap-2 text-lg"><BarChart3 className="h-5 w-5 text-primary" aria-hidden="true" />Usage Summary</CardTitle><p className="text-sm text-muted-foreground">Agent activity and token usage analytics</p></CardHeader>
+          <CardContent className="p-0">
+            {usage.isLoading ? <div className="space-y-2 p-6"><LoadingSkeleton variant="table" /></div> : usage.isError ? <div className="p-6"><ErrorState title="Không thể tải usage" description="Usage summary chưa sẵn sàng. Hãy thử lại." onRetry={() => void usage.refetch()} /></div> : usage.data?.length ? <Table><TableHeader><TableRow><TableHead>Agent</TableHead><TableHead>Model</TableHead><TableHead className="text-right">Calls</TableHead><TableHead className="text-right">In Tokens</TableHead><TableHead className="text-right">Out Tokens</TableHead><TableHead className="text-right">Cost</TableHead></TableRow></TableHeader><TableBody>{usage.data.map((item, index) => <TableRow key={`${item.agent_name}-${item.model_name}-${index}`}><TableCell className="font-medium">{item.agent_name}</TableCell><TableCell className="text-muted-foreground">{item.model_name}</TableCell><TableCell className="text-right font-mono tabular-nums text-muted-foreground">{item.calls}</TableCell><TableCell className="text-right font-mono tabular-nums text-muted-foreground">{item.input_tokens.toLocaleString()}</TableCell><TableCell className="text-right font-mono tabular-nums text-muted-foreground">{item.output_tokens.toLocaleString()}</TableCell><TableCell className="text-right font-mono font-semibold tabular-nums text-primary">${item.cost_usd.toFixed(6)}</TableCell></TableRow>)}</TableBody></Table> : <div className="p-6"><EmptyState icon={BarChart3} title="No usage recorded yet" description="Start by creating an agent or running a chat." /></div>}
           </CardContent>
         </Card>
-      </div>
+      </section>
     </div>
   );
 }

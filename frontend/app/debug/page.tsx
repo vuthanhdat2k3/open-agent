@@ -7,8 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
-import { EmptyState } from "@/components/empty-state";
+import { EmptyState, ErrorState, LoadingSkeleton } from "@/components/shared";
 import { PageHeader } from "@/components/page-header";
 import {
   Table,
@@ -36,15 +35,15 @@ export default function DebugPage() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 stagger">
         <Card glass className="flex flex-col shadow-3d-card overflow-hidden">
           <CardHeader className="flex flex-row items-center gap-3 border-b border-border/60 bg-muted/20">
-            <div className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-primary/25 via-primary/10 to-transparent text-primary shadow-3d-card border border-primary/20">
+            <div className="grid h-9 w-9 place-items-center rounded-xl bg-primary/10 text-primary shadow-inner-edge border border-primary/25">
               <MessageSquare className="h-4 w-4" />
             </div>
             <CardTitle className="text-sm font-semibold tracking-tight text-foreground">Active Sessions</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 pt-6">
             <div className="space-y-1.5">
-              <span className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground/80">Select debug session</span>
-              <Select value={sel || ""} onChange={(e) => setSel(e.target.value || null)}>
+              <label htmlFor="debug-session" className="text-sm font-semibold text-foreground">Select debug session</label>
+              <Select id="debug-session" value={sel || ""} onChange={(e) => setSel(e.target.value || null)}>
                 <option value="">— select session —</option>
                 {sessions.data?.map((s) => (
                   <option key={s.id} value={s.id}>{s.title}</option>
@@ -52,18 +51,12 @@ export default function DebugPage() {
               </Select>
             </div>
 
-            {tree.isLoading ? (
-              <div className="space-y-2">
-                {Array.from({ length: 3 }).map((_, i) => (
-                  <Skeleton key={i} className="h-20 w-full" />
-                ))}
-              </div>
-            ) : tree.data ? (
+            {sessions.isError ? <ErrorState title="Unable to load sessions" description="Debug sessions could not be loaded." onRetry={() => void sessions.refetch()} /> : tree.isLoading ? <LoadingSkeleton variant="table" /> : tree.isError ? <ErrorState title="Unable to load session messages" description="The selected session could not be inspected." onRetry={() => void tree.refetch()} /> : tree.data ? (
               <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-1">
                 {tree.data.messages.map((m: any) => (
                   <div
                     key={m.id}
-                    className="rounded-xl border border-border/80 bg-card/65 p-3.5 text-xs transition-all duration-200 hover:border-primary/40 hover:bg-card shadow-inner-edge"
+                    className="rounded-xl border border-border/80 bg-card/65 p-3.5 text-xs transition-[border-color,background-color] duration-200 hover:border-primary/40 hover:bg-card shadow-inner-edge"
                   >
                     <div className="mb-2 flex items-center justify-between">
                       <Badge variant="outline" className="text-[10px] bg-muted/40 font-semibold px-2 py-0.5">{m.role}</Badge>
@@ -95,19 +88,13 @@ export default function DebugPage() {
 
         <Card glass className="flex flex-col shadow-3d-card overflow-hidden">
           <CardHeader className="flex flex-row items-center gap-3 border-b border-border/60 bg-muted/20">
-            <div className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-primary/25 via-primary/10 to-transparent text-primary shadow-3d-card border border-primary/20">
+            <div className="grid h-9 w-9 place-items-center rounded-xl bg-primary/10 text-primary shadow-inner-edge border border-primary/25">
               <BarChart3 className="h-4 w-4" />
             </div>
             <CardTitle className="text-sm font-semibold tracking-tight text-foreground">Usage Per Agent/Model</CardTitle>
           </CardHeader>
           <CardContent className="pt-6">
-            {usage.isLoading ? (
-              <div className="space-y-2">
-                {Array.from({ length: 4 }).map((_, i) => (
-                  <Skeleton key={i} className="h-10 w-full" />
-                ))}
-              </div>
-            ) : usage.data?.length ? (
+            {usage.isLoading ? <LoadingSkeleton variant="table" /> : usage.isError ? <ErrorState title="Unable to load usage" description="Usage data could not be loaded." onRetry={() => void usage.refetch()} /> : usage.data?.length ? (
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -152,7 +139,7 @@ export default function DebugPage() {
             <CardTitle className="text-sm font-semibold text-foreground">Task Tree</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 pt-6">
-            <Input value={rootRunId} onChange={(e) => setRootRunId(e.target.value)} placeholder="root_run_id" className="font-mono text-xs" />
+            <Input id="debug-root-run" name="root_run_id" onChange={(e) => setRootRunId(e.target.value)} placeholder="root_run_id" className="font-mono text-xs" />
             {taskTree.data?.tasks?.map((node) => (
               <div key={node.id} className="rounded-xl border border-border/80 bg-card/50 p-3.5 text-xs shadow-inner-edge">
                 <div className="flex items-center justify-between">
@@ -179,7 +166,7 @@ export default function DebugPage() {
             <CardTitle className="text-sm font-semibold text-foreground">Workflow Run</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 pt-6">
-            <Input value={workflowRunId} onChange={(e) => setWorkflowRunId(e.target.value)} placeholder="workflow_run_id" className="font-mono text-xs" />
+            <Input id="debug-workflow-run" name="workflow_run_id" onChange={(e) => setWorkflowRunId(e.target.value)} placeholder="workflow_run_id" className="font-mono text-xs" />
             {workflowRun.data && (
               <div className="space-y-2">
                 <Badge variant="outline">{workflowRun.data.status}</Badge>

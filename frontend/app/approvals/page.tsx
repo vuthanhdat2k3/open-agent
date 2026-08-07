@@ -7,7 +7,7 @@ import { PageHeader } from "@/components/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { EmptyState } from "@/components/empty-state";
+import { EmptyState, ErrorState, LoadingSkeleton, ConfirmDialog } from "@/components/shared";
 
 export default function ApprovalsPage() {
   const approvals = useApprovals();
@@ -25,7 +25,7 @@ export default function ApprovalsPage() {
   return (
     <div className="space-y-6">
       <PageHeader icon={ShieldCheck} title="Approvals" description="Review tool and workflow approval requests" />
-      {approvals.data?.length ? (
+      {approvals.isLoading ? <LoadingSkeleton variant="table" /> : approvals.isError ? <ErrorState title="Unable to load approvals" description="Approval requests could not be loaded." onRetry={() => void approvals.refetch()} /> : approvals.data?.length ? (
         <div className="space-y-4 stagger">
           {approvals.data.map((approval) => (
             <Card key={approval.id} glass className="card-lift">
@@ -41,7 +41,7 @@ export default function ApprovalsPage() {
                   {JSON.stringify(approval.args_snapshot, null, 2)}
                 </pre>
                 <div className="flex justify-end gap-2">
-                  <Button variant="outline" className="active-tactile transition-transform" onClick={() => submit(approval.id, "rejected")}>Reject</Button>
+                  <ConfirmDialog trigger={<Button variant="outline">Reject</Button>} title="Reject this approval?" description="The requested tool or workflow action will not run." confirmLabel="Reject" destructive onConfirm={() => submit(approval.id, "rejected")} />
                   <Button className="active-tactile transition-transform" onClick={() => submit(approval.id, "approved")}>Approve</Button>
                 </div>
               </CardContent>
