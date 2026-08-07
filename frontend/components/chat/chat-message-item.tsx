@@ -10,10 +10,12 @@ import DOMPurify from "dompurify";
 const LazyMarkdownRenderer = React.lazy(() =>
   import("@/components/markdown-renderer").then((m) => ({ default: m.MarkdownRenderer })),
 );
-import { Wrench, CornerDownRight, Clock, DollarSign, Terminal, Code, Copy, Check, CheckCircle2, XCircle, Play, FileCode, Maximize2, ChevronRight, ShieldAlert, ShieldCheck, ShieldX } from "lucide-react";
+import { Wrench, Clock, DollarSign, Terminal, Copy, Check, CheckCircle2, XCircle, Play, Maximize2, ChevronDown, ShieldAlert, ShieldCheck, ShieldX, Bot } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 // html here can be raw SVG returned by an LLM/tool call — treat it as
 // untrusted and sanitize before it reaches the DOM (SVG supports
@@ -36,7 +38,7 @@ function SvgPreview({ html }: { html: string }) {
             className="max-w-full max-h-[360px] overflow-auto rounded-lg border border-border/40 bg-card p-2 shadow-sm [&>svg]:w-auto [&>svg]:h-auto [&>svg]:max-w-full [&>svg]:max-h-[340px]"
             dangerouslySetInnerHTML={{ __html: clean }}
           />
-          <span className="absolute inset-0 flex items-center justify-center rounded-lg bg-black/0 opacity-0 transition-all group-hover:bg-black/20 group-hover:opacity-100">
+          <span className="absolute inset-0 flex items-center justify-center rounded-lg bg-black/0 opacity-0 transition-[background-color,opacity] group-hover:bg-black/20 group-hover:opacity-100">
             <Maximize2 className="h-6 w-6 text-white drop-shadow" />
           </span>
         </button>
@@ -111,7 +113,7 @@ function ChatMessageItemBase({ message: m, debug, hasLiveTools, onApprovalDecisi
     return (
       <div
         key={m.id}
-        className="group relative animate-scale-in self-end max-w-[80%] cursor-text rounded-2xl rounded-br-sm bg-primary px-4 py-2.5 pr-14 text-xs text-primary-foreground shadow-3d-card leading-relaxed select-text font-medium"
+        className="group relative animate-scale-in self-end max-w-[80%] cursor-text rounded-2xl rounded-br-md bg-primary px-4 py-3 pr-12 text-sm text-primary-foreground shadow-card leading-relaxed select-text"
         style={{ userSelect: "text", WebkitUserSelect: "text" }}
       >
         <span className="whitespace-pre-wrap break-words">{m.content || "…"}</span>
@@ -121,7 +123,7 @@ function ChatMessageItemBase({ message: m, debug, hasLiveTools, onApprovalDecisi
           size="icon"
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => void copyMessage()}
-          className="absolute right-1 top-1 h-11 w-11 rounded-lg text-primary-foreground/70 opacity-90 transition hover:bg-primary-foreground/15 hover:text-primary-foreground focus-visible:opacity-100"
+          className="absolute right-1 top-1 h-9 w-9 rounded-lg text-primary-foreground/70 opacity-0 transition-opacity hover:bg-primary-foreground/15 hover:text-primary-foreground group-hover:opacity-100 focus-visible:opacity-100"
           aria-label={copied ? "User message copied" : "Copy user message"}
           title={copied ? "Copied" : "Copy message"}
         >
@@ -313,28 +315,38 @@ function ChatMessageItemBase({ message: m, debug, hasLiveTools, onApprovalDecisi
         );
       })}
 
-      <div className="animate-scale-in self-start max-w-[85%] space-y-1">
+      <div className="flex max-w-[85%] items-start gap-2.5 self-start">
+        <Avatar className="mt-0.5 h-8 w-8 border border-border/60 bg-muted">
+          <AvatarFallback className="bg-primary/10 text-primary">
+            <Bot className="h-4 w-4" aria-hidden="true" />
+          </AvatarFallback>
+        </Avatar>
+        <div className="min-w-0 flex-1 space-y-1.5">
         {debug && m.meta?.reasoning ? (
-          <details className="group rounded-xl border border-border/50 bg-muted/20 px-3 py-2 text-xs text-muted-foreground/80 shadow-inner">
-            <summary className="flex cursor-pointer items-center gap-1.5 select-none text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              {!m.content ? (
-                <span className="inline-flex gap-0.5">
-                  <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
-                  <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse [animation-delay:150ms]" />
-                  <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse [animation-delay:300ms]" />
-                </span>
-              ) : (
-                <ChevronRight className="h-3 w-3 transition-transform group-open:rotate-90" />
-              )}
-              Reasoning
-            </summary>
-            <pre className="mt-2 whitespace-pre-wrap font-mono text-[10.5px] leading-relaxed break-words border-t border-border/40 pt-2">
-              {m.meta.reasoning}
-            </pre>
-          </details>
+          <Collapsible defaultOpen={!m.content}>
+            <div className="rounded-xl border border-dashed border-border/70 bg-muted/15 px-3 py-2">
+              <CollapsibleTrigger className="group flex w-full cursor-pointer items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground select-none focus-visible:outline-none">
+                {!m.content ? (
+                  <span className="inline-flex gap-0.5">
+                    <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
+                    <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse [animation-delay:150ms]" />
+                    <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse [animation-delay:300ms]" />
+                  </span>
+                ) : (
+                  <ChevronDown className="h-3 w-3 shrink-0 transition-transform group-data-[state=closed]:-rotate-90" aria-hidden="true" />
+                )}
+                Reasoning
+              </CollapsibleTrigger>
+              <CollapsibleContent className="mt-2 border-t border-dashed border-border/50 pt-2">
+                <p className="whitespace-pre-wrap break-words font-mono text-[11px] italic leading-relaxed text-muted-foreground">
+                  {m.meta.reasoning}
+                </p>
+              </CollapsibleContent>
+            </div>
+          </Collapsible>
         ) : null}
         {m.content && (
-          <div className="rounded-2xl rounded-bl-sm border border-border/80 bg-card/90 px-4 py-3 text-xs shadow-3d-card select-text leading-relaxed backdrop-blur-md">
+          <div className="rounded-2xl rounded-bl-md border border-border/80 bg-card px-4 py-3 text-sm leading-relaxed select-text shadow-card">
           {m.content ? (
             <React.Suspense
               fallback={<span className="whitespace-pre-wrap break-words">{m.content}</span>}
@@ -342,7 +354,7 @@ function ChatMessageItemBase({ message: m, debug, hasLiveTools, onApprovalDecisi
               <LazyMarkdownRenderer content={m.content} />
             </React.Suspense>
           ) : m.meta?.reasoning ? (
-            <span className="text-muted-foreground text-[11px]">Generating answer…</span>
+            <span className="text-sm text-muted-foreground">Generating answer…</span>
           ) : (
             <span className="flex items-center gap-2 text-muted-foreground">
               <span className="inline-flex gap-0.5">
@@ -350,39 +362,40 @@ function ChatMessageItemBase({ message: m, debug, hasLiveTools, onApprovalDecisi
                 <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground animate-bounce [animation-delay:150ms]" />
                 <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground animate-bounce [animation-delay:300ms]" />
               </span>
-              {debug && <span className="text-[11px]">Thinking…</span>}
+              {debug && <span className="text-sm">Thinking…</span>}
             </span>
           )}
           </div>
         )}
         {m.meta?.cost_usd != null && (
-          <div className="flex items-center gap-3 px-1 text-[10px] text-muted-foreground/60">
+          <div className="flex flex-wrap items-center gap-1.5 px-1">
             {m.meta.latency_ms != null && (
-              <span className="flex items-center gap-0.5">
-                <Clock className="h-2.5 w-2.5" />
+              <Badge variant="secondary" className="gap-1 font-mono text-[10px]">
+                <Clock className="h-2.5 w-2.5" aria-hidden="true" />
                 {(m.meta.latency_ms / 1000).toFixed(1)}s
-              </span>
+              </Badge>
             )}
             {m.meta.in_tokens != null && (
-              <span>{m.meta.in_tokens + (m.meta.out_tokens ?? 0)} tokens</span>
+              <Badge variant="secondary" className="font-mono text-[10px]">
+                {m.meta.in_tokens + (m.meta.out_tokens ?? 0)} tokens
+              </Badge>
             )}
-            {m.meta.cost_usd != null && (
-              <span className="flex items-center gap-0.5">
-                <DollarSign className="h-2.5 w-2.5" />
-                {m.meta.cost_usd.toFixed(5)}
-              </span>
-            )}
+            <Badge variant="secondary" className="gap-1 font-mono text-[10px]">
+              <DollarSign className="h-2.5 w-2.5" aria-hidden="true" />
+              {m.meta.cost_usd.toFixed(5)}
+            </Badge>
             {m.meta.tools?.length ? (
-              <span className="flex items-center gap-0.5">
-                <Wrench className="h-2.5 w-2.5" />
+              <Badge variant="secondary" className="gap-1 font-mono text-[10px]">
+                <Wrench className="h-2.5 w-2.5" aria-hidden="true" />
                 {m.meta.tools.length} tool{m.meta.tools.length > 1 ? "s" : ""}
-              </span>
+              </Badge>
             ) : null}
             {m.meta.model && (
-              <span className="font-mono ml-auto">{m.meta.model}</span>
+              <Badge variant="outline" className="ml-auto font-mono text-[10px]">{m.meta.model}</Badge>
             )}
           </div>
         )}
+        </div>
       </div>
     </React.Fragment>
   );
