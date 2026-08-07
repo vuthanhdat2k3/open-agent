@@ -23,8 +23,6 @@ from app.services.workspace_service import (
     start_execution_record,
 )
 
-settings = get_settings()
-
 MAX_LIVE_RUN_OUTPUT = 50_000
 
 
@@ -211,7 +209,7 @@ async def start_live_run(
         queue=asyncio.Queue(),
         reader_task=None,  # type: ignore[assignment]  # assigned below
         started_monotonic=loop.time(),
-        max_seconds=float(settings.sandbox_max_run_seconds),
+        max_seconds=float(get_settings().sandbox_max_run_seconds),
         status="running",
         session_factory=factory,
     )

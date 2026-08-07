@@ -58,8 +58,10 @@ async def resolve_approval(
     approval = res.scalar_one_or_none()
     if approval is None:
         return None
+    # Decision retries are safe: the first decision is authoritative and the
+    # caller can reconcile its UI from it without scheduling execution again.
     if approval.status != "pending":
-        raise ValueError("approval request is already decided")
+        return approval
     approval.status = decision
     approval.decided_by = decided_by
     approval.decided_at = utc_now()

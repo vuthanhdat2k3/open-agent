@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.core.workflow.engine import run_workflow as run_workflow_engine
 from app.db.base import utc_now
@@ -52,8 +52,16 @@ async def run_chat(ctx, payload: dict) -> None:  # noqa: ARG001
             select(Task).where(Task.id == request.run_id, Task.org_id == payload["org_id"])
         )
         task = res.scalar_one_or_none()
-        if task is None:
+        if task is None or task.status != "queued":
             return
+        claimed = await session.execute(
+            update(Task)
+            .where(Task.id == task.id, Task.status == "queued")
+            .values(status="running")
+        )
+        if claimed.rowcount != 1:
+            return
+        await session.commit()
         try:
             await ChatService(session).run(
                 payload["org_id"],
@@ -61,6 +69,7 @@ async def run_chat(ctx, payload: dict) -> None:  # noqa: ARG001
                 user_id=payload.get("user_id"),
                 root_run_id=request.run_id,
                 current_task_id=task.id,
+                approval_resume_id=payload.get("approval_resume_id"),
             )
         except Exception as exc:  # noqa: BLE001
             task.status = "failed"

@@ -4,7 +4,7 @@
 
 - Mo rong pattern route -> service -> repository -> model hien co.
 - Dung async worker/queue cho ingestion va workflow; API chi tao run va tra status.
-- Dung provider adapter cho Gmail/Outlook, khong rải logic provider vao agent.
+- Dung Google provider adapter cho Gmail/Calendar/Drive qua MCP, khong rải logic provider vao agent.
 - Dung fake provider/MCP trong test; khong goi LLM, DB production hay internet trong unit test.
 - Moi milestone phai co migration, test, observability va rollback note neu co side effect.
 
@@ -29,12 +29,12 @@
 
 ## M2 - Email ingestion
 
-- Implement Gmail/Outlook adapters: list new, get message, cursor/delta, draft, send, delivery status.
+- Implement Gmail adapters through MCP: list new, get message, cursor, draft, send, delivery status.
 - Implement poller/webhook entrypoint va job deduplication.
 - Normalize MIME, plain text, HTML, sender/domain va attachment metadata.
 - Them prompt-injection scan cho email body va attachment names.
 
-**Tests:** fake Gmail/Outlook, cursor resume, pagination, retry, duplicate webhook, auth failure, MIME parsing.
+**Tests:** MCP Gmail connector, cursor resume, pagination, retry, auth failure, MIME parsing.
 
 **Exit criteria:** email fixture tao dung mot case sau restart va khong send email.
 

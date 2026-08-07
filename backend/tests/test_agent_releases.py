@@ -395,3 +395,123 @@ async def test_session_pins_the_release_used_at_creation(
         )
         assert runtime.system_prompt == "version one"
         assert runtime.active_release_id == pinned_release_id
+
+
+def test_model_update_becomes_default_for_new_chat_session(
+    client: TestClient, async_session_factory
+) -> None:
+    token, org_id = _register(client, "release-model-default@example.com", "Model Default Org")
+    headers = _headers(token, org_id)
+    agent = _create_agent(client, token, org_id)
+
+    provider_id = client.get("/api/providers", headers=headers).json()[0]["id"]
+    alternate = client.post(
+        "/api/models",
+        headers=headers,
+        json={
+            "provider_id": provider_id,
+            "name": "alternate-model",
+            "display_name": "Alternate Model",
+        },
+    )
+    assert alternate.status_code == 201, alternate.text
+
+    updated = client.put(
+        f"/api/agents/{agent['id']}",
+        headers=headers,
+        json={"model_id": alternate.json()["id"]},
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["model_id"] == alternate.json()["id"]
+    assert updated.json()["latest_release_number"] == 2
+
+    async def _new_session_model() -> tuple[str | None, str | None]:
+        async with async_session_factory() as db:
+            service = ChatService(db)
+            session = await service.ensure_session(
+                org_id,
+                ChatRequest(agent_id=agent["id"], message="use new default", stream=False),
+            )
+            runtime = await AgentService(db).runtime_agent(
+                org_id, agent["id"], session.agent_release_id
+            )
+            return session.agent_release_id, runtime.model_id
+
+    import anyio
+
+    release_id, session_model_id = anyio.run(_new_session_model)
+    assert release_id == updated.json()["active_release_id"]
+    assert session_model_id == alternate.json()["id"]
+
+
+def test_model_selection_repins_only_the_current_chat_session(
+    client: TestClient, async_session_factory
+) -> None:
+    token, org_id = _register(client, "release-model-repin@example.com", "Model Repin Org")
+    headers = _headers(token, org_id)
+    agent = _create_agent(client, token, org_id)
+
+    provider_id = client.get("/api/providers", headers=headers).json()[0]["id"]
+    alternate = client.post(
+        "/api/models",
+        headers=headers,
+        json={
+            "provider_id": provider_id,
+            "name": "repin-model",
+            "display_name": "Repin Model",
+        },
+    )
+    assert alternate.status_code == 201, alternate.text
+
+    async def _create_sessions() -> tuple[str, str, str | None]:
+        async with async_session_factory() as db:
+            service = ChatService(db)
+            current = await service.ensure_session(
+                org_id, ChatRequest(agent_id=agent["id"], message="current", stream=False)
+            )
+            other = await service.ensure_session(
+                org_id, ChatRequest(agent_id=agent["id"], message="other", stream=False)
+            )
+            return current.id, other.id, current.agent_release_id
+
+    import anyio
+
+    current_id, other_id, original_release_id = anyio.run(_create_sessions)
+    updated = client.put(
+        f"/api/agents/{agent['id']}",
+        headers=headers,
+        json={"model_id": alternate.json()["id"]},
+    )
+    assert updated.status_code == 200, updated.text
+
+    async def _repin_current_session() -> tuple[str | None, str | None, str | None]:
+        async with async_session_factory() as db:
+            service = ChatService(db)
+            current = await service.ensure_session(
+                org_id,
+                ChatRequest(
+                    agent_id=agent["id"],
+                    message="continue with selected model",
+                    session_id=current_id,
+                    # Browser state may lag the Agent query refetch. This is
+                    # an apply-default signal, not a second model assertion.
+                    model_id="stale-browser-model-id",
+                    stream=False,
+                ),
+            )
+            other = await service.ensure_session(
+                org_id,
+                ChatRequest(
+                    agent_id=agent["id"], message="continue unchanged", session_id=other_id, stream=False
+                ),
+            )
+            runtime = await AgentService(db).runtime_agent(
+                org_id, agent["id"], current.agent_release_id
+            )
+            return current.agent_release_id, other.agent_release_id, runtime.model_id
+
+    current_release_id, other_release_id, current_model_id = anyio.run(_repin_current_session)
+    assert current_release_id == updated.json()["active_release_id"]
+    assert current_release_id != original_release_id
+    assert current_model_id == alternate.json()["id"]
+    assert other_release_id == original_release_id

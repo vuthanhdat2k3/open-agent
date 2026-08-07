@@ -5,9 +5,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.observability.audit import log_action
 from app.core.quota.dependencies import enforce_resource_quota
-from app.dependencies import get_current_org_id, get_db, require_permission
+from app.dependencies import get_current_org_id, get_current_user, get_db, require_permission
 from app.models.membership import Membership
 from app.models.role import Role
+from app.models.user import User
 from app.schemas.agent import (
     AgentCreate,
     AgentOut,
@@ -54,8 +55,12 @@ async def list_agents(
 
 
 @router.get("/tools", response_model=list[AgentToolInfo], dependencies=[Depends(require_permission("agents:read"))])
-async def list_tools(org_id: str = Depends(get_current_org_id), db: AsyncSession = Depends(get_db)):
-    return await AgentService(db).list_available_tools(org_id)
+async def list_tools(
+    org_id: str = Depends(get_current_org_id),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await AgentService(db).list_available_tools(org_id, current_user.id)
 
 
 @router.post(

@@ -13,6 +13,19 @@ class Settings(BaseSettings):
 
     # Database (async). SQLite for dev; postgres+asyncpg later.
     db_url: str = "sqlite+aiosqlite:///./openagent.db"
+    # Postgres connection pool (per process — api and worker each hold their
+    # own engine). Managed poolers (e.g. Supabase's pgbouncer in session mode)
+    # cap total client connections; pool_size + max_overflow across every
+    # process must stay under that cap or new connections start failing with
+    # "max clients reached" — which also blocks unrelated requests like login.
+    # Defaults: 2 processes * (3 + 2) = 10, leaving headroom under a 15-slot
+    # pooler for psql/migrations/one-off scripts.
+    db_pool_size: int = 3
+    db_max_overflow: int = 2
+    # Recycle connections periodically so a pooler-side idle/max-lifetime
+    # disconnect surfaces as a clean reconnect instead of a stale-connection
+    # error under load.
+    db_pool_recycle_seconds: int = 1800
 
     # API key; empty => localhost-only mode.
     api_key: str = ""
@@ -75,6 +88,46 @@ class Settings(BaseSettings):
     s3_bucket: str = "openagent-uploads"
     s3_region: str = "us-east-1"
     rag_mcp_server_name: str = "rag"
+
+    # --- Customer Intelligence (email-driven company research) ---
+    # Master switch for the feature; when disabled the API returns 404 for the
+    # customer-intelligence router. Defaults OFF so the surface stays inert
+    # until explicitly enabled.
+    customer_intelligence_enabled: bool = False
+    # Customer Intelligence MCP connector. Credentials are never stored here;
+    # they are passed to the stateless MCP service for one call only.
+    ci_mcp_server_name: str = "customer-intelligence"
+    ci_mcp_transport: Literal["stdio", "sse"] = "sse"
+    ci_mcp_url: str = "http://customer-intelligence-mcp:8301/sse"
+    ci_mcp_command: str = ""
+    ci_mcp_args: list[str] = []
+    # Public API origin used in OAuth redirect URIs. This must be browser-
+    # reachable and must match the URI registered in Google Cloud Console.
+    ci_backend_public_url: str = "http://localhost:8000"
+    ci_frontend_redirect_url: str = "http://localhost:3000/integrations"
+    # News lookback window for web research (7/30/90 days).
+    ci_news_window_days: int = 30
+    # Hard per-branch timeout for a single research call.
+    ci_research_timeout_s: float = 30.0
+    # Upper bound on persisted research sources per case (rate-limit guard).
+    ci_max_sources_per_case: int = 25
+    # Attachment size limit accepted during ingestion (defense-in-depth).
+    ci_max_attachment_bytes: int = 10 * 1024 * 1024
+    # How long a pending approval stays valid before it expires.
+    ci_approval_expiry_hours: int = 72
+    # 32-byte key (urlsafe base64) for AES-GCM credential encryption at rest.
+    # Empty => derive a stable dev key from jwt_secret_key (never in prod).
+    ci_credential_encryption_key: str = ""
+    # Default daily run time (HH:MM, user timezone) for new connections.
+    ci_daily_schedule_default: str = "08:00"
+    # Google OAuth client credentials used by the real Gmail/Calendar/Drive connectors.
+    ci_google_oauth_client_id: str = ""
+    ci_google_oauth_client_secret: str = ""
+    # Optional keyed company-identity source for the real company provider.
+    # Empty => provider degrades to research_unavailable (no fabricated data).
+    ci_company_api_url: str = ""
+    ci_company_api_key: str = ""
+
     allowed_extensions: list[str] = [
         ".pdf",
         ".txt",

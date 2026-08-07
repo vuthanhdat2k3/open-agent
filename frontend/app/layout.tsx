@@ -1,7 +1,6 @@
 "use client";
 
 import "./globals.css";
-import "katex/dist/katex.min.css";
 import * as React from "react";
 import { QueryClient, QueryClientProvider, type QueryKey } from "@tanstack/react-query";
 import { api } from "@/lib/api";
@@ -28,6 +27,7 @@ import {
   Cpu,
   Bot,
   Plug,
+  CalendarDays,
   Workflow,
   MessageSquare,
   FileUp,
@@ -90,6 +90,7 @@ const navGroups: NavGroup[] = [
       { href: "/workflows", label: "Workflows", icon: Workflow },
       { href: "/workspace", label: "Workspace", icon: FolderKanban },
       { href: "/mcp", label: "MCP Servers", icon: Plug },
+      { href: "/integrations", label: "Integrations", icon: CalendarDays },
       { href: "/models", label: "Models", icon: Cpu },
       { href: "/providers", label: "Providers", icon: Server },
       { href: "/files", label: "Files", icon: FileUp },

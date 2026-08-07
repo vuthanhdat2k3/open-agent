@@ -3,13 +3,18 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.routes.chat import run_chat_detached
+from app.config import get_settings
 from app.core.guardrails.approval import get_pending, resolve_approval
 from app.core.observability.audit import log_action
+from app.core.workflow.queue import enqueue_chat_run
 from app.dependencies import get_current_org_id, get_current_user, get_db, require_permission
+from app.models.task import Task
 from app.models.user import User
 
 router = APIRouter(prefix="/api/approvals", tags=["approvals"])
@@ -58,6 +63,7 @@ async def list_approvals(
 async def decide_approval(
     approval_id: str,
     body: ApprovalDecision,
+    background_tasks: BackgroundTasks,
     org_id: str = Depends(get_current_org_id),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -84,4 +90,36 @@ async def decide_approval(
         resource_id=approval.id,
         metadata={"decision": body.decision, "reason": body.reason},
     )
+    if approval.run_type == "agent" and approval.run_id:
+        task_res = await db.execute(
+            select(Task).where(
+                Task.root_run_id == approval.run_id,
+                Task.org_id == org_id,
+                Task.status == "waiting_approval",
+            )
+        )
+        task = task_res.scalars().first()
+        if task is not None:
+            task.status = "queued"
+            task.progress = {
+                **(task.progress or {}),
+                "phase": "queued",
+                "approval_id": approval.id,
+                "approval_decision": approval.status,
+            }
+            await db.commit()
+            payload = {
+                "agent_id": task.agent_id,
+                "message": task.goal,
+                "session_id": (task.progress or {}).get("session_id"),
+                "run_id": approval.run_id,
+                "stream": True,
+                "org_id": org_id,
+                "user_id": current_user.id,
+                "approval_resume_id": approval.id,
+            }
+            if get_settings().workflow_execution_mode == "queued":
+                await enqueue_chat_run(payload)
+            else:
+                background_tasks.add_task(run_chat_detached, payload)
     return approval

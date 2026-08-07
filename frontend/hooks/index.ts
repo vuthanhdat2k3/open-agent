@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { getAccessToken } from "@/lib/auth";
 import type {
   Agent,
@@ -514,7 +514,7 @@ export function useApprovals(enabled: boolean = true) {
 export function useDecideApproval() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, decision, reason }: { id: string; decision: "approved" | "rejected"; reason: string }) =>
+    mutationFn: ({ id, decision, reason = "" }: { id: string; decision: "approved" | "rejected"; reason?: string }) =>
       api.post<ApprovalRequest>(`/api/approvals/${id}/decide`, { decision, reason }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["approvals"] }),
   });
@@ -547,6 +547,13 @@ export function useChatRun(runId: string | null) {
     queryKey: ["chat-run", runId],
     enabled: !!runId,
     queryFn: () => api.get<ChatRunDetail>(`/api/chat/runs/${runId}`),
+    retry: (failureCount, error) => {
+      // A missing run is authoritative for stale localStorage state. Retrying
+      // it only floods the proxy with the same 404 while the page is already
+      // able to clear the stale active run.
+      if (error instanceof ApiError && error.status === 404) return false;
+      return failureCount < 3;
+    },
     refetchInterval: (query) => {
       const status = query.state.data?.status;
       return status && ["succeeded", "failed", "diverged", "cancelled", "waiting_approval"].includes(status)
