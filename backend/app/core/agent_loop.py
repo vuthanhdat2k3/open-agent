@@ -163,6 +163,31 @@ async def _persist(
     await db.commit()
 
 
+async def _delete_trailing_user_message(db: AsyncSession, session_id: str | None) -> None:
+    """Remove the last message in a session if the run for it never answered.
+
+    The user's message is persisted eagerly at run start so it appears in the
+    UI immediately, before the run's outcome is known. If the run then fails
+    or is orphaned (worker crashed with no assistant turn ever produced), that
+    saved-but-unanswered message would otherwise stick around and get resent
+    as duplicate context on the user's next try. Deleting it is safe exactly
+    when it is still the last row in the session: nothing has been persisted
+    after it, so no later turn depends on its position.
+    """
+    if not session_id:
+        return
+    last = (
+        await db.execute(
+            select(Message)
+            .where(Message.session_id == session_id)
+            .order_by(Message.position.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if last is not None and last.role == "user":
+        await db.delete(last)
+
+
 async def _finish_task(
     db: AsyncSession,
     task: Task | None,
