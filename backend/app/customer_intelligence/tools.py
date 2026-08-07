@@ -23,8 +23,8 @@ from app.customer_intelligence.contracts import (
     EMAIL_CREATE_DRAFT_SCHEMA,
     EMAIL_FORWARD_SCHEMA,
     EMAIL_GET_SCHEMA,
-    EMAIL_LABELS_SCHEMA,
     EMAIL_LABEL_SCHEMA,
+    EMAIL_LABELS_SCHEMA,
     EMAIL_LIST_NEW_SCHEMA,
     EMAIL_REPLY_SCHEMA,
     EMAIL_SEARCH_SCHEMA,
@@ -119,18 +119,21 @@ async def _email_get(args: dict[str, Any], ctx: ToolContext) -> str:
 
 
 async def _email_search(args: dict[str, Any], ctx: ToolContext) -> str:
-    if not _enabled(): return "error: customer intelligence is disabled"
+    if not _enabled():
+        return "error: customer intelligence is disabled"
     try:
         _, provider = await _connected_provider(ctx, ctx.org_id or "")
         messages = await provider.search(query=args["query"], max_results=args.get("max_results", 20))
     except Exception as e:  # noqa: BLE001
         return f"error: {e}"
-    if not messages: return "No matching email"
+    if not messages:
+        return "No matching email"
     return "\n".join(f"{m.provider_message_id} | {m.sender_email} | {m.subject}" for m in messages)
 
 
 async def _email_modify(args: dict[str, Any], ctx: ToolContext, *, add: list[str] | None = None, remove: list[str] | None = None) -> str:
-    if not _enabled(): return "error: customer intelligence is disabled"
+    if not _enabled():
+        return "error: customer intelligence is disabled"
     try:
         _, provider = await _connected_provider(ctx, ctx.org_id or "")
         message_id = await provider.modify(provider_message_id=args["provider_message_id"], add_label_ids=add, remove_label_ids=remove)
@@ -160,7 +163,8 @@ async def _email_archive(args: dict[str, Any], ctx: ToolContext) -> str:
 
 
 async def _email_trash(args: dict[str, Any], ctx: ToolContext) -> str:
-    if not _enabled(): return "error: customer intelligence is disabled"
+    if not _enabled():
+        return "error: customer intelligence is disabled"
     try:
         _, provider = await _connected_provider(ctx, ctx.org_id or "")
         return f"email moved to trash: {await provider.trash(args['provider_message_id'])}"
@@ -169,7 +173,8 @@ async def _email_trash(args: dict[str, Any], ctx: ToolContext) -> str:
 
 
 async def _email_restore(args: dict[str, Any], ctx: ToolContext) -> str:
-    if not _enabled(): return "error: customer intelligence is disabled"
+    if not _enabled():
+        return "error: customer intelligence is disabled"
     try:
         _, provider = await _connected_provider(ctx, ctx.org_id or "")
         return f"email restored: {await provider.untrash(args['provider_message_id'])}"
@@ -178,7 +183,8 @@ async def _email_restore(args: dict[str, Any], ctx: ToolContext) -> str:
 
 
 async def _email_list_labels(args: dict[str, Any], ctx: ToolContext) -> str:
-    if not _enabled(): return "error: customer intelligence is disabled"
+    if not _enabled():
+        return "error: customer intelligence is disabled"
     try:
         _, provider = await _connected_provider(ctx, ctx.org_id or "")
         labels = await provider.list_labels()
