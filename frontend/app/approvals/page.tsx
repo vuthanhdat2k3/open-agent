@@ -1,24 +1,21 @@
 "use client";
 
-import * as React from "react";
 import { toast } from "sonner";
 import { ShieldCheck } from "lucide-react";
 import { useApprovals, useDecideApproval } from "@/hooks";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/empty-state";
 
 export default function ApprovalsPage() {
   const approvals = useApprovals();
   const decide = useDecideApproval();
-  const [reason, setReason] = React.useState<Record<string, string>>({});
 
   async function submit(id: string, decision: "approved" | "rejected") {
     try {
-      await decide.mutateAsync({ id, decision, reason: reason[id] || "" });
+      await decide.mutateAsync({ id, decision });
       toast.success(decision === "approved" ? "Approved" : "Rejected");
     } catch (error: any) {
       toast.error(error.message);
@@ -43,12 +40,6 @@ export default function ApprovalsPage() {
                 <pre className="max-h-48 overflow-auto rounded-lg border border-border/80 bg-muted/30 p-3 font-mono text-xs text-foreground scrollbar-thin">
                   {JSON.stringify(approval.args_snapshot, null, 2)}
                 </pre>
-                <Textarea
-                  value={reason[approval.id] || ""}
-                  onChange={(e) => setReason((cur) => ({ ...cur, [approval.id]: e.target.value }))}
-                  placeholder="Decision reason"
-                  className="text-xs"
-                />
                 <div className="flex justify-end gap-2">
                   <Button variant="outline" className="active-tactile transition-transform" onClick={() => submit(approval.id, "rejected")}>Reject</Button>
                   <Button className="active-tactile transition-transform" onClick={() => submit(approval.id, "approved")}>Approve</Button>

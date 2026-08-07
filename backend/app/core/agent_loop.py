@@ -32,6 +32,7 @@ from app.core.workflow.replay import ReplayCursor, ReplayDiverged, record_tool_c
 from app.db.base import gen_id, utc_now
 from app.mcp.client import build_mcp_tool_spec, get_mcp_manager
 from app.models.agent import Agent
+from app.models.approval_request import ApprovalRequest
 from app.models.message import Message
 from app.models.model import Model
 from app.models.provider import Provider
@@ -92,7 +93,17 @@ def _estimate_tokens(text: str) -> int:
 
 async def _build_specs(agent: Agent, db: AsyncSession) -> list[Any]:
     specs: list[Any] = []
-    for name in agent.tools or []:
+    tool_names = list(agent.tools or [])
+    # Keep existing persisted agent releases compatible as the connected-account
+    # toolset grows. The specialized agents automatically receive the complete
+    # family for their connected provider without requiring a manual republish.
+    if agent.name == "email-intelligence" or any(name.startswith("email_") for name in tool_names):
+        tool_names.extend(name for name in BUILTIN_TOOLS if name.startswith("email_") and name not in tool_names)
+    if agent.name == "drive-researcher" or any(name.startswith("drive_") for name in tool_names):
+        tool_names.extend(name for name in BUILTIN_TOOLS if name.startswith("drive_") and name not in tool_names)
+    if agent.name == "calendar-intelligence" or any(name.startswith("calendar_") for name in tool_names):
+        tool_names.extend(name for name in BUILTIN_TOOLS if name.startswith("calendar_") and name not in tool_names)
+    for name in tool_names:
         spec = BUILTIN_TOOLS.get(name)
         if spec is not None:
             specs.append(spec)
@@ -194,6 +205,7 @@ async def _agent_stream(
     actor_agent_identity_id: str | None = None,
     delegation_chain: list | dict | None = None,
     record_stream: bool = True,
+    approval_resume_id: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     root_task: Task | None = None
     # A detached chat creates its durable Task before starting model work. Reuse
@@ -319,9 +331,10 @@ async def _agent_stream(
         else:
             for m in hist:
                 messages.append(_to_openai_message(m))
-        messages.append({"role": "user", "content": message})
+        if not approval_resume_id:
+            messages.append({"role": "user", "content": message})
 
-    if session_id:
+    if session_id and not approval_resume_id:
         await _persist(
             db,
             session_id,
@@ -359,6 +372,106 @@ async def _agent_stream(
             max_repeated_call=settings.budget_max_repeated_call,
         )
     )
+    approved_resume_name: str | None = None
+    approved_resume_args: dict[str, Any] | None = None
+    approved_resume_result: str | None = None
+
+    # Approval resumes skip the model's original tool-choice step. The
+    # approval row already contains the exact arguments the user reviewed;
+    # execute those arguments once, add the tool result to the conversation,
+    # then let the normal loop produce the final answer.
+    if approval_resume_id:
+        approval_res = await db.execute(
+            select(ApprovalRequest).where(
+                ApprovalRequest.id == approval_resume_id,
+                ApprovalRequest.org_id == agent.org_id,
+            )
+        )
+        approval = approval_res.scalar_one_or_none()
+        if approval is None or approval.run_id != root_run_id:
+            msg = "approval request not found for this chat run"
+            await _finish_task(db, root_task, status="failed", result=msg)
+            yield {"event": "error", "data": {"message": msg}}
+            return
+        if approval.status == "rejected":
+            rejected_ev = {
+                "event": "approval_rejected",
+                "data": {"approval_id": approval.id, "tool_name": approval.tool_name},
+            }
+            if rec is not None:
+                await rec.record(rejected_ev)
+                await rec.close()
+            await _finish_task(db, root_task, status="failed", result="tool approval rejected")
+            yield rejected_ev
+            return
+        if approval.status != "approved":
+            await _finish_task(db, root_task, status="waiting_approval", result="approval pending")
+            return
+        name = approval.tool_name or ""
+        args = approval.args_snapshot or {}
+        approved_resume_name = name
+        approved_resume_args = args
+        spec = tool_by_name.get(name)
+        if spec is None:
+            msg = f"error: tool '{name}' not available"
+            await _finish_task(db, root_task, status="failed", result=msg)
+            yield {"event": "error", "data": {"message": msg}}
+            return
+        budget_reason = budget.record_call(name, args)
+        if budget_reason or spec.risk_tier.value not in agent.allowed_risk_tiers:
+            result = budget_reason or (
+                f"error: tool '{name}' requires risk tier '{spec.risk_tier.value}' "
+                "which is not enabled for this agent"
+            )
+            result_ev = {"event": "tool_result", "data": {"index": 0, "name": name, "result": result}}
+            if rec is not None:
+                await rec.record(result_ev)
+                await rec.close()
+            await _finish_task(db, root_task, status="failed", result=result)
+            yield result_ev
+            return
+        tool_index = 0
+        call_id = f"approval-{approval.id}"
+        call_ev = {
+            "event": "tool_call",
+            "data": {"index": tool_index, "name": name, "arguments": args, "approved": True},
+        }
+        if rec is not None:
+            await rec.record(call_ev)
+            await rec.flush_progress(phase=f"tool:{name}")
+        yield call_ev
+        try:
+            result = await execute_tool_call(spec, args, ctx)
+            tool_status = "ok"
+        except Exception as exc:  # noqa: BLE001
+            result = f"error executing tool: {exc}"
+            tool_status = "error"
+        result, secret_findings = scan_and_redact(str(result))
+        approved_resume_result = result
+        await record_tool_call(
+            db,
+            org_id=agent.org_id,
+            sequence=1,
+            tool_name=name,
+            arguments=args,
+            result=result,
+            status=tool_status,
+            duration_ms=0,
+            session_id=session_id,
+        )
+        result_ev = {"event": "tool_result", "data": {"index": tool_index, "name": name, "result": result}}
+        if rec is not None:
+            await rec.record(result_ev)
+            await rec.heartbeat(phase="thinking")
+        yield result_ev
+        tool_calls_log.append({"name": name, "arguments": args, "result": result, "approval_id": approval.id})
+        messages.append({
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [{"id": call_id, "type": "function", "function": {"name": name, "arguments": json.dumps(args)}}],
+        })
+        messages.append({"role": "tool", "tool_call_id": call_id, "content": result})
+        await db.commit()
 
     for _ in range(agent.max_iterations):
         content_parts: list[str] = []
@@ -469,6 +582,11 @@ async def _agent_stream(
                         args = {}
                     spec = tool_by_name.get(name)
                     tool_index = idx
+                    approved_replay = (
+                        approved_resume_name == name
+                        and approved_resume_args == args
+                        and approved_resume_result is not None
+                    )
                     call_ev = {
                         "event": "tool_call",
                         "data": {"index": tool_index, "name": name, "arguments": args},
@@ -477,8 +595,12 @@ async def _agent_stream(
                         await rec.record(call_ev)
                         await rec.flush_progress(phase=f"tool:{name}")
                     yield call_ev
-                    if spec is None:
+                    if approved_replay:
+                        result = approved_resume_result
+                        tool_status = "approved_replay"
+                    elif spec is None:
                         result = f"error: tool '{name}' not available"
+                        tool_status = "error"
                     else:
                         budget_reason = budget.record_call(name, args)
                         if budget_reason:
@@ -554,7 +676,7 @@ async def _agent_stream(
                                 db,
                                 org_id=agent.org_id,
                                 run_type="agent",
-                                run_id=session_id,
+                                run_id=root_run_id,
                                 tool_name=name,
                                 args_snapshot=args,
                                 requested_by=user_id or agent.created_by_user_id,
@@ -571,7 +693,7 @@ async def _agent_stream(
                                 action="guardrail.approval_required",
                                 resource_type="approval_request",
                                 resource_id=approval.id,
-                                metadata={"tool_name": name, "run_id": session_id},
+                                metadata={"tool_name": name, "run_id": root_run_id},
                                 commit=False,
                             )
                             approval_ev = {
@@ -579,7 +701,8 @@ async def _agent_stream(
                                 "data": {
                                     "approval_id": approval.id,
                                     "tool_name": name,
-                                    "run_id": session_id,
+                                    "run_id": root_run_id,
+                                    "args_snapshot": scan_and_redact(json.dumps(args, ensure_ascii=False))[0],
                                 },
                             }
                             if rec is not None:
@@ -958,6 +1081,7 @@ async def stream_agent(
     current_task_id: str | None = None,
     user_id: str | None = None,
     record_stream: bool = True,
+    approval_resume_id: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     async for ev in _agent_stream(
         agent,
@@ -969,6 +1093,7 @@ async def stream_agent(
         root_run_id=root_run_id,
         user_id=user_id,
         record_stream=record_stream,
+        approval_resume_id=approval_resume_id,
     ):
         yield ev
 
@@ -987,6 +1112,7 @@ async def run_agent_loop(
     actor_agent_identity_id: str | None = None,
     delegation_chain: list | dict | None = None,
     record_stream: bool = True,
+    approval_resume_id: str | None = None,
 ) -> AgentLoopResult:
     content = ""
     usage: dict[str, Any] = {"input_tokens": 0, "output_tokens": 0}
@@ -1008,6 +1134,7 @@ async def run_agent_loop(
         actor_agent_identity_id=actor_agent_identity_id,
         delegation_chain=delegation_chain,
         record_stream=record_stream,
+        approval_resume_id=approval_resume_id,
     ):
         if ev["event"] == "message_done":
             data = ev["data"]

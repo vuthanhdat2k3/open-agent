@@ -41,7 +41,7 @@ def authorization_url(provider: str, kind: str, state: str, redirect_uri: str) -
     if provider == "google":
         endpoint = "https://accounts.google.com/o/oauth2/v2/auth"
         scopes = {
-            "email": "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.compose https://www.googleapis.com/auth/gmail.send",
+            "email": "https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.compose https://www.googleapis.com/auth/gmail.send",
             "calendar": "https://www.googleapis.com/auth/calendar.readonly",
             "drive": "https://www.googleapis.com/auth/drive",
         }[kind]

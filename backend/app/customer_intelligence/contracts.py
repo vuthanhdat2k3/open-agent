@@ -138,6 +138,56 @@ EMAIL_LIST_NEW_SCHEMA: dict[str, Any] = {
     "additionalProperties": False,
 }
 
+EMAIL_SEARCH_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "query": {"type": "string", "minLength": 1, "maxLength": 500},
+        "max_results": {"type": "integer", "minimum": 1, "maximum": 50, "default": 20},
+    },
+    "required": ["query"],
+    "additionalProperties": False,
+}
+
+EMAIL_STATE_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {"provider_message_id": {"type": "string", "maxLength": 256}},
+    "required": ["provider_message_id"],
+    "additionalProperties": False,
+}
+
+EMAIL_LABEL_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "provider_message_id": {"type": "string", "maxLength": 256},
+        "label_ids": {"type": "array", "items": {"type": "string", "maxLength": 128}, "maxItems": 20},
+    },
+    "required": ["provider_message_id", "label_ids"],
+    "additionalProperties": False,
+}
+
+EMAIL_LABELS_SCHEMA: dict[str, Any] = {"type": "object", "properties": {}, "additionalProperties": False}
+
+EMAIL_REPLY_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "provider_message_id": {"type": "string", "maxLength": 256},
+        "body": {"type": "string", "minLength": 1, "maxLength": 200000},
+    },
+    "required": ["provider_message_id", "body"],
+    "additionalProperties": False,
+}
+
+EMAIL_FORWARD_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "provider_message_id": {"type": "string", "maxLength": 256},
+        "to": {"type": "string", "maxLength": 1000},
+        "body": {"type": "string", "maxLength": 200000},
+    },
+    "required": ["provider_message_id", "to"],
+    "additionalProperties": False,
+}
+
 EMAIL_GET_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {"provider_message_id": {"type": "string"}},

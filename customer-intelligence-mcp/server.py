@@ -205,6 +205,60 @@ async def email_get(provider: str, access_token: str, provider_message_id: str) 
 
 
 @mcp.tool()
+async def email_search(provider: str, access_token: str, query: str, max_results: int = 20) -> str:
+    try:
+        if provider != "gmail": return _error(f"unsupported email provider: {provider}; only gmail is enabled")
+        data = await _request("GET", f"{GMAIL_API}/messages", access_token, params={"q": query, "maxResults": max(1, min(max_results, 50))})
+        messages = []
+        for item in data.get("messages", []):
+            raw = await _request("GET", f"{GMAIL_API}/messages/{item['id']}", access_token, params={"format": "full"})
+            messages.append(_gmail_message(raw))
+        return _ok({"messages": messages})
+    except Exception as exc:
+        return _error(f"email search failed: {type(exc).__name__}")
+
+
+@mcp.tool()
+async def email_modify(provider: str, access_token: str, provider_message_id: str, add_label_ids: list[str] | None = None, remove_label_ids: list[str] | None = None) -> str:
+    try:
+        if provider != "gmail": return _error(f"unsupported email provider: {provider}; only gmail is enabled")
+        data = await _request("POST", f"{GMAIL_API}/messages/{provider_message_id}/modify", access_token, body={"addLabelIds": add_label_ids or [], "removeLabelIds": remove_label_ids or []})
+        return _ok({"message_id": data.get("id", provider_message_id)})
+    except Exception as exc:
+        return _error(f"email modify failed: {type(exc).__name__}")
+
+
+@mcp.tool()
+async def email_list_labels(provider: str, access_token: str) -> str:
+    try:
+        if provider != "gmail": return _error(f"unsupported email provider: {provider}; only gmail is enabled")
+        data = await _request("GET", f"{GMAIL_API}/labels", access_token)
+        return _ok({"labels": [{"id": x.get("id", ""), "name": x.get("name", "")} for x in data.get("labels", [])]})
+    except Exception as exc:
+        return _error(f"email labels failed: {type(exc).__name__}")
+
+
+@mcp.tool()
+async def email_trash(provider: str, access_token: str, provider_message_id: str) -> str:
+    try:
+        if provider != "gmail": return _error(f"unsupported email provider: {provider}; only gmail is enabled")
+        data = await _request("POST", f"{GMAIL_API}/messages/{provider_message_id}/trash", access_token)
+        return _ok({"message_id": data.get("id", provider_message_id)})
+    except Exception as exc:
+        return _error(f"email trash failed: {type(exc).__name__}")
+
+
+@mcp.tool()
+async def email_untrash(provider: str, access_token: str, provider_message_id: str) -> str:
+    try:
+        if provider != "gmail": return _error(f"unsupported email provider: {provider}; only gmail is enabled")
+        data = await _request("POST", f"{GMAIL_API}/messages/{provider_message_id}/untrash", access_token)
+        return _ok({"message_id": data.get("id", provider_message_id)})
+    except Exception as exc:
+        return _error(f"email restore failed: {type(exc).__name__}")
+
+
+@mcp.tool()
 async def email_create_draft(provider: str, access_token: str, to: str, subject: str, body: str) -> str:
     try:
         if provider == "gmail":

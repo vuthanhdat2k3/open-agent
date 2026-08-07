@@ -3,9 +3,10 @@
 import * as React from "react";
 import DOMPurify from "dompurify";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
-import { Wrench, CornerDownRight, Clock, DollarSign, Terminal, Code, CheckCircle2, XCircle, Play, FileCode, Maximize2, ChevronRight } from "lucide-react";
+import { Wrench, CornerDownRight, Clock, DollarSign, Terminal, Code, CheckCircle2, XCircle, Play, FileCode, Maximize2, ChevronRight, ShieldAlert, ShieldCheck, ShieldX } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 
 // html here can be raw SVG returned by an LLM/tool call — treat it as
 // untrusted and sanitize before it reaches the DOM (SVG supports
@@ -57,6 +58,10 @@ export type UIMessage = {
     tools?: any[];
     reasoning?: string;
     progress?: string;
+    approvalId?: string;
+    approvalTool?: string;
+    approvalArgs?: unknown;
+    approvalStatus?: "pending" | "approved" | "rejected";
   };
 };
 
@@ -64,9 +69,10 @@ interface ChatMessageItemProps {
   message: UIMessage;
   debug: boolean;
   hasLiveTools?: boolean;
+  onApprovalDecision?: (messageId: string, decision: "approved" | "rejected") => void;
 }
 
-export function ChatMessageItem({ message: m, debug, hasLiveTools }: ChatMessageItemProps) {
+export function ChatMessageItem({ message: m, debug, hasLiveTools, onApprovalDecision }: ChatMessageItemProps) {
   // Always render tool execution cards for rich user feedback
   if (m.role === "user") {
     return (
@@ -177,6 +183,33 @@ export function ChatMessageItem({ message: m, debug, hasLiveTools }: ChatMessage
         <pre className="block w-full min-h-[60px] max-h-60 overflow-y-auto overflow-x-auto p-3 font-mono text-[10.5px] text-foreground leading-relaxed scrollbar-thin whitespace-pre-wrap break-all bg-black/40">
           {m.content}
         </pre>
+      </div>
+    );
+  }
+
+  if (m.role === "approval") {
+    const status = m.meta?.approvalStatus ?? "pending";
+    const args = typeof m.meta?.approvalArgs === "string"
+      ? m.meta.approvalArgs
+      : JSON.stringify(m.meta?.approvalArgs ?? {}, null, 2);
+    return (
+      <div key={m.id} className="animate-scale-in self-start w-full max-w-[92%] rounded-xl border border-warning/40 bg-warning/[0.06] p-3 shadow-3d-card">
+        <div className="flex items-center gap-2 text-xs font-semibold">
+          {status === "approved" ? <ShieldCheck className="h-4 w-4 text-success" /> : status === "rejected" ? <ShieldX className="h-4 w-4 text-destructive" /> : <ShieldAlert className="h-4 w-4 text-warning" />}
+          <span>{status === "pending" ? "Approval required" : status === "approved" ? "Approved" : "Rejected"}</span>
+          {m.meta?.approvalTool && <Badge variant="outline" className="font-mono text-[9px]">{m.meta.approvalTool}</Badge>}
+        </div>
+        <pre className="mt-2 max-h-48 overflow-auto rounded-lg border border-border/50 bg-black/30 p-2 font-mono text-[10px] leading-relaxed whitespace-pre-wrap break-all">{args}</pre>
+        {status === "pending" && onApprovalDecision ? (
+          <div className="mt-3 flex gap-2">
+            <Button size="sm" className="h-8 gap-1.5 text-xs" onClick={() => onApprovalDecision(m.id, "approved")}>
+              <ShieldCheck className="h-3.5 w-3.5" /> Approve
+            </Button>
+            <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs" onClick={() => onApprovalDecision(m.id, "rejected")}>
+              <ShieldX className="h-3.5 w-3.5" /> Reject
+            </Button>
+          </div>
+        ) : null}
       </div>
     );
   }

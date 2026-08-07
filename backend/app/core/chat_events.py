@@ -29,7 +29,7 @@ from app.models.task import Task
 # Terminal events that (together with the Task status) tell a follower it can
 # stop watching. ``error`` is terminal unless the loop retries internally —
 # the loop only emits ``error`` when the run is actually over.
-TERMINAL_EVENTS = {"message_done", "error", "approval_required", "replay_diverged"}
+TERMINAL_EVENTS = {"message_done", "error", "approval_required", "approval_rejected", "replay_diverged"}
 
 # How long a chat task may go without emitting an event or a progress
 # heartbeat before it counts as orphaned (worker crashed mid-run).

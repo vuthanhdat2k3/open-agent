@@ -28,7 +28,7 @@ TERMINAL_STATUSES = ("succeeded", "failed", "diverged", "cancelled", "waiting_ap
 _ACTIVE_CHAT_TASKS: dict[str, asyncio.Task] = {}
 
 
-async def _run_chat_detached(payload: dict) -> None:
+async def run_chat_detached(payload: dict) -> None:
     async with SessionLocal() as db:
         request = ChatRequest.model_validate(payload)
         active_task = asyncio.current_task()
@@ -41,6 +41,11 @@ async def _run_chat_detached(payload: dict) -> None:
         if task is None:
             _ACTIVE_CHAT_TASKS.pop(request.run_id, None)
             return
+        if task.status != "queued":
+            _ACTIVE_CHAT_TASKS.pop(request.run_id, None)
+            return
+        task.status = "running"
+        await db.commit()
         try:
             await ChatService(db).run(
                 payload["org_id"],
@@ -48,6 +53,7 @@ async def _run_chat_detached(payload: dict) -> None:
                 user_id=payload.get("user_id"),
                 root_run_id=request.run_id,
                 current_task_id=task.id,
+                approval_resume_id=payload.get("approval_resume_id"),
             )
         except Exception as exc:  # noqa: BLE001
             task.status = "failed"
@@ -94,7 +100,7 @@ async def chat(
         await db.commit()
         run_status = "queued"
     else:
-        background_tasks.add_task(_run_chat_detached, payload)
+        background_tasks.add_task(run_chat_detached, payload)
         run_status = "running"
 
     async def gen():

@@ -21,9 +21,15 @@ from app.customer_intelligence.contracts import (
     DRIVE_LIST_FILES_SCHEMA,
     DRIVE_UPDATE_FILE_SCHEMA,
     EMAIL_CREATE_DRAFT_SCHEMA,
+    EMAIL_FORWARD_SCHEMA,
     EMAIL_GET_SCHEMA,
+    EMAIL_LABELS_SCHEMA,
+    EMAIL_LABEL_SCHEMA,
     EMAIL_LIST_NEW_SCHEMA,
+    EMAIL_REPLY_SCHEMA,
+    EMAIL_SEARCH_SCHEMA,
     EMAIL_SEND_SCHEMA,
+    EMAIL_STATE_SCHEMA,
     NEWS_SEARCH_SCHEMA,
 )
 from app.customer_intelligence.oauth import load_fresh_credentials
@@ -112,6 +118,100 @@ async def _email_get(args: dict[str, Any], ctx: ToolContext) -> str:
     return f"{msg.sender_email}: {msg.subject}\n\n{msg.body_text[:5000]}"
 
 
+async def _email_search(args: dict[str, Any], ctx: ToolContext) -> str:
+    if not _enabled(): return "error: customer intelligence is disabled"
+    try:
+        _, provider = await _connected_provider(ctx, ctx.org_id or "")
+        messages = await provider.search(query=args["query"], max_results=args.get("max_results", 20))
+    except Exception as e:  # noqa: BLE001
+        return f"error: {e}"
+    if not messages: return "No matching email"
+    return "\n".join(f"{m.provider_message_id} | {m.sender_email} | {m.subject}" for m in messages)
+
+
+async def _email_modify(args: dict[str, Any], ctx: ToolContext, *, add: list[str] | None = None, remove: list[str] | None = None) -> str:
+    if not _enabled(): return "error: customer intelligence is disabled"
+    try:
+        _, provider = await _connected_provider(ctx, ctx.org_id or "")
+        message_id = await provider.modify(provider_message_id=args["provider_message_id"], add_label_ids=add, remove_label_ids=remove)
+        return f"email updated successfully: {message_id}"
+    except Exception as e:  # noqa: BLE001
+        return f"error: {e}"
+
+
+async def _email_mark_read(args: dict[str, Any], ctx: ToolContext) -> str:
+    return await _email_modify(args, ctx, remove=["UNREAD"])
+
+
+async def _email_mark_unread(args: dict[str, Any], ctx: ToolContext) -> str:
+    return await _email_modify(args, ctx, add=["UNREAD"])
+
+
+async def _email_star(args: dict[str, Any], ctx: ToolContext) -> str:
+    return await _email_modify(args, ctx, add=["STARRED"])
+
+
+async def _email_unstar(args: dict[str, Any], ctx: ToolContext) -> str:
+    return await _email_modify(args, ctx, remove=["STARRED"])
+
+
+async def _email_archive(args: dict[str, Any], ctx: ToolContext) -> str:
+    return await _email_modify(args, ctx, remove=["INBOX"])
+
+
+async def _email_trash(args: dict[str, Any], ctx: ToolContext) -> str:
+    if not _enabled(): return "error: customer intelligence is disabled"
+    try:
+        _, provider = await _connected_provider(ctx, ctx.org_id or "")
+        return f"email moved to trash: {await provider.trash(args['provider_message_id'])}"
+    except Exception as e:  # noqa: BLE001
+        return f"error: {e}"
+
+
+async def _email_restore(args: dict[str, Any], ctx: ToolContext) -> str:
+    if not _enabled(): return "error: customer intelligence is disabled"
+    try:
+        _, provider = await _connected_provider(ctx, ctx.org_id or "")
+        return f"email restored: {await provider.untrash(args['provider_message_id'])}"
+    except Exception as e:  # noqa: BLE001
+        return f"error: {e}"
+
+
+async def _email_list_labels(args: dict[str, Any], ctx: ToolContext) -> str:
+    if not _enabled(): return "error: customer intelligence is disabled"
+    try:
+        _, provider = await _connected_provider(ctx, ctx.org_id or "")
+        labels = await provider.list_labels()
+        return "\n".join(f"{x.get('id')} | {x.get('name')}" for x in labels) or "No labels"
+    except Exception as e:  # noqa: BLE001
+        return f"error: {e}"
+
+
+async def _email_apply_label(args: dict[str, Any], ctx: ToolContext) -> str:
+    return await _email_modify(args, ctx, add=args["label_ids"])
+
+
+async def _email_remove_label(args: dict[str, Any], ctx: ToolContext) -> str:
+    return await _email_modify(args, ctx, remove=args["label_ids"])
+
+
+async def _email_reply(args: dict[str, Any], ctx: ToolContext) -> str:
+    try:
+        msg = await (await _connected_provider(ctx, ctx.org_id or ""))[1].get_message(args["provider_message_id"])
+        return await _email_create_draft({"to": msg.sender_email, "subject": f"Re: {msg.subject}", "body": args["body"], "in_reply_to": args["provider_message_id"]}, ctx)
+    except Exception as e:  # noqa: BLE001
+        return f"error: {e}"
+
+
+async def _email_forward(args: dict[str, Any], ctx: ToolContext) -> str:
+    try:
+        msg = await (await _connected_provider(ctx, ctx.org_id or ""))[1].get_message(args["provider_message_id"])
+        body = args.get("body") or "\n\n---------- Forwarded message ----------\n" + msg.body_text
+        return await _email_create_draft({"to": args["to"], "subject": f"Fwd: {msg.subject}", "body": body}, ctx)
+    except Exception as e:  # noqa: BLE001
+        return f"error: {e}"
+
+
 async def _email_create_draft(args: dict[str, Any], ctx: ToolContext) -> str:
     if not _enabled():
         return "error: customer intelligence is disabled"
@@ -133,7 +233,18 @@ async def _email_create_draft(args: dict[str, Any], ctx: ToolContext) -> str:
 async def _email_send(args: dict[str, Any], ctx: ToolContext) -> str:
     if not _enabled():
         return "error: customer intelligence is disabled"
-    return "error: email_send must use the case approval delivery endpoint"
+    try:
+        _, provider = await _connected_provider(ctx, ctx.org_id or "")
+    except ValueError as e:
+        return f"error: {e}"
+    try:
+        send_id = await provider.send(
+            draft_id=args["draft_id"],
+            idempotency_key=args["idempotency_key"],
+        )
+    except Exception as e:  # noqa: BLE001 - normalize provider details.
+        return f"error: {e}"
+    return f"email sent successfully (send_id: {send_id})"
 
 
 async def _news_search(args: dict[str, Any], ctx: ToolContext) -> str:
@@ -308,6 +419,22 @@ def register_customer_intelligence_tools() -> None:
             risk_tier=RiskTier.read,
         )
     )
+    register(ToolSpec(name="email_search", description="Search connected Gmail by Gmail query syntax.", input_schema=EMAIL_SEARCH_SCHEMA, run=_email_search, risk_tier=RiskTier.read))
+    for name, description, runner in (
+        ("email_mark_read", "Mark an email as read.", _email_mark_read),
+        ("email_mark_unread", "Mark an email as unread.", _email_mark_unread),
+        ("email_star", "Star an email.", _email_star),
+        ("email_unstar", "Remove the star from an email.", _email_unstar),
+        ("email_archive", "Archive an email by removing it from Inbox.", _email_archive),
+    ):
+        register(ToolSpec(name=name, description=description, input_schema=EMAIL_STATE_SCHEMA, run=runner, risk_tier=RiskTier.write, requires_approval=True))
+    register(ToolSpec(name="email_trash", description="Move an email to Gmail Trash; never permanently delete.", input_schema=EMAIL_STATE_SCHEMA, run=_email_trash, risk_tier=RiskTier.dangerous, requires_approval=True))
+    register(ToolSpec(name="email_restore", description="Restore an email from Gmail Trash.", input_schema=EMAIL_STATE_SCHEMA, run=_email_restore, risk_tier=RiskTier.write, requires_approval=True))
+    register(ToolSpec(name="email_list_labels", description="List Gmail labels.", input_schema=EMAIL_LABELS_SCHEMA, run=_email_list_labels, risk_tier=RiskTier.read))
+    register(ToolSpec(name="email_apply_label", description="Apply Gmail labels to an email.", input_schema=EMAIL_LABEL_SCHEMA, run=_email_apply_label, risk_tier=RiskTier.write, requires_approval=True))
+    register(ToolSpec(name="email_remove_label", description="Remove Gmail labels from an email.", input_schema=EMAIL_LABEL_SCHEMA, run=_email_remove_label, risk_tier=RiskTier.write, requires_approval=True))
+    register(ToolSpec(name="email_reply", description="Create a reply draft for an email.", input_schema=EMAIL_REPLY_SCHEMA, run=_email_reply, risk_tier=RiskTier.write, requires_approval=True))
+    register(ToolSpec(name="email_forward", description="Create a forwarded email draft.", input_schema=EMAIL_FORWARD_SCHEMA, run=_email_forward, risk_tier=RiskTier.write, requires_approval=True))
     register(
         ToolSpec(
             name="email_create_draft",
