@@ -106,6 +106,28 @@ async def async_session_factory(tmp_path):
     await engine.dispose()
 
 
+@pytest.fixture(autouse=True)
+async def _reset_live_run_registry():
+    async def reset() -> None:
+        runs = list(live_run._REGISTRY.values())
+        for run in runs:
+            if run._stop_timer is not None:
+                run._stop_timer.cancel()
+            if run.reader_task is not None and not run.reader_task.done():
+                run.reader_task.cancel()
+        for run in list(live_run._REGISTRY.values()):
+            if run._stop_timer is not None:
+                run._stop_timer.cancel()
+            if run.reader_task is not None and not run.reader_task.done():
+                run.reader_task.cancel()
+        live_run._REGISTRY.clear()
+        live_run._lock = asyncio.Lock()
+
+    await reset()
+    yield
+    await reset()
+
+
 @pytest.fixture
 def client(async_session_factory):
     async def _override_get_db():

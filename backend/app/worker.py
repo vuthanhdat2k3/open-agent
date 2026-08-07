@@ -55,6 +55,20 @@ async def _fail_orphaned_chat_runs(ctx: dict) -> None:
             await logger.awarning("chat_runs_marked_failed", count=len(failed), run_ids=failed)
 
 
+async def _ci_scheduler_tick(ctx: dict) -> None:
+    """Run due Customer-Intelligence sync schedules (M6)."""
+    from app.customer_intelligence.scheduler import run_due_schedules
+
+    async with SessionLocal() as db:
+        try:
+            summary = await run_due_schedules(db)
+        except Exception as exc:  # noqa: BLE001 - the tick must never crash the worker.
+            await logger.aerror("ci_scheduler_tick_failed", error=str(exc))
+            return
+        if summary["processed"] or summary["failed"]:
+            await logger.ainfo("ci_scheduler_tick", **summary)
+
+
 class WorkerSettings:
     functions = [run_workflow, run_chat]
     redis_settings = RedisSettings.from_dsn(get_settings().redis_url)
@@ -62,4 +76,5 @@ class WorkerSettings:
     cron_jobs = [
         cron(_auto_rollback_sweep, minute=set(range(0, 60, 5))),
         cron(_fail_orphaned_chat_runs, minute=set(range(0, 60, 2)), run_at_startup=False),
+        cron(_ci_scheduler_tick, minute=set(range(0, 60, 5)), run_at_startup=False),
     ]

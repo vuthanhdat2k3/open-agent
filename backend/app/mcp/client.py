@@ -129,6 +129,8 @@ def _make_mcp_run(server_id: str, tool_name: str):
         server = res.scalar_one_or_none()
         if server is None:
             return "error: mcp server not found"
+        if server.connection_status != "connected":
+            return "error: mcp server is disconnected"
         try:
             return await get_mcp_manager().call_tool(server, tool_name, args)
         except Exception as e:  # noqa: BLE001
@@ -143,7 +145,11 @@ async def build_mcp_tool_spec(
     stmt = (
         select(McpTool)
         .join(McpServer, McpTool.server_id == McpServer.id)
-        .where(McpTool.name == name, McpTool.enabled.is_(True))
+        .where(
+            McpTool.name == name,
+            McpTool.enabled.is_(True),
+            McpServer.connection_status == "connected",
+        )
     )
     if org_id:
         stmt = stmt.where(McpServer.org_id == org_id)

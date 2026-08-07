@@ -371,11 +371,42 @@ class AgentService:
     async def get(self, org_id: str, id: str) -> Agent | None:
         return await self.repo.get(org_id, id)
 
-    async def list_available_tools(self, org_id: str) -> list[dict]:
+    async def list_available_tools(self, org_id: str, user_id: str | None = None) -> list[dict]:
         from sqlalchemy import select
 
         from app.core.tools.registry import list_tools
+        from app.models.customer_intelligence import (
+            CalendarConnection,
+            DriveConnection,
+            EmailConnection,
+        )
         from app.models.mcp import McpServer, McpTool
+
+        connected_kinds: set[str] = set()
+        if user_id:
+            for model, kind in (
+                (EmailConnection, "email"),
+                (CalendarConnection, "calendar"),
+                (DriveConnection, "drive"),
+            ):
+                result = await self.repo.db.execute(
+                    select(model.id).where(
+                        model.org_id == org_id,
+                        model.created_by_user_id == user_id,
+                        model.status == "connected",
+                    ).limit(1)
+                )
+                if result.scalar_one_or_none() is not None:
+                    connected_kinds.add(kind)
+
+        def tool_available(name: str) -> bool:
+            if name.startswith("email_"):
+                return "email" in connected_kinds
+            if name.startswith("calendar_"):
+                return "calendar" in connected_kinds
+            if name.startswith("drive_"):
+                return "drive" in connected_kinds
+            return True
 
         seen: set[str] = set()
         out: list[dict] = []
@@ -387,14 +418,18 @@ class AgentService:
                 {
                     "name": spec.name,
                     "description": spec.description,
-                    "available": True,
+                    "available": tool_available(spec.name),
                     "risk_tier": spec.risk_tier.value,
                 }
             )
         res = await self.repo.db.execute(
             select(McpTool)
             .join(McpServer)
-            .where(McpServer.org_id == org_id, McpTool.enabled.is_(True))
+            .where(
+                McpServer.org_id == org_id,
+                McpServer.connection_status == "connected",
+                McpTool.enabled.is_(True),
+            )
         )
         for t in res.scalars().all():
             if t.name in seen:

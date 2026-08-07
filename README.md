@@ -9,9 +9,9 @@
 A **multi-agent OS**: layered **FastAPI** backend (Python, async SQLAlchemy 2.0)
 + **Next.js** frontend (Tailwind + shadcn/ui + Zod + Zustand + TanStack Query),
 with OpenAI-compatible LLM access, a **graph-based multi-agent workflow engine**
-(parallel fan-out/fan-in — not just a sequential pipeline), and two standalone
-**MCP microservices** (RAG retrieval, Google Drive) that plug in over the MCP
-protocol without any backend code changes.
+(parallel fan-out/fan-in — not just a sequential pipeline), and three standalone
+**MCP microservices** (RAG retrieval, Google Drive, Customer Intelligence) that
+plug in over the MCP protocol without backend provider code.
 
 ---
 
@@ -66,7 +66,7 @@ protocol without any backend code changes.
 | Queue | Redis + `arq` (durable agent/workflow jobs, quota backend) |
 | Vector DB | Qdrant (via `rag-service`) |
 | LLM | `openai` SDK (OpenAI-compatible endpoints only) |
-| MCP | `mcp` Python SDK — backend is a client; `rag-service` and `mcp-drive-server` are servers |
+| MCP | `mcp` Python SDK — backend is a client; `rag-service` and `customer-intelligence-mcp` are servers |
 | Sandbox | Docker (hardened container per tool execution) |
 | Observability | `structlog`, OpenTelemetry, Prometheus, Grafana, Loki |
 | Frontend | Next.js 15 (App Router), React 19, Tailwind, shadcn/ui, Zod, Zustand, TanStack Query |
@@ -81,11 +81,11 @@ open-agent/
 ├── backend/              # FastAPI: app/{api,core,db,evals,mcp,models,repositories,schemas,services}
 ├── frontend/              # Next.js: app/, components/, lib/, stores/, hooks/, types/
 ├── rag-service/           # Standalone RAG microservice (MCP server + REST admin API)
-├── mcp-drive-server/      # Standalone Google Drive MCP server (stdio)
+├── customer-intelligence-mcp/ # Stateless real email/calendar/Drive/research MCP connector
 ├── observability/         # Grafana dashboards + Prometheus config
 ├── scripts/               # Root-level e2e smoke tests (agent releases, evaluations, tenant quotas)
 └── docker-compose.yml     # postgres, redis, api, worker, frontend, qdrant, rag-service,
-                            # mcp-drive-server (profile: optional), prometheus/grafana/loki/otel-collector (profile: observability)
+                            # customer-intelligence-mcp, prometheus/grafana/loki/otel-collector (profile: observability)
 ```
 
 Backend layering is strict `routes → services → repositories → models`;
@@ -111,9 +111,8 @@ docker compose up --build
 ```
 
 Brings up `frontend` (:3000), `api` (:8000), `worker` (arq), `postgres`,
-`redis`, `qdrant`, and `rag-service`. Add `--profile optional` for
-`mcp-drive-server`, or `--profile observability` for
-`prometheus`/`grafana`/`loki`/`otel-collector`.
+`redis`, `qdrant`, `rag-service`, and `customer-intelligence-mcp`. Use
+`--profile observability` for `prometheus`/`grafana`/`loki`/`otel-collector`.
 
 ### Manual (backend + frontend only, SQLite)
 
@@ -131,15 +130,9 @@ npm install
 npm run dev                   # http://localhost:3000  (proxies /api → :8000)
 ```
 
-### Optional MCP microservices
-
-Each is independent and only couples to the backend via the MCP protocol —
-see their own READMEs for setup: [`rag-service/README.md`](rag-service/README.md)
-(hybrid BM25 + semantic retrieval, boots with zero external services via
-in-memory fallbacks) and [`mcp-drive-server/README.md`](mcp-drive-server/README.md)
-(Google Drive file listing/reading, requires a one-time Google Cloud OAuth
-setup — **do not commit the resulting `credentials.json`/`token.json`**, they
-already sit in `.gitignore`).
+`customer-intelligence-mcp` handles real Email, Calendar and Google Drive
+connectors. Configure OAuth clients in `.env`, start the stack, then connect
+accounts from `http://localhost:3000/integrations`.
 
 ---
 

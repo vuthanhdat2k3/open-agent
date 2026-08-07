@@ -63,6 +63,30 @@ quota_active_run_leases = Gauge(
     "Last observed active run lease count",
 )
 
+# --- Customer Intelligence (M6) ---------------------------------------------
+# Bounded label sets on purpose: `result` and `trigger` are low cardinality.
+# Never include the tenant/org id or the connection id here - CI syncs happen per
+# org and a per-org series set would grow without limit and blow up Prometheus.
+ci_syncs_total = Counter(
+    "ci_syncs_total",
+    "Customer-intelligence email syncs by result",
+    ["result"],  # success | error
+)
+ci_cases_ingested_total = Counter(
+    "ci_cases_ingested_total",
+    "Customer-intelligence research cases ingested",
+    ["trigger"],  # manual | scheduled
+)
+ci_sync_duration_seconds = Histogram(
+    "ci_sync_duration_seconds",
+    "Customer-intelligence sync duration in seconds",
+)
+ci_approval_age_seconds = Histogram(
+    "ci_approval_age_seconds",
+    "Customer-intelligence delivery-approval age in seconds, bucketed by the decision that resolved it",
+    ["decision"],  # approved | rejected | expired
+)
+
 
 def mount_metrics(app) -> None:
     Instrumentator().instrument(app).expose(app, endpoint="/metrics")

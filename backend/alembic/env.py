@@ -27,7 +27,7 @@ if config.config_file_name is not None:
 
 # Inject the runtime DB URL if not explicitly provided.
 if not config.get_main_option("sqlalchemy.url"):
-    config.set_main_option("sqlalchemy.url", get_settings().db_url)
+    config.set_main_option("sqlalchemy.url", get_settings().db_url.replace("%", "%%"))
 
 target_metadata = Base.metadata
 

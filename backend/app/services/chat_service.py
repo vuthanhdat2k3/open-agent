@@ -26,6 +26,12 @@ class ChatService:
     async def ensure_session(
         self, org_id: str, request: ChatRequest, user_id: str | None = None
     ) -> Session:
+        selected_agent: Agent | RuntimeAgent | None = None
+        if request.model_id:
+            # The Agent update endpoint already persisted the default model.
+            # This is only a one-shot instruction to repin the current session
+            # to that active release, not a second model authorization check.
+            selected_agent = await self._load_agent(org_id, request.agent_id)
         if request.session_id:
             res = await self.db.execute(
                 select(Session).where(Session.id == request.session_id, Session.org_id == org_id)
@@ -34,8 +40,12 @@ class ChatService:
             if session is not None:
                 if session.agent_id != request.agent_id:
                     raise ValueError("session belongs to a different agent")
+                if selected_agent and session.agent_release_id != selected_agent.active_release_id:
+                    session.agent_release_id = selected_agent.active_release_id
+                    await self.db.commit()
+                    await self.db.refresh(session)
                 return session
-        agent = await self._load_agent(org_id, request.agent_id)
+        agent = selected_agent or await self._load_agent(org_id, request.agent_id)
         raw = " ".join(request.message.split())
         title = (raw[:72] + "…") if len(raw) > 72 else raw
         title = title[:1].upper() + title[1:] if title else "New session"
@@ -106,6 +116,7 @@ class ChatService:
         user_id: str | None = None,
         root_run_id: str | None = None,
         current_task_id: str | None = None,
+        approval_resume_id: str | None = None,
     ) -> AsyncIterator[dict]:
         session = await self.ensure_session(org_id, request, user_id)
         agent = await self._load_agent(org_id, request.agent_id, session.agent_release_id)
@@ -117,6 +128,7 @@ class ChatService:
             root_run_id=root_run_id or request.run_id,
             current_task_id=current_task_id,
             user_id=user_id,
+            approval_resume_id=approval_resume_id,
         ):
             yield ev
 
@@ -127,6 +139,7 @@ class ChatService:
         user_id: str | None = None,
         root_run_id: str | None = None,
         current_task_id: str | None = None,
+        approval_resume_id: str | None = None,
     ) -> AgentLoopResult:
         session = await self.ensure_session(org_id, request, user_id)
         agent = await self._load_agent(org_id, request.agent_id, session.agent_release_id)
@@ -138,4 +151,5 @@ class ChatService:
             current_task_id=current_task_id,
             root_run_id=root_run_id or request.run_id,
             user_id=user_id,
+            approval_resume_id=approval_resume_id,
         )

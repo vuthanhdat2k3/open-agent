@@ -2,10 +2,18 @@
 
 import * as React from "react";
 import DOMPurify from "dompurify";
-import { MarkdownRenderer } from "@/components/markdown-renderer";
-import { Wrench, CornerDownRight, Clock, DollarSign, Terminal, Code, CheckCircle2, XCircle, Play, FileCode, Maximize2, ChevronRight } from "lucide-react";
+
+// react-markdown pulls in highlight.js and KaTeX, which together dominate the
+// Chat entry bundle. Only assistant messages need them, so the stack is split
+// out and loaded on demand; the Suspense fallback below keeps the message text
+// readable while that chunk arrives.
+const LazyMarkdownRenderer = React.lazy(() =>
+  import("@/components/markdown-renderer").then((m) => ({ default: m.MarkdownRenderer })),
+);
+import { Wrench, CornerDownRight, Clock, DollarSign, Terminal, Code, Copy, Check, CheckCircle2, XCircle, Play, FileCode, Maximize2, ChevronRight, ShieldAlert, ShieldCheck, ShieldX } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 
 // html here can be raw SVG returned by an LLM/tool call — treat it as
 // untrusted and sanitize before it reaches the DOM (SVG supports
@@ -57,6 +65,10 @@ export type UIMessage = {
     tools?: any[];
     reasoning?: string;
     progress?: string;
+    approvalId?: string;
+    approvalTool?: string;
+    approvalArgs?: unknown;
+    approvalStatus?: "pending" | "approved" | "rejected";
   };
 };
 
@@ -64,17 +76,57 @@ interface ChatMessageItemProps {
   message: UIMessage;
   debug: boolean;
   hasLiveTools?: boolean;
+  onApprovalDecision?: (messageId: string, decision: "approved" | "rejected") => void;
 }
 
-export function ChatMessageItem({ message: m, debug, hasLiveTools }: ChatMessageItemProps) {
+function ChatMessageItemBase({ message: m, debug, hasLiveTools, onApprovalDecision }: ChatMessageItemProps) {
+  const [copied, setCopied] = React.useState(false);
+
+  const copyMessage = React.useCallback(async () => {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(m.content);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = m.content;
+        textarea.setAttribute("readonly", "");
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.select();
+        const didCopy = document.execCommand("copy");
+        textarea.remove();
+        if (!didCopy) throw new Error("copy command failed");
+      }
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1200);
+    } catch {
+      // Clipboard permissions can be denied by the browser; native text
+      // selection remains available as the fallback interaction.
+    }
+  }, [m.content]);
+
   // Always render tool execution cards for rich user feedback
   if (m.role === "user") {
     return (
       <div
         key={m.id}
-        className="animate-scale-in self-end max-w-[80%] rounded-2xl rounded-br-sm bg-primary px-4 py-2.5 text-xs text-primary-foreground shadow-3d-card leading-relaxed select-text font-medium"
+        className="group relative animate-scale-in self-end max-w-[80%] cursor-text rounded-2xl rounded-br-sm bg-primary px-4 py-2.5 pr-14 text-xs text-primary-foreground shadow-3d-card leading-relaxed select-text font-medium"
+        style={{ userSelect: "text", WebkitUserSelect: "text" }}
       >
-        {m.content || "…"}
+        <span className="whitespace-pre-wrap break-words">{m.content || "…"}</span>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => void copyMessage()}
+          className="absolute right-1 top-1 h-11 w-11 rounded-lg text-primary-foreground/70 opacity-90 transition hover:bg-primary-foreground/15 hover:text-primary-foreground focus-visible:opacity-100"
+          aria-label={copied ? "User message copied" : "Copy user message"}
+          title={copied ? "Copied" : "Copy message"}
+        >
+          {copied ? <Check className="h-4 w-4" aria-hidden="true" /> : <Copy className="h-4 w-4" aria-hidden="true" />}
+        </Button>
       </div>
     );
   }
@@ -181,6 +233,33 @@ export function ChatMessageItem({ message: m, debug, hasLiveTools }: ChatMessage
     );
   }
 
+  if (m.role === "approval") {
+    const status = m.meta?.approvalStatus ?? "pending";
+    const args = typeof m.meta?.approvalArgs === "string"
+      ? m.meta.approvalArgs
+      : JSON.stringify(m.meta?.approvalArgs ?? {}, null, 2);
+    return (
+      <div key={m.id} className="animate-scale-in self-start w-full max-w-[92%] rounded-xl border border-warning/40 bg-warning/[0.06] p-3 shadow-3d-card">
+        <div className="flex items-center gap-2 text-xs font-semibold">
+          {status === "approved" ? <ShieldCheck className="h-4 w-4 text-success" /> : status === "rejected" ? <ShieldX className="h-4 w-4 text-destructive" /> : <ShieldAlert className="h-4 w-4 text-warning" />}
+          <span>{status === "pending" ? "Approval required" : status === "approved" ? "Approved" : "Rejected"}</span>
+          {m.meta?.approvalTool && <Badge variant="outline" className="font-mono text-[9px]">{m.meta.approvalTool}</Badge>}
+        </div>
+        <pre className="mt-2 max-h-48 overflow-auto rounded-lg border border-border/50 bg-black/30 p-2 font-mono text-[10px] leading-relaxed whitespace-pre-wrap break-all">{args}</pre>
+        {status === "pending" && onApprovalDecision ? (
+          <div className="mt-3 flex gap-2">
+            <Button size="sm" className="h-8 gap-1.5 text-xs" onClick={() => onApprovalDecision(m.id, "approved")}>
+              <ShieldCheck className="h-3.5 w-3.5" /> Approve
+            </Button>
+            <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs" onClick={() => onApprovalDecision(m.id, "rejected")}>
+              <ShieldX className="h-3.5 w-3.5" /> Reject
+            </Button>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
   // Assistant message
   // The live activity row owns the empty-state status, so do not render a
   // second placeholder bubble for the same run.
@@ -257,7 +336,11 @@ export function ChatMessageItem({ message: m, debug, hasLiveTools }: ChatMessage
         {m.content && (
           <div className="rounded-2xl rounded-bl-sm border border-border/80 bg-card/90 px-4 py-3 text-xs shadow-3d-card select-text leading-relaxed backdrop-blur-md">
           {m.content ? (
-            <MarkdownRenderer content={m.content} />
+            <React.Suspense
+              fallback={<span className="whitespace-pre-wrap break-words">{m.content}</span>}
+            >
+              <LazyMarkdownRenderer content={m.content} />
+            </React.Suspense>
           ) : m.meta?.reasoning ? (
             <span className="text-muted-foreground text-[11px]">Generating answer…</span>
           ) : (
@@ -304,3 +387,10 @@ export function ChatMessageItem({ message: m, debug, hasLiveTools }: ChatMessage
     </React.Fragment>
   );
 }
+
+// The thread re-renders on every streamed frame and every run poll, but the
+// event reducer only replaces the message objects it actually changed. Memoing
+// on those references keeps historical messages (and their markdown/tool-JSON
+// parsing) out of the hot path, so cost scales with what changed rather than
+// with thread length.
+export const ChatMessageItem = React.memo(ChatMessageItemBase);

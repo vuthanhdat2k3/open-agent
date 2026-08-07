@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.sse import format_sse
 from app.config import get_settings
+from app.core.agent_loop import _delete_trailing_user_message
 from app.core.chat_events import TERMINAL_EVENTS, list_events
 from app.core.quota.dependencies import agent_run_admission
 from app.core.workflow.queue import enqueue_chat_run
@@ -25,10 +26,15 @@ router = APIRouter(prefix="/api/chat", tags=["chat"])
 # Statuses where GET /runs/{id}/events switches from "follow live" to
 # "drain and close" — mirrored in the frontend poller.
 TERMINAL_STATUSES = ("succeeded", "failed", "diverged", "cancelled", "waiting_approval")
+# Floor between event-log reads while a run is actively emitting. Without it the
+# drain loop re-queries as fast as the database can answer for the whole run
+# (one hot loop per connected follower). Matched to the recorder's buffer window
+# so this poll never becomes the reason tokens arrive in visible clumps.
+LIVE_POLL_INTERVAL_SECONDS = 0.025
 _ACTIVE_CHAT_TASKS: dict[str, asyncio.Task] = {}
 
 
-async def _run_chat_detached(payload: dict) -> None:
+async def run_chat_detached(payload: dict) -> None:
     async with SessionLocal() as db:
         request = ChatRequest.model_validate(payload)
         active_task = asyncio.current_task()
@@ -41,6 +47,11 @@ async def _run_chat_detached(payload: dict) -> None:
         if task is None:
             _ACTIVE_CHAT_TASKS.pop(request.run_id, None)
             return
+        if task.status != "queued":
+            _ACTIVE_CHAT_TASKS.pop(request.run_id, None)
+            return
+        task.status = "running"
+        await db.commit()
         try:
             await ChatService(db).run(
                 payload["org_id"],
@@ -48,11 +59,13 @@ async def _run_chat_detached(payload: dict) -> None:
                 user_id=payload.get("user_id"),
                 root_run_id=request.run_id,
                 current_task_id=task.id,
+                approval_resume_id=payload.get("approval_resume_id"),
             )
         except Exception as exc:  # noqa: BLE001
             task.status = "failed"
             task.result = str(exc)
             task.finished_at = utc_now()
+            await _delete_trailing_user_message(db, (task.progress or {}).get("session_id"))
             await db.commit()
         finally:
             if _ACTIVE_CHAT_TASKS.get(request.run_id) is active_task:
@@ -72,15 +85,23 @@ async def chat(
 ):
     svc = ChatService(db)
     if not body.stream:
-        result = await svc.run(org_id, body, user_id=current_user.id, root_run_id=body.run_id)
+        try:
+            result = await svc.run(org_id, body, user_id=current_user.id, root_run_id=body.run_id)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
         return result.model_dump()
 
     run_id = body.run_id or gen_id()
     request = body.model_copy(update={"run_id": run_id})
-    session, _agent, task = await svc.prepare_run(
-        org_id, request, run_id, user_id=current_user.id
-    )
-    request = request.model_copy(update={"session_id": session.id})
+    try:
+        session, _agent, task = await svc.prepare_run(
+            org_id, request, run_id, user_id=current_user.id
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    # The selected model has been consumed by prepare_run. Detached execution
+    # must use this captured release even if the Agent default changes later.
+    request = request.model_copy(update={"session_id": session.id, "model_id": None})
     payload = {
         **request.model_dump(),
         "org_id": org_id,
@@ -94,7 +115,7 @@ async def chat(
         await db.commit()
         run_status = "queued"
     else:
-        background_tasks.add_task(_run_chat_detached, payload)
+        background_tasks.add_task(run_chat_detached, payload)
         run_status = "running"
 
     async def gen():
@@ -222,6 +243,7 @@ async def stream_chat_run_events(
                 return
             if rows:
                 idle_rounds = 0
+                await asyncio.sleep(LIVE_POLL_INTERVAL_SECONDS)
                 continue
             async with SessionLocal() as s:
                 status = (
