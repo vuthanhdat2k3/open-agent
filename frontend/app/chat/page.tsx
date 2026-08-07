@@ -6,24 +6,11 @@ import { toast } from "sonner";
 import { api, ApiError, streamSSE, streamSSEGet } from "@/lib/api";
 import { useAgents, useSessions, useSessionMessages, useDeleteSession, useModels, useChatRun, useApprovals, useUpdateAgent } from "@/hooks";
 import { useChatStore } from "@/stores";
-import {
-  Bot,
-  MessageSquare,
-  Plus,
-  Send,
-  Square,
-  Cpu,
-  Trash2,
-  Sparkles,
-  Bug,
-  Wrench,
-  ShieldAlert,
-} from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Textarea, Label } from "@/components/ui/input";
-import { Select } from "@/components/ui/select";
-import { ChatMessageItem, type UIMessage } from "@/components/chat/chat-message-item";
+import { type UIMessage } from "@/components/chat/chat-message-item";
+import { ChatSidebar } from "@/components/chat/chat-sidebar";
+import { ChatThread } from "@/components/chat/chat-thread";
+import { ChatInput } from "@/components/chat/chat-input";
+import type { ConnectionState } from "@/components/chat/chat-connection-banner";
 
 export default function ChatPage() {
   const searchParams = useSearchParams();
@@ -74,6 +61,7 @@ export default function ChatPage() {
   }, [streaming]);
   const [phase, setPhase] = React.useState<string>("");
   const [debug, setDebug] = React.useState(true);
+  const [connectionState, setConnectionState] = React.useState<ConnectionState>("connected");
   const bottomRef = React.useRef<HTMLDivElement>(null);
   // Stable id of the in-flight assistant message for the *current* run. `send`
   // seeds it from Date.now(); a reattach seeds it from the run id so a rebuild
@@ -508,9 +496,14 @@ export default function ChatPage() {
             },
             ctrl.signal,
           );
+          setConnectionState("connected");
           if (terminalSeen) break;
         } catch {
           if (stopped || ctrl.signal.aborted) break;
+          // The follow stream dropped mid-run (network blip, server restart).
+          // Surface a non-blocking banner while the backoff loop retries;
+          // it clears itself on the next successful attempt above.
+          setConnectionState("reconnecting");
         }
         if (stopped || ctrl.signal.aborted) break;
         await new Promise((resolve) => window.setTimeout(resolve, backoffMs));
@@ -521,6 +514,7 @@ export default function ChatPage() {
     return () => {
       stopped = true;
       ctrl.abort();
+      setConnectionState("connected");
       if (attachedRunRef.current === activeRunId) attachedRunRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -671,6 +665,7 @@ export default function ChatPage() {
     reattachAbortRef.current?.abort();
     reattachAbortRef.current = null;
     attachedRunRef.current = null;
+    setConnectionState("connected");
   };
 
   const resetTypewriter = () => {
@@ -755,279 +750,53 @@ export default function ChatPage() {
   const hasLiveTools = messages.some((x) => x.role === "tool_call" || x.role === "tool_result");
 
   return (
-    <div className="grid grid-cols-1 gap-6 lg:h-[calc(100vh-10rem)] lg:grid-cols-4 stagger">
-      {/* Sidebar */}
-      <div className="flex flex-col gap-4">
-        <div className="rounded-xl border border-border/80 bg-card/50 p-4 space-y-4 backdrop-blur-xl shadow-3d-card">
-          <div className="space-y-1.5">
-            <Label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">
-              <Bot className="h-3.5 w-3.5 text-primary" /> Active Agent
-            </Label>
-            <Select value={agentId ?? ""} onChange={(e) => handleAgentChange(e.target.value)} className="w-full text-xs">
-              {agents.data?.map((a) => (
-                <option key={a.id} value={a.id}>{a.name}</option>
-              ))}
-            </Select>
-            {currentAgentModel && (
-              <div className="flex items-center gap-1.5 mt-1 px-2 py-1 rounded-md bg-muted/30 border border-border/30">
-                <Cpu className="h-3 w-3 text-primary/70 shrink-0" />
-                <span className="text-[10px] font-mono text-muted-foreground truncate">
-                  {currentAgentModel.display_name || currentAgentModel.name}
-                </span>
-                <span className="ml-auto text-[9px] uppercase tracking-wider text-muted-foreground/50 shrink-0">
-                  {currentAgentModel.tier}
-                </span>
-              </div>
-            )}
-          </div>
+    <div className="grid grid-cols-1 gap-6 lg:h-[calc(100vh-10rem)] lg:grid-cols-4">
+      <ChatSidebar
+        agents={agents.data}
+        models={models.data}
+        sessions={sessions.data}
+        agentId={agentId}
+        sessionId={sessionId}
+        currentAgentModel={currentAgentModel}
+        pendingSessionModelId={pendingSessionModelId}
+        streaming={streaming}
+        updateAgentPending={updateAgent.isPending}
+        onAgentChange={handleAgentChange}
+        onDefaultModelChange={(modelId) => void setDefaultModel(modelId)}
+        onSessionChange={handleSessionChange}
+        onNewSession={clearMessages}
+        onDeleteSession={async (id) => {
+          await delSession.mutateAsync(id);
+          if (sessionId === id) clearMessages();
+        }}
+      />
 
-          <div className="space-y-1.5">
-            <Label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">
-              <Cpu className="h-3.5 w-3.5 text-primary" /> Agent Default Model
-            </Label>
-            <Select
-              value={pendingSessionModelId || currentAgent?.model_id || ""}
-              onChange={(e) => void setDefaultModel(e.target.value)}
-              disabled={streaming || updateAgent.isPending}
-              className="w-full text-xs"
-            >
-              {models.data
-                ?.filter((m) => m.active)
-                .map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.display_name || m.name}
-                  </option>
-                ))}
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <Label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">
-              <MessageSquare className="h-3.5 w-3.5 text-primary" /> Chat Sessions
-            </Label>
-            <Button
-              variant="outline"
-              className="w-full gap-2 active-tactile transition-transform text-xs"
-              onClick={clearMessages}
-            >
-              <Plus className="h-3.5 w-3.5" /> New Session
-            </Button>
-            <div className="space-y-1 max-h-[30vh] overflow-y-auto pr-1 scrollbar-thin">
-              {sessions.data
-                ?.filter((s) => s.agent_id === agentId)
-                .map((s) => (
-                  <div
-                    key={s.id}
-                    className={`group flex items-center gap-1 rounded-lg transition-all duration-200 ${
-                      sessionId === s.id
-                        ? "bg-primary text-primary-foreground shadow-3d-card font-semibold"
-                        : "text-muted-foreground hover:bg-accent hover:text-foreground"
-                    }`}
-                  >
-                    <button
-                      onClick={() => handleSessionChange(s.id)}
-                      className="block flex-1 truncate px-3 py-2 text-left text-xs"
-                    >
-                      {s.title}
-                    </button>
-                    <button
-                      onClick={async (e) => {
-                        e.stopPropagation();
-                        await delSession.mutateAsync(s.id);
-                        if (sessionId === s.id) {
-                          clearMessages();
-                        }
-                      }}
-                      className="shrink-0 rounded-md p-1.5 text-current/70 opacity-0 transition-opacity hover:bg-destructive/15 hover:text-destructive group-hover:opacity-100"
-                      title="Delete session"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                ))}
-              {sessions.data?.filter((s) => s.agent_id === agentId).length === 0 && (
-                <div className="text-[11px] text-muted-foreground/60 py-4 text-center">No active sessions.</div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Main Chat Stream */}
       <div className="flex min-h-[520px] flex-col lg:col-span-3">
-        <Card glass className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <CardHeader className="flex flex-row items-center gap-3 space-y-0 border-b border-border/80 bg-muted/20 px-4 py-3">
-            <div className="grid h-8 w-8 place-items-center rounded-xl bg-gradient-to-br from-primary/25 via-primary/10 to-transparent text-primary shadow-3d-card border border-primary/20">
-              <MessageSquare className="h-4 w-4" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <CardTitle className="text-sm font-semibold tracking-tight">Conversation Thread</CardTitle>
-              {currentAgent && (
-                <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
-                  {currentAgent.name}
-                  {effectiveModel && (
-                    <span className="text-muted-foreground/60"> · {effectiveModel.display_name || effectiveModel.name}</span>
-                  )}
-                </p>
-              )}
-            </div>
-            <div className="flex items-center gap-1">
-              <Button
-                variant={debug ? "secondary" : "ghost"}
-                size="sm"
-                className={`h-7 gap-1 px-2 text-[10px] ${debug ? "text-primary font-semibold" : "text-muted-foreground"}`}
-                onClick={() => setDebug((v) => !v)}
-                title="Toggle debug trace (thinking, tool calls, results)"
-              >
-                <Bug className="h-3.5 w-3.5" /> Debug
-              </Button>
-              {messages.length > 0 && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-                  onClick={clearMessages}
-                  title="Clear conversation"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
-              )}
-            </div>
-          </CardHeader>
+        <ChatThread
+          messages={messages}
+          debug={debug}
+          streaming={streaming}
+          statusPhase={statusPhase}
+          currentAgent={currentAgent}
+          effectiveModel={effectiveModel}
+          onToggleDebug={() => setDebug((v) => !v)}
+          onClearMessages={clearMessages}
+          onApprovalDecision={handleApprovalDecision}
+          scrollHostRef={scrollHostRef}
+          bottomRef={bottomRef}
+          onThreadScroll={onThreadScroll}
+        />
 
-          <CardContent
-            ref={scrollHostRef}
-            onScroll={onThreadScroll}
-            className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4 scrollbar-thin"
-          >
-            {messages.length === 0 ? (
-              <div className="m-auto text-center max-w-sm animate-scale-in">
-                <div className="grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-primary/25 via-primary/10 to-transparent text-primary shadow-3d-card border border-primary/20 mx-auto mb-4">
-                  <Bot className="h-6 w-6" />
-                </div>
-                <p className="text-sm font-semibold tracking-tight">Ready to prompt</p>
-                <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
-                  Start a conversation with <span className="text-foreground font-medium">{currentAgent?.name ?? "the selected agent"}</span>.
-                  Tool actions will appear inline.
-                </p>
-                {effectiveModel && (
-                  <div className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-muted/40 border border-border/40 px-3 py-1">
-                    <Cpu className="h-3 w-3 text-primary" />
-                    <span className="text-[11px] font-mono text-muted-foreground">
-                      {effectiveModel.display_name || effectiveModel.name}
-                    </span>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <>
-                {messages.map((m) => (
-                  <ChatMessageItem key={m.id} message={m} debug={debug} hasLiveTools={hasLiveTools} onApprovalDecision={handleApprovalDecision} />
-                ))}
-                {(streaming || statusPhase === "approval") && !messages.some((m) => m.role === "approval" && m.meta?.approvalStatus === "pending") && (
-                  <div className="self-start flex max-w-[92%] items-center gap-2 rounded-xl border border-primary/20 bg-primary/[0.04] px-3 py-2 text-[10px] text-muted-foreground shadow-sm">
-                    {statusPhase === "approval" ? (
-                      <ShieldAlert className="h-3.5 w-3.5 shrink-0 animate-pulse text-warning" />
-                    ) : statusPhase.startsWith("tool:") ? (
-                      <Wrench className="h-3.5 w-3.5 shrink-0 animate-pulse text-info" />
-                    ) : (
-                      <Sparkles className="h-3.5 w-3.5 shrink-0 animate-pulse text-primary" />
-                    )}
-                    <span>
-                      {statusPhase === "approval"
-                        ? "Waiting for approval"
-                        : statusPhase.startsWith("tool:")
-                          ? `Using tool: ${statusPhase.slice(5)}`
-                          : statusPhase === "result"
-                            ? "Processing result"
-                            : statusPhase === "answering"
-                              ? "Generating answer"
-                              : "Thinking"}
-                    </span>
-                    {effectiveModel && (
-                      <span className="font-mono text-muted-foreground/60">
-                        · {effectiveModel.display_name || effectiveModel.name}
-                      </span>
-                    )}
-                    <span className="ml-auto flex gap-0.5" aria-hidden="true">
-                      <span className="h-1 w-1 rounded-full bg-current animate-pulse" />
-                      <span className="h-1 w-1 rounded-full bg-current animate-pulse [animation-delay:150ms]" />
-                      <span className="h-1 w-1 rounded-full bg-current animate-pulse [animation-delay:300ms]" />
-                    </span>
-                  </div>
-                )}
-                <div ref={bottomRef} />
-              </>
-            )}
-          </CardContent>
-        </Card>
-
-        <div className="mt-3 flex gap-2 items-end">
-          <Textarea
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                send();
-              }
-            }}
-            placeholder="Type a message… (Enter to send, Shift+Enter for newline)"
-            className="min-h-[48px] flex-1 text-xs resize-none"
-          />
-          <Button
-            onClick={streaming ? stop : send}
-            disabled={!agentId || (!streaming && !draft.trim())}
-            className="gap-2 px-5 active-tactile transition-transform h-10 text-xs self-end"
-            variant={streaming ? "outline" : "default"}
-            title={streaming ? "Stop streaming" : "Send message"}
-          >
-            {streaming ? (
-              <>
-                <Square className="h-3.5 w-3.5" />
-                Stop
-              </>
-            ) : (
-              <>
-                <Send className="h-3.5 w-3.5" />
-                Send
-              </>
-            )}
-          </Button>
-        </div>
-
-        {(streaming || phase === "approval") && (
-          <div className="hidden mt-2 flex items-center gap-2 text-[10px] text-muted-foreground">
-            {phase === "approval" ? (
-              <>
-                <span className="h-1.5 w-1.5 rounded-full bg-warning animate-pulse" />
-                Waiting for approval…
-              </>
-            ) : phase.startsWith("tool:") ? (
-              <>
-                <span className="h-1.5 w-1.5 rounded-full bg-info animate-pulse" />
-                Using tool: {phase.slice(5)}…
-              </>
-            ) : phase === "result" ? (
-              <>
-                <span className="h-1.5 w-1.5 rounded-full bg-info animate-pulse" />
-                Processing result…
-              </>
-            ) : phase === "answering" ? (
-              <>
-                <span className="h-1.5 w-1.5 rounded-full bg-info animate-pulse" />
-                Generating...
-              </>
-            ) : (
-              <>
-                <span className="h-1.5 w-1.5 rounded-full bg-info animate-pulse" />
-                Thinking...
-              </>
-            )}
-            {effectiveModel && <span className="font-mono text-muted-foreground/60">· {effectiveModel.display_name || effectiveModel.name}</span>}
-          </div>
-        )}
+        <ChatInput
+          draft={draft}
+          onDraftChange={setDraft}
+          onSubmit={streaming ? stop : send}
+          streaming={streaming}
+          disabled={!agentId || (!streaming && !draft.trim())}
+          connectionState={connectionState}
+        />
       </div>
     </div>
   );
 }
+
