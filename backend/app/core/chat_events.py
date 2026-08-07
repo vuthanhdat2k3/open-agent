@@ -38,8 +38,14 @@ CHAT_ORPHAN_STALE_SECONDS = 120
 # Progress heartbeats are cheap but not free; don't write more often than
 # this while tokens stream in.
 _PROGRESS_MIN_INTERVAL = 1.0
-_EVENT_BATCH_SIZE = 24
-_EVENT_BATCH_DELAY = 0.08
+# A chat run's tokens are only visible to the browser once they are in this
+# log, so the buffer window is the floor on perceived streaming latency. Keep
+# it near one animation frame: long enough to batch a multi-row insert instead
+# of one round-trip per token, short enough that text still appears token by
+# token rather than in phrase-sized jumps. The size cap is a safety valve for
+# providers that burst faster than the timer.
+_EVENT_BATCH_SIZE = 8
+_EVENT_BATCH_DELAY = 0.025
 _LIVENESS_INTERVAL = 15.0
 
 
@@ -91,12 +97,9 @@ class ChatEventRecorder:
         row = ChatRunEvent(
             id=gen_id(), org_id=self.org_id, run_id=self.run_id, seq=seq, event=event, data=data
         )
-        try:
-            if self._chain is not None:
-                # Serialize writes so seq ordering matches insertion order.
-                await asyncio.wait_for(asyncio.shield(self._chain), timeout=10)
-        except Exception:  # noqa: BLE001
-            pass
+        # Ordering is already guaranteed without serialising writes: ``seq`` is
+        # assigned above, rows are appended in that order, and ``_flush`` holds
+        # ``_flush_lock`` while inserting a batch.
         self._pending.append(row)
         if len(self._pending) >= _EVENT_BATCH_SIZE:
             await self._flush()
@@ -180,6 +183,10 @@ async def fail_orphaned_chat_runs(
     can resend.
     """
     cutoff = (utc_now() - timedelta(seconds=stale_seconds)).isoformat()
+    # Deferred: agent_loop imports ChatEventRecorder from this module, so a
+    # module-level import here would be circular.
+    from app.core.agent_loop import _delete_trailing_user_message
+
     res = await db.execute(
         select(Task).where(
             Task.parent_task_id.is_(None),
@@ -193,6 +200,7 @@ async def fail_orphaned_chat_runs(
         task.status = "failed"
         task.result = "worker lost: no stream activity for too long — please resend"
         task.finished_at = utc_now()
+        await _delete_trailing_user_message(db, (task.progress or {}).get("session_id"))
         failed.append(task.id)
     if failed:
         await db.commit()
