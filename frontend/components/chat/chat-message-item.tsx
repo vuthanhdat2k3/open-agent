@@ -3,7 +3,7 @@
 import * as React from "react";
 import DOMPurify from "dompurify";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
-import { Wrench, CornerDownRight, Clock, DollarSign, Terminal, Code, CheckCircle2, XCircle, Play, FileCode, Maximize2, ChevronRight, ShieldAlert, ShieldCheck, ShieldX } from "lucide-react";
+import { Wrench, CornerDownRight, Clock, DollarSign, Terminal, Code, Copy, Check, CheckCircle2, XCircle, Play, FileCode, Maximize2, ChevronRight, ShieldAlert, ShieldCheck, ShieldX } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -108,16 +108,18 @@ export function ChatMessageItem({ message: m, debug, hasLiveTools, onApprovalDec
         style={{ userSelect: "text", WebkitUserSelect: "text" }}
       >
         <span className="whitespace-pre-wrap break-words">{m.content || "…"}</span>
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="icon"
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => void copyMessage()}
-          className="absolute right-2 top-2 rounded-md px-1.5 py-1 text-[10px] font-semibold text-primary-foreground/75 opacity-80 transition hover:bg-primary-foreground/15 hover:text-primary-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-foreground"
+          className="absolute right-1 top-1 h-11 w-11 rounded-lg text-primary-foreground/70 opacity-90 transition hover:bg-primary-foreground/15 hover:text-primary-foreground focus-visible:opacity-100"
           aria-label={copied ? "User message copied" : "Copy user message"}
           title={copied ? "Copied" : "Copy message"}
         >
-          {copied ? "Copied" : "Copy"}
-        </button>
+          {copied ? <Check className="h-4 w-4" aria-hidden="true" /> : <Copy className="h-4 w-4" aria-hidden="true" />}
+        </Button>
       </div>
     );
   }
