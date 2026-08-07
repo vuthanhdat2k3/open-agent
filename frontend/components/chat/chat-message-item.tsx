@@ -73,14 +73,51 @@ interface ChatMessageItemProps {
 }
 
 export function ChatMessageItem({ message: m, debug, hasLiveTools, onApprovalDecision }: ChatMessageItemProps) {
+  const [copied, setCopied] = React.useState(false);
+
+  const copyMessage = React.useCallback(async () => {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(m.content);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = m.content;
+        textarea.setAttribute("readonly", "");
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.select();
+        const didCopy = document.execCommand("copy");
+        textarea.remove();
+        if (!didCopy) throw new Error("copy command failed");
+      }
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1200);
+    } catch {
+      // Clipboard permissions can be denied by the browser; native text
+      // selection remains available as the fallback interaction.
+    }
+  }, [m.content]);
+
   // Always render tool execution cards for rich user feedback
   if (m.role === "user") {
     return (
       <div
         key={m.id}
-        className="animate-scale-in self-end max-w-[80%] rounded-2xl rounded-br-sm bg-primary px-4 py-2.5 text-xs text-primary-foreground shadow-3d-card leading-relaxed select-text font-medium"
+        className="group relative animate-scale-in self-end max-w-[80%] cursor-text rounded-2xl rounded-br-sm bg-primary px-4 py-2.5 pr-14 text-xs text-primary-foreground shadow-3d-card leading-relaxed select-text font-medium"
+        style={{ userSelect: "text", WebkitUserSelect: "text" }}
       >
-        {m.content || "…"}
+        <span className="whitespace-pre-wrap break-words">{m.content || "…"}</span>
+        <button
+          type="button"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => void copyMessage()}
+          className="absolute right-2 top-2 rounded-md px-1.5 py-1 text-[10px] font-semibold text-primary-foreground/75 opacity-80 transition hover:bg-primary-foreground/15 hover:text-primary-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-foreground"
+          aria-label={copied ? "User message copied" : "Copy user message"}
+          title={copied ? "Copied" : "Copy message"}
+        >
+          {copied ? "Copied" : "Copy"}
+        </button>
       </div>
     );
   }
