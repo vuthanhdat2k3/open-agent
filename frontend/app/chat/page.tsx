@@ -476,7 +476,22 @@ export default function ChatPage() {
     const run = chatRun.data;
     if (!run) return;
     const TERMINAL = ["succeeded", "failed", "diverged", "cancelled", "waiting_approval"];
-    if (TERMINAL.includes(run.status)) return;
+    if (TERMINAL.includes(run.status)) {
+      // The run already finished by the time this effect saw its first
+      // chatRun read (fast model + slow first poll tick). The other effect
+      // that normally flips streaming off and refetches messages only runs
+      // on the next chatRun poll (up to useChatRun's 2s interval) — without
+      // this, the UI would sit in "streaming" for that whole window even
+      // though the answer has been sitting in the DB the entire time.
+      if (terminalRunRef.current !== run.id) {
+        terminalRunRef.current = run.id;
+        setStreaming(false);
+        setPhase(run.status === "waiting_approval" ? "approval" : "");
+        void refetchMessages();
+        if (run.status !== "succeeded" && run.error) toast.error(run.error);
+      }
+      return;
+    }
     attachedRunRef.current = activeRunId;
     setStreaming(true);
     assistantIdRef.current = `a-${activeRunId}`;
@@ -535,6 +550,7 @@ export default function ChatPage() {
     sessionBelongsToAgent,
     activeRunId,
     chatRun.data?.status,
+    refetchMessages,
   ]);
 
   React.useEffect(() => {
