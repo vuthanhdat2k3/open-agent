@@ -106,6 +106,7 @@ class ChatService:
         user_id: str | None = None,
         root_run_id: str | None = None,
         current_task_id: str | None = None,
+        approval_resume_id: str | None = None,
     ) -> AsyncIterator[dict]:
         session = await self.ensure_session(org_id, request, user_id)
         agent = await self._load_agent(org_id, request.agent_id, session.agent_release_id)
@@ -117,6 +118,7 @@ class ChatService:
             root_run_id=root_run_id or request.run_id,
             current_task_id=current_task_id,
             user_id=user_id,
+            approval_resume_id=approval_resume_id,
         ):
             yield ev
 
@@ -127,6 +129,7 @@ class ChatService:
         user_id: str | None = None,
         root_run_id: str | None = None,
         current_task_id: str | None = None,
+        approval_resume_id: str | None = None,
     ) -> AgentLoopResult:
         session = await self.ensure_session(org_id, request, user_id)
         agent = await self._load_agent(org_id, request.agent_id, session.agent_release_id)
@@ -138,4 +141,5 @@ class ChatService:
             current_task_id=current_task_id,
             root_run_id=root_run_id or request.run_id,
             user_id=user_id,
+            approval_resume_id=approval_resume_id,
         )

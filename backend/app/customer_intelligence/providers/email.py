@@ -11,8 +11,13 @@ class EmailProvider(Protocol):
     provider_name: str
     async def list_new(self, cursor: str | None, max_results: int = 20) -> SyncPage: ...
     async def get_message(self, provider_message_id: str) -> NormalizedEmail: ...
+    async def search(self, *, query: str, max_results: int = 20) -> list[NormalizedEmail]: ...
+    async def modify(self, *, provider_message_id: str, add_label_ids: list[str] | None = None, remove_label_ids: list[str] | None = None) -> str: ...
+    async def list_labels(self) -> list[dict[str, str]]: ...
     async def create_draft(self, *, to: str, subject: str, body: str, in_reply_to: str | None = None) -> str: ...
     async def send(self, *, draft_id: str, idempotency_key: str) -> str: ...
+    async def trash(self, provider_message_id: str) -> str: ...
+    async def untrash(self, provider_message_id: str) -> str: ...
     async def delivery_status(self, provider_send_id: str) -> str: ...
     async def refresh_access_token(self, credentials: dict[str, Any]) -> dict[str, Any] | None: ...
     async def revoke(self, credentials: dict[str, Any]) -> None: ...
@@ -60,6 +65,17 @@ class McpEmailProvider:
     async def get_message(self, provider_message_id: str) -> NormalizedEmail:
         return self._email(await self._call("email_get", provider_message_id=provider_message_id))
 
+    async def search(self, *, query: str, max_results: int = 20) -> list[NormalizedEmail]:
+        data = await self._call("email_search", query=query, max_results=max_results)
+        return [self._email(item) for item in data.get("messages", [])]
+
+    async def modify(self, *, provider_message_id: str, add_label_ids: list[str] | None = None, remove_label_ids: list[str] | None = None) -> str:
+        data = await self._call("email_modify", provider_message_id=provider_message_id, add_label_ids=add_label_ids or [], remove_label_ids=remove_label_ids or [])
+        return data.get("message_id", provider_message_id)
+
+    async def list_labels(self) -> list[dict[str, str]]:
+        return (await self._call("email_list_labels")).get("labels", [])
+
     async def create_draft(self, *, to: str, subject: str, body: str, in_reply_to: str | None = None) -> str:
         data = await self._call("email_create_draft", to=to, subject=subject, body=body)
         return data["draft_id"]
@@ -67,6 +83,12 @@ class McpEmailProvider:
     async def send(self, *, draft_id: str, idempotency_key: str) -> str:
         data = await self._call("email_send", draft_id=draft_id, idempotency_key=idempotency_key)
         return data["send_id"]
+
+    async def trash(self, provider_message_id: str) -> str:
+        return (await self._call("email_trash", provider_message_id=provider_message_id)).get("message_id", provider_message_id)
+
+    async def untrash(self, provider_message_id: str) -> str:
+        return (await self._call("email_untrash", provider_message_id=provider_message_id)).get("message_id", provider_message_id)
 
     async def delivery_status(self, provider_send_id: str) -> str:
         return "unknown"

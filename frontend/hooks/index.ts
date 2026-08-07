@@ -514,7 +514,7 @@ export function useApprovals(enabled: boolean = true) {
 export function useDecideApproval() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, decision, reason }: { id: string; decision: "approved" | "rejected"; reason: string }) =>
+    mutationFn: ({ id, decision, reason = "" }: { id: string; decision: "approved" | "rejected"; reason?: string }) =>
       api.post<ApprovalRequest>(`/api/approvals/${id}/decide`, { decision, reason }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["approvals"] }),
   });

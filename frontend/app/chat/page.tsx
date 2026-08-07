@@ -4,7 +4,7 @@ import * as React from "react";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { api, streamSSE, streamSSEGet } from "@/lib/api";
-import { useAgents, useSessions, useSessionMessages, useDeleteSession, useModels, useChatRun } from "@/hooks";
+import { useAgents, useSessions, useSessionMessages, useDeleteSession, useModels, useChatRun, useApprovals } from "@/hooks";
 import { useChatStore } from "@/stores";
 import {
   Bot,
@@ -39,6 +39,7 @@ export default function ChatPage() {
     setActiveRun,
   } = useChatStore();
   const chatRun = useChatRun(activeRunId);
+  const approvals = useApprovals(Boolean(activeRunId));
   const sessions = useSessions();
   const delSession = useDeleteSession();
   const [agentReady, setAgentReady] = React.useState(false);
@@ -144,7 +145,8 @@ export default function ChatPage() {
         content: m.content,
         meta: m.meta,
       }));
-      if (!streamingRef.current) {
+      const hasApproval = liveRef.current.some((message) => message.role === "approval");
+      if (!streamingRef.current && !hasApproval) {
         liveRef.current = initial;
         setMessages(initial);
       } else {
@@ -334,6 +336,23 @@ export default function ChatPage() {
         toast.error(d.message ?? "Stream error");
       } else if (ev.event === "approval_required") {
         setPhase("approval");
+        if (!msgs.some((x) => x.role === "approval" && x.meta?.approvalId === d.approval_id)) {
+          msgs.push({
+            id: `approval-${d.approval_id}`,
+            role: "approval",
+            content: "",
+            meta: {
+              approvalId: d.approval_id,
+              approvalTool: d.tool_name,
+              approvalArgs: d.args_snapshot ?? {},
+              approvalStatus: "pending",
+            },
+          });
+        }
+      } else if (ev.event === "approval_rejected") {
+        setPhase("");
+        const i = msgs.findIndex((x) => x.meta?.approvalId === d.approval_id);
+        if (i >= 0) msgs[i] = { ...msgs[i], meta: { ...msgs[i].meta, approvalStatus: "rejected" } };
       } else if (ev.event === "budget_exceeded") {
         setPhase("");
         toast.error(d.reason ?? "Run budget exceeded");
@@ -372,7 +391,7 @@ export default function ChatPage() {
     const ctrl = new AbortController();
     reattachAbortRef.current = ctrl;
     let stopped = false;
-    const terminalEvents = new Set(["message_done", "error", "approval_required", "replay_diverged"]);
+    const terminalEvents = new Set(["message_done", "error", "approval_required", "approval_rejected", "replay_diverged"]);
     const follow = async () => {
       let backoffMs = 500;
       while (!stopped && !ctrl.signal.aborted) {
@@ -411,6 +430,53 @@ export default function ChatPage() {
     activeRunId,
     chatRun.data?.status,
   ]);
+
+  React.useEffect(() => {
+    const approval = approvals.data?.find((item) => item.run_id === activeRunId);
+    if (!approval || liveRef.current.some((item) => item.meta?.approvalId === approval.id)) return;
+    liveRef.current.push({
+      id: `approval-${approval.id}`,
+      role: "approval",
+      content: "",
+      meta: {
+        approvalId: approval.id,
+        approvalTool: approval.tool_name ?? undefined,
+        approvalArgs: approval.args_snapshot,
+        approvalStatus: approval.status === "expired" ? "rejected" : approval.status,
+      },
+    });
+    commit();
+    setPhase("approval");
+  }, [activeRunId, approvals.data, commit]);
+
+  const handleApprovalDecision = React.useCallback(async (messageId: string, decision: "approved" | "rejected") => {
+    const message = liveRef.current.find((item) => item.id === messageId);
+    const approvalId = message?.meta?.approvalId;
+    if (!approvalId) return;
+    liveRef.current = liveRef.current.map((item) => item.id === messageId
+      ? { ...item, meta: { ...item.meta, approvalStatus: decision } }
+      : item);
+    commit();
+    try {
+      const decided = await api.post<{ status: "pending" | "approved" | "rejected" | "expired" }>(`/api/approvals/${approvalId}/decide`, { decision });
+      const authoritative = decided.status === "expired" ? "rejected" : decided.status;
+      liveRef.current = liveRef.current.map((item) => item.id === messageId
+        ? { ...item, meta: { ...item.meta, approvalStatus: authoritative } }
+        : item);
+      commit();
+      attachedRunRef.current = null;
+      terminalRunRef.current = null;
+      setStreaming(true);
+      setPhase("thinking");
+      await chatRun.refetch();
+    } catch (error) {
+      liveRef.current = liveRef.current.map((item) => item.id === messageId
+        ? { ...item, meta: { ...item.meta, approvalStatus: "pending" } }
+        : item);
+      commit();
+      toast.error(error instanceof Error ? error.message : "Could not decide approval");
+    }
+  }, [chatRun, commit]);
 
   const abortRef = React.useRef<AbortController | null>(null);
   const pageUnloadingRef = React.useRef(false);
@@ -734,9 +800,9 @@ export default function ChatPage() {
             ) : (
               <>
                 {messages.map((m) => (
-                  <ChatMessageItem key={m.id} message={m} debug={debug} hasLiveTools={hasLiveTools} />
+                  <ChatMessageItem key={m.id} message={m} debug={debug} hasLiveTools={hasLiveTools} onApprovalDecision={handleApprovalDecision} />
                 ))}
-                {(streaming || statusPhase === "approval") && (
+                {(streaming || statusPhase === "approval") && !messages.some((m) => m.role === "approval" && m.meta?.approvalStatus === "pending") && (
                   <div className="self-start flex max-w-[92%] items-center gap-2 rounded-xl border border-primary/20 bg-primary/[0.04] px-3 py-2 text-[10px] text-muted-foreground shadow-sm">
                     {statusPhase === "approval" ? (
                       <ShieldAlert className="h-3.5 w-3.5 shrink-0 animate-pulse text-warning" />
