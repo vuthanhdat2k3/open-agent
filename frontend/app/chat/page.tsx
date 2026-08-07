@@ -83,6 +83,11 @@ export default function ChatPage() {
   // Tracks which run we already (re)attached a follow-stream to, so the
   // reattach effect runs at most once per run.
   const attachedRunRef = React.useRef<string | null>(null);
+  // Set by `send` the moment the POST bootstrap reports chat_run_start. It
+  // lets the follow-stream effect open immediately instead of waiting for
+  // useChatRun's first response just to learn a status we already know is
+  // live — that round trip was pure added time-to-first-token.
+  const justStartedRunRef = React.useRef<string | null>(null);
   const terminalRunRef = React.useRef<string | null>(null);
   const reattachAbortRef = React.useRef<AbortController | null>(null);
   const lastEventSeqRef = React.useRef(0);
@@ -484,9 +489,13 @@ export default function ChatPage() {
     if (!activeRunId) return;
     if (attachedRunRef.current === activeRunId) return;
     const run = chatRun.data;
-    if (!run) return;
+    // A run we just started locally is known-live: attach without waiting for
+    // the first useChatRun response. On the reload-recovery path there is no
+    // such marker, so we still need the status read before touching anything.
+    const justStarted = justStartedRunRef.current === activeRunId;
+    if (!run && !justStarted) return;
     const TERMINAL = ["succeeded", "failed", "diverged", "cancelled", "waiting_approval"];
-    if (TERMINAL.includes(run.status)) {
+    if (run && TERMINAL.includes(run.status)) {
       // The run already finished by the time this effect saw its first
       // chatRun read (fast model + slow first poll tick). The other effect
       // that normally flips streaming off and refetches messages only runs
@@ -504,11 +513,17 @@ export default function ChatPage() {
     }
     attachedRunRef.current = activeRunId;
     setStreaming(true);
-    assistantIdRef.current = `a-${activeRunId}`;
-    lastEventSeqRef.current = 0;
-    composeRef.current.clear();
-    deltaArgsRef.current.clear();
-    if (liveRef.current.length === 0 && run.message) {
+    // Only reseed the in-flight assistant id on the recovery path. `send`
+    // already seeded it and pushed the matching placeholder bubble;
+    // overwriting it here would orphan that placeholder and make the streamed
+    // tokens build a second, duplicate assistant message.
+    if (!justStarted) {
+      assistantIdRef.current = `a-${activeRunId}`;
+      lastEventSeqRef.current = 0;
+      composeRef.current.clear();
+      deltaArgsRef.current.clear();
+    }
+    if (liveRef.current.length === 0 && run?.message) {
       liveRef.current = [{ id: `u-${activeRunId}`, role: "user", content: run.message }];
       commit();
     }
@@ -669,6 +684,7 @@ export default function ChatPage() {
             return;
           }
           if (ev.event === "chat_run_start") {
+            justStartedRunRef.current = ev.data.run_id;
             setActiveRun(ev.data.run_id);
             // The POST response only bootstraps the durable run. The
             // reattach effect owns the GET follow stream that carries live
@@ -701,6 +717,7 @@ export default function ChatPage() {
     reattachAbortRef.current?.abort();
     reattachAbortRef.current = null;
     attachedRunRef.current = null;
+    justStartedRunRef.current = null;
     setConnectionState("connected");
   };
 

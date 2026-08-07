@@ -31,6 +31,15 @@ TERMINAL_STATUSES = ("succeeded", "failed", "diverged", "cancelled", "waiting_ap
 # (one hot loop per connected follower). Matched to the recorder's buffer window
 # so this poll never becomes the reason tokens arrive in visible clumps.
 LIVE_POLL_INTERVAL_SECONDS = 0.025
+# Ceiling for the idle backoff below. This is the worst-case time a freshly
+# written event (typically the first token, after provider warm-up) can sit in
+# the log before a follower reads it, so it is a direct floor on perceived
+# time-to-first-token — keep it small.
+_IDLE_POLL_CEILING_SECONDS = 0.25
+# How often, in idle rounds, to fall back to the task-status check that
+# detects a crashed worker. The happy path terminates on TERMINAL_EVENTS in
+# the log itself, so this only needs to be periodic.
+_STATUS_CHECK_EVERY_N_IDLE_ROUNDS = 4
 _ACTIVE_CHAT_TASKS: dict[str, asyncio.Task] = {}
 
 
@@ -245,20 +254,28 @@ async def stream_chat_run_events(
                 idle_rounds = 0
                 await asyncio.sleep(LIVE_POLL_INTERVAL_SECONDS)
                 continue
-            async with SessionLocal() as s:
-                status = (
-                    await s.execute(
-                        select(Task.status).where(
-                            Task.root_run_id == run_id, Task.org_id == org_id
+            # The task-status fallback only matters when the log goes quiet
+            # (crashed worker); checking it on every idle round doubles the
+            # query cost of a tight poll for no benefit.
+            if idle_rounds % _STATUS_CHECK_EVERY_N_IDLE_ROUNDS == 0:
+                async with SessionLocal() as s:
+                    status = (
+                        await s.execute(
+                            select(Task.status).where(
+                                Task.root_run_id == run_id, Task.org_id == org_id
+                            )
                         )
-                    )
-                ).scalar()
-            if status in TERMINAL_STATUSES:
-                return  # log fully drained above; run is over
+                    ).scalar()
+                if status in TERMINAL_STATUSES:
+                    return  # log fully drained above; run is over
             idle_rounds += 1
-            # Back off gently when the run is quiet instead of hammering the
-            # DB at a fixed rate (cheap win on Postgres + SQLite alike).
-            await asyncio.sleep(min(2.0, 0.25 * (2**idle_rounds)) if idle_rounds > 1 else 0.25)
+            # Back off gently while the run is quiet, but keep the ceiling low:
+            # a live run that has not emitted yet is the normal state during
+            # provider warm-up / prompt processing, and this sleep is exactly
+            # how long the *first* token then sits in the log unread. A 2s
+            # ceiling here made time-to-first-token swing by up to ~2s
+            # depending on where the timer happened to land.
+            await asyncio.sleep(min(_IDLE_POLL_CEILING_SECONDS, 0.05 * (2**idle_rounds)))
             yield ": heartbeat\n\n"
 
     return StreamingResponse(
