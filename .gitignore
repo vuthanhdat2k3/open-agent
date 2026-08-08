@@ -65,6 +65,7 @@ workspace/
 .codegraph/
 .omo/
 .playwright-cli/
+.playwright-mcp/
 
 # OS
 .DS_Store
