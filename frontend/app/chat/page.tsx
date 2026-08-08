@@ -480,6 +480,8 @@ export default function ChatPage() {
     [commit, feedTypewriter, flushTypewriter, refetchSessions, setSession, touch],
   );
 
+  const chatRunLoaded = Boolean(chatRun.data);
+
   // Stream recovery: after a reload / tab switch while a run is still in
   // flight, rebuild the exact UI from the durable event log and keep following
   // it live. The run id (and thus the log) survives in localStorage, so the
@@ -574,7 +576,13 @@ export default function ChatPage() {
     sessionId,
     sessionBelongsToAgent,
     activeRunId,
-    chatRun.data?.status,
+    // Deliberately keyed on *whether* the run detail has loaded, not on its
+    // status. Keying on status made every running→succeeded transition tear
+    // this effect down (cleanup aborts the SSE connection) and immediately
+    // re-run it, which opened a second follow stream for the same run — both
+    // replaying from after_seq=0, so every event was reduced twice. Terminal
+    // transitions are owned by the sibling chatRun effect instead.
+    chatRunLoaded,
     refetchMessages,
   ]);
 
