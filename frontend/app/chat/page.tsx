@@ -20,11 +20,20 @@ export default function ChatPage() {
     agentId,
     sessionId,
     activeRunId,
+    pendingModelIdByAgent,
     hydrated: chatHydrated,
     setAgent,
     setSession,
     setActiveRun,
+    setPendingModel,
   } = useChatStore();
+  // Survives reloads now, so the model the user picked still applies to the
+  // next message instead of silently falling back to the agent default.
+  const pendingSessionModelId = (agentId && pendingModelIdByAgent[agentId]) || "";
+  const setPendingSessionModelId = React.useCallback(
+    (modelId: string) => setPendingModel(agentId, modelId || null),
+    [agentId, setPendingModel],
+  );
   const chatRun = useChatRun(activeRunId);
 
   // Destructured so the identity stays stable across polls: callbacks that
@@ -38,7 +47,6 @@ export default function ChatPage() {
   const [agentReady, setAgentReady] = React.useState(false);
   const selectedSession = sessions.data?.find((s) => s.id === sessionId);
   const [draft, setDraft] = React.useState("");
-  const [pendingSessionModelId, setPendingSessionModelId] = React.useState("");
   const [messages, setMessages] = React.useState<UIMessage[]>([]);
   // Live message store mutated during a stream, flushed to React state via
   // requestAnimationFrame so per-token events coalesce into one render per
@@ -140,10 +148,6 @@ export default function ChatPage() {
     if (agentId !== resolvedAgentId) setAgent(resolvedAgentId);
     setAgentReady(true);
   }, [agentId, agents.data, chatHydrated, searchParams, setAgent]);
-
-  React.useEffect(() => {
-    setPendingSessionModelId("");
-  }, [agentId]);
 
   React.useEffect(() => {
     if (!agentReady || !sessions.isSuccess || !sessionId) return;
@@ -684,9 +688,12 @@ export default function ChatPage() {
           // (not on the reattach follow-stream); handle them, then delegate
           // everything else to the shared reducer used by both paths.
           if (ev.event === "session_start") {
-            // The backend has persisted the selected model's release on this
-            // session; subsequent requests use the normal pinned release.
-            setPendingSessionModelId("");
+            // Keep the model selection. Clearing it here made the choice
+            // apply to exactly one message and then silently revert to the
+            // agent default, which is the opposite of how ChatGPT/Claude
+            // behave: a picked model stays picked for subsequent messages.
+            // Sending it on every request also keeps the session's pinned
+            // release in step with the selection.
             setSession(ev.data.session_id);
             void refetchSessions();
             return;
