@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from datetime import timedelta
 from typing import Any, AsyncIterator
 
@@ -23,7 +24,10 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.core.observability.metrics import chat_event_bus_failures_total
+from app.core.observability.metrics import (
+    chat_event_bus_failures_total,
+    chat_event_fanout_seconds,
+)
 from app.db.base import gen_id, utc_now
 from app.db.session import SessionLocal
 from app.models.chat_run_event import ChatRunEvent
@@ -66,6 +70,30 @@ _BUS_SOCKET_TIMEOUT = 0.5
 _BUS_BREAKER_COOLDOWN = 30.0
 _bus_client: Any = None
 _bus_breaker_until = 0.0
+
+# --- Fan-out latency instrumentation ----------------------------------------
+# Records when each event was produced so a follower can report how long the
+# transport took to hand it over. Kept in-process (and therefore only populated
+# in inline mode) on purpose: putting the timestamp on the wire would leak a
+# measurement artefact into the client payload, and a wall-clock comparison
+# across processes would measure clock skew as much as latency.
+_RECORD_TIME_CAP = 10_000
+_record_times: dict[tuple[str, int], float] = {}
+
+
+def _note_record_time(run_id: str, seq: int) -> None:
+    if len(_record_times) < _RECORD_TIME_CAP:
+        _record_times[(run_id, seq)] = time.time()
+
+
+def observe_delivery(run_id: str, seq: Any, transport: str) -> None:
+    """Report fan-out latency for one delivered event. Safe to call blindly."""
+    if not isinstance(seq, int):
+        return
+    started = _record_times.pop((run_id, seq), None)
+    if started is None:
+        return  # produced in another process, or already observed
+    chat_event_fanout_seconds.labels(transport).observe(max(0.0, time.time() - started))
 
 
 def run_channel(org_id: str, run_id: str) -> str:
@@ -138,6 +166,12 @@ async def iter_run_events(
     pubsub = client.pubsub()
     await pubsub.subscribe(run_channel(org_id, run_id))
     try:
+        # Ready signal. The caller needs a way to know the subscription is live
+        # before it starts draining the durable log, but it must not have to
+        # pull a message to find out: the first message pulled would be
+        # consumed by that handshake and never delivered. Yielding immediately
+        # here keeps "subscribed" and "received an event" separate concerns.
+        yield None
         while True:
             message = await pubsub.get_message(
                 ignore_subscribe_messages=True, timeout=idle_tick
@@ -212,6 +246,7 @@ class ChatEventRecorder:
         # assigned above, rows are appended in that order, and ``_flush`` holds
         # ``_flush_lock`` while inserting a batch.
         self._pending.append(row)
+        _note_record_time(self.run_id, seq)
         # Fan out before the database round trip: the log write is what makes
         # the event durable, but followers should not wait for it.
         await publish_run_event(
