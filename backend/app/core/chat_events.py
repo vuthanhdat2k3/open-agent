@@ -15,12 +15,15 @@ until the run reaches a terminal state.
 from __future__ import annotations
 
 import asyncio
+import json
 from datetime import timedelta
-from typing import Any
+from typing import Any, AsyncIterator
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
+from app.core.observability.metrics import chat_event_bus_failures_total
 from app.db.base import gen_id, utc_now
 from app.db.session import SessionLocal
 from app.models.chat_run_event import ChatRunEvent
@@ -47,6 +50,114 @@ _PROGRESS_MIN_INTERVAL = 1.0
 _EVENT_BATCH_SIZE = 8
 _EVENT_BATCH_DELAY = 0.025
 _LIVENESS_INTERVAL = 15.0
+
+# --- Live event bus ---------------------------------------------------------
+# The durable log above is what makes a reload recoverable, but reading it back
+# by polling is what made streaming feel laggy: an event was only visible once
+# a follower's next poll came around. The bus below fans events out the moment
+# they are produced; the log stays authoritative for replay and as the fallback
+# transport when the bus is unavailable.
+#
+# Publishing must never slow the agent loop down. If Redis is unreachable an
+# `await publish` would otherwise pay a connect timeout *per event*, so a
+# failure trips a short circuit breaker and every publish is skipped (silently
+# degrading to the polling path) until it expires.
+_BUS_SOCKET_TIMEOUT = 0.5
+_BUS_BREAKER_COOLDOWN = 30.0
+_bus_client: Any = None
+_bus_breaker_until = 0.0
+
+
+def run_channel(org_id: str, run_id: str) -> str:
+    """Channel name for one run. Scoped by org so a guessed run id is inert."""
+    return f"chat:events:{org_id}:{run_id}"
+
+
+def _monotonic() -> float:
+    try:
+        return asyncio.get_running_loop().time()
+    except RuntimeError:
+        return 0.0
+
+
+def _bus_available() -> bool:
+    return _monotonic() >= _bus_breaker_until
+
+
+def _trip_breaker(operation: str) -> None:
+    global _bus_breaker_until, _bus_client
+    chat_event_bus_failures_total.labels(operation).inc()
+    _bus_breaker_until = _monotonic() + _BUS_BREAKER_COOLDOWN
+    # Drop the client so the next attempt after the cooldown reconnects instead
+    # of reusing a connection that is already known to be broken.
+    _bus_client = None
+
+
+async def _get_bus_client() -> Any:
+    """Lazily build the shared Redis client used for pub/sub fan-out."""
+    global _bus_client
+    if _bus_client is not None:
+        return _bus_client
+    from redis.asyncio import from_url
+
+    _bus_client = from_url(
+        get_settings().redis_url,
+        decode_responses=True,
+        socket_timeout=_BUS_SOCKET_TIMEOUT,
+        socket_connect_timeout=_BUS_SOCKET_TIMEOUT,
+    )
+    return _bus_client
+
+
+async def publish_run_event(org_id: str, run_id: str, payload: dict[str, Any]) -> None:
+    """Fan one event out to live followers. Never raises, never blocks for long."""
+    if not _bus_available():
+        return
+    try:
+        client = await _get_bus_client()
+        await asyncio.wait_for(
+            client.publish(run_channel(org_id, run_id), json.dumps(payload)),
+            timeout=_BUS_SOCKET_TIMEOUT,
+        )
+    except asyncio.CancelledError:
+        raise
+    except Exception:  # noqa: BLE001
+        _trip_breaker("publish")
+
+
+async def iter_run_events(
+    org_id: str, run_id: str, idle_tick: float = _LIVENESS_INTERVAL
+) -> AsyncIterator[dict[str, Any] | None]:
+    """Yield live events for one run, or ``None`` every ``idle_tick`` seconds.
+
+    The ``None`` ticks let the caller emit an SSE heartbeat and re-check the
+    task status (crashed-worker detection) without needing its own timer. Raises
+    on subscription failure so the caller can fall back to polling.
+    """
+    client = await _get_bus_client()
+    pubsub = client.pubsub()
+    await pubsub.subscribe(run_channel(org_id, run_id))
+    try:
+        while True:
+            message = await pubsub.get_message(
+                ignore_subscribe_messages=True, timeout=idle_tick
+            )
+            if message is None:
+                yield None
+                continue
+            raw = message.get("data")
+            if not raw:
+                continue
+            try:
+                yield json.loads(raw)
+            except (TypeError, ValueError):
+                continue
+    finally:
+        try:
+            await pubsub.unsubscribe(run_channel(org_id, run_id))
+            await pubsub.aclose()
+        except Exception:  # noqa: BLE001
+            pass
 
 
 class ChatEventRecorder:
@@ -101,6 +212,11 @@ class ChatEventRecorder:
         # assigned above, rows are appended in that order, and ``_flush`` holds
         # ``_flush_lock`` while inserting a batch.
         self._pending.append(row)
+        # Fan out before the database round trip: the log write is what makes
+        # the event durable, but followers should not wait for it.
+        await publish_run_event(
+            self.org_id, self.run_id, {"seq": seq, "event": event, "data": data}
+        )
         if len(self._pending) >= _EVENT_BATCH_SIZE:
             await self._flush()
         elif self._flush_task is None or self._flush_task.done():

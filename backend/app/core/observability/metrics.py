@@ -63,6 +63,23 @@ quota_active_run_leases = Gauge(
     "Last observed active run lease count",
 )
 
+# --- Chat event bus ---------------------------------------------------------
+# Live chat streaming fans out over Redis pub/sub with the durable event log as
+# the replay/fallback path. When the bus fails the stream degrades to database
+# polling, which is correct but adds latency — so the failure has to be visible
+# in metrics rather than only showing up as a user complaint about lag.
+# `operation` is bounded: publish | subscribe.
+chat_event_bus_failures_total = Counter(
+    "chat_event_bus_failures_total",
+    "Chat event bus (Redis pub/sub) failures by operation",
+    ["operation"],
+)
+chat_event_stream_transport_total = Counter(
+    "chat_event_stream_transport_total",
+    "Chat event stream connections by transport actually used",
+    ["transport"],  # pubsub | polling
+)
+
 # --- Customer Intelligence (M6) ---------------------------------------------
 # Bounded label sets on purpose: `result` and `trigger` are low cardinality.
 # Never include the tenant/org id or the connection id here - CI syncs happen per
