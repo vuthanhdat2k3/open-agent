@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from typing import AsyncIterator
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
@@ -10,7 +11,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.v1.sse import format_sse
 from app.config import get_settings
 from app.core.agent_loop import _delete_trailing_user_message
-from app.core.chat_events import TERMINAL_EVENTS, list_events
+from app.core.chat_events import TERMINAL_EVENTS, iter_run_events, list_events
+from app.core.observability.metrics import (
+    chat_event_bus_failures_total,
+    chat_event_stream_transport_total,
+)
 from app.core.quota.dependencies import agent_run_admission
 from app.core.workflow.queue import enqueue_chat_run
 from app.db.base import gen_id, utc_now
@@ -237,6 +242,84 @@ async def stream_chat_run_events(
     async def gen():
         last = after_seq
         terminal_seen = False
+
+        async def drain_log() -> AsyncIterator[str]:
+            """Emit everything already durable past ``last``."""
+            nonlocal last, terminal_seen
+            rows = await list_events(db, run_id, org_id, last)
+            for r in rows:
+                last = r.seq
+                if r.event in TERMINAL_EVENTS:
+                    terminal_seen = True
+                yield format_sse({"event": r.event, "data": {"seq": r.seq, **(r.data or {})}})
+
+        async def task_is_over() -> bool:
+            async with SessionLocal() as s:
+                status = (
+                    await s.execute(
+                        select(Task.status).where(
+                            Task.root_run_id == run_id, Task.org_id == org_id
+                        )
+                    )
+                ).scalar()
+            return status in TERMINAL_STATUSES
+
+        # --- Fast path: live fan-out over the event bus ---------------------
+        # Subscribe *before* draining the log so an event produced during the
+        # drain is buffered by the subscription instead of falling in the gap
+        # between the two. Duplicates are then filtered by seq.
+        subscription = None
+        try:
+            subscription = iter_run_events(org_id, run_id)
+            await subscription.__anext__()  # establishes the subscription
+        except StopAsyncIteration:
+            subscription = None
+        except Exception:  # noqa: BLE001
+            chat_event_bus_failures_total.labels("subscribe").inc()
+            subscription = None
+
+        if subscription is not None:
+            chat_event_stream_transport_total.labels("pubsub").inc()
+            try:
+                async for chunk in drain_log():
+                    yield chunk
+                if terminal_seen:
+                    return
+                if await task_is_over():
+                    async for chunk in drain_log():
+                        yield chunk
+                    return
+                async for message in subscription:
+                    if await request.is_disconnected():
+                        return
+                    if message is None:
+                        # Idle tick: keep proxies from closing the connection and
+                        # notice a worker that died without writing a terminal event.
+                        if await task_is_over():
+                            async for chunk in drain_log():
+                                yield chunk
+                            return
+                        yield ": heartbeat\n\n"
+                        continue
+                    seq = message.get("seq")
+                    if isinstance(seq, int):
+                        if seq <= last:
+                            continue  # already delivered by the drain above
+                        last = seq
+                    event = str(message.get("event") or "message")
+                    yield format_sse(
+                        {"event": event, "data": {"seq": seq, **(message.get("data") or {})}}
+                    )
+                    if event in TERMINAL_EVENTS:
+                        return
+                return
+            finally:
+                await subscription.aclose()
+
+        # --- Fallback: poll the durable log --------------------------------
+        # Reached when the bus is unavailable. Slower, but chat keeps working;
+        # the transport counter above makes the degradation visible.
+        chat_event_stream_transport_total.labels("polling").inc()
         idle_rounds = 0
         while True:
             # Client went away (reload / Stop) — stop polling the DB.
@@ -258,23 +341,13 @@ async def stream_chat_run_events(
             # (crashed worker); checking it on every idle round doubles the
             # query cost of a tight poll for no benefit.
             if idle_rounds % _STATUS_CHECK_EVERY_N_IDLE_ROUNDS == 0:
-                async with SessionLocal() as s:
-                    status = (
-                        await s.execute(
-                            select(Task.status).where(
-                                Task.root_run_id == run_id, Task.org_id == org_id
-                            )
-                        )
-                    ).scalar()
-                if status in TERMINAL_STATUSES:
+                if await task_is_over():
                     return  # log fully drained above; run is over
             idle_rounds += 1
             # Back off gently while the run is quiet, but keep the ceiling low:
             # a live run that has not emitted yet is the normal state during
             # provider warm-up / prompt processing, and this sleep is exactly
-            # how long the *first* token then sits in the log unread. A 2s
-            # ceiling here made time-to-first-token swing by up to ~2s
-            # depending on where the timer happened to land.
+            # how long the *first* token then sits in the log unread.
             await asyncio.sleep(min(_IDLE_POLL_CEILING_SECONDS, 0.05 * (2**idle_rounds)))
             yield ": heartbeat\n\n"
 
