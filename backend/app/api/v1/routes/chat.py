@@ -11,7 +11,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.v1.sse import format_sse
 from app.config import get_settings
 from app.core.agent_loop import _delete_trailing_user_message
-from app.core.chat_events import TERMINAL_EVENTS, iter_run_events, list_events
+from app.core.chat_events import (
+    TERMINAL_EVENTS,
+    iter_run_events,
+    list_events,
+    observe_delivery,
+)
 from app.core.observability.metrics import (
     chat_event_bus_failures_total,
     chat_event_stream_transport_total,
@@ -249,6 +254,7 @@ async def stream_chat_run_events(
             rows = await list_events(db, run_id, org_id, last)
             for r in rows:
                 last = r.seq
+                observe_delivery(run_id, r.seq, "polling")
                 if r.event in TERMINAL_EVENTS:
                     terminal_seen = True
                 yield format_sse({"event": r.event, "data": {"seq": r.seq, **(r.data or {})}})
@@ -271,7 +277,8 @@ async def stream_chat_run_events(
         subscription = None
         try:
             subscription = iter_run_events(org_id, run_id)
-            await subscription.__anext__()  # establishes the subscription
+            # Consumes only the ready signal, never a real event.
+            await subscription.__anext__()
         except StopAsyncIteration:
             subscription = None
         except Exception:  # noqa: BLE001
@@ -306,6 +313,7 @@ async def stream_chat_run_events(
                         if seq <= last:
                             continue  # already delivered by the drain above
                         last = seq
+                    observe_delivery(run_id, seq, "pubsub")
                     event = str(message.get("event") or "message")
                     yield format_sse(
                         {"event": event, "data": {"seq": seq, **(message.get("data") or {})}}
@@ -328,6 +336,7 @@ async def stream_chat_run_events(
             rows = await list_events(db, run_id, org_id, last)
             for r in rows:
                 last = r.seq
+                observe_delivery(run_id, r.seq, "polling")
                 if r.event in TERMINAL_EVENTS:
                     terminal_seen = True
                 yield format_sse({"event": r.event, "data": {"seq": r.seq, **(r.data or {})}})

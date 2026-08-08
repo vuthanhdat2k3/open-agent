@@ -79,6 +79,18 @@ chat_event_stream_transport_total = Counter(
     "Chat event stream connections by transport actually used",
     ["transport"],  # pubsub | polling
 )
+# Time from the agent loop recording an event to a follower actually holding it,
+# labelled by the transport that delivered it. This deliberately excludes model
+# latency: it starts at record(), so a slow first token does not inflate it and
+# the pubsub-vs-polling comparison stays apples-to-apples. Buckets are ms-scale
+# because pubsub should land under ~10ms while polling is bounded by its poll
+# interval (25ms active, up to 250ms idle).
+chat_event_fanout_seconds = Histogram(
+    "chat_event_fanout_seconds",
+    "Seconds from recording a chat event to delivering it to a follower",
+    ["transport"],
+    buckets=(0.0005, 0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0),
+)
 
 # --- Customer Intelligence (M6) ---------------------------------------------
 # Bounded label sets on purpose: `result` and `trigger` are low cardinality.
