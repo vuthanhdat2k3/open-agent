@@ -111,6 +111,10 @@ class Settings(BaseSettings):
     # Self-hosted SearXNG metasearch instance backing the web_search tool.
     # Empty string disables it and falls back to the DuckDuckGo HTML scrape.
     searxng_url: str = "http://searxng:8080"
+    # Self-hosted crawl4ai instance (JS-rendering crawler) backing web_fetch.
+    # Empty string disables it and falls back to the plain httpx GET.
+    crawler_url: str = "http://crawler:11235"
+    crawler_api_token: str = ""
     # Hard per-branch timeout for a single research call.
     ci_research_timeout_s: float = 30.0
     # Upper bound on persisted research sources per case (rate-limit guard).
