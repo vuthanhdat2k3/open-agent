@@ -78,7 +78,14 @@ export function ChatThread({
         </div>
       </CardHeader>
 
-      <CardContent ref={scrollHostRef} onScroll={onThreadScroll} className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
+      <CardContent
+        ref={scrollHostRef}
+        onScroll={onThreadScroll}
+        role="log"
+        aria-live="polite"
+        aria-relevant="additions text"
+        className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4"
+      >
         {messages.length === 0 ? (
           <ChatEmptyState currentAgent={currentAgent} effectiveModel={effectiveModel} />
         ) : (

@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.sse import format_sse
 from app.config import get_settings
-from app.core.agent_loop import _delete_trailing_user_message
+from app.core.agent_loop import fail_chat_run
 from app.core.chat_events import (
     TERMINAL_EVENTS,
     iter_run_events,
@@ -81,11 +81,7 @@ async def run_chat_detached(payload: dict) -> None:
                 approval_resume_id=payload.get("approval_resume_id"),
             )
         except Exception as exc:  # noqa: BLE001
-            task.status = "failed"
-            task.result = str(exc)
-            task.finished_at = utc_now()
-            await _delete_trailing_user_message(db, (task.progress or {}).get("session_id"))
-            await db.commit()
+            await fail_chat_run(db, task, exc)
         finally:
             if _ACTIVE_CHAT_TASKS.get(request.run_id) is active_task:
                 _ACTIVE_CHAT_TASKS.pop(request.run_id, None)
@@ -312,6 +308,18 @@ async def stream_chat_run_events(
                     if isinstance(seq, int):
                         if seq <= last:
                             continue  # already delivered by the drain above
+                        if seq > last + 1:
+                            # Gap: something between `last` and `seq` never
+                            # reached this subscriber live (e.g. the circuit
+                            # breaker tripped for one publish). The durable log
+                            # is written regardless of bus health, so backfill
+                            # from it before trusting this message.
+                            async for chunk in drain_log():
+                                yield chunk
+                            if terminal_seen:
+                                return
+                            if seq <= last:
+                                continue  # recovered by the backfill above
                         last = seq
                     observe_delivery(run_id, seq, "pubsub")
                     event = str(message.get("event") or "message")
@@ -319,6 +327,13 @@ async def stream_chat_run_events(
                         {"event": event, "data": {"seq": seq, **(message.get("data") or {})}}
                     )
                     if event in TERMINAL_EVENTS:
+                        # The durable write can lag the publish by design (fan-out
+                        # never waits on it — see ChatEventRecorder.record), so a
+                        # straggler event may not be durable yet even though the
+                        # run just finished. One last drain reconciles before
+                        # closing so nothing is silently lost.
+                        async for chunk in drain_log():
+                            yield chunk
                         return
                 return
             finally:

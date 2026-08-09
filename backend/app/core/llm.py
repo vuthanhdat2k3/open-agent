@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
@@ -7,11 +8,26 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from app.models.provider import Provider
 
-from openai import AsyncOpenAI
+from openai import (
+    APIConnectionError,
+    APITimeoutError,
+    AsyncOpenAI,
+    InternalServerError,
+    RateLimitError,
+)
 
 from app.config import get_settings
 
 settings = get_settings()
+
+# Errors worth one retry because they are about the connection/provider load,
+# not the request itself — retrying a bad request would just fail the same
+# way again slower. Only applied before any chunk has been yielded (see
+# `LLMClient.stream`): once content has streamed to the caller, retrying would
+# re-run the whole prompt and duplicate/conflict with what was already sent.
+_TRANSIENT_LLM_ERRORS = (APIConnectionError, APITimeoutError, RateLimitError, InternalServerError)
+_STREAM_CONNECT_RETRIES = 2
+_STREAM_CONNECT_BACKOFF_SECONDS = 0.5
 
 
 def resolve_api_key(provider: Provider) -> str:
@@ -99,12 +115,24 @@ class LLMClient:
         if tools:
             kwargs["tools"] = tools
             kwargs["tool_choice"] = "auto"
-        try:
-            stream = await self._client.chat.completions.create(stream=True, **kwargs)
-        except TypeError:
-            # Servers that are not fully OpenAI-compatible reject stream_options.
-            kwargs.pop("stream_options", None)
-            stream = await self._client.chat.completions.create(stream=True, **kwargs)
+
+        async def _open() -> Any:
+            try:
+                return await self._client.chat.completions.create(stream=True, **kwargs)
+            except TypeError:
+                # Servers that are not fully OpenAI-compatible reject stream_options.
+                kwargs.pop("stream_options", None)
+                return await self._client.chat.completions.create(stream=True, **kwargs)
+
+        stream = None
+        for attempt in range(_STREAM_CONNECT_RETRIES + 1):
+            try:
+                stream = await _open()
+                break
+            except _TRANSIENT_LLM_ERRORS:
+                if attempt == _STREAM_CONNECT_RETRIES:
+                    raise
+                await asyncio.sleep(_STREAM_CONNECT_BACKOFF_SECONDS * (attempt + 1))
 
         usage: dict[str, int] | None = None
         finish_reasons: list[str] = []

@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
-
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.agent_loop import run_agent_loop, stream_agent
+from app.core.agent_loop import run_agent_loop
 from app.db.base import utc_now
 from app.models.agent import Agent
 from app.models.session import Session
@@ -108,29 +106,6 @@ class ChatService:
         await self.db.commit()
         await self.db.refresh(task)
         return session, agent, task
-
-    async def stream(
-        self,
-        org_id: str,
-        request: ChatRequest,
-        user_id: str | None = None,
-        root_run_id: str | None = None,
-        current_task_id: str | None = None,
-        approval_resume_id: str | None = None,
-    ) -> AsyncIterator[dict]:
-        session = await self.ensure_session(org_id, request, user_id)
-        agent = await self._load_agent(org_id, request.agent_id, session.agent_release_id)
-        async for ev in stream_agent(
-            agent,
-            request.message,
-            self.db,
-            session.id,
-            root_run_id=root_run_id or request.run_id,
-            current_task_id=current_task_id,
-            user_id=user_id,
-            approval_resume_id=approval_resume_id,
-        ):
-            yield ev
 
     async def run(
         self,

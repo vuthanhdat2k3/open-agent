@@ -81,7 +81,7 @@ export default function ChatPage() {
     setStreamingState(value);
   }, []);
   const [phase, setPhase] = React.useState<string>("");
-  const [debug, setDebug] = React.useState(true);
+  const [debug, setDebug] = React.useState(false);
   const [connectionState, setConnectionState] = React.useState<ConnectionState>("connected");
   const bottomRef = React.useRef<HTMLDivElement>(null);
   // Stable id of the in-flight assistant message for the *current* run. `send`
