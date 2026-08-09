@@ -86,7 +86,7 @@ export function ChatThread({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex items-center gap-2 border-b border-border/60 px-2 py-1.5 sm:px-4">
+      <div className="sticky top-0 z-10 flex shrink-0 items-center gap-2 border-b border-border/60 bg-background px-2 py-1.5 sm:px-4">
         <ChatHeaderControls
           agents={agents}
           models={models}
