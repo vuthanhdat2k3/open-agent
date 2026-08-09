@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { CalendarDays, CheckCircle2, HardDrive, Loader2, Mail, Unplug } from "lucide-react";
+import { CalendarDays, HardDrive, Loader2, Mail, Plug, Unplug } from "lucide-react";
 import { api } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,8 +19,12 @@ interface Connection {
   has_credentials: boolean;
 }
 
+// Backend providers: "google" for calendar/drive, "gmail" for email
+// specifically (future-proofed for other email providers). Both map to a
+// proper-cased display label here.
 const providerLabel: Record<string, string> = {
   google: "Google",
+  gmail: "Gmail",
 };
 
 // Connect/disconnect Google Drive, Calendar, and Email OAuth connectors.
@@ -86,19 +90,29 @@ export function IntegrationsPanel({ withHeader = true }: { withHeader?: boolean 
 
   function ConnectionCard({ kind, item }: { kind: "email" | "calendar" | "drive"; item: Connection }) {
     return (
-      <div className="flex items-center justify-between rounded-xl border border-border/70 bg-background/40 p-4">
+      <div className="flex flex-col gap-3 rounded-xl border border-border/70 bg-background/40 p-4">
         <div className="flex min-w-0 items-center gap-3">
-          <CheckCircle2 className="h-5 w-5 shrink-0 text-success" />
-          <div className="min-w-0">
-            <p className="truncate font-medium">{providerLabel[item.provider] ?? item.provider}</p>
-            <p className="truncate text-sm text-muted-foreground">{item.account_email}</p>
+          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-success/10 text-success">
+            <Plug className="h-4 w-4" aria-hidden="true" />
           </div>
-          <Badge variant="outline">{item.status}</Badge>
+          <div className="min-w-0">
+            <p className="font-medium">{providerLabel[item.provider] ?? item.provider}</p>
+            <p className="truncate text-sm text-muted-foreground" title={item.account_email}>{item.account_email}</p>
+          </div>
         </div>
-        <Button variant="ghost" size="sm" onClick={() => setDisconnectRequest({ kind, id: item.id, label: item.account_email })} disabled={busy === item.id} aria-label={`Disconnect ${item.account_email}`}>
-          {busy === item.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Unplug className="h-4 w-4" />}
-          <span className="sr-only">Disconnect</span>
-        </Button>
+        <div className="flex items-center justify-between gap-2">
+          <Badge variant="outline" className="border-success/40 text-success">Connected</Badge>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="gap-1.5 text-muted-foreground hover:text-destructive"
+            onClick={() => setDisconnectRequest({ kind, id: item.id, label: item.account_email })}
+            disabled={busy === item.id}
+          >
+            {busy === item.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Unplug className="h-4 w-4" />}
+            Disconnect
+          </Button>
+        </div>
       </div>
     );
   }
@@ -106,9 +120,14 @@ export function IntegrationsPanel({ withHeader = true }: { withHeader?: boolean 
   function ConnectCard({ kind, provider }: { kind: "email" | "calendar" | "drive"; provider: "google" }) {
     const key = `${kind}:${provider}`;
     return (
-      <Button variant="outline" className="h-auto justify-start gap-3 p-4 text-left" onClick={() => connect(kind, provider)} disabled={busy === key}>
-        {busy === key ? <Loader2 className="h-5 w-5 animate-spin" /> : kind === "email" ? <Mail className="h-5 w-5" /> : kind === "calendar" ? <CalendarDays className="h-5 w-5" /> : <HardDrive className="h-5 w-5" />}
-        <span>Connect {providerLabel[provider]}</span>
+      <Button variant="outline" className="h-auto w-full justify-start gap-3 p-4 text-left" onClick={() => connect(kind, provider)} disabled={busy === key}>
+        <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground">
+          {busy === key ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plug className="h-4 w-4" />}
+        </div>
+        <div>
+          <p className="font-medium text-foreground">Connect {providerLabel[provider]}</p>
+          <p className="text-sm text-muted-foreground">Not connected</p>
+        </div>
       </Button>
     );
   }
@@ -119,12 +138,30 @@ export function IntegrationsPanel({ withHeader = true }: { withHeader?: boolean 
 
   return (
     <div className="space-y-8">
-      {withHeader && <PageHeader icon={CalendarDays} title="Integrations" description="Connect work accounts through encrypted, approval-aware OAuth connectors." />}
+      {withHeader && <PageHeader icon={Plug} title="Integrations" description="Connect work accounts through encrypted, approval-aware OAuth connectors." />}
       {error && <Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert>}
-      {loading ? <LoadingSkeleton variant="grid" /> : <div className="grid gap-6 lg:grid-cols-2">
-        <Card><CardHeader><CardTitle className="flex items-center gap-2"><Mail className="h-5 w-5 text-primary" aria-hidden="true" />Email accounts</CardTitle></CardHeader><CardContent className="space-y-3">{connectedEmail ? <ConnectionCard kind="email" item={connectedEmail} /> : <ConnectCard kind="email" provider="google" />}</CardContent></Card>
-        <Card><CardHeader><CardTitle className="flex items-center gap-2"><CalendarDays className="h-5 w-5 text-primary" aria-hidden="true" />Calendar accounts</CardTitle></CardHeader><CardContent className="space-y-3">{connectedCalendar ? <ConnectionCard kind="calendar" item={connectedCalendar} /> : <ConnectCard kind="calendar" provider="google" />}</CardContent></Card>
-        <Card><CardHeader><CardTitle className="flex items-center gap-2"><HardDrive className="h-5 w-5 text-primary" aria-hidden="true" />Google Drive</CardTitle></CardHeader><CardContent className="space-y-3"><p className="text-sm leading-relaxed text-muted-foreground">List, read, create, update and delete files through the approval-gated Drive connector.</p>{connectedDrive ? <ConnectionCard kind="drive" item={connectedDrive} /> : <ConnectCard kind="drive" provider="google" />}</CardContent></Card>
+      {loading ? <LoadingSkeleton variant="grid" /> : <div className="grid gap-6 lg:grid-cols-3">
+        <Card>
+          <CardHeader><CardTitle className="flex items-center gap-2"><Mail className="h-5 w-5 text-primary" aria-hidden="true" />Email</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm leading-relaxed text-muted-foreground">Read and organize inbound email through the approval-gated connector.</p>
+            {connectedEmail ? <ConnectionCard kind="email" item={connectedEmail} /> : <ConnectCard kind="email" provider="google" />}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader><CardTitle className="flex items-center gap-2"><CalendarDays className="h-5 w-5 text-primary" aria-hidden="true" />Calendar</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm leading-relaxed text-muted-foreground">Read upcoming events and match them to customers or partners.</p>
+            {connectedCalendar ? <ConnectionCard kind="calendar" item={connectedCalendar} /> : <ConnectCard kind="calendar" provider="google" />}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader><CardTitle className="flex items-center gap-2"><HardDrive className="h-5 w-5 text-primary" aria-hidden="true" />Google Drive</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm leading-relaxed text-muted-foreground">List, read, create, update and delete files through the approval-gated connector.</p>
+            {connectedDrive ? <ConnectionCard kind="drive" item={connectedDrive} /> : <ConnectCard kind="drive" provider="google" />}
+          </CardContent>
+        </Card>
       </div>}
       <AlertDialog open={Boolean(disconnectRequest)} onOpenChange={(open) => !open && setDisconnectRequest(null)}>
         <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Disconnect {disconnectRequest?.label}?</AlertDialogTitle><AlertDialogDescription>OpenAgent will stop using this account for the selected connector. You can reconnect it later.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => disconnectRequest && void performDisconnect(disconnectRequest.kind, disconnectRequest.id)}>Disconnect</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
