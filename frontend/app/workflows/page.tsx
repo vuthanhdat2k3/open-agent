@@ -8,11 +8,6 @@ import {
   Save,
   FolderOpen,
   FilePlus,
-  Box,
-  Bot,
-  Wrench,
-  GitMerge,
-  LogOut,
   RefreshCw,
   Sparkles,
 } from "lucide-react";
@@ -24,8 +19,11 @@ import { Input, Label, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { PageHeader } from "@/components/page-header";
 import { ErrorState, LoadingSkeleton } from "@/components/shared";
-import { WorkflowNodeCard, type GNode } from "@/components/workflows/workflow-node-card";
+import { WorkflowNodePalette } from "@/components/workflows/workflow-node-palette";
+import { WorkflowCanvas } from "@/components/workflows/workflow-canvas";
+import { WorkflowNodeConfig } from "@/components/workflows/workflow-node-config";
 import { WorkflowConsole, type WorkflowLogItem } from "@/components/workflows/workflow-console";
+import type { GraphEdge, GraphNode } from "@/types";
 import {
   Dialog,
   DialogClose,
@@ -34,23 +32,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 
-type GEdge = { from_: string; to: string; condition?: string };
-type DeleteRequest =
-  | { type: "node"; id: string; name: string }
-  | { type: "edge"; index: number };
-
-function layout(nodes: GNode[], edges: GEdge[]) {
+function layout(nodes: GraphNode[], edges: GraphEdge[]) {
   const adj: Record<string, string[]> = {};
   edges.forEach((e) => (adj[e.from_] = adj[e.from_] || []).push(e.to));
   const layer: Record<string, number> = {};
@@ -67,7 +50,7 @@ function layout(nodes: GNode[], edges: GEdge[]) {
       }
     });
   }
-  const perLayer: Record<number, GNode[]> = {};
+  const perLayer: Record<number, GraphNode[]> = {};
   nodes.forEach((n) => {
     const l = layer[n.id] ?? 0;
     (perLayer[l] = perLayer[l] || []).push(n);
@@ -75,7 +58,7 @@ function layout(nodes: GNode[], edges: GEdge[]) {
   // Vertical flow: BFS depth -> row (y), index within a row -> column (x).
   const pos: Record<string, { x: number; y: number }> = {};
   Object.entries(perLayer).forEach(([l, ns]) => {
-    ns.forEach((n, i) => (pos[n.id] = { x: 40 + i * 200, y: 40 + +l * 140 }));
+    ns.forEach((n, i) => (pos[n.id] = { x: 40 + i * 240, y: 40 + +l * 160 }));
   });
   return pos;
 }
@@ -104,82 +87,41 @@ export default function WorkflowsPage() {
   const [aiResult, setAiResult] = React.useState<{
     name: string;
     description: string;
-    graph: { nodes: GNode[]; edges: GEdge[] };
+    graph: { nodes: GraphNode[]; edges: GraphEdge[] };
   } | null>(null);
   const [input, setInput] = React.useState("");
-  const [newEdge, setNewEdge] = React.useState<GEdge>({ from_: "", to: "" });
   const [running, setRunning] = React.useState(false);
   const [nodeStatus, setNodeStatus] = React.useState<Record<string, string>>({});
   const [output, setOutput] = React.useState("");
   const [logs, setLogs] = React.useState<WorkflowLogItem[]>([]);
   const [editId, setEditId] = React.useState<string | null>(null);
 
-  const canvasRef = React.useRef<HTMLDivElement>(null);
-  const [draggingNode, setDraggingNode] = React.useState<{
-    id: string;
-    offsetX: number;
-    offsetY: number;
-  } | null>(null);
+  const selectedNode = nodes.find((n) => n.id === selectedNodeId) || null;
 
-  const [connectingFromId, setConnectingFromId] = React.useState<string | null>(null);
-  const [mousePosition, setMousePosition] = React.useState<{ x: number; y: number }>({ x: 0, y: 0 });
-  const [deleteRequest, setDeleteRequest] = React.useState<DeleteRequest | null>(null);
-
-  const pos = React.useMemo(() => {
-    const layoutPos = layout(nodes, edges);
-    const p: Record<string, { x: number; y: number }> = {};
-    nodes.forEach((n) => {
-      p[n.id] = n.position || layoutPos[n.id] || { x: 40, y: 40 };
-    });
-    return p;
-  }, [nodes, edges]);
-
+  // Fade a node/edge's "done" status back to idle a few seconds after it
+  // finishes, so the running-state highlight reads as transient feedback
+  // rather than a permanent marker. Only applies while a run is actively
+  // streaming — restoring a past completed run's status (see the
+  // workflowRun.data effect below) should stay visible, not fade away.
+  const fadedNodeIdsRef = React.useRef<Set<string>>(new Set());
   React.useEffect(() => {
-    if (!draggingNode && !connectingFromId) return;
-
-    const handleGlobalMouseMove = (e: MouseEvent) => {
-      const rect = canvasRef.current?.getBoundingClientRect();
-      if (!rect) return;
-
-      const mouseX = e.clientX - rect.left;
-      const mouseY = e.clientY - rect.top;
-
-      if (draggingNode) {
-        setGraph(
-          nodes.map((n) => {
-            if (n.id === draggingNode.id) {
-              return {
-                ...n,
-                position: {
-                  x: Math.max(0, mouseX - draggingNode.offsetX),
-                  y: Math.max(0, mouseY - draggingNode.offsetY),
-                },
-              };
-            }
-            return n;
-          }),
-          edges
-        );
-      }
-
-      if (connectingFromId) {
-        setMousePosition({ x: mouseX, y: mouseY });
-      }
-    };
-
-    const handleGlobalMouseUp = () => {
-      setDraggingNode(null);
-      setConnectingFromId(null);
-    };
-
-    window.addEventListener("mousemove", handleGlobalMouseMove);
-    window.addEventListener("mouseup", handleGlobalMouseUp);
-
-    return () => {
-      window.removeEventListener("mousemove", handleGlobalMouseMove);
-      window.removeEventListener("mouseup", handleGlobalMouseUp);
-    };
-  }, [draggingNode, connectingFromId, nodes, edges, setGraph]);
+    if (!running) return;
+    const timers: number[] = [];
+    for (const [nodeId, status] of Object.entries(nodeStatus)) {
+      if (status !== "done" || fadedNodeIdsRef.current.has(nodeId)) continue;
+      fadedNodeIdsRef.current.add(nodeId);
+      const timer = window.setTimeout(() => {
+        setNodeStatus((s) => {
+          if (s[nodeId] !== "done") return s;
+          const next = { ...s };
+          delete next[nodeId];
+          return next;
+        });
+      }, 4000);
+      timers.push(timer);
+    }
+    return () => timers.forEach((t) => window.clearTimeout(t));
+  }, [nodeStatus, running]);
 
   React.useEffect(() => {
     if (nodes.length > 0 && !nodes.every((n) => n.position?.x != null)) {
@@ -192,10 +134,9 @@ export default function WorkflowsPage() {
     }
   }, [nodes, edges, setGraph]);
 
-  const addNode = (kind: GNode["kind"]) => {
+  const addNode = (kind: GraphNode["kind"], position: { x: number; y: number }) => {
     const id = `${kind}-${Math.random().toString(36).slice(2, 7)}`;
-    const count = nodes.length;
-    const node: GNode = {
+    const node: GraphNode = {
       id,
       kind,
       label: kind,
@@ -203,26 +144,17 @@ export default function WorkflowsPage() {
       merge_mode: kind === "merge" ? "all" : undefined,
       agent_id:
         kind === "agent" && agents.data?.length ? agents.data[0].id : undefined,
-      position: {
-        x: 60 + (count * 60) % 300,
-        y: 80 + (count * 40) % 200,
-      },
+      position,
     };
     setGraph([...nodes, node], edges);
     setSelectedNode(id);
   };
 
-  const updateNode = (patch: Partial<GNode>) => {
+  const updateNode = (patch: Partial<GraphNode>) => {
     setGraph(
       nodes.map((n) => (n.id === selectedNodeId ? { ...n, ...patch } : n)),
       edges,
     );
-  };
-
-  const addEdge = () => {
-    if (!newEdge.from_ || !newEdge.to) return;
-    setGraph(nodes, [...edges, { ...newEdge }]);
-    setNewEdge({ from_: "", to: "" });
   };
 
   const newWorkflow = () => {
@@ -287,7 +219,6 @@ export default function WorkflowsPage() {
     setLogs((previous) => (previous.length === 0 ? restoredLogs : previous));
   }, [workflowRun.data, setActiveRun]);
 
-
   const handleGenerate = async () => {
     if (!aiPrompt.trim() || !aiModelId) return;
     try {
@@ -330,6 +261,7 @@ export default function WorkflowsPage() {
     setRunning(true);
     setOutput("");
     setNodeStatus({});
+    fadedNodeIdsRef.current.clear();
     setLogs([]);
     try {
       await streamSSE(
@@ -442,83 +374,6 @@ export default function WorkflowsPage() {
     }
   };
 
-  const onNodeMouseDown = (e: React.MouseEvent, id: string) => {
-    const target = e.target as HTMLElement;
-    if (target.closest(".no-drag")) return;
-
-    e.preventDefault();
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect) return;
-
-    const node = nodes.find((n) => n.id === id);
-    if (!node) return;
-
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
-
-    const nodeX = node.position?.x ?? pos[id]?.x ?? 0;
-    const nodeY = node.position?.y ?? pos[id]?.y ?? 0;
-
-    setDraggingNode({
-      id,
-      offsetX: mouseX - nodeX,
-      offsetY: mouseY - nodeY,
-    });
-    setSelectedNode(id);
-  };
-
-  const onOutputPortMouseDown = (e: React.MouseEvent, sourceId: string) => {
-    e.stopPropagation();
-    e.preventDefault();
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect) return;
-
-    const node = nodes.find((n) => n.id === sourceId);
-    if (!node) return;
-
-    const nodeX = node.position?.x ?? pos[sourceId]?.x ?? 0;
-    const nodeY = node.position?.y ?? pos[sourceId]?.y ?? 0;
-
-    const portX = nodeX + 80;
-    const portY = nodeY + 70;
-
-    setConnectingFromId(sourceId);
-    setMousePosition({ x: portX, y: portY });
-  };
-
-  const onInputPortMouseUp = (e: React.MouseEvent, targetId: string) => {
-    e.stopPropagation();
-    if (connectingFromId && connectingFromId !== targetId) {
-      const exists = edges.some((edge) => edge.from_ === connectingFromId && edge.to === targetId);
-      if (!exists) {
-        setGraph(nodes, [...edges, { from_: connectingFromId, to: targetId }]);
-        toast.success("Connection added");
-      }
-    }
-    setConnectingFromId(null);
-  };
-
-  const deleteNode = (id: string) => {
-    const target = nodes.find((node) => node.id === id);
-    setDeleteRequest({ type: "node", id, name: target?.label || id });
-  };
-
-  const confirmDelete = () => {
-    if (!deleteRequest) return;
-    if (deleteRequest.type === "node") {
-      setGraph(
-        nodes.filter((node) => node.id !== deleteRequest.id),
-        edges.filter((edge) => edge.from_ !== deleteRequest.id && edge.to !== deleteRequest.id),
-      );
-      if (selectedNodeId === deleteRequest.id) setSelectedNode(null);
-      toast.success("Node deleted");
-    } else {
-      setGraph(nodes, edges.filter((_, index) => index !== deleteRequest.index));
-      toast.success("Connection deleted");
-    }
-    setDeleteRequest(null);
-  };
-
   return (
     <div className="space-y-6">
       <PageHeader
@@ -620,255 +475,61 @@ export default function WorkflowsPage() {
         }
       />
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-4 stagger">
-        <div className="rounded-xl border border-border/80 bg-card/50 p-4 space-y-4 backdrop-blur-xl shadow-3d-card">
-          <div className="space-y-2">
-            <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">Add node to canvas</Label>
-            <div className="space-y-1.5">
-              {(["input", "agent", "tool", "merge", "output"] as const).map((k) => {
-                const NodeIcon =
-                  k === "input" ? Box : k === "agent" ? Bot : k === "tool" ? Wrench : k === "merge" ? GitMerge : LogOut;
-                return (
-                  <Button key={k} variant="outline" className="w-full justify-start gap-2 text-xs py-2 active-tactile transition-transform" onClick={() => addNode(k)}>
-                    <NodeIcon className="h-3.5 w-3.5 text-primary" /> {k}
-                  </Button>
-                );
-              })}
-            </div>
+      <div className="space-y-3">
+        <div className="flex items-center gap-2 rounded-xl border border-border/80 bg-card/50 p-3 backdrop-blur-xl shadow-3d-card">
+          <div className="flex-1 space-y-1">
+            <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">
+              Workflow name
+            </Label>
+            <Input className="text-xs" value={wfName} onChange={(e) => setWfName(e.target.value)} placeholder="Workflow name" />
           </div>
-          
-          <div className="pt-2 border-t border-border/40 space-y-3">
-            <div>
-              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">Workflow details</Label>
-              <Input className="mt-1 text-xs" value={wfName} onChange={(e) => setWfName(e.target.value)} placeholder="Workflow name" />
-            </div>
-            
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">Run input</Label>
-              <Textarea className="min-h-[80px] text-xs resize-none" value={input} onChange={(e) => setInput(e.target.value)} placeholder="JSON or plain text input…" />
-              <Button className="w-full gap-2 active-tactile transition-transform text-xs" disabled={running} onClick={run}>
-                <Play className="h-3.5 w-3.5" /> {running ? "Running…" : "Run Workflow"}
-              </Button>
-            </div>
+          <div className="flex-[2] space-y-1">
+            <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">
+              Run input
+            </Label>
+            <Textarea
+              className="min-h-[38px] text-xs resize-none"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="JSON or plain text input…"
+            />
           </div>
+          <Button className="gap-2 active-tactile transition-transform self-end text-xs" disabled={running} onClick={run}>
+            <Play className="h-3.5 w-3.5" /> {running ? "Running…" : "Run Workflow"}
+          </Button>
         </div>
 
-        <div 
-          ref={canvasRef}
-          className="relative h-[500px] overflow-auto rounded-xl border border-border/80 bg-card/30 backdrop-blur-sm lg:col-span-2 shadow-inner-edge select-none cursor-grab active:cursor-grabbing"
-          style={{ 
-            backgroundImage: 'radial-gradient(hsl(var(--foreground) / 0.05) 1px, transparent 1px)', 
-            backgroundSize: '16px 16px' 
-          }}
-        >
-          <div className="absolute w-[2000px] h-[1200px] inset-0">
-            <svg className="pointer-events-none absolute inset-0 h-full w-full">
-              {edges.map((e, i) => {
-                const a = pos[e.from_];
-                const b = pos[e.to];
-                if (!a || !b) return null;
-                const x1 = a.x + 80;
-                const y1 = a.y + 70;
-                const x2 = b.x + 80;
-                const y2 = b.y;
-                const dy = Math.abs(y2 - y1) * 0.5;
-                const path = `M ${x1} ${y1} C ${x1} ${y1 + dy}, ${x2} ${y2 - dy}, ${x2} ${y2}`;
-                
-                const mx = (x1 + x2) / 2;
-                const my = (y1 + y2) / 2;
-
-                return (
-                  <g key={i} className="group pointer-events-auto">
-                    <path
-                      d={path}
-                      stroke="hsl(var(--primary) / 0.25)"
-                      strokeWidth={6}
-                      fill="none"
-                      className="opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-                    />
-                    <path
-                      d={path}
-                      stroke="hsl(var(--border))"
-                      strokeWidth={2}
-                      fill="none"
-                      className="transition-colors group-hover:stroke-primary"
-                    />
-                    <path
-                      d={path}
-                      stroke="transparent"
-                      strokeWidth={12}
-                      fill="none"
-                      className="cursor-pointer"
-                      onClick={() => setDeleteRequest({ type: "edge", index: i })}
-                    />
-                    <g
-                      role="button"
-                      tabIndex={0}
-                      aria-label={`Delete connection ${i + 1}`}
-                      className="cursor-pointer opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100"
-                      onClick={() => setDeleteRequest({ type: "edge", index: i })}
-                      onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setDeleteRequest({ type: "edge", index: i }); } }}
-                    >
-                      <circle cx={mx} cy={my} r={8} fill="hsl(var(--destructive))" />
-                      <line x1={mx - 3.5} y1={my - 3.5} x2={mx + 3.5} y2={my + 3.5} stroke="white" strokeWidth={1.5} />
-                      <line x1={mx + 3.5} y1={my - 3.5} x2={mx - 3.5} y2={my + 3.5} stroke="white" strokeWidth={1.5} />
-                    </g>
-                  </g>
-                );
-              })}
-
-              {connectingFromId && (
-                (() => {
-                  const source = pos[connectingFromId];
-                  if (!source) return null;
-                  const x1 = source.x + 80;
-                  const y1 = source.y + 70;
-                  const x2 = mousePosition.x;
-                  const y2 = mousePosition.y;
-                  const dy = Math.abs(y2 - y1) * 0.5;
-                  return (
-                    <path
-                      d={`M ${x1} ${y1} C ${x1} ${y1 + dy}, ${x2} ${y2 - dy}, ${x2} ${y2}`}
-                      stroke="hsl(var(--primary))"
-                      strokeWidth={2}
-                      strokeDasharray="4 4"
-                      fill="none"
-                    />
-                  );
-                })()
-              )}
-            </svg>
-
-            {nodes.map((n) => (
-              <WorkflowNodeCard
-                key={n.id}
-                node={n}
-                position={pos[n.id] || { x: 0, y: 0 }}
-                isSelected={selectedNodeId === n.id}
-                status={nodeStatus[n.id]}
-                connectingFromId={connectingFromId}
-                onNodeMouseDown={onNodeMouseDown}
-                onOutputPortMouseDown={onOutputPortMouseDown}
-                onInputPortMouseUp={onInputPortMouseUp}
-                onDeleteNode={deleteNode}
-              />
-            ))}
-          </div>
-        </div>
-
-        <div className="rounded-xl border border-border/80 bg-card/50 p-4 space-y-4 backdrop-blur-xl shadow-3d-card">
-          <div className="space-y-2">
-            <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">Node Config</Label>
-            {selectedNodeId ? (
-              <div className="space-y-3">
-                <div className="space-y-1">
-                  <span className="text-[10px] text-muted-foreground">Label name</span>
-                  <Input
-                    className="text-xs"
-                    value={nodes.find((n) => n.id === selectedNodeId)?.label || ""}
-                    onChange={(e) => updateNode({ label: e.target.value })}
-                    placeholder="Label name"
-                  />
-                </div>
-                {nodes.find((n) => n.id === selectedNodeId)?.kind === "agent" && (
-                  <div className="space-y-1">
-                    <span className="text-[10px] text-muted-foreground">Target Agent</span>
-                    <Select
-                      className="text-xs w-full"
-                      value={nodes.find((n) => n.id === selectedNodeId)?.agent_id || ""}
-                      onChange={(e) => updateNode({ agent_id: e.target.value })}
-                    >
-                      {agents.data?.map((a) => (
-                        <option key={a.id} value={a.id}>{a.name}</option>
-                      ))}
-                    </Select>
-                  </div>
-                )}
-                {nodes.find((n) => n.id === selectedNodeId)?.kind === "merge" && (
-                  <div className="space-y-1">
-                    <span className="text-[10px] text-muted-foreground">Merge logic</span>
-                    <Select
-                      className="text-xs w-full"
-                      value={nodes.find((n) => n.id === selectedNodeId)?.merge_mode || "all"}
-                      onChange={(e) => updateNode({ merge_mode: e.target.value as any })}
-                    >
-                      <option value="all">Wait all ancestors</option>
-                      <option value="any">Wait any ancestor</option>
-                    </Select>
-                  </div>
-                )}
-                {nodes.find((n) => n.id === selectedNodeId)?.kind === "tool" && (
-                  <div className="space-y-1">
-                    <span className="text-[10px] text-muted-foreground">Tool to invoke</span>
-                    <Input
-                      className="text-xs"
-                      value={nodes.find((n) => n.id === selectedNodeId)?.config.tool || ""}
-                      onChange={(e) => updateNode({ config: { tool: e.target.value } })}
-                      placeholder="e.g. read_attachment"
-                    />
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="text-xs text-muted-foreground/80 py-4 text-center border border-dashed border-border/60 rounded-lg bg-muted/10">
-                Select node on canvas
-              </div>
-            )}
-          </div>
-
-          <div className="pt-3 border-t border-border/40 space-y-3">
-            <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">Connect Nodes</Label>
-            <div className="flex gap-1.5">
-              <Select className="text-xs flex-1" value={newEdge.from_} onChange={(e) => setNewEdge({ ...newEdge, from_: e.target.value })}>
-                <option value="">From</option>
-                {nodes.map((n) => <option key={n.id} value={n.id}>{n.label}</option>)}
-              </Select>
-              <Select className="text-xs flex-1" value={newEdge.to} onChange={(e) => setNewEdge({ ...newEdge, to: e.target.value })}>
-                <option value="">To</option>
-                {nodes.map((n) => <option key={n.id} value={n.id}>{n.label}</option>)}
-              </Select>
-            </div>
-            <Button size="sm" variant="secondary" className="w-full text-xs active-tactile transition-transform" onClick={addEdge}>Add Connection</Button>
-            
-            {edges.length > 0 && (
-              <div className="pt-2 border-t border-border/30 space-y-1.5">
-                <span className="text-[10px] uppercase font-semibold tracking-wider text-muted-foreground/85">Existing Connections</span>
-                <div className="space-y-1 max-h-[120px] overflow-y-auto pr-1">
-                  {edges.map((e, i) => (
-                    <div key={i} className="flex items-center justify-between text-[11px] rounded bg-muted/40 border border-border/30 px-2 py-1">
-                      <span className="truncate max-w-[80%] font-mono text-muted-foreground">
-                        {nodes.find((n) => n.id === e.from_)?.label} → {nodes.find((n) => n.id === e.to)?.label}
-                      </span>
-                      <button type="button" aria-label={`Delete connection ${i + 1}`} onClick={() => setDeleteRequest({ type: "edge", index: i })}
-                        className="rounded p-2 text-xs font-bold text-destructive transition-colors hover:bg-destructive/10"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
+        <div className="flex gap-3">
+          <WorkflowNodePalette
+            className="sticky top-4 self-start"
+            onAddNode={(kind) => addNode(kind, { x: 60 + (nodes.length * 40) % 300, y: 80 + (nodes.length * 30) % 200 })}
+          />
+          <WorkflowCanvas
+            className="h-[calc(100vh-380px)] min-h-[500px] flex-1"
+            graphNodes={nodes}
+            graphEdges={edges}
+            nodeStatus={nodeStatus}
+            selectedNodeId={selectedNodeId}
+            onGraphChange={setGraph}
+            onSelectNode={setSelectedNode}
+            onCreateNode={addNode}
+          />
         </div>
       </div>
+
+      <WorkflowNodeConfig
+        node={selectedNode}
+        open={Boolean(selectedNode)}
+        onOpenChange={(open) => !open && setSelectedNode(null)}
+        agents={agents.data}
+        workflows={data}
+        currentWorkflowId={editId}
+        onUpdate={updateNode}
+      />
 
       <div className="animate-slide-up" style={{ animationDelay: "150ms" }}>
         <WorkflowConsole logs={logs} output={output} running={running} />
       </div>
-
-      <AlertDialog open={Boolean(deleteRequest)} onOpenChange={(open) => !open && setDeleteRequest(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{deleteRequest?.type === "node" ? `Delete ${deleteRequest.name}?` : "Delete this connection?"}</AlertDialogTitle>
-            <AlertDialogDescription>{deleteRequest?.type === "node" ? "The node and its connected edges will be removed from the canvas." : "This edge will be removed from the workflow graph."}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={confirmDelete}>Delete</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }
