@@ -72,6 +72,7 @@ services:
       OPENAGENT_SEARXNG_URL: ${OPENAGENT_SEARXNG_URL:-http://searxng:8080}
       OPENAGENT_CRAWLER_URL: ${OPENAGENT_CRAWLER_URL:-http://crawler:11235}
       OPENAGENT_CRAWLER_API_TOKEN: ${CRAWLER_API_TOKEN:?Set CRAWLER_API_TOKEN in .env to a random 32-byte secret}
+      OPENAGENT_YOUTUBE_API_KEY: ${OPENAGENT_YOUTUBE_API_KEY:-}
       DOCKER_HOST: tcp://docker-socket-proxy:2375
     ports:
       - "8000:8000"
@@ -103,6 +104,7 @@ services:
       OPENAGENT_SEARXNG_URL: ${OPENAGENT_SEARXNG_URL:-http://searxng:8080}
       OPENAGENT_CRAWLER_URL: ${OPENAGENT_CRAWLER_URL:-http://crawler:11235}
       OPENAGENT_CRAWLER_API_TOKEN: ${CRAWLER_API_TOKEN:?Set CRAWLER_API_TOKEN in .env to a random 32-byte secret}
+      OPENAGENT_YOUTUBE_API_KEY: ${OPENAGENT_YOUTUBE_API_KEY:-}
       DOCKER_HOST: tcp://docker-socket-proxy:2375
     command: ["arq", "app.worker.WorkerSettings"]
     depends_on:

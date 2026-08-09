@@ -60,10 +60,32 @@ changes.
   behavior, so the crawler only ever receives URLs that already resolved to
   a public address.
 
-**Out of scope (not started here):**
-- Platform-specific search (YouTube Data API, Telegram via Telethon, X/
-  Facebook). Each has its own auth/quota/ToS model and no current feature
-  requires them; adding speculative integrations now would be unused code.
+**In scope (Phase 3 — this branch, YouTube only):**
+- New `youtube_search` tool (`backend/app/core/tools/youtube_search.py`),
+  registered the same way as `web_search` (added to `builtins.py`'s
+  registration import list). Calls YouTube Data API v3 `search.list`
+  directly - official API, free quota (10k units/day, ~100 searches/day),
+  no scraping, no ToS risk.
+- Opt-in via `youtube_api_key` setting (`OPENAGENT_YOUTUBE_API_KEY`): empty
+  by default, tool returns a clear "not configured" error rather than
+  failing silently or crashing - same inert-until-configured posture as
+  `customer_intelligence_enabled`.
+- No new container/service needed (stateless REST call, no session/auth
+  flow), unlike Telegram (needs a persistent logged-in MTProto session) or
+  X (needs a paid API or ToS-violating scraping) - deliberately chosen as
+  the first platform for exactly this reason.
+
+**Out of scope (not started here, user explicitly deprioritized):**
+- **Telegram**: MTProto via Telethon works but needs a phone-number-
+  authenticated session kept alive in its own service (stateful, unlike
+  every other tool in this codebase) - real added operational cost.
+- **X/Twitter**: official API costs $100+/month minimum; free scraping
+  (twscrape/Twikit) violates X's ToS and breaks every 2-4 weeks when X
+  rotates tokens - not suitable for production as-is.
+- **Facebook**: Graph API only works for pages/apps you own and have had
+  through App Review, not public search; scraping is the highest ToS/legal
+  risk of the four platforms researched. Recommended to skip entirely
+  unless a concrete business need over *owned* Facebook pages appears.
 
 ## 3. Design
 

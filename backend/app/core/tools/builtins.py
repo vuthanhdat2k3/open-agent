@@ -11,6 +11,7 @@ from app.core.tools import (
     memory,  # noqa: F401
     shell,  # noqa: F401
     web_search,  # noqa: F401
+    youtube_search,  # noqa: F401
 )
 from app.core.tools.paths import safe_resolve, safe_url
 from app.core.tools.registry import register
