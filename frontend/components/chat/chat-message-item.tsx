@@ -123,7 +123,7 @@ function ChatMessageItemBase({ message: m, debug, hasLiveTools, onApprovalDecisi
           size="icon"
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => void copyMessage()}
-          className="absolute right-1 top-1 h-9 w-9 rounded-lg text-primary-foreground/70 opacity-0 transition-opacity hover:bg-primary-foreground/15 hover:text-primary-foreground group-hover:opacity-100 focus-visible:opacity-100"
+          className="absolute right-1 top-1 h-9 w-9 rounded-lg text-primary-foreground/70 opacity-60 transition-opacity hover:bg-primary-foreground/15 hover:text-primary-foreground group-hover:opacity-100 focus-visible:opacity-100"
           aria-label={copied ? "User message copied" : "Copy user message"}
           title={copied ? "Copied" : "Copy message"}
         >

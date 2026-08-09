@@ -212,6 +212,7 @@ class ChatEventRecorder:
         self._flush_task: asyncio.Task | None = None
         self._flush_lock = asyncio.Lock()
         self._liveness_task: asyncio.Task | None = None
+        self._progress_task: asyncio.Task | None = None
         self._phase = "queued"
         self._last_progress_at = 0.0
 
@@ -252,8 +253,15 @@ class ChatEventRecorder:
         await publish_run_event(
             self.org_id, self.run_id, {"seq": seq, "event": event, "data": data}
         )
+        # Both triggers below schedule the write as a background task rather
+        # than awaiting it here: this coroutine is inline in the LLM stream
+        # read loop, so awaiting a DB round trip would stall token delivery
+        # to the client every _EVENT_BATCH_SIZE tokens. `_flush_lock` already
+        # serializes concurrent flushes, so overlap between the two triggers
+        # is safe (the loser just finds `_pending` empty and returns).
         if len(self._pending) >= _EVENT_BATCH_SIZE:
-            await self._flush()
+            if self._flush_task is None or self._flush_task.done():
+                self._flush_task = asyncio.create_task(self._flush())
         elif self._flush_task is None or self._flush_task.done():
             self._flush_task = asyncio.create_task(self._delayed_flush())
         return ev
@@ -279,12 +287,20 @@ class ChatEventRecorder:
                 pass
 
     async def heartbeat(self, **fields: Any) -> None:
-        """Throttled ``tasks.progress`` update (phase, counters, timestamp)."""
+        """Throttled ``tasks.progress`` update (phase, counters, timestamp).
+
+        Scheduled as a background task rather than awaited: this is called
+        inline in the per-token streaming loop (once per throttle window),
+        so awaiting the DB round trip here would stall delivery of the next
+        token for as long as the write takes — this was the actual cause of
+        a ~1s stall roughly once a second, not the event-log batching.
+        """
         now = asyncio.get_running_loop().time()
         if now - self._last_progress_at < _PROGRESS_MIN_INTERVAL:
             return
         self._last_progress_at = now
-        await self.flush_progress(**fields)
+        if self._progress_task is None or self._progress_task.done():
+            self._progress_task = asyncio.create_task(self.flush_progress(**fields))
 
     async def flush_progress(self, **fields: Any) -> None:
         if fields.get("phase"):
@@ -313,8 +329,13 @@ class ChatEventRecorder:
                 self._liveness_task.cancel()
                 await asyncio.gather(self._liveness_task, return_exceptions=True)
             if self._flush_task is not None and not self._flush_task.done():
-                self._flush_task.cancel()
+                # Do not cancel: since record() started scheduling the
+                # size-triggered flush as a background task too, this may be
+                # a real in-flight insert (not just the delayed-flush timer),
+                # and cancelling it mid-write drops that batch permanently.
                 await asyncio.gather(self._flush_task, return_exceptions=True)
+            if self._progress_task is not None and not self._progress_task.done():
+                await asyncio.gather(self._progress_task, return_exceptions=True)
             await asyncio.wait_for(self._flush(), timeout=10)
         except Exception:  # noqa: BLE001
             pass

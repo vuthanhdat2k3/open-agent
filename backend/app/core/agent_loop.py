@@ -188,6 +188,21 @@ async def _delete_trailing_user_message(db: AsyncSession, session_id: str | None
         await db.delete(last)
 
 
+async def fail_chat_run(db: AsyncSession, task: Task, exc: Exception) -> None:
+    """Mark a top-level chat run failed and clean up its unanswered user turn.
+
+    Shared by both execution paths (inline ``BackgroundTasks`` and the arq
+    worker) so a crash is handled identically regardless of which one ran it —
+    previously only the inline path deleted the eagerly-saved user message,
+    so a queued-mode failure left it to be resent as duplicate context.
+    """
+    task.status = "failed"
+    task.result = str(exc)
+    task.finished_at = utc_now()
+    await _delete_trailing_user_message(db, (task.progress or {}).get("session_id"))
+    await db.commit()
+
+
 async def _finish_task(
     db: AsyncSession,
     task: Task | None,
@@ -1095,32 +1110,6 @@ async def _agent_stream(
         await rec.record(err_ev)
         await rec.close()
     yield err_ev
-
-
-async def stream_agent(
-    agent: Agent,
-    message: str,
-    db: AsyncSession,
-    session_id: str | None = None,
-    root_run_id: str | None = None,
-    current_task_id: str | None = None,
-    user_id: str | None = None,
-    record_stream: bool = True,
-    approval_resume_id: str | None = None,
-) -> AsyncIterator[dict[str, Any]]:
-    async for ev in _agent_stream(
-        agent,
-        message,
-        db,
-        0,
-        session_id,
-        current_task_id=current_task_id,
-        root_run_id=root_run_id,
-        user_id=user_id,
-        record_stream=record_stream,
-        approval_resume_id=approval_resume_id,
-    ):
-        yield ev
 
 
 async def run_agent_loop(

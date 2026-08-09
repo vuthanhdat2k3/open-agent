@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from sqlalchemy import select, update
 
+from app.core.agent_loop import fail_chat_run
 from app.core.workflow.engine import run_workflow as run_workflow_engine
-from app.db.base import utc_now
 from app.db.session import SessionLocal
 from app.models.task import Task
 from app.models.workflow import Workflow
@@ -72,7 +72,4 @@ async def run_chat(ctx, payload: dict) -> None:  # noqa: ARG001
                 approval_resume_id=payload.get("approval_resume_id"),
             )
         except Exception as exc:  # noqa: BLE001
-            task.status = "failed"
-            task.result = str(exc)
-            task.finished_at = utc_now()
-            await session.commit()
+            await fail_chat_run(session, task, exc)
