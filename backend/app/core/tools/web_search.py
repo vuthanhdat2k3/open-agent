@@ -5,6 +5,7 @@ from typing import Any
 
 import httpx
 
+from app.config import get_settings
 from app.core.tools.registry import register
 from app.core.tools.risk_tier import RiskTier
 from app.core.tools.types import ToolContext, ToolSpec
@@ -28,6 +29,71 @@ def _clean(html: str) -> str:
     return _decode_entities(text).strip()
 
 
+def _format_results(results: list[dict[str, Any]]) -> str:
+    if not results:
+        return "No search results found"
+    lines: list[str] = []
+    for i, r in enumerate(results):
+        line = f"{i + 1}. {r['title']}\n   {r['url']}"
+        if r.get("excerpt"):
+            line += f"\n   {r['excerpt']}"
+        if r.get("published_date"):
+            line += f"\n   published: {r['published_date']}"
+        lines.append(line)
+    out = "\n\n".join(lines)
+    if len(out) > MAX_SEARCH_CHARS:
+        out = out[:MAX_SEARCH_CHARS] + "\n...[truncated]"
+    return out
+
+
+async def _searxng_search(searxng_url: str, query: str, max_results: int) -> list[dict[str, Any]]:
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.get(
+            f"{searxng_url.rstrip('/')}/search",
+            params={"q": query, "format": "json"},
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    results = []
+    for item in data.get("results", [])[:max_results]:
+        results.append(
+            {
+                "title": item.get("title", ""),
+                "url": item.get("url", ""),
+                "excerpt": item.get("content", ""),
+                "published_date": item.get("publishedDate"),
+            }
+        )
+    return results
+
+
+async def _ddg_search(query: str, max_results: int) -> list[dict[str, Any]]:
+    async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
+        resp = await client.post(
+            DDG_HTML_URL,
+            data={"q": query},
+            headers={
+                "User-Agent": (
+                    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                    "(KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+                )
+            },
+        )
+        html = resp.text
+
+    title_re = re.compile(r'class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>', re.S)
+    snippet_re = re.compile(r'class="result__snippet"[^>]*>(.*?)</a>', re.S)
+
+    titles = title_re.findall(html)
+    snippets = snippet_re.findall(html)
+
+    results = []
+    for i, (href, title) in enumerate(titles[:max_results]):
+        snippet = _clean(snippets[i]) if i < len(snippets) else ""
+        results.append({"title": _clean(title), "url": href, "excerpt": snippet, "published_date": None})
+    return results
+
+
 async def _web_search(args: dict[str, Any], ctx: ToolContext) -> str:
     query = args.get("query", "")
     if not query:
@@ -37,39 +103,17 @@ async def _web_search(args: dict[str, Any], ctx: ToolContext) -> str:
     except (TypeError, ValueError):
         max_results = 5
 
+    searxng_url = get_settings().searxng_url
+    if searxng_url:
+        try:
+            return _format_results(await _searxng_search(searxng_url, query, max_results))
+        except Exception:  # noqa: BLE001
+            pass  # fall through to the DDG fallback below
+
     try:
-        async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
-            resp = await client.post(
-                DDG_HTML_URL,
-                data={"q": query},
-                headers={
-                    "User-Agent": (
-                        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-                        "(KHTML, like Gecko) Chrome/120.0 Safari/537.36"
-                    )
-                },
-            )
-            html = resp.text
+        return _format_results(await _ddg_search(query, max_results))
     except Exception as e:  # noqa: BLE001
         return f"error searching the web: {e}"
-
-    title_re = re.compile(r'class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>', re.S)
-    snippet_re = re.compile(r'class="result__snippet"[^>]*>(.*?)</a>', re.S)
-
-    titles = title_re.findall(html)
-    snippets = snippet_re.findall(html)
-
-    results: list[str] = []
-    for i, (href, title) in enumerate(titles[:max_results]):
-        snippet = _clean(snippets[i]) if i < len(snippets) else ""
-        results.append(f"{i + 1}. {_clean(title)}\n   {href}\n   {snippet}")
-
-    if not results:
-        return "No search results found"
-    out = "\n\n".join(results)
-    if len(out) > MAX_SEARCH_CHARS:
-        out = out[:MAX_SEARCH_CHARS] + "\n...[truncated]"
-    return out
 
 
 register(

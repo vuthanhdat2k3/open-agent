@@ -69,6 +69,7 @@ services:
       OPENAGENT_S3_ENDPOINT_URL: http://minio:9000
       OPENAGENT_S3_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
       OPENAGENT_S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      OPENAGENT_SEARXNG_URL: ${OPENAGENT_SEARXNG_URL:-http://searxng:8080}
       DOCKER_HOST: tcp://docker-socket-proxy:2375
     ports:
       - "8000:8000"
@@ -97,6 +98,7 @@ services:
       OPENAGENT_CI_MCP_URL: http://customer-intelligence-mcp:8301/sse
       OPENAGENT_CI_GOOGLE_OAUTH_CLIENT_ID: ${OPENAGENT_CI_GOOGLE_OAUTH_CLIENT_ID:-}
       OPENAGENT_CI_GOOGLE_OAUTH_CLIENT_SECRET: ${OPENAGENT_CI_GOOGLE_OAUTH_CLIENT_SECRET:-}
+      OPENAGENT_SEARXNG_URL: ${OPENAGENT_SEARXNG_URL:-http://searxng:8080}
       DOCKER_HOST: tcp://docker-socket-proxy:2375
     command: ["arq", "app.worker.WorkerSettings"]
     depends_on:
@@ -161,8 +163,18 @@ services:
       MCP_PORT: 8301
       CI_COMPANY_API_URL: ${CI_COMPANY_API_URL:-}
       CI_COMPANY_API_KEY: ${CI_COMPANY_API_KEY:-}
+      SEARXNG_URL: http://searxng:8080
     expose:
       - "8301"
+
+  searxng:
+    image: searxng/searxng:latest
+    environment:
+      SEARXNG_BASE_URL: http://searxng:8080/
+    volumes:
+      - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
+    expose:
+      - "8080"
 
   prometheus:
     profiles: ["observability"]

@@ -107,6 +107,10 @@ class Settings(BaseSettings):
     ci_frontend_redirect_url: str = "http://localhost:3000/integrations"
     # News lookback window for web research (7/30/90 days).
     ci_news_window_days: int = 30
+
+    # Self-hosted SearXNG metasearch instance backing the web_search tool.
+    # Empty string disables it and falls back to the DuckDuckGo HTML scrape.
+    searxng_url: str = "http://searxng:8080"
     # Hard per-branch timeout for a single research call.
     ci_research_timeout_s: float = 30.0
     # Upper bound on persisted research sources per case (rate-limit guard).

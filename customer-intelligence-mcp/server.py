@@ -29,6 +29,7 @@ DRIVE_API = "https://www.googleapis.com/drive/v3"
 DRIVE_UPLOAD_API = "https://www.googleapis.com/upload/drive/v3/files"
 CALENDAR_API = "https://www.googleapis.com/calendar/v3/calendars/primary/events"
 DDG_URL = "https://html.duckduckgo.com/html/"
+SEARXNG_URL = os.environ.get("SEARXNG_URL", "http://searxng:8080")
 MAX_BODY_CHARS = int(os.environ.get("CI_MCP_MAX_BODY_CHARS", "200000"))
 
 
@@ -369,18 +370,54 @@ async def calendar_delete_event(provider: str, access_token: str, provider_event
         return _error(f"calendar delete failed: {type(exc).__name__}")
 
 
+def _hit(url: str, title: str, published_date: str | None = None, excerpt: str = "") -> dict[str, Any]:
+    domain = url.split("/")[2] if "://" in url else ""
+    return {
+        "url": url,
+        "title": title,
+        "publisher": domain,
+        "published_date": published_date,
+        "retrieved_date": datetime.now(timezone.utc).date().isoformat(),
+        "excerpt": excerpt,
+        "domain": domain,
+    }
+
+
+async def _searxng(query: str, limit: int) -> list[dict[str, Any]]:
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        response = await client.get(f"{SEARXNG_URL.rstrip('/')}/search", params={"q": query, "format": "json"})
+        response.raise_for_status()
+        data = response.json()
+    return [
+        _hit(item.get("url", ""), item.get("title", ""), item.get("publishedDate"), item.get("content", ""))
+        for item in data.get("results", [])[: max(1, min(limit, 10))]
+    ]
+
+
 async def _ddg(query: str, limit: int) -> list[dict[str, Any]]:
     async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
         response = await client.post(DDG_URL, data={"q": query}, headers={"User-Agent": "OpenAgent-CI-MCP/1.0"})
         response.raise_for_status()
     titles = re.findall(r'class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>', response.text, re.S)
-    return [{"url": url, "title": re.sub(r"<[^>]+>", "", html.unescape(title)).strip(), "publisher": url.split("/")[2] if "://" in url else "", "published_date": None, "retrieved_date": datetime.now(timezone.utc).date().isoformat(), "excerpt": "", "domain": url.split("/")[2] if "://" in url else ""} for url, title in titles[: max(1, min(limit, 10))]]
+    return [
+        _hit(url, re.sub(r"<[^>]+>", "", html.unescape(title)).strip())
+        for url, title in titles[: max(1, min(limit, 10))]
+    ]
+
+
+async def _search(query: str, limit: int) -> list[dict[str, Any]]:
+    if SEARXNG_URL:
+        try:
+            return await _searxng(query, limit)
+        except Exception:  # noqa: BLE001
+            pass  # fall through to the DDG fallback below
+    return await _ddg(query, limit)
 
 
 @mcp.tool()
 async def web_search(query: str, limit: int = 5) -> str:
     try:
-        return _ok(await _ddg(query, limit))
+        return _ok(await _search(query, limit))
     except Exception as exc:  # noqa: BLE001
         return _error(f"web search unavailable: {type(exc).__name__}", "research_unavailable")
 
@@ -388,7 +425,7 @@ async def web_search(query: str, limit: int = 5) -> str:
 @mcp.tool()
 async def news_search(query: str, limit: int = 5, lookback_days: int = 30) -> str:
     try:
-        hits = await _ddg(f"{query} news", limit)
+        hits = await _search(f"{query} news", limit)
         dated = [hit for hit in hits if hit.get("published_date")]
         if not dated:
             return _error("news provider returned no dated results", "research_unavailable")
