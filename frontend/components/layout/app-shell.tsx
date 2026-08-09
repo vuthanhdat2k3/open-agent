@@ -35,7 +35,16 @@ export function AppShell({ children, queryClient }: { children: React.ReactNode;
           // fixed; other pages want normal page-level scroll and are
           // unaffected by the same quirk (no separate inner scroller to
           // conflict with there).
-          fullBleed && "overflow-y-hidden",
+          // overflow-y-hidden alone was not enough: every ancestor up to
+          // SidebarProvider's wrapper is flex-1/min-h-svh (a *minimum*, not
+          // a bound), so nothing actually caps this element's height — it
+          // grows to fit content instead of clipping, and "hidden" never
+          // engages because there's no overflow relative to an unbounded
+          // box. h-svh gives it a real fixed height so the flex-1/min-h-0
+          // chain below it is finally constrained, which is what lets the
+          // log's own overflow-y-auto take over scrolling instead of the
+          // whole chain just growing taller than the viewport.
+          fullBleed && "h-svh overflow-y-hidden",
         )}
       >
         <AppHeader title={title} />
