@@ -112,6 +112,7 @@ async def test_all_builtins_registered() -> None:
         "search_files",
         "run_shell",
         "web_search",
+        "youtube_search",
         "save_memory",
         "call_memory",
     }:

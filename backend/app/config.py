@@ -115,6 +115,9 @@ class Settings(BaseSettings):
     # Empty string disables it and falls back to the plain httpx GET.
     crawler_url: str = "http://crawler:11235"
     crawler_api_token: str = ""
+    # YouTube Data API v3 key backing the youtube_search tool. Empty string
+    # disables the tool (it returns a clear "not configured" error).
+    youtube_api_key: str = ""
     # Hard per-branch timeout for a single research call.
     ci_research_timeout_s: float = 30.0
     # Upper bound on persisted research sources per case (rate-limit guard).
