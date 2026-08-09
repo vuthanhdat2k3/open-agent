@@ -156,15 +156,15 @@ function ChatMessageItemBase({ message: m, debug, hasLiveTools, onApprovalDecisi
     return (
       <div
         key={m.id}
-        className="animate-scale-in self-start w-full max-w-[92%] shrink-0 rounded-xl border border-primary/30 bg-card/80 backdrop-blur-md shadow-3d-card overflow-hidden"
+        className="animate-scale-in self-start w-full max-w-[92%] shrink-0 rounded-xl border border-border bg-card/80 backdrop-blur-md shadow-card overflow-hidden"
       >
         <div className="flex items-center justify-between border-b border-border/60 bg-muted/30 px-3 py-1.5 text-[10px] font-semibold text-foreground">
           <div className="flex items-center gap-1.5">
-            {isCodeTool ? <Terminal className="h-3.5 w-3.5 text-primary" /> : <Wrench className="h-3.5 w-3.5 text-amber-500" />}
+            {isCodeTool ? <Terminal className="h-3.5 w-3.5 text-primary" /> : <Wrench className="h-3.5 w-3.5 text-warning" />}
             <span className="uppercase tracking-wider font-bold">
               {isCodeTool ? "Code Execution" : "Tool Call"}
             </span>
-            <Badge variant="outline" className="ml-1 font-mono text-[9px] bg-primary/10 text-primary border-primary/20">
+            <Badge variant="outline" className="ml-1 font-mono text-[9px] bg-muted text-foreground border-border">
               {m.meta?.toolName || "tool"}
             </Badge>
             {parsedArgs?.path && (
@@ -177,7 +177,7 @@ function ChatMessageItemBase({ message: m, debug, hasLiveTools, onApprovalDecisi
             <Play className="h-2.5 w-2.5 text-primary animate-pulse" /> Running
           </span>
         </div>
-        <pre className="block w-full min-h-[60px] max-h-60 overflow-y-auto overflow-x-auto p-3 font-mono text-[10.5px] text-foreground leading-relaxed scrollbar-thin whitespace-pre-wrap break-all bg-black/40">
+        <pre className="block w-full min-h-[60px] max-h-60 overflow-y-auto overflow-x-auto p-3 font-mono text-[10.5px] text-foreground leading-relaxed scrollbar-thin whitespace-pre-wrap break-all bg-muted/50">
           {codeStr}
         </pre>
         {m.meta?.progress ? (
@@ -185,7 +185,7 @@ function ChatMessageItemBase({ message: m, debug, hasLiveTools, onApprovalDecisi
             <div className="flex items-center gap-1.5 bg-muted/20 px-3 py-1 text-[9px] uppercase tracking-wider text-muted-foreground/70">
               <Play className="h-2.5 w-2.5 text-primary animate-pulse" /> Live output
             </div>
-            <pre className="block max-h-40 overflow-y-auto overflow-x-auto p-3 font-mono text-[10.5px] text-muted-foreground leading-relaxed scrollbar-thin whitespace-pre-wrap break-all bg-black/40">
+            <pre className="block max-h-40 overflow-y-auto overflow-x-auto p-3 font-mono text-[10.5px] text-muted-foreground leading-relaxed scrollbar-thin whitespace-pre-wrap break-all bg-muted/50">
               {m.meta.progress}
             </pre>
           </div>
@@ -201,7 +201,7 @@ function ChatMessageItemBase({ message: m, debug, hasLiveTools, onApprovalDecisi
     return (
       <div
         key={m.id}
-        className="animate-scale-in self-start w-full max-w-[92%] shrink-0 rounded-xl border border-border/70 bg-card/90 backdrop-blur-md shadow-3d-card overflow-hidden"
+        className="animate-scale-in self-start w-full max-w-[92%] shrink-0 rounded-xl border border-border/70 bg-card/90 backdrop-blur-md shadow-card overflow-hidden"
       >
         <div className="flex items-center justify-between border-b border-border/60 bg-muted/30 px-3 py-1.5 text-[10px] font-semibold text-foreground">
           <div className="flex items-center gap-1.5">
@@ -228,7 +228,7 @@ function ChatMessageItemBase({ message: m, debug, hasLiveTools, onApprovalDecisi
           </div>
         ) : null}
 
-        <pre className="block w-full min-h-[60px] max-h-60 overflow-y-auto overflow-x-auto p-3 font-mono text-[10.5px] text-foreground leading-relaxed scrollbar-thin whitespace-pre-wrap break-all bg-black/40">
+        <pre className="block w-full min-h-[60px] max-h-60 overflow-y-auto overflow-x-auto p-3 font-mono text-[10.5px] text-foreground leading-relaxed scrollbar-thin whitespace-pre-wrap break-all bg-muted/50">
           {m.content}
         </pre>
       </div>
@@ -241,7 +241,7 @@ function ChatMessageItemBase({ message: m, debug, hasLiveTools, onApprovalDecisi
       ? m.meta.approvalArgs
       : JSON.stringify(m.meta?.approvalArgs ?? {}, null, 2);
     return (
-      <div key={m.id} className="animate-scale-in self-start w-full max-w-[92%] rounded-xl border border-warning/40 bg-warning/[0.06] p-3 shadow-3d-card">
+      <div key={m.id} className="animate-scale-in self-start w-full max-w-[92%] rounded-xl border border-warning/40 bg-warning/[0.06] p-3 shadow-card">
         <div className="flex items-center gap-2 text-xs font-semibold">
           {status === "approved" ? <ShieldCheck className="h-4 w-4 text-success" /> : status === "rejected" ? <ShieldX className="h-4 w-4 text-destructive" /> : <ShieldAlert className="h-4 w-4 text-warning" />}
           <span>{status === "pending" ? "Approval required" : status === "approved" ? "Approved" : "Rejected"}</span>
@@ -281,20 +281,20 @@ function ChatMessageItemBase({ message: m, debug, hasLiveTools, onApprovalDecisi
 
         return (
           <React.Fragment key={`hist-tool-${m.id}-${idx}`}>
-            <div className="animate-scale-in self-start w-full max-w-[92%] shrink-0 rounded-xl border border-primary/30 bg-card/80 backdrop-blur-md shadow-3d-card overflow-hidden mb-2">
+            <div className="animate-scale-in self-start w-full max-w-[92%] shrink-0 rounded-xl border border-border bg-card/80 backdrop-blur-md shadow-card overflow-hidden mb-2">
               <div className="flex items-center gap-1.5 border-b border-border/60 bg-muted/30 px-3 py-1.5 text-[10px] font-semibold text-foreground">
                 <Terminal className="h-3.5 w-3.5 text-primary" />
                 <span className="uppercase tracking-wider font-bold">Executed Tool</span>
-                <Badge variant="outline" className="ml-1 font-mono text-[9px] bg-primary/10 text-primary border-primary/20">
+                <Badge variant="outline" className="ml-1 font-mono text-[9px] bg-muted text-foreground border-border">
                   {t.name}
                 </Badge>
               </div>
-              <pre className="block w-full min-h-[60px] max-h-96 overflow-y-auto overflow-x-hidden p-3 font-mono text-[10.5px] text-foreground leading-relaxed scrollbar-thin whitespace-pre-wrap break-words bg-black/40">
+              <pre className="block w-full min-h-[60px] max-h-96 overflow-y-auto overflow-x-hidden p-3 font-mono text-[10.5px] text-foreground leading-relaxed scrollbar-thin whitespace-pre-wrap break-words bg-muted/50">
                 {argsText}
               </pre>
             </div>
 
-            <div className="animate-scale-in self-start w-full max-w-[92%] shrink-0 rounded-xl border border-border/70 bg-card/90 backdrop-blur-md shadow-3d-card overflow-hidden mb-3">
+            <div className="animate-scale-in self-start w-full max-w-[92%] shrink-0 rounded-xl border border-border/70 bg-card/90 backdrop-blur-md shadow-card overflow-hidden mb-3">
               <div className="flex items-center gap-1.5 border-b border-border/60 bg-muted/30 px-3 py-1.5 text-[10px] font-semibold text-foreground">
                 <CheckCircle2 className="h-3.5 w-3.5 text-success" />
                 <span className="uppercase tracking-wider font-bold">Execution Output</span>
@@ -307,7 +307,7 @@ function ChatMessageItemBase({ message: m, debug, hasLiveTools, onApprovalDecisi
                   <SvgPreview html={t.result} />
                 </div>
               ) : null}
-              <pre className="block w-full min-h-[60px] max-h-96 overflow-y-auto overflow-x-hidden p-3 font-mono text-[10.5px] leading-relaxed scrollbar-thin whitespace-pre-wrap break-words bg-black/40">
+              <pre className="block w-full min-h-[60px] max-h-96 overflow-y-auto overflow-x-hidden p-3 font-mono text-[10.5px] leading-relaxed scrollbar-thin whitespace-pre-wrap break-words bg-muted/50">
                 {t.result}
               </pre>
             </div>
