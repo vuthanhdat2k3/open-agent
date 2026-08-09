@@ -78,11 +78,11 @@ async def register(
     db.add(default_organization_quota(org.id))
 
     # Create Membership
-    membership = Membership(org_id=org.id, user_id=user.id, role=Role.owner)
+    membership = Membership(org_id=org.id, user_id=user.id, role=Role.admin)
     db.add(membership)
 
     # Issue Tokens
-    access_token = create_access_token(user_id=user.id, org_id=org.id, role=Role.owner)
+    access_token = create_access_token(user_id=user.id, org_id=org.id, role=Role.admin)
     raw_rt, rt_hash = create_refresh_token()
     now = utc_now()
     exp = now + timedelta(days=settings.jwt_refresh_ttl_days)
@@ -388,7 +388,7 @@ async def oauth_callback(
             await db.flush()
             db.add(default_organization_quota(org.id))
 
-            membership = Membership(org_id=org.id, user_id=user.id, role=Role.owner)
+            membership = Membership(org_id=org.id, user_id=user.id, role=Role.admin)
             db.add(membership)
 
         # Create OAuthAccount link

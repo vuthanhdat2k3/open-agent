@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { QueryClient } from "@tanstack/react-query";
 import { Bot } from "lucide-react";
-import { useApprovals } from "@/hooks";
+import { useApprovals, useCurrentRole } from "@/hooks";
 import { OrgSwitcher } from "@/components/org-switcher";
 import { UserNav } from "@/components/user-nav";
 import {
@@ -28,6 +28,7 @@ export function AppSidebar({ queryClient }: { queryClient: QueryClient }) {
   const collapsed = state === "collapsed";
   const approvals = useApprovals(true);
   const pending = approvals.data?.length ?? 0;
+  const role = useCurrentRole();
 
   return (
     <Sidebar collapsible="icon">
@@ -47,11 +48,14 @@ export function AppSidebar({ queryClient }: { queryClient: QueryClient }) {
       </SidebarHeader>
 
       <SidebarContent>
-        {navGroups.map((group) => (
+        {navGroups.map((group) => {
+          const items = role === "admin" ? group.items : group.items.filter((item) => !item.adminOnly);
+          if (items.length === 0) return null;
+          return (
           <SidebarGroup key={group.title}>
             <SidebarGroupLabel>{group.title}</SidebarGroupLabel>
             <SidebarMenu>
-              {group.items.map((item) => {
+              {items.map((item) => {
                 const Icon = item.icon;
                 const active = isActive(pathname, item.href);
                 return (
@@ -76,7 +80,8 @@ export function AppSidebar({ queryClient }: { queryClient: QueryClient }) {
               })}
             </SidebarMenu>
           </SidebarGroup>
-        ))}
+          );
+        })}
       </SidebarContent>
 
       <SidebarFooter>

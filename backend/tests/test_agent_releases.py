@@ -296,26 +296,27 @@ def _draft_with_failing_gate(client: TestClient, token: str, org_id: str) -> dic
     return agent
 
 
-def test_force_publish_requires_owner(client: TestClient) -> None:
-    """Publish rights are not enough to ship over a red gate."""
-    owner_token, org_id = _register(client, "force-owner@example.com", "Force Org")
-    agent = _draft_with_failing_gate(client, owner_token, org_id)
+def test_force_publish_requires_admin(client: TestClient) -> None:
+    """A plain user has no publish rights at all in the 2-role model, so they
+    can't reach a red gate to force-publish over it in the first place."""
+    admin_token, org_id = _register(client, "force-owner@example.com", "Force Org")
+    agent = _draft_with_failing_gate(client, admin_token, org_id)
 
-    dev_token, _ = _register(client, "force-dev@example.com", "Dev Home")
+    user_token, _ = _register(client, "force-dev@example.com", "Dev Home")
     add = client.post(
         f"/api/orgs/{org_id}/members",
-        headers=_headers(owner_token, org_id),
-        json={"email": "force-dev@example.com", "role": "developer"},
+        headers=_headers(admin_token, org_id),
+        json={"email": "force-dev@example.com", "role": "user"},
     )
     assert add.status_code == 201, add.text
 
     forced = client.post(
         f"/api/agents/{agent['id']}/releases/2/publish",
-        headers=_headers(dev_token, org_id),
+        headers=_headers(user_token, org_id),
         json={"force": True},
     )
     assert forced.status_code == 403
-    assert "owner" in forced.json()["detail"]
+    assert "agents:publish" in forced.json()["detail"]
 
 
 @pytest.mark.asyncio

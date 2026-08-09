@@ -318,7 +318,7 @@ export interface OrgMember {
   user_id: string;
   email: string;
   display_name: string;
-  role: "owner" | "admin" | "developer" | "viewer";
+  role: "admin" | "user";
   created_at: string;
 }
 

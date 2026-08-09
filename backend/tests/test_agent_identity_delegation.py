@@ -23,23 +23,24 @@ async def async_session_factory():
 
 
 @pytest.mark.asyncio
-async def test_permission_intersection_viewer_and_dangerous():
-    viewer_result = evaluate_permission_intersection(
-        user_role=Role.viewer,
+async def test_permission_intersection_user_and_dangerous():
+    # "user" role has no tools:use:dangerous permission at all (admin-only tier).
+    user_result = evaluate_permission_intersection(
+        user_role=Role.user,
         permission="tools:use:dangerous",
         agent_allowed_risk_tiers=["safe", "read", "dangerous"],
     )
-    assert viewer_result is False
+    assert user_result is False
 
 
 @pytest.mark.asyncio
-async def test_permission_intersection_developer_and_allowed_tiers():
-    dev_safe = evaluate_permission_intersection(
-        user_role=Role.developer,
+async def test_permission_intersection_user_and_allowed_tiers():
+    user_safe = evaluate_permission_intersection(
+        user_role=Role.user,
         permission="tools:use:safe",
         agent_allowed_risk_tiers=["safe", "read"],
     )
-    assert dev_safe is True
+    assert user_safe is True
 
     admin_dangerous = evaluate_permission_intersection(
         user_role=Role.admin,

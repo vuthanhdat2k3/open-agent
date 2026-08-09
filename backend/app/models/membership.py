@@ -24,7 +24,11 @@ class Membership(Base):
     user_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    role: Mapped[Role] = mapped_column(Enum(Role), nullable=False, default=Role.developer)
+    # native_enum=False: this column is a plain VARCHAR in the DB (see
+    # migration 0025, which dropped the old Postgres native `role` enum type)
+    # - keeps Role's Python-side typing/validation without SQLAlchemy trying
+    # to cast values with `::role`, a type that no longer exists.
+    role: Mapped[Role] = mapped_column(Enum(Role, native_enum=False, length=32), nullable=False, default=Role.user)
     invited_by_user_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )

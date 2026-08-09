@@ -5,7 +5,18 @@ from app.models.role import Role
 # ---------------------------------------------------------------------------
 # Static permission matrix (in-code, not a DB table).
 # Every resource:action pair below is checked via require_permission() in the
-# FastAPI dependency chain.  Role.owner gets "*" (everything).
+# FastAPI dependency chain.
+#
+# Two-role model: admin configures/operates the product; user consumes it.
+# Admin gets "*" (everything, including every current and future permission
+# string) rather than an enumerated list - there is no "trusted but slightly
+# less than admin" tier to reason about anymore.
+#
+# User's permissions are deliberately narrow: chat with the org's primary
+# (orchestrator-kind) agent, run already-published workflows, see their own
+# usage/quota/data. Everything that shapes the product for every user
+# (agents, workflows authoring, providers, models, MCP, integrations,
+# members, evaluations, audit, approvals-decide, files write) is admin-only.
 #
 # Convention: ``<domain>:<action>``
 #   domain  = plural noun (agents, workflows, providers, models, mcp, org, …)
@@ -17,69 +28,23 @@ from app.models.role import Role
 # ---------------------------------------------------------------------------
 
 PERMISSIONS: dict[Role, set[str]] = {
-    Role.owner: {"*"},
-    Role.admin: {
-        "orgs:read",
-        "orgs:manage",
-        "providers:manage",
-        "providers:read",
-        "mcp:manage",
-        "mcp:read",
-        "models:manage",
-        "models:read",
-        "agents:*",
-        "workflows:*",
-        "tools:*",
-        "files:manage",
-        "files:read",
-        "sessions:*",
-        "usage:read",
-        "audit:read",
-        "approvals:read",
-        "approvals:decide",
-        "evaluations:read",
-        "evaluations:manage",
-        "evaluations:run",
-        "quota:read",
-        "quota:usage",
-    },
-    Role.developer: {
-        "agents:create",
+    Role.admin: {"*"},
+    Role.user: {
         "agents:read",
         "agents:run",
-        "agents:update",
-        "agents:delete",
-        "agents:publish",
-        "workflows:create",
         "workflows:read",
         "workflows:run",
-        "workflows:update",
-        "workflows:delete",
         "tools:use:safe",
         "tools:use:read",
         "tools:use:write",
         "tools:use:execute",
         "tools:use:network",
-        "files:manage",
         "files:read",
         "sessions:*",
         "usage:read",
-        "models:read",
-        "providers:read",
-        "evaluations:read",
-        "evaluations:manage",
-        "evaluations:run",
+        "approvals:read",
         "quota:usage",
-    },
-    Role.viewer: {
-        "agents:read",
-        "workflows:read",
-        "usage:read",
-        "sessions:read",
         "models:read",
-        "providers:read",
-        "orgs:read",
-        "evaluations:read",
     },
 }
 

@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "@/lib/api";
-import { getAccessToken } from "@/lib/auth";
+import { getAccessToken, getActiveOrgId } from "@/lib/auth";
 import type {
   Agent,
   AgentRelease,
@@ -419,6 +419,16 @@ export function useMe(enabled: boolean = true) {
       api.get<UserProfile>("/api/auth/me"),
     enabled,
   });
+}
+
+// Fails closed: an unresolved role (loading, no membership found for the
+// active org) is treated as "user" rather than "admin" so admin-only UI
+// never flashes open before the real role is known.
+export function useCurrentRole(): "admin" | "user" {
+  const me = useMe();
+  const orgId = getActiveOrgId();
+  const membership = me.data?.memberships?.find((m) => m.org_id === orgId) ?? me.data?.memberships?.[0];
+  return membership?.role === "admin" ? "admin" : "user";
 }
 
 export function useMembers(orgId?: string) {
