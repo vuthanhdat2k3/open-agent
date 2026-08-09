@@ -7,10 +7,10 @@ import { api, ApiError, streamSSE, streamSSEGet } from "@/lib/api";
 import { useAgents, useSessions, useSessionMessages, useDeleteSession, useModels, useChatRun, useApprovals, useUpdateAgent } from "@/hooks";
 import { useChatStore } from "@/stores";
 import { type UIMessage } from "@/components/chat/chat-message-item";
-import { ChatSidebar } from "@/components/chat/chat-sidebar";
 import { ChatThread } from "@/components/chat/chat-thread";
 import { ChatInput } from "@/components/chat/chat-input";
 import type { ConnectionState } from "@/components/chat/chat-connection-banner";
+import type { UploadedFile } from "@/types";
 
 export default function ChatPage() {
   const searchParams = useSearchParams();
@@ -47,6 +47,7 @@ export default function ChatPage() {
   const [agentReady, setAgentReady] = React.useState(false);
   const selectedSession = sessions.data?.find((s) => s.id === sessionId);
   const [draft, setDraft] = React.useState("");
+  const [attachments, setAttachments] = React.useState<UploadedFile[]>([]);
   const [messages, setMessages] = React.useState<UIMessage[]>([]);
   // Live message store mutated during a stream, flushed to React state via
   // requestAnimationFrame so per-token events coalesce into one render per
@@ -649,15 +650,23 @@ export default function ChatPage() {
   }, []);
 
   const send = async () => {
-    if (!draft.trim() || !agentId) return;
-    const userMsg: UIMessage = { id: `u-${Date.now()}`, role: "user", content: draft };
+    if ((!draft.trim() && attachments.length === 0) || !agentId) return;
+    // Attachments are already uploaded (ChatComposer does that on pick); the
+    // agent sees them as a plain-text reference by name, since the chat API
+    // has no attachment field of its own — tool-capable agents can look
+    // uploaded files up by name from there.
+    const attachmentNote = attachments.length
+      ? `\n\n[Attached file${attachments.length > 1 ? "s" : ""}: ${attachments.map((f) => f.original_name).join(", ")}]`
+      : "";
+    const sentDraft = (draft.trim() ? draft : "Please review the attached file(s).") + attachmentNote;
+    const userMsg: UIMessage = { id: `u-${Date.now()}`, role: "user", content: sentDraft };
     const assistantId = `a-${Date.now()}`;
     assistantIdRef.current = assistantId;
     lastEventSeqRef.current = 0;
     liveRef.current = [...liveRef.current, userMsg, { id: assistantId, role: "assistant", content: "" }];
     commit();
-    const sentDraft = draft;
     setDraft("");
+    setAttachments([]);
     setStreaming(true);
     composeRef.current.clear();
     deltaArgsRef.current.clear();
@@ -818,52 +827,58 @@ export default function ChatPage() {
   const hasLiveTools = messages.some((x) => x.role === "tool_call" || x.role === "tool_result");
 
   return (
-    <div className="grid grid-cols-1 gap-6 lg:h-[calc(100vh-10rem)] lg:grid-cols-4">
-      <ChatSidebar
+    <div className="flex min-h-0 flex-1 flex-col">
+      <ChatThread
+        messages={messages}
+        debug={debug}
+        streaming={streaming}
+        statusPhase={statusPhase}
         agents={agents.data}
         models={models.data}
         sessions={sessions.data}
         agentId={agentId}
         sessionId={sessionId}
+        currentAgent={currentAgent}
         currentAgentModel={currentAgentModel}
+        effectiveModel={effectiveModel}
         pendingSessionModelId={pendingSessionModelId}
-        streaming={streaming}
         updateAgentPending={updateAgent.isPending}
         onAgentChange={handleAgentChange}
-        onDefaultModelChange={(modelId) => void setDefaultModel(modelId)}
+        onDefaultModelChange={(modelId: string) => void setDefaultModel(modelId)}
         onSessionChange={handleSessionChange}
         onNewSession={clearMessages}
-        onDeleteSession={async (id) => {
+        onDeleteSession={async (id: string) => {
           await delSession.mutateAsync(id);
           if (sessionId === id) clearMessages();
         }}
+        onToggleDebug={() => setDebug((v) => !v)}
+        onClearMessages={clearMessages}
+        onApprovalDecision={handleApprovalDecision}
+        draft={draft}
+        onDraftChange={setDraft}
+        onSubmit={send}
+        composerDisabled={!agentId || (!draft.trim() && attachments.length === 0)}
+        attachments={attachments}
+        onAttachmentsChange={setAttachments}
+        scrollHostRef={scrollHostRef}
+        bottomRef={bottomRef}
+        onThreadScroll={onThreadScroll}
       />
 
-      <div className="flex min-h-[520px] flex-col lg:col-span-3">
-        <ChatThread
-          messages={messages}
-          debug={debug}
-          streaming={streaming}
-          statusPhase={statusPhase}
-          currentAgent={currentAgent}
-          effectiveModel={effectiveModel}
-          onToggleDebug={() => setDebug((v) => !v)}
-          onClearMessages={clearMessages}
-          onApprovalDecision={handleApprovalDecision}
-          scrollHostRef={scrollHostRef}
-          bottomRef={bottomRef}
-          onThreadScroll={onThreadScroll}
-        />
-
-        <ChatInput
-          draft={draft}
-          onDraftChange={setDraft}
-          onSubmit={streaming ? stop : send}
-          streaming={streaming}
-          disabled={!agentId || (!streaming && !draft.trim())}
-          connectionState={connectionState}
-        />
-      </div>
+      {messages.length > 0 && (
+        <div className="mx-auto w-full max-w-3xl px-4 pb-4 sm:px-6">
+          <ChatInput
+            draft={draft}
+            onDraftChange={setDraft}
+            onSubmit={streaming ? stop : send}
+            streaming={streaming}
+            disabled={!agentId || (!streaming && !draft.trim() && attachments.length === 0)}
+            connectionState={connectionState}
+            attachments={attachments}
+            onAttachmentsChange={setAttachments}
+          />
+        </div>
+      )}
     </div>
   );
 }
