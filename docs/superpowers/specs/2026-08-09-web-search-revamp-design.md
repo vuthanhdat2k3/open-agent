@@ -1,7 +1,7 @@
 # Web Search Revamp — Design Spec
 
 Date: 2026-08-09
-Status: Approved (Phase 1 scope)
+Status: Approved and implemented (Phase 1 + Phase 2, live-verified)
 
 ## 1. Context
 
@@ -43,10 +43,24 @@ changes.
 - Fixes the `news_search` bug as a side effect of using a provider that
   actually returns dates.
 
-**Out of scope (future phases, not started here):**
-- Full-page crawling/rendering (Crawl4AI or similar) for reading whole pages
-  instead of search snippets — separate concern from search, no current
-  caller needs it.
+**In scope (Phase 2 — this branch, added after Phase 1 shipped):**
+- `web_fetch` gets a self-hosted **crawl4ai** instance (`unclecode/crawl4ai`
+  official Docker image) as a JS-rendering crawler, with the existing plain
+  `httpx.get` kept as the automatic fallback — same fail-open pattern as
+  Phase 1's SearXNG fallback.
+- crawl4ai's REST API is bearer-token authenticated
+  (`CRAWL4AI_API_TOKEN`/`CRAWLER_API_TOKEN`) — the image refuses a
+  non-loopback bind without a token configured, and ships that way
+  deliberately (open, unauthenticated headless-browser-as-a-service on the
+  compose network would be a real SSRF/resource-abuse surface). Required via
+  `docker-compose.yml`'s `${CRAWLER_API_TOKEN:?...}`, documented in
+  `.env.example`.
+- The existing `safe_url()` SSRF guard still runs before a URL is ever
+  handed to the crawler — unchanged from the pre-existing `web_fetch`
+  behavior, so the crawler only ever receives URLs that already resolved to
+  a public address.
+
+**Out of scope (not started here):**
 - Platform-specific search (YouTube Data API, Telegram via Telethon, X/
   Facebook). Each has its own auth/quota/ToS model and no current feature
   requires them; adding speculative integrations now would be unused code.
@@ -96,10 +110,31 @@ gets the old DDG-only behavior:
 
 ## 4. Verification
 
-- Unit tests using `httpx.MockTransport` (already a project dependency, no
-  new package) for: SearXNG success path (real excerpt/date returned),
-  SearXNG failure → DDG fallback path, `news_search` returning dated results
-  instead of always erroring.
-- `docker compose build customer-intelligence-mcp` — syntax/import sanity
-  only; full live stack verification deferred (this session is already over
-  its cost budget for interactive Docker+browser passes — see prior turns).
+Unit tests (`httpx.MockTransport`, no new dependency):
+`backend/tests/test_web_search.py` (SearXNG success, SearXNG-failure→DDG
+fallback, disabled→DDG), `backend/tests/test_web_fetch.py` (crawler success
++ both markdown response shapes, crawler-failure→plain-fetch fallback,
+disabled→plain-fetch, blocked/SSRF URL never reaches the crawler).
+
+Live verification (full stack rebuilt and brought up — `docker compose
+build api worker customer-intelligence-mcp`, `up -d`), exercised through the
+actual running containers, not mocks:
+
+- `web_search` (agent tool) against a live query → real SearXNG results with
+  titles/excerpts.
+- `web_fetch` against `https://quotes.toscrape.com/js/` (a page whose content
+  only exists after JS execution) → confirmed the crawler actually renders
+  JS: real quote text came back, not an empty shell.
+- `news_search` (customer-intelligence-mcp) — first live pass still returned
+  `research_unavailable`. Root cause: SearXNG only returns `publishedDate`
+  for `categories=news`-routed engines (e.g. Reuters), not general web
+  results, and the original fix only appended the word "news" to the query
+  text without setting that category. Fixed by threading a `category` param
+  through `_searxng`/`_search` and having `news_search` request
+  `categories=news` explicitly. Re-verified live: 3/3 dated Reuters results
+  returned.
+- crawl4ai container confirmed to refuse a plaintext non-loopback bind
+  without `CRAWL4AI_API_TOKEN` set (its own default posture); after setting
+  the token and mounting `crawler/config.yml` (host: 0.0.0.0, trusted_hosts
+  pinned to the service name instead of `*`), confirmed reachable
+  cross-container with the bearer token and rejecting the open-bind case.

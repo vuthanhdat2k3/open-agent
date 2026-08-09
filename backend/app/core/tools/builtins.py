@@ -48,12 +48,46 @@ async def _read_attachment(args: dict[str, Any], ctx: ToolContext) -> str:
 MAX_FETCH_REDIRECTS = 5
 
 
+async def _crawler_fetch(crawler_url: str, url: str, api_token: str = "") -> str | None:
+    """POST to a self-hosted crawl4ai instance; returns rendered markdown or None on any failure."""
+    headers = {"Authorization": f"Bearer {api_token}"} if api_token else {}
+    async with httpx.AsyncClient(timeout=45.0) as client:
+        resp = await client.post(f"{crawler_url.rstrip('/')}/crawl", json={"urls": [url]}, headers=headers)
+        resp.raise_for_status()
+        data = resp.json()
+    results = data.get("results", data if isinstance(data, list) else [])
+    if not results:
+        return None
+    result = results[0]
+    if not result.get("success", True):
+        return None
+    markdown = result.get("markdown")
+    # crawl4ai has returned either a plain string or a {"raw_markdown": ...,
+    # "fit_markdown": ...} object across versions - handle both.
+    if isinstance(markdown, dict):
+        markdown = markdown.get("fit_markdown") or markdown.get("raw_markdown")
+    return markdown or None
+
+
 async def _web_fetch(args: dict[str, Any], ctx: ToolContext) -> str:
     url = args.get("url", "")
     if not url:
         return "error: missing 'url'"
     if safe_url(url) is None:
         return "error: url blocked (must be http/https and resolve to a public address)"
+
+    fetch_settings = get_settings()
+    crawler_url = fetch_settings.crawler_url
+    if crawler_url:
+        try:
+            markdown = await _crawler_fetch(crawler_url, url, fetch_settings.crawler_api_token)
+            if markdown:
+                if len(markdown) > MAX_ATTACHMENT_CHARS:
+                    markdown = markdown[:MAX_ATTACHMENT_CHARS] + "\n...[truncated]"
+                return markdown
+        except Exception:  # noqa: BLE001
+            pass  # fall through to the plain fetch below
+
     try:
         # follow_redirects=False + manual hop validation: a redirect Location
         # is attacker-influenced same as the original URL, so each hop must
