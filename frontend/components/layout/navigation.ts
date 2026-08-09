@@ -7,30 +7,34 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-export interface NavItem { href: string; label: string; icon: LucideIcon; }
+export interface NavItem { href: string; label: string; icon: LucideIcon; adminOnly?: boolean; }
 export interface NavGroup { title: string; items: NavItem[]; }
 
+// adminOnly items configure/operate the product (agents, workflows authoring,
+// providers, models, MCP, integrations, evaluations, members, debug) - a
+// plain "user" only ever consumes it (Chat, Dashboard, and their own
+// Workspace/Files/Approvals/Quotas data). See the RBAC design spec.
 export const navGroups: NavGroup[] = [
   { title: "Overview", items: [
     { href: "/", label: "Dashboard", icon: LayoutDashboard },
     { href: "/chat", label: "Chat", icon: MessageSquare },
   ] },
   { title: "AI Infrastructure", items: [
-    { href: "/agents", label: "Agents", icon: Bot },
-    { href: "/workflows", label: "Workflows", icon: Workflow },
+    { href: "/agents", label: "Agents", icon: Bot, adminOnly: true },
+    { href: "/workflows", label: "Workflows", icon: Workflow, adminOnly: true },
     { href: "/workspace", label: "Workspace", icon: FolderKanban },
-    { href: "/mcp", label: "MCP Servers", icon: Plug },
-    { href: "/integrations", label: "Integrations", icon: CalendarDays },
-    { href: "/models", label: "Models", icon: Cpu },
-    { href: "/providers", label: "Providers", icon: Server },
+    { href: "/mcp", label: "MCP Servers", icon: Plug, adminOnly: true },
+    { href: "/integrations", label: "Integrations", icon: CalendarDays, adminOnly: true },
+    { href: "/models", label: "Models", icon: Cpu, adminOnly: true },
+    { href: "/providers", label: "Providers", icon: Server, adminOnly: true },
     { href: "/files", label: "Files", icon: FileUp },
   ] },
   { title: "Governance & Ops", items: [
     { href: "/approvals", label: "Approvals", icon: ShieldCheck },
-    { href: "/evaluations", label: "Evaluations", icon: FlaskConical },
+    { href: "/evaluations", label: "Evaluations", icon: FlaskConical, adminOnly: true },
     { href: "/settings/quotas", label: "Quotas", icon: Gauge },
-    { href: "/settings/members", label: "Members", icon: Users },
-    { href: "/debug", label: "Debug", icon: Bug },
+    { href: "/settings/members", label: "Members", icon: Users, adminOnly: true },
+    { href: "/debug", label: "Debug", icon: Bug, adminOnly: true },
   ] },
 ];
 
