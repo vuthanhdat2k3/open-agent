@@ -92,18 +92,23 @@ larger dot size (20px) and gap than the current 16px pattern so it stays
 uncluttered with more nodes on screen.
 
 **Node card:** ~200×88px (up from 160×70 to fit a larger icon), `rounded-2xl`,
-`bg-card/90 backdrop-blur-xl`. A 32px icon sits in a circular badge with a
-per-kind accent color:
+`bg-card/90 backdrop-blur-xl`. A 32px icon sits in a circular badge. The
+project's design system is intentionally monochrome (see `globals.css`: "one
+monochrome palette, no second scale") — so kinds are NOT color-coded.
+Instead each kind gets a distinct icon in a neutral `bg-muted/40
+border-border/60` badge, and the `approval` kind (the one exception, since it
+represents a safety/danger gate) uses the existing `warning` token for its
+badge to stand out as a pause point:
 
-| Kind | Icon | Accent |
+| Kind | Icon | Badge |
 |---|---|---|
-| input | Box | blue |
-| agent | Bot | primary/violet |
-| tool | Wrench | orange |
-| merge | GitMerge | amber |
-| output | LogOut | green |
-| approval | ShieldAlert | red/warning |
-| sub_workflow | Workflow | teal |
+| input | Box | neutral (muted) |
+| agent | Bot | neutral (muted) |
+| tool | Wrench | neutral (muted) |
+| merge | GitMerge | neutral (muted) |
+| output | LogOut | neutral (muted) |
+| approval | ShieldAlert | warning |
+| sub_workflow | Workflow | neutral (muted) |
 
 **Status styling** (reuses existing `nodeStatus` state, restyled):
 - idle: default border, no glow.
