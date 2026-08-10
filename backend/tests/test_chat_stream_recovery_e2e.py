@@ -20,6 +20,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.api.v1.routes import chat as chat_route_mod
 from app.core import chat_events as chat_events_mod
 from app.core.quota.dependencies import _redis_client
 from app.core.tools.risk_tier import RiskTier
@@ -74,7 +75,11 @@ def client(async_session_factory, test_user):
     app.dependency_overrides[_redis_client] = _override_redis
     app.dependency_overrides[get_current_user] = _override_user
     app.dependency_overrides[get_current_org_id] = _override_org
-    with patch.object(chat_events_mod, "SessionLocal", async_session_factory), TestClient(app) as test_client:
+    with (
+        patch.object(chat_events_mod, "SessionLocal", async_session_factory),
+        patch.object(chat_route_mod, "SessionLocal", async_session_factory),
+        TestClient(app) as test_client,
+    ):
         yield test_client
     app.dependency_overrides.clear()
 
