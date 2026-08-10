@@ -6,9 +6,10 @@ import json
 import re
 import time
 from collections.abc import AsyncIterator
+from datetime import timedelta
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -176,12 +177,53 @@ _ROUTING_SYNONYMS: dict[str, tuple[str, ...]] = {
     "drive": ("drive", "tài liệu", "document", "documents", "file", "files"),
 }
 
+_STICKY_ROUTE_TTL_MINUTES = 30
+_STICKY_ROUTE_LOOKBACK = 5
+_SHORT_FOLLOWUP_MAX_WORDS = 8
+
+
+async def _recent_delegate_agent_id(
+    db: AsyncSession,
+    org_id: str,
+    root_run_id: str | None,
+    exclude_agent_id: str,
+    session_id: str | None = None,
+) -> str | None:
+    """Return the sole recent delegated agent for short follow-up routing.
+
+    A root run groups one delegation tree, while a chat session can contain
+    multiple root runs across turns. Use the structured session checkpoint as
+    the cross-turn fallback rather than searching free-form conversation text.
+    """
+    if not root_run_id and not session_id:
+        return None
+    cutoff = utc_now() - timedelta(minutes=_STICKY_ROUTE_TTL_MINUTES)
+    scope = []
+    if root_run_id:
+        scope.append(Task.root_run_id == root_run_id)
+    if session_id:
+        scope.append(Task.progress["session_id"].as_string() == session_id)
+    res = await db.execute(
+        select(Task.agent_id)
+        .where(
+            Task.org_id == org_id,
+            or_(*scope),
+            Task.agent_id != exclude_agent_id,
+            Task.started_at >= cutoff,
+        )
+        .order_by(Task.started_at.desc())
+        .limit(_STICKY_ROUTE_LOOKBACK)
+    )
+    agent_ids = {row[0] for row in res.all() if row[0]}
+    return next(iter(agent_ids)) if len(agent_ids) == 1 else None
+
 
 def _route_orchestrator_turn(
     message: str,
     delegate_specs: list[ToolSpec],
     capability_index: dict[str, list[Agent]],
     delegate_by_agent_id: dict[str, ToolSpec] | None = None,
+    sticky_agent_id: str | None = None,
 ) -> tuple[dict[str, Any] | str, str | None]:
     """Return a forced delegate tool when one capability has one candidate."""
     text = message.lower()
@@ -191,6 +233,14 @@ def _route_orchestrator_turn(
         if any(term in text for term in terms):
             matched[capability] = agents
     candidates = {agent.id: agent for agents in matched.values() for agent in agents}
+    if not candidates and sticky_agent_id and len(message.split()) <= _SHORT_FOLLOWUP_MAX_WORDS:
+        spec = (delegate_by_agent_id or {}).get(sticky_agent_id)
+        if spec is not None:
+            return {"type": "function", "function": {"name": spec.name}}, (
+                f"This short follow-up continues the recent delegation to {spec.name}. "
+                f"You MUST call {spec.name}; do not answer or refuse directly."
+            )
+        return "auto", None
     if len(candidates) != 1:
         return "auto", None
     target = next(iter(candidates.values()))
@@ -472,8 +522,15 @@ async def _agent_stream(
         tool_by_name.update({spec.name: spec for spec in delegate_specs})
         if roster:
             directives.append(roster)
+        sticky_agent_id = await _recent_delegate_agent_id(
+            db, agent.org_id, root_run_id, agent.id, session_id
+        )
         forced_tool_choice, route_directive = _route_orchestrator_turn(
-            message, delegate_specs, capability_index, delegate_by_agent_id
+            message,
+            delegate_specs,
+            capability_index,
+            delegate_by_agent_id,
+            sticky_agent_id,
         )
         if route_directive:
             directives.append(route_directive)
