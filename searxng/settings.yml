@@ -1,0 +1,16 @@
+use_default_settings: true
+
+server:
+  # Internal-network-only instance (no host port mapping in docker-compose),
+  # so a static secret is fine — nothing outside the compose network can
+  # reach this to exploit cookie/session handling.
+  secret_key: "openagent-searxng-internal-only"
+  limiter: false
+
+search:
+  # JSON is disabled by default upstream to discourage scraping public
+  # instances; this instance is never exposed to a host port, only called
+  # by backend/customer-intelligence-mcp over the compose network.
+  formats:
+    - html
+    - json
