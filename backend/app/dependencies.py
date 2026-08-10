@@ -238,6 +238,7 @@ def require_permission(permission: str):
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Permission denied: {permission}",
             )
+        request.state.role = membership.role.value if hasattr(membership.role, "value") else str(membership.role)
         set_ownership_scope(db, user_id=current_user.id, role=membership.role)
 
     return _checker
