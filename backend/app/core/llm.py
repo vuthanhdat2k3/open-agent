@@ -12,6 +12,7 @@ from openai import (
     APIConnectionError,
     APITimeoutError,
     AsyncOpenAI,
+    BadRequestError,
     InternalServerError,
     RateLimitError,
 )
@@ -28,6 +29,11 @@ settings = get_settings()
 _TRANSIENT_LLM_ERRORS = (APIConnectionError, APITimeoutError, RateLimitError, InternalServerError)
 _STREAM_CONNECT_RETRIES = 2
 _STREAM_CONNECT_BACKOFF_SECONDS = 0.5
+
+
+def _thinking_tool_choice_error(exc: BadRequestError, tool_choice: Any | None) -> bool:
+    message = str(exc).lower()
+    return isinstance(tool_choice, dict) and "tool_choice" in message and "thinking mode" in message
 
 
 def resolve_api_key(provider: Provider) -> str:
@@ -72,7 +78,16 @@ class LLMClient:
         if tools:
             kwargs["tools"] = tools
             kwargs["tool_choice"] = tool_choice if tool_choice is not None else "auto"
-        resp = await self._client.chat.completions.create(**kwargs)
+        try:
+            resp = await self._client.chat.completions.create(**kwargs)
+        except BadRequestError as exc:
+            # Qwen-compatible providers reject function tool_choice while
+            # thinking is enabled. Tool calls are still supported when
+            # thinking is disabled for this request.
+            if not _thinking_tool_choice_error(exc, tool_choice):
+                raise
+            kwargs["extra_body"] = {"enable_thinking": False}
+            resp = await self._client.chat.completions.create(**kwargs)
         msg = resp.choices[0].message
         content = msg.content or ""
         usage = {
@@ -124,6 +139,11 @@ class LLMClient:
             except TypeError:
                 # Servers that are not fully OpenAI-compatible reject stream_options.
                 kwargs.pop("stream_options", None)
+                return await self._client.chat.completions.create(stream=True, **kwargs)
+            except BadRequestError as exc:
+                if not _thinking_tool_choice_error(exc, tool_choice):
+                    raise
+                kwargs["extra_body"] = {"enable_thinking": False}
                 return await self._client.chat.completions.create(stream=True, **kwargs)
 
         stream = None
