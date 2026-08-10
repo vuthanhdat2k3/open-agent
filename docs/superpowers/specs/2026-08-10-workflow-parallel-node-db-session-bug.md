@@ -1,7 +1,7 @@
 # KNOWN ISSUE: Workflow parallel nodes share one AsyncSession (race condition)
 
 Date found: 2026-08-10
-Status: **Not fixed** — documented for a follow-up session.
+Status: **Fixed and live-verified**.
 
 ## Symptom
 
@@ -85,12 +85,23 @@ around:
 
 ## Verification checklist for the fix
 
-- [ ] Both `research` and `fact_check` (or an equivalent stub reproduction)
+- [x] Both `research` and `fact_check` (or an equivalent stub reproduction)
       complete successfully when run concurrently, no
       "concurrent operations are not permitted" error.
-- [ ] Re-run the existing `research-report` workflow live end-to-end,
+- [x] Re-run the existing `research-report` workflow live end-to-end,
       confirm `fact_check`'s real output makes it into `merge`'s combined
       input (currently silently dropped).
-- [ ] New unit/integration test simulating a fan-out graph against a real
+- [x] New unit/integration test simulating a fan-out graph against a real
       (SQLite) DB with concurrent node execution.
-- [ ] Full backend test suite still green.
+- [x] Full backend test suite still green.
+
+Verification on 2026-08-10:
+
+- Regression: `test_parallel_tool_nodes_use_independent_db_sessions` forces
+  two parallel tool nodes through a barrier, performs a real database write
+  from each node, and confirms both outputs reach the merge node.
+- Workflow regression group: 22 passed.
+- Full backend suite: 243 passed, 4 pre-existing deprecation warnings.
+- Live LLM/database run: `423395a4-6073-4820-b1d2-4bc3fac03757` completed
+  with every node succeeded and no error events. The merge input contained
+  both `research` (6,271 characters) and `fact_check` (4,090 characters).
