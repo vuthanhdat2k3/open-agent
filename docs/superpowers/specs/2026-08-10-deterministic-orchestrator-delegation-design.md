@@ -21,5 +21,5 @@ The user-facing Assistant exposed one generic `call_agent` function and a free-f
 - [x] Unit coverage for capability inference and ambiguous routing.
 - [x] Integration coverage proving a Vietnamese Gmail request forces the named email delegate.
 - [x] Existing orchestrator delegation tests pass.
-- [x] Live runtime verification: a real user Gmail request routed to `email-intelligence` and created an `email_create_draft` approval; the smoke approval was rejected to avoid an unintended external email.
-- [ ] Manual UI approval of the draft and subsequent `email_send` approval remains intentionally user-controlled.
+- [x] Live runtime and Playwright verification: a real user Gmail request routed to `email-intelligence` and created an `email_create_draft` approval visible in the user Approvals page.
+- [ ] Manual UI approval of the draft and subsequent `email_send` approval remains intentionally user-controlled; the test left this approval pending and sent no external email.
