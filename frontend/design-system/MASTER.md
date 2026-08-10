@@ -8,16 +8,20 @@ what is specified here.
 Developer-tool / multi-agent platform (B2B, technical users). "Terminal-adjacent",
 precise, premium B2B SaaS tool with subtle 3D depth, tactile micro-interactions,
 and controlled glassmorphism. Tailwind + shadcn-style tokens + **Fira Sans** (sans) /
-**Fira Code** (mono) + a single desaturated **emerald** accent. Dark is the default theme.
+**Fira Code** (mono) + a **monochrome** (black/white/gray) palette — no brand hue.
+Dark is the default theme, styled as a near-black "moon at night" surface.
 
 Dials: **VARIANCE 7** (structured asymmetric depth, layered specular elevation) ·
 **MOTION 7** (fluid spring dynamics `cubic-bezier(0.16, 1, 0.3, 1)`, staggered cascade reveals, micro-physics press feedback) ·
 **DENSITY 4** (airy, generous spacing, balanced devtool data architecture).
 
-Brand accent = desaturated emerald `--primary` (~52% sat). Status = success /
-warning / info / destructive. **NO purple, NO neon glow, NO cream/brass palette,
-NO emojis as icons (lucide only).** A subtle ambient emerald/info bloom with specular light is rendered
-behind content in dark mode (do not re-add per-component glows).
+`--primary` is pure grayscale (near-black in light mode, near-white in dark mode —
+white-on-black primary actions). Status = success / warning / info, all desaturated
+to grayscale; **destructive stays red** as the one deliberate exception (danger/delete
+is a safety convention, not a brand color). **NO purple, NO neon glow, NO cream/brass
+palette, NO color accent, NO emojis as icons (lucide only).** A subtle ambient
+white/gray "moonlight" bloom with specular light is rendered behind content in dark
+mode (do not re-add per-component glows, and do not reintroduce hue anywhere).
 
 ## Rationale for Design System Upgrade (v2.0 Refactor)
 - **Previous state (v1.0)**: VARIANCE 6 / MOTION 6 / DENSITY 4 — flat terminal aesthetic, basic card lift, linear-ish motion.
@@ -47,11 +51,12 @@ behind content in dark mode (do not re-add per-component glows).
   - Easing token: `ease-out-expo` (`cubic-bezier(0.16, 1, 0.3, 1)`) — spring physics across all transitions.
   - Global `prefers-reduced-motion` rule neutralizes motion automatically.
 
-## Shell (app/layout.tsx — Deliberate Upgrade Logged)
-- Collapsible left sidebar (`lg:w-64` / `lg:w-[76px]` collapsed) with frosted glass background (`bg-card/40 backdrop-blur-xl border-r border-border`), desaturated emerald active indicator pill (`bg-primary/10 text-primary shadow-inner-edge font-semibold`), active left bar indicator, and `aria-current="page"`.
-- Mobile navigation drawer with backdrop blur and accessible dialog semantics.
-- Sticky top header (`h-14`) with page title, theme toggle, and subtle glass border (`bg-background/80 backdrop-blur border-b border-border`).
-- Centered content container (`max-w-7xl`), responsive padding, and `animate-fade-in` replay on route change.
+## Shell (app/layout.tsx — shadcn Sidebar)
+- `components/ui/sidebar.tsx` (shadcn block) drives the left navigation: `SidebarProvider` + `Sidebar collapsible="icon"`, `SidebarMenuButton` active-state styling (`data-[active=true]:bg-sidebar-accent`), keyboard toggle (`cmd/ctrl+b`), cookie-persisted collapsed state. Mobile uses the Sidebar's own built-in Sheet drawer — there is no separate mobile-nav component.
+- On `/chat`, an extra `SidebarGroup` ("Chat") hosts the agent/model/session controls, portaled in from the page via `components/layout/chat-sidebar-slot.tsx` (the page's streaming state stays local; only its sidebar-panel JSX renders in the shared shell).
+- An "Integrations" sidebar item opens a `Sheet` (right-side) instead of navigating, so connections can be managed without leaving the current page.
+- Sticky top header (`h-14`) with `SidebarTrigger`, page title, theme toggle, glass border (`bg-background/80 backdrop-blur border-b border-border`).
+- Centered content container (`max-w-7xl`) for most routes; `/chat` is full-bleed (edge-to-edge, no max-width) to match the moon-chat aesthetic. `animate-fade-in` replay on route change.
 
 ## Reusable components (components/ui/ & components/)
 - `PageHeader` — `{ icon, title, description?, actions? }`. Standard page header with 3D gradient icon badge.
@@ -80,7 +85,7 @@ behind content in dark mode (do not re-add per-component glows).
 ## Page Inventory (16 Routes Covered)
 1. `/` (Dashboard) — 5 stat cards with 3D gradient icons + Usage analytics table.
 2. `/agents` — Agent card grid + Modular New Agent Dialog (sub-components in `components/agents`).
-3. `/chat` — 4-column multi-agent chat interface + streaming thread + composer (sub-components in `components/chat`).
+3. `/chat` — full-bleed, moon-chat-inspired streaming thread + composer; agent/model/session controls live in the global Sidebar, not a page column (sub-components in `components/chat`).
 4. `/workflows` — Interactive workflow graph editor + SSE run stream + node cards (sub-components in `components/workflows`).
 5. `/providers` — AI Provider card grid + New Provider Dialog.
 6. `/models` — Models directory list & metadata breakdown.
