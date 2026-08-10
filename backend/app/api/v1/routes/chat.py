@@ -169,7 +169,7 @@ async def get_chat_run(
     res = await db.execute(
         select(Task)
         .where(Task.root_run_id == run_id, Task.org_id == org_id)
-        .order_by(Task.created_at)
+        .order_by(Task.created_at.desc())
     )
     task = res.scalars().first()
     if task is None:

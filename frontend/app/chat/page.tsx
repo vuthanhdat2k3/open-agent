@@ -582,12 +582,17 @@ export default function ChatPage() {
     sessionId,
     sessionBelongsToAgent,
     activeRunId,
-    // Deliberately keyed on *whether* the run detail has loaded, not on its
+    chatRun.data?.status,
+    // Re-run when the run status changes so approval resume can reattach the
+    // SSE stream after the task leaves waiting_approval. The event cursor is
+    // preserved across reconnects, so replay remains deduplicated.
+    // Terminal transitions are also handled by the sibling chatRun effect.
+    /*
     // status. Keying on status made every running→succeeded transition tear
     // this effect down (cleanup aborts the SSE connection) and immediately
     // re-run it, which opened a second follow stream for the same run — both
     // replaying from after_seq=0, so every event was reduced twice. Terminal
-    // transitions are owned by the sibling chatRun effect instead.
+    // transitions are owned by the sibling chatRun effect instead. */
     chatRunLoaded,
     refetchMessages,
   ]);
