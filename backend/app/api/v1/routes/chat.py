@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
@@ -375,9 +375,8 @@ async def stream_chat_run_events(
             # The task-status fallback only matters when the log goes quiet
             # (crashed worker); checking it on every idle round doubles the
             # query cost of a tight poll for no benefit.
-            if idle_rounds % _STATUS_CHECK_EVERY_N_IDLE_ROUNDS == 0:
-                if await task_is_over():
-                    return  # log fully drained above; run is over
+            if idle_rounds % _STATUS_CHECK_EVERY_N_IDLE_ROUNDS == 0 and await task_is_over():
+                return  # log fully drained above; run is over
             idle_rounds += 1
             # Back off gently while the run is quiet, but keep the ceiling low:
             # a live run that has not emitted yet is the normal state during
