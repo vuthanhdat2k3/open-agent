@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +14,7 @@ from app.core.guardrails.approval import get_pending, resolve_approval
 from app.core.observability.audit import log_action
 from app.core.workflow.queue import enqueue_chat_run
 from app.dependencies import get_current_org_id, get_current_user, get_db, require_permission
+from app.models.approval_request import ApprovalRequest
 from app.models.task import Task
 from app.models.user import User
 
@@ -58,16 +59,29 @@ async def list_approvals(
 @router.post(
     "/{approval_id}/decide",
     response_model=ApprovalOut,
-    dependencies=[Depends(require_permission("approvals:decide"))],
+    dependencies=[Depends(require_permission("approvals:read"))],
 )
 async def decide_approval(
     approval_id: str,
     body: ApprovalDecision,
     background_tasks: BackgroundTasks,
+    request: Request,
     org_id: str = Depends(get_current_org_id),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    # Users may decide only approvals they requested (for example, their own
+    # Gmail draft); admins retain organization-wide decision authority.
+    if getattr(request.state, "role", "user") != "admin":
+        owner_res = await db.execute(
+            select(ApprovalRequest).where(
+                ApprovalRequest.id == approval_id,
+                ApprovalRequest.org_id == org_id,
+                ApprovalRequest.requested_by == current_user.id,
+            )
+        )
+        if owner_res.scalar_one_or_none() is None:
+            raise HTTPException(status_code=403, detail="Users may decide only their own approvals")
     try:
         approval = await resolve_approval(
             db,
@@ -111,8 +125,12 @@ async def decide_approval(
             payload = {
                 "agent_id": task.agent_id,
                 "message": task.goal,
-                "session_id": (task.progress or {}).get("session_id"),
-                "run_id": approval.run_id,
+                # Delegated workers may inherit the parent chat's session
+                # checkpoint; resuming with it would fail agent ownership
+                # validation. ChatService creates a worker-owned session.
+                "session_id": None,
+                "run_id": task.id,
+                "root_run_id": approval.run_id,
                 "stream": True,
                 "org_id": org_id,
                 "user_id": current_user.id,

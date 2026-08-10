@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { Bug, Trash2 } from "lucide-react";
+import { useCurrentRole } from "@/hooks";
 import { Button } from "@/components/ui/button";
 import { ChatMessageItem, type UIMessage } from "@/components/chat/chat-message-item";
 import { ChatEmptyState } from "@/components/chat/chat-empty-state";
@@ -83,11 +84,16 @@ export function ChatThread({
 }: ChatThreadProps) {
   const hasLiveTools = messages.some((m) => m.role === "tool_call" || m.role === "tool_result");
   const hasPendingApproval = messages.some((m) => m.role === "approval" && m.meta?.approvalStatus === "pending");
+  const role = useCurrentRole();
+  const canSwitchAgent = role === "admin";
+  const canSwitchModel = Boolean(models?.some((model) => model.active));
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="sticky top-0 z-10 flex shrink-0 items-center gap-2 border-b border-border/60 bg-background px-2 py-1.5 sm:px-4">
         <ChatHeaderControls
+          canSwitchAgent={canSwitchAgent}
+          canSwitchModel={canSwitchModel}
           agents={agents}
           models={models}
           sessions={sessions}

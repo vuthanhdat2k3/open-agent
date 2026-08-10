@@ -10,7 +10,8 @@ from app.core.workflow.engine import create_workflow_run, run_workflow
 from app.core.workflow.queue import enqueue_workflow_run
 from app.db.base import utc_now
 from app.db.session import SessionLocal
-from app.dependencies import get_current_org_id, get_db, require_permission
+from app.dependencies import get_current_org_id, get_current_user, get_db, require_permission
+from app.models.user import User
 from app.models.workflow_node_run import WorkflowNodeRun
 from app.models.workflow_run import WorkflowRun
 from app.schemas.workflow import (
@@ -43,6 +44,7 @@ async def _run_workflow_detached(workflow_id: str, org_id: str, workflow_run_id:
                 stream=False,
                 workflow_run_id=workflow_run_id,
                 force_inline=True,
+                user_id=run.triggered_by_user_id,
             )
         except Exception as exc:  # noqa: BLE001
             run.status = "failed"
@@ -142,6 +144,7 @@ async def run_workflow_endpoint(
     body: RunWorkflowRequest,
     background_tasks: BackgroundTasks,
     org_id: str = Depends(get_current_org_id),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     wf = await WorkflowService(db).get(org_id, id)
@@ -149,12 +152,19 @@ async def run_workflow_endpoint(
         raise HTTPException(404, "workflow not found")
     if not body.stream:
         output, log, workflow_run_id = await run_workflow(
-            wf, body.input, db, stream=False, workflow_run_id=body.workflow_run_id
+            wf,
+            body.input,
+            db,
+            stream=False,
+            workflow_run_id=body.workflow_run_id,
+            user_id=current_user.id,
         )
         return {"workflow_run_id": workflow_run_id, "output": output, "events": log}
 
     try:
-        run = await create_workflow_run(wf, body.input, db, body.workflow_run_id)
+        run = await create_workflow_run(
+            wf, body.input, db, body.workflow_run_id, current_user.id
+        )
     except ValueError as exc:
         raise HTTPException(404, str(exc)) from exc
     run_id = run.id
@@ -191,6 +201,7 @@ async def run_workflow_endpoint(
 async def replay_workflow_run(
     run_id: str,
     org_id: str = Depends(get_current_org_id),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Re-run a finished run against its recorded tool results.
@@ -217,6 +228,7 @@ async def replay_workflow_run(
         stream=False,
         force_inline=True,
         replay_of_run_id=source.id,
+        user_id=current_user.id,
     )
     # A replay that took a different path is a real finding, not an error:
     # report it with the divergence point so the caller can see where.

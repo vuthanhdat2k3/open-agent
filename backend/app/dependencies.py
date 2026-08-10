@@ -11,6 +11,7 @@ from app.config import get_settings
 from app.core.auth.api_key import hash_api_key
 from app.core.auth.jwt import verify_access_token
 from app.core.authz.policy import has_permission
+from app.core.authz.scope import set_ownership_scope
 from app.db.session import get_db
 from app.models.api_key import ApiKey
 from app.models.membership import Membership
@@ -237,6 +238,8 @@ def require_permission(permission: str):
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Permission denied: {permission}",
             )
+        request.state.role = membership.role.value if hasattr(membership.role, "value") else str(membership.role)
+        set_ownership_scope(db, user_id=current_user.id, role=membership.role)
 
     return _checker
 

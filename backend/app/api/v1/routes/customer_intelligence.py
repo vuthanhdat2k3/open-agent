@@ -52,6 +52,11 @@ def _ci_oauth_redirect_uri(kind: str, provider: str) -> str:
     return f"{base_url}/api/customer-intelligence/oauth/{kind}/{provider}/callback"
 
 
+def _connection_owner(request: Request, current_user: User) -> str | None:
+    """Admins see/manage the organization; users are limited to own OAuth data."""
+    return None if getattr(request.state, "role", "user") == "admin" else current_user.id
+
+
 @oauth_router.get("/oauth/{kind}/{provider}/start")
 async def start_ci_oauth(
     kind: str,
@@ -110,6 +115,9 @@ async def ci_oauth_callback(kind: str, provider: str, request: Request, db: Asyn
     credentials.update({"oauth_provider": provider, "calendar_provider": calendar_provider if kind == "calendar" else None})
     if kind == "email":
         connection_provider = "gmail"
+        existing = await CustomerIntelligenceService(db).connections.get_by_account(payload["org_id"], email)
+        if existing is not None and existing.created_by_user_id not in {None, payload["user_id"]}:
+            raise HTTPException(409, "This Google account is already connected by another user")
         await CustomerIntelligenceService(db).connect(
             org_id=payload["org_id"],
             provider=connection_provider,
@@ -123,20 +131,24 @@ async def ci_oauth_callback(kind: str, provider: str, request: Request, db: Asyn
 
         repo = CalendarConnectionRepository(db)
         connection = await repo.get_by_account(payload["org_id"], calendar_provider, email)
+        if connection is not None and connection.created_by_user_id not in {None, payload["user_id"]}:
+            raise HTTPException(409, "This Google account is already connected by another user")
         if connection is None:
             await repo.create(CalendarConnection(org_id=payload["org_id"], provider=calendar_provider, account_email=email, credentials_enc=encrypt_credentials(credentials), status="connected", created_by_user_id=payload["user_id"]))
         else:
-            await repo.update(connection, {"credentials_enc": encrypt_credentials(credentials), "status": "connected", "error": None})
+            await repo.update(connection, {"credentials_enc": encrypt_credentials(credentials), "status": "connected", "error": None, "created_by_user_id": connection.created_by_user_id or payload["user_id"]})
     else:
         from app.models.customer_intelligence import DriveConnection
         from app.repositories.customer_intelligence import DriveConnectionRepository
 
         repo = DriveConnectionRepository(db)
         connection = await repo.get_by_account(payload["org_id"], email)
+        if connection is not None and connection.created_by_user_id not in {None, payload["user_id"]}:
+            raise HTTPException(409, "This Google account is already connected by another user")
         if connection is None:
             await repo.create(DriveConnection(org_id=payload["org_id"], provider="google", account_email=email, credentials_enc=encrypt_credentials(credentials), status="connected", created_by_user_id=payload["user_id"]))
         else:
-            await repo.update(connection, {"credentials_enc": encrypt_credentials(credentials), "status": "connected", "error": None})
+            await repo.update(connection, {"credentials_enc": encrypt_credentials(credentials), "status": "connected", "error": None, "created_by_user_id": connection.created_by_user_id or payload["user_id"]})
     response = RedirectResponse(get_settings().ci_frontend_redirect_url)
     response.delete_cookie("ci_oauth_state")
     return response
@@ -177,28 +189,34 @@ async def _log_ci_action(
 )
 async def list_connections(
     org_id: str = Depends(get_current_org_id),
+    current_user: User = Depends(get_current_user),
+    request: Request = None,
     db: AsyncSession = Depends(get_db),
 ):
     _guard_enabled()
-    return await CustomerIntelligenceService(db).status(org_id=org_id)
+    return await CustomerIntelligenceService(db).status(org_id=org_id, created_by_user_id=_connection_owner(request, current_user))
 
 
 @router.get("/drive-connections", response_model=list[DriveConnectionResponse], dependencies=[Depends(require_permission("ci:read"))])
 async def list_drive_connections(
     org_id: str = Depends(get_current_org_id),
+    current_user: User = Depends(get_current_user),
+    request: Request = None,
     db: AsyncSession = Depends(get_db),
 ):
     _guard_enabled()
     from app.repositories.customer_intelligence import DriveConnectionRepository
 
-    connections = await DriveConnectionRepository(db).list(org_id)
+    connections = await DriveConnectionRepository(db).list(org_id, created_by_user_id=_connection_owner(request, current_user))
     return [DriveConnectionResponse(id=item.id, provider=item.provider, account_email=item.account_email, status=item.status, error=item.error, has_credentials=bool(item.credentials_enc), created_at=item.created_at) for item in connections]
 
 
-@router.delete("/drive-connections/{connection_id}", response_model=DriveConnectionResponse, dependencies=[Depends(require_permission("ci:manage"))])
+@router.delete("/drive-connections/{connection_id}", response_model=DriveConnectionResponse, dependencies=[Depends(require_permission("ci:read"))])
 async def disconnect_drive_connection(
     connection_id: str,
     org_id: str = Depends(get_current_org_id),
+    current_user: User = Depends(get_current_user),
+    request: Request = None,
     db: AsyncSession = Depends(get_db),
 ):
     _guard_enabled()
@@ -207,7 +225,7 @@ async def disconnect_drive_connection(
     from app.repositories.customer_intelligence import DriveConnectionRepository
 
     repo = DriveConnectionRepository(db)
-    connection = await repo.get(org_id, connection_id)
+    connection = await repo.get(org_id, connection_id, created_by_user_id=_connection_owner(request, current_user))
     if connection is None:
         raise HTTPException(404, "Drive connection not found")
     if connection.credentials_enc:
@@ -226,26 +244,30 @@ async def disconnect_drive_connection(
 )
 async def list_calendar_connections(
     org_id: str = Depends(get_current_org_id),
+    current_user: User = Depends(get_current_user),
+    request: Request = None,
     db: AsyncSession = Depends(get_db),
 ):
     _guard_enabled()
     from app.repositories.customer_intelligence import CalendarConnectionRepository
 
-    connections = await CalendarConnectionRepository(db).list(org_id)
+    connections = await CalendarConnectionRepository(db).list(org_id, created_by_user_id=_connection_owner(request, current_user))
     return [CalendarConnectionResponse(id=item.id, provider=item.provider, account_email=item.account_email, status=item.status, error=item.error, has_credentials=bool(item.credentials_enc), created_at=item.created_at) for item in connections]
 
 
-@router.delete("/calendar-connections/{connection_id}", response_model=CalendarConnectionResponse, dependencies=[Depends(require_permission("ci:manage"))])
+@router.delete("/calendar-connections/{connection_id}", response_model=CalendarConnectionResponse, dependencies=[Depends(require_permission("ci:read"))])
 async def disconnect_calendar_connection(
     connection_id: str,
     org_id: str = Depends(get_current_org_id),
+    current_user: User = Depends(get_current_user),
+    request: Request = None,
     db: AsyncSession = Depends(get_db),
 ):
     _guard_enabled()
     from app.repositories.customer_intelligence import CalendarConnectionRepository
 
     repo = CalendarConnectionRepository(db)
-    connection = await repo.get(org_id, connection_id)
+    connection = await repo.get(org_id, connection_id, created_by_user_id=_connection_owner(request, current_user))
     if connection is None:
         raise HTTPException(404, "calendar connection not found")
     if connection.credentials_enc:
@@ -280,15 +302,19 @@ async def create_connection(
 @router.delete(
     "/connections/{connection_id}",
     response_model=ConnectionResponse,
-    dependencies=[Depends(require_permission("ci:manage"))],
+    dependencies=[Depends(require_permission("ci:read"))],
 )
 async def disconnect_connection(
     connection_id: str,
     org_id: str = Depends(get_current_org_id),
     current_user: User = Depends(get_current_user),
+    request: Request = None,
     db: AsyncSession = Depends(get_db),
 ):
     _guard_enabled()
+    owner_id = _connection_owner(request, current_user)
+    if owner_id is not None and await CustomerIntelligenceService(db).connections.get(org_id, connection_id, created_by_user_id=owner_id) is None:
+        raise HTTPException(status_code=404, detail="connection not found")
     result = await CustomerIntelligenceService(db).disconnect(
         org_id=org_id, connection_id=connection_id, actor_user_id=current_user.id
     )

@@ -5,6 +5,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.authz.scope import scope_to_owner
 from app.db.base import utc_now
 from app.models.approval_request import ApprovalRequest
 
@@ -72,10 +73,12 @@ async def resolve_approval(
 
 
 async def get_pending(db: AsyncSession, *, org_id: str) -> list[ApprovalRequest]:
-    res = await db.execute(
+    stmt = scope_to_owner(
         select(ApprovalRequest)
-        .where(ApprovalRequest.org_id == org_id, ApprovalRequest.status == "pending")
-        .order_by(ApprovalRequest.created_at)
+        .where(ApprovalRequest.org_id == org_id, ApprovalRequest.status == "pending"),
+        db,
+        ApprovalRequest.requested_by,
     )
+    res = await db.execute(stmt.order_by(ApprovalRequest.created_at))
     return list(res.scalars().all())
 

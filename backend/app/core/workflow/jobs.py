@@ -38,6 +38,7 @@ async def run_workflow(ctx, workflow_run_id: str) -> None:  # noqa: ARG001
                 stream=False,
                 workflow_run_id=workflow_run.id,
                 force_inline=True,
+                user_id=workflow_run.triggered_by_user_id,
             )
         except Exception as exc:  # noqa: BLE001
             workflow_run.status = "failed"
@@ -67,7 +68,7 @@ async def run_chat(ctx, payload: dict) -> None:  # noqa: ARG001
                 payload["org_id"],
                 request,
                 user_id=payload.get("user_id"),
-                root_run_id=request.run_id,
+                root_run_id=payload.get("root_run_id") or request.run_id,
                 current_task_id=task.id,
                 approval_resume_id=payload.get("approval_resume_id"),
             )

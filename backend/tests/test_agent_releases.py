@@ -8,7 +8,7 @@ from app.core.quota.dependencies import _redis_client
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
-from app.schemas.chat import ChatRequest
+from app.schemas.chat import AgentLoopResult, ChatRequest
 from app.services.agent_service import AgentService
 from app.services.chat_service import ChatService
 
@@ -296,26 +296,27 @@ def _draft_with_failing_gate(client: TestClient, token: str, org_id: str) -> dic
     return agent
 
 
-def test_force_publish_requires_owner(client: TestClient) -> None:
-    """Publish rights are not enough to ship over a red gate."""
-    owner_token, org_id = _register(client, "force-owner@example.com", "Force Org")
-    agent = _draft_with_failing_gate(client, owner_token, org_id)
+def test_force_publish_requires_admin(client: TestClient) -> None:
+    """A plain user has no publish rights at all in the 2-role model, so they
+    can't reach a red gate to force-publish over it in the first place."""
+    admin_token, org_id = _register(client, "force-owner@example.com", "Force Org")
+    agent = _draft_with_failing_gate(client, admin_token, org_id)
 
-    dev_token, _ = _register(client, "force-dev@example.com", "Dev Home")
+    user_token, _ = _register(client, "force-dev@example.com", "Dev Home")
     add = client.post(
         f"/api/orgs/{org_id}/members",
-        headers=_headers(owner_token, org_id),
-        json={"email": "force-dev@example.com", "role": "developer"},
+        headers=_headers(admin_token, org_id),
+        json={"email": "force-dev@example.com", "role": "user"},
     )
     assert add.status_code == 201, add.text
 
     forced = client.post(
         f"/api/agents/{agent['id']}/releases/2/publish",
-        headers=_headers(dev_token, org_id),
+        headers=_headers(user_token, org_id),
         json={"force": True},
     )
     assert forced.status_code == 403
-    assert "owner" in forced.json()["detail"]
+    assert "agents:publish" in forced.json()["detail"]
 
 
 @pytest.mark.asyncio
@@ -515,3 +516,108 @@ def test_model_selection_repins_only_the_current_chat_session(
     assert current_release_id != original_release_id
     assert current_model_id == alternate.json()["id"]
     assert other_release_id == original_release_id
+
+
+def test_user_model_selection_is_per_chat_and_validated(
+    client: TestClient, async_session_factory, monkeypatch
+) -> None:
+    admin_token, org_id = _register(client, "user-model-admin@example.com", "User Model Org")
+    admin_headers = _headers(admin_token, org_id)
+    agent = _create_agent(client, admin_token, org_id)
+    provider_id = client.get("/api/providers", headers=admin_headers).json()[0]["id"]
+    alternate = client.post(
+        "/api/models",
+        headers=admin_headers,
+        json={
+            "provider_id": provider_id,
+            "name": "user-selectable-model",
+            "display_name": "User Selectable Model",
+        },
+    )
+    assert alternate.status_code == 201, alternate.text
+    alternate_id = alternate.json()["id"]
+
+    user_email = "user-model-consumer@example.com"
+    user_token, _user_org = _register(client, user_email, "User Home")
+    profile = client.get(
+        "/api/auth/me", headers={"Authorization": f"Bearer {user_token}"}
+    ).json()
+    invited = client.post(
+        f"/api/orgs/{org_id}/members",
+        headers=admin_headers,
+        json={"email": user_email, "role": "user"},
+    )
+    assert invited.status_code == 201, invited.text
+
+    captured: dict[str, str | None] = {}
+
+    async def fake_run_agent_loop(*_args, **kwargs) -> AgentLoopResult:
+        captured["model_id"] = kwargs["model_id"]
+        return AgentLoopResult(content="ok")
+
+    monkeypatch.setattr("app.services.chat_service.run_agent_loop", fake_run_agent_loop)
+
+    async def _run_selected_model() -> AgentLoopResult:
+        async with async_session_factory() as db:
+            return await ChatService(db).run(
+                org_id,
+                ChatRequest(
+                    agent_id=agent["id"],
+                    model_id=alternate_id,
+                    message="use selected model",
+                    stream=False,
+                ),
+                user_id=profile["id"],
+                user_role="user",
+            )
+
+    import anyio
+
+    result = anyio.run(_run_selected_model)
+    assert result.content == "ok"
+    assert captured["model_id"] == alternate_id
+
+    inactive = client.put(
+        f"/api/models/{alternate_id}",
+        headers=admin_headers,
+        json={"active": False},
+    )
+    assert inactive.status_code == 200, inactive.text
+
+    _other_token, other_org = _register(client, "other-model-org@example.com", "Other Model Org")
+    other_agent = _create_agent(client, _other_token, other_org)
+    cross_org_model_id = other_agent["model_id"]
+
+    async def _run_unavailable_model() -> None:
+        async with async_session_factory() as db:
+            with pytest.raises(ValueError, match="not available"):
+                await ChatService(db).run(
+                    org_id,
+                    ChatRequest(
+                        agent_id=agent["id"],
+                        model_id=alternate_id,
+                        message="reject inactive model",
+                        stream=False,
+                    ),
+                    user_id=profile["id"],
+                    user_role="user",
+                )
+
+    anyio.run(_run_unavailable_model)
+
+    async def _run_cross_org_model() -> None:
+        async with async_session_factory() as db:
+            with pytest.raises(ValueError, match="not available"):
+                await ChatService(db).run(
+                    org_id,
+                    ChatRequest(
+                        agent_id=agent["id"],
+                        model_id=cross_org_model_id,
+                        message="reject cross-org model",
+                        stream=False,
+                    ),
+                    user_id=profile["id"],
+                    user_role="user",
+                )
+
+    anyio.run(_run_cross_org_model)

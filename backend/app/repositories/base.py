@@ -14,20 +14,24 @@ class BaseRepository(Generic[ModelType]):
         self.model = model
         self.db = db
 
-    async def get(self, org_id: str, id: str) -> ModelType | None:
+    async def get(self, org_id: str, id: str, created_by_user_id: str | None = None) -> ModelType | None:
         if not org_id:
             raise TypeError("org_id is required")
-        res = await self.db.execute(
-            select(self.model).where(self.model.id == id, self.model.org_id == org_id)
-        )
+        filters = [self.model.id == id, self.model.org_id == org_id]
+        if created_by_user_id is not None and hasattr(self.model, "created_by_user_id"):
+            filters.append(self.model.created_by_user_id == created_by_user_id)
+        res = await self.db.execute(select(self.model).where(*filters))
         return res.scalar_one_or_none()
 
-    async def list(self, org_id: str, limit: int = 100, offset: int = 0) -> list[ModelType]:
+    async def list(self, org_id: str, limit: int = 100, offset: int = 0, created_by_user_id: str | None = None) -> list[ModelType]:
         if not org_id:
             raise TypeError("org_id is required")
+        filters = [self.model.org_id == org_id]
+        if created_by_user_id is not None and hasattr(self.model, "created_by_user_id"):
+            filters.append(self.model.created_by_user_id == created_by_user_id)
         res = await self.db.execute(
             select(self.model)
-            .where(self.model.org_id == org_id)
+            .where(*filters)
             .order_by(self.model.created_at.desc())
             .limit(limit)
             .offset(offset)

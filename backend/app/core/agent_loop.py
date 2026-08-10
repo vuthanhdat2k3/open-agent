@@ -3,11 +3,13 @@ from __future__ import annotations
 import asyncio
 import copy
 import json
+import re
 import time
 from collections.abc import AsyncIterator
+from datetime import timedelta
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -27,7 +29,8 @@ from app.core.observability.metrics import (
     tool_calls_total,
 )
 from app.core.tools.registry import BUILTIN_TOOLS, execute_tool_call
-from app.core.tools.types import ToolContext, tool_to_openai_schema
+from app.core.tools.risk_tier import RiskTier
+from app.core.tools.types import ToolContext, ToolSpec, tool_to_openai_schema
 from app.core.workflow.replay import ReplayCursor, ReplayDiverged, record_tool_call
 from app.db.base import gen_id, utc_now
 from app.mcp.client import build_mcp_tool_spec, get_mcp_manager
@@ -85,6 +88,168 @@ ORCHESTRATOR_SYSTEM_SUFFIX = (
     "multiple times, including multiple tool calls in one turn when tasks can run independently.\n"
     "- Synthesize subagent results into one concise final answer."
 )
+
+
+async def _build_orchestrator_roster(db: AsyncSession, org_id: str, exclude_agent_id: str) -> str:
+    """List sibling agents in the org so an orchestrator knows what it can
+    call_agent() into - target_agent_id is a raw id, not discoverable
+    otherwise."""
+    result = await db.execute(
+        select(Agent.id, Agent.name, Agent.description).where(
+            Agent.org_id == org_id, Agent.id != exclude_agent_id
+        )
+    )
+    rows = result.all()
+    if not rows:
+        return ""
+    lines = [f"- {row.id}: {row.name} - {row.description or 'no description'}" for row in rows]
+    return "Agents available to delegate to via call_agent (id: name - description):\n" + "\n".join(lines)
+
+
+def _infer_capabilities(agent: Agent) -> set[str]:
+    """Infer routable capability tags from the agent's tools and name."""
+    tags = {name.split("_", 1)[0].lower() for name in (agent.tools or []) if "_" in name}
+    tags.add(agent.name.lower())
+    return tags
+
+
+def _delegate_slug(name: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
+    return slug or "agent"
+
+
+async def _build_orchestrator_delegate_tools(
+    db: AsyncSession, org_id: str, exclude_agent_id: str
+) -> tuple[str, list[ToolSpec], dict[str, list[Agent]], dict[str, ToolSpec]]:
+    """Build dynamic, named delegate tools and the capability index."""
+    result = await db.execute(
+        select(Agent).where(Agent.org_id == org_id, Agent.id != exclude_agent_id)
+    )
+    agents = list(result.scalars().all())
+    if not agents:
+        return "", [], {}, {}
+
+    used_slugs: set[str] = set()
+    delegate_specs: list[ToolSpec] = []
+    capability_index: dict[str, list[Agent]] = {}
+    delegate_by_agent_id: dict[str, ToolSpec] = {}
+    lines: list[str] = []
+    for target in agents:
+        slug = _delegate_slug(target.name)
+        if slug in used_slugs:
+            slug = f"{slug}_{target.id.replace('-', '')[-6:]}"
+        used_slugs.add(slug)
+        tool_name = f"delegate_to_{slug}"
+        description = target.description or (
+            f"Handles: {', '.join(target.tools or [])}" if target.tools else "Delegate work to this agent."
+        )
+
+        async def run_delegate(args: dict[str, Any], ctx: ToolContext, target_id: str = target.id) -> str:
+            from app.core.tools.builtins import _call_agent
+
+            return await _call_agent(
+                {"target_agent_id": target_id, "instruction": args.get("instruction", "")}, ctx
+            )
+
+        spec = ToolSpec(
+                name=tool_name,
+                description=description,
+                input_schema={
+                    "type": "object",
+                    "properties": {"instruction": {"type": "string"}},
+                    "required": ["instruction"],
+                },
+                run=run_delegate,
+                risk_tier=RiskTier.execute,
+            )
+        delegate_specs.append(spec)
+        delegate_by_agent_id[target.id] = spec
+        lines.append(f"- {target.id}: {target.name} - {description}")
+        for capability in _infer_capabilities(target):
+            capability_index.setdefault(capability, []).append(target)
+    roster = "Agents available to delegate to via named tools:\n" + "\n".join(lines)
+    return roster, delegate_specs, capability_index, delegate_by_agent_id
+
+
+_ROUTING_SYNONYMS: dict[str, tuple[str, ...]] = {
+    "email": ("email", "gmail", "mail", "thư", "email"),
+    "calendar": ("calendar", "lịch", "schedule", "meeting", "cuộc họp"),
+    "drive": ("drive", "tài liệu", "document", "documents", "file", "files"),
+}
+
+_STICKY_ROUTE_TTL_MINUTES = 30
+_STICKY_ROUTE_LOOKBACK = 5
+_SHORT_FOLLOWUP_MAX_WORDS = 8
+
+
+async def _recent_delegate_agent_id(
+    db: AsyncSession,
+    org_id: str,
+    root_run_id: str | None,
+    exclude_agent_id: str,
+    session_id: str | None = None,
+) -> str | None:
+    """Return the sole recent delegated agent for short follow-up routing.
+
+    A root run groups one delegation tree, while a chat session can contain
+    multiple root runs across turns. Use the structured session checkpoint as
+    the cross-turn fallback rather than searching free-form conversation text.
+    """
+    if not root_run_id and not session_id:
+        return None
+    cutoff = utc_now() - timedelta(minutes=_STICKY_ROUTE_TTL_MINUTES)
+    scope = []
+    if root_run_id:
+        scope.append(Task.root_run_id == root_run_id)
+    if session_id:
+        scope.append(Task.progress["session_id"].as_string() == session_id)
+    res = await db.execute(
+        select(Task.agent_id)
+        .where(
+            Task.org_id == org_id,
+            or_(*scope),
+            Task.agent_id != exclude_agent_id,
+            Task.started_at >= cutoff,
+        )
+        .order_by(Task.started_at.desc())
+        .limit(_STICKY_ROUTE_LOOKBACK)
+    )
+    agent_ids = {row[0] for row in res.all() if row[0]}
+    return next(iter(agent_ids)) if len(agent_ids) == 1 else None
+
+
+def _route_orchestrator_turn(
+    message: str,
+    delegate_specs: list[ToolSpec],
+    capability_index: dict[str, list[Agent]],
+    delegate_by_agent_id: dict[str, ToolSpec] | None = None,
+    sticky_agent_id: str | None = None,
+) -> tuple[dict[str, Any] | str, str | None]:
+    """Return a forced delegate tool when one capability has one candidate."""
+    text = message.lower()
+    matched: dict[str, list[Agent]] = {}
+    for capability, agents in capability_index.items():
+        terms = _ROUTING_SYNONYMS.get(capability, (capability,))
+        if any(term in text for term in terms):
+            matched[capability] = agents
+    candidates = {agent.id: agent for agents in matched.values() for agent in agents}
+    if not candidates and sticky_agent_id and len(message.split()) <= _SHORT_FOLLOWUP_MAX_WORDS:
+        spec = (delegate_by_agent_id or {}).get(sticky_agent_id)
+        if spec is not None:
+            return {"type": "function", "function": {"name": spec.name}}, (
+                f"This short follow-up continues the recent delegation to {spec.name}. "
+                f"You MUST call {spec.name}; do not answer or refuse directly."
+            )
+        return "auto", None
+    if len(candidates) != 1:
+        return "auto", None
+    target = next(iter(candidates.values()))
+    spec = (delegate_by_agent_id or {}).get(target.id)
+    if spec is None:
+        return "auto", None
+    return {"type": "function", "function": {"name": spec.name}}, (
+        f"This request matches the {next(iter(matched))} capability. You MUST call {spec.name}; do not answer or refuse directly."
+    )
 
 
 def _estimate_tokens(text: str) -> int:
@@ -241,6 +406,7 @@ async def _agent_stream(
     root_run_id: str | None = None,
     replay_cursor: ReplayCursor | None = None,
     user_id: str | None = None,
+    model_id: str | None = None,
     user_role: str | None = None,
     actor_agent_identity_id: str | None = None,
     delegation_chain: list | dict | None = None,
@@ -287,13 +453,17 @@ async def _agent_stream(
         current_task_id = root_task.id
         root_run_id = root_task.root_run_id
 
-    res = await db.execute(select(Model).where(Model.id == agent.model_id))
+    selected_model_id = model_id or agent.model_id
+    model_stmt = select(Model).where(Model.id == selected_model_id, Model.org_id == agent.org_id)
+    if model_id and user_role == "user":
+        model_stmt = model_stmt.where(Model.active.is_(True))
+    res = await db.execute(model_stmt)
     model = res.scalar_one_or_none()
     if model is None:
         msg = (
             "no model assigned to this agent — assign one before chatting"
-            if agent.model_id is None
-            else f"model {agent.model_id} not found"
+            if selected_model_id is None
+            else f"model {selected_model_id} not found or unavailable"
         )
         await _finish_task(db, root_task, status="failed", result=msg)
         yield {"event": "error", "data": {"message": msg}}
@@ -329,7 +499,11 @@ async def _agent_stream(
     )
 
     specs = await _build_specs(agent, db)
-    tool_schemas = [tool_to_openai_schema(s) for s in specs] if specs else None
+    delegate_specs: list[ToolSpec] = []
+    capability_index: dict[str, list[Agent]] = {}
+    delegate_by_agent_id: dict[str, ToolSpec] = {}
+    forced_tool_choice: dict[str, Any] | str = "auto"
+    route_directive: str | None = None
     tool_by_name = {s.name: s for s in specs}
 
     # Auto-inject behavioral directives ONLY for tools the agent actually has
@@ -339,8 +513,29 @@ async def _agent_stream(
         directives.append(MEMORY_DIRECTIVE)
     if "rag_search" in tool_by_name:
         directives.append(RAG_DIRECTIVE)
-    if agent.kind == "orchestrator":
+    if agent.kind == "orchestrator" and "call_agent" in tool_by_name:
         directives.append(ORCHESTRATOR_SYSTEM_SUFFIX)
+        roster, delegate_specs, capability_index, delegate_by_agent_id = await _build_orchestrator_delegate_tools(
+            db, agent.org_id, agent.id
+        )
+        specs.extend(delegate_specs)
+        tool_by_name.update({spec.name: spec for spec in delegate_specs})
+        if roster:
+            directives.append(roster)
+        sticky_agent_id = await _recent_delegate_agent_id(
+            db, agent.org_id, root_run_id, agent.id, session_id
+        )
+        forced_tool_choice, route_directive = _route_orchestrator_turn(
+            message,
+            delegate_specs,
+            capability_index,
+            delegate_by_agent_id,
+            sticky_agent_id,
+        )
+        if route_directive:
+            directives.append(route_directive)
+
+    tool_schemas = [tool_to_openai_schema(s) for s in specs] if specs else None
 
     system_parts = [base_prompt] if base_prompt else []
     system_parts.extend(directives)
@@ -371,8 +566,8 @@ async def _agent_stream(
         else:
             for m in hist:
                 messages.append(_to_openai_message(m))
-        if not approval_resume_id:
-            messages.append({"role": "user", "content": message})
+    if not approval_resume_id:
+        messages.append({"role": "user", "content": message})
 
     if session_id and not approval_resume_id:
         await _persist(
@@ -382,7 +577,7 @@ async def _agent_stream(
             message,
             {},
             org_id=agent.org_id,
-            created_by_user_id=agent.created_by_user_id,
+            created_by_user_id=user_id or agent.created_by_user_id,
         )
 
     # Only the chat root task gets a durable event log: it is the one a
@@ -533,7 +728,13 @@ async def _agent_stream(
                 temperature=agent.temperature,
                 session_id=session_id,
             ) as chat_span:
-                stream_iter = llm.stream(messages, tools=tool_schemas, temperature=agent.temperature)
+                stream_kwargs: dict[str, Any] = {
+                    "tools": tool_schemas,
+                    "temperature": agent.temperature,
+                }
+                if agent.kind == "orchestrator":
+                    stream_kwargs["tool_choice"] = forced_tool_choice if _ == 0 else "auto"
+                stream_iter = llm.stream(messages, **stream_kwargs)
                 async for ev in stream_iter:
                     if await _is_cancelled(db, root_task):
                         if rec is not None:
@@ -1068,12 +1269,12 @@ async def _agent_stream(
                         "reasoning": reasoning_text,
                     },
                     org_id=agent.org_id,
-                    created_by_user_id=agent.created_by_user_id,
+                    created_by_user_id=user_id or agent.created_by_user_id,
                 )
             db.add(
                 UsageEvent(
                     org_id=agent.org_id,
-                    created_by_user_id=agent.created_by_user_id,
+                    created_by_user_id=user_id or agent.created_by_user_id,
                     source="call_agent" if depth > 0 else "chat",
                     agent_name=agent.name,
                     model_name=model.name,
@@ -1122,6 +1323,7 @@ async def run_agent_loop(
     root_run_id: str | None = None,
     replay_cursor: ReplayCursor | None = None,
     user_id: str | None = None,
+    model_id: str | None = None,
     user_role: str | None = None,
     actor_agent_identity_id: str | None = None,
     delegation_chain: list | dict | None = None,
@@ -1144,6 +1346,7 @@ async def run_agent_loop(
         root_run_id=root_run_id,
         replay_cursor=replay_cursor,
         user_id=user_id,
+        model_id=model_id,
         user_role=user_role,
         actor_agent_identity_id=actor_agent_identity_id,
         delegation_chain=delegation_chain,

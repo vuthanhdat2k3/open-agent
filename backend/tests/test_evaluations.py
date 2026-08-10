@@ -331,12 +331,12 @@ def test_recorded_runs_compare_regressions_and_freeze_dataset(
     assert len(baseline_results) == 2
 
 
-def test_evaluation_tenant_scope_and_viewer_permissions(client: TestClient) -> None:
-    owner_token, org_id = _register(
+def test_evaluation_tenant_scope_and_user_permissions(client: TestClient) -> None:
+    admin_token, org_id = _register(
         client, "eval-rbac-owner@example.com", "Eval RBAC"
     )
-    agent = _create_agent(client, owner_token, org_id)
-    suite = _create_suite(client, owner_token, org_id, agent["id"])
+    agent = _create_agent(client, admin_token, org_id)
+    suite = _create_suite(client, admin_token, org_id, agent["id"])
 
     other_token, other_org = _register(
         client, "eval-other@example.com", "Eval Other"
@@ -347,25 +347,27 @@ def test_evaluation_tenant_scope_and_viewer_permissions(client: TestClient) -> N
     )
     assert hidden.status_code == 404
 
-    viewer_token, _ = _register(
+    user_token, _ = _register(
         client, "eval-viewer@example.com", "Eval Viewer Home"
     )
     membership = client.post(
         f"/api/orgs/{org_id}/members",
-        headers=_headers(owner_token, org_id),
-        json={"email": "eval-viewer@example.com", "role": "viewer"},
+        headers=_headers(admin_token, org_id),
+        json={"email": "eval-viewer@example.com", "role": "user"},
     )
     assert membership.status_code == 201
+    # Evaluations are an admin-only domain in the 2-role model - a plain user
+    # can neither read suites nor run them.
     assert (
         client.get(
             f"/api/evaluations/suites/{suite['id']}",
-            headers=_headers(viewer_token, org_id),
+            headers=_headers(user_token, org_id),
         ).status_code
-        == 200
+        == 403
     )
     denied = client.post(
         f"/api/evaluations/suites/{suite['id']}/runs",
-        headers=_headers(viewer_token, org_id),
+        headers=_headers(user_token, org_id),
         json={
             "agent_release_id": agent["active_release_id"],
             "execution_mode": "recorded",

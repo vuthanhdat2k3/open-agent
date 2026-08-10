@@ -7,7 +7,7 @@ from typing import Any
 
 from simpleeval import simple_eval
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import get_settings
 from app.core.guardrails.approval import request_approval
@@ -44,6 +44,7 @@ async def create_workflow_run(
     input_text: str,
     db: AsyncSession,
     workflow_run_id: str | None = None,
+    user_id: str | None = None,
 ) -> WorkflowRun:
     if workflow_run_id:
         res = await db.execute(
@@ -62,7 +63,7 @@ async def create_workflow_run(
         workflow_id=workflow.id,
         status="running",
         input={"text": input_text},
-        triggered_by_user_id=workflow.created_by_user_id,
+        triggered_by_user_id=user_id or workflow.created_by_user_id,
         started_at=utc_now(),
     )
     db.add(run)
@@ -114,9 +115,13 @@ async def _run_workflow_events(
     workflow_run_id: str | None = None,
     force_inline: bool = False,
     replay_of_run_id: str | None = None,
+    user_id: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     settings = get_settings()
-    workflow_run = await create_workflow_run(workflow, input_text, db, workflow_run_id)
+    workflow_run = await create_workflow_run(
+        workflow, input_text, db, workflow_run_id, user_id
+    )
+    actor_user_id = workflow_run.triggered_by_user_id or user_id or workflow.created_by_user_id
     yield {
         "event": "workflow_start",
         "data": {
@@ -245,7 +250,7 @@ async def _run_workflow_events(
     )
 
     async def run_node_once(
-        node: dict[str, Any], node_run: WorkflowNodeRun
+        node: dict[str, Any], node_run: WorkflowNodeRun, db: AsyncSession
     ) -> str:
         kind = node.get("kind") or node.get("type")
         incoming = [e for e in edges_to[node["id"]] if e["_idx"] in active_edges]
@@ -288,7 +293,7 @@ async def _run_workflow_events(
                 depth=0,
                 workspace_dir=settings.workspace_dir,
                 org_id=workflow.org_id,
-                user_id=workflow.created_by_user_id,
+                user_id=actor_user_id,
             )
             started = time.monotonic()
             result = await execute_tool_call(spec, args, ctx)
@@ -317,7 +322,7 @@ async def _run_workflow_events(
                 node_id=node["id"],
                 tool_name=cfg.get("tool_name"),
                 args_snapshot=cfg,
-                requested_by=workflow.created_by_user_id,
+                requested_by=actor_user_id,
             )
             raise WorkflowWaitingApproval(approval.id)
         if kind == "sub_workflow":
@@ -341,6 +346,7 @@ async def _run_workflow_events(
                 db,
                 stream=False,
                 force_inline=True,
+                user_id=actor_user_id,
             )
             return child_output
         if kind == "agent":
@@ -365,11 +371,12 @@ async def _run_workflow_events(
                 depth=0,
                 root_run_id=workflow_run.id,
                 replay_cursor=replay_cursor,
+                user_id=actor_user_id,
             )
             return loop.content
         raise RuntimeError(f"unknown node kind {kind}")
 
-    async def run_node(node: dict[str, Any]) -> str:
+    async def run_node(node: dict[str, Any], db: AsyncSession) -> str:
         cfg = node.get("config", {}) or {}
         retry_cfg = node.get("retry") or cfg.get("retry") or {}
         max_attempts = max(1, int(retry_cfg.get("max_attempts", 1) or 1))
@@ -397,7 +404,7 @@ async def _run_workflow_events(
                     workflow_name=getattr(workflow, "name", None),
                     agent_release_id=getattr(node_run, "agent_release_id", None),
                 ):
-                    coro = run_node_once(node, node_run)
+                    coro = run_node_once(node, node_run, db)
                     result = (
                         await asyncio.wait_for(coro, timeout=float(timeout_s))
                         if timeout_s
@@ -420,6 +427,12 @@ async def _run_workflow_events(
             await _finish_node_run(db, node_run, status="succeeded", output={"text": result})
             return result
         raise RuntimeError(str(last_error) if last_error else "node failed")
+
+    async def run_node_in_new_session(
+        node: dict[str, Any], session_factory: async_sessionmaker[AsyncSession]
+    ) -> str:
+        async with session_factory() as node_db:
+            return await run_node(node, node_db)
 
     def is_ready(node: dict[str, Any]) -> bool:
         nid = node["id"]
@@ -450,13 +463,29 @@ async def _run_workflow_events(
             break
 
         tasks: dict[str, asyncio.Task] = {}
+        fan_out = len(ready) > 1
+        if fan_out:
+            # 2+ nodes are ready in the same round (a fan-out). AsyncSession
+            # is not safe for concurrent use by multiple coroutines, so each
+            # concurrently-dispatched node gets its own session bound to the
+            # same engine as `db` — sharing `db` here raises "concurrent
+            # operations are not permitted" on whichever node loses the race.
+            node_sessionmaker = async_sessionmaker(
+                bind=db.bind, class_=AsyncSession, expire_on_commit=False
+            )
+
         for n in ready:
             status[n["id"]] = "running"
             yield {
                 "event": "node_start",
                 "data": {"node_id": n["id"], "kind": n["kind"]},
             }
-            tasks[n["id"]] = asyncio.create_task(run_node(n))
+            coro = (
+                run_node_in_new_session(n, node_sessionmaker)
+                if fan_out
+                else run_node(n, db)
+            )
+            tasks[n["id"]] = asyncio.create_task(coro)
 
         results = await asyncio.gather(*tasks.values(), return_exceptions=True)
         # Heartbeat between scheduling rounds: a workflow whose nodes take
@@ -528,6 +557,7 @@ async def run_workflow_events(
     workflow_run_id: str | None = None,
     force_inline: bool = False,
     replay_of_run_id: str | None = None,
+    user_id: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """Stream workflow events and release any executor lease on close."""
     run_id = workflow_run_id
@@ -539,6 +569,7 @@ async def run_workflow_events(
             workflow_run_id=workflow_run_id,
             force_inline=force_inline,
             replay_of_run_id=replay_of_run_id,
+            user_id=user_id,
         ):
             if event.get("event") == "workflow_start":
                 run_id = event.get("data", {}).get("workflow_run_id") or run_id
@@ -558,6 +589,7 @@ async def run_workflow(
     workflow_run_id: str | None = None,
     force_inline: bool = False,
     replay_of_run_id: str | None = None,
+    user_id: str | None = None,
 ) -> Any:
     """If stream=True, returns the async generator of events.
     Otherwise awaits and returns (final_output, event_log)."""
@@ -569,6 +601,7 @@ async def run_workflow(
             workflow_run_id=workflow_run_id,
             force_inline=force_inline,
             replay_of_run_id=replay_of_run_id,
+            user_id=user_id,
         )
     final = ""
     log: list[dict[str, Any]] = []
@@ -580,6 +613,7 @@ async def run_workflow(
         workflow_run_id=workflow_run_id,
         force_inline=force_inline,
         replay_of_run_id=replay_of_run_id,
+        user_id=user_id,
     ):
         log.append(ev)
         if ev["event"] == "workflow_start":

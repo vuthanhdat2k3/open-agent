@@ -2,7 +2,7 @@
 
 import { toast } from "sonner";
 import { ShieldCheck } from "lucide-react";
-import { useApprovals, useDecideApproval } from "@/hooks";
+import { useApprovals, useCurrentRole, useDecideApproval } from "@/hooks";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import { EmptyState, ErrorState, LoadingSkeleton, ConfirmDialog } from "@/compon
 export default function ApprovalsPage() {
   const approvals = useApprovals();
   const decide = useDecideApproval();
+  const isAdmin = useCurrentRole() === "admin";
 
   async function submit(id: string, decision: "approved" | "rejected") {
     try {
@@ -24,7 +25,7 @@ export default function ApprovalsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader icon={ShieldCheck} title="Approvals" description="Review tool and workflow approval requests" />
+      <PageHeader icon={ShieldCheck} title="Approvals" description={isAdmin ? "Review tool and workflow approval requests" : "Review and approve your pending requests"} />
       {approvals.isLoading ? <LoadingSkeleton variant="table" /> : approvals.isError ? <ErrorState title="Unable to load approvals" description="Approval requests could not be loaded." onRetry={() => void approvals.refetch()} /> : approvals.data?.length ? (
         <div className="space-y-4 stagger">
           {approvals.data.map((approval) => (
