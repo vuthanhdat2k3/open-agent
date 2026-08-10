@@ -1,7 +1,7 @@
 # Multi-Agent Orchestration (Chat) — Design Note
 
 Date: 2026-08-10
-Status: Implemented, live-verified (sequential + parallel)
+Status: Implemented, live-verified (sequential + parallel + A2A + Evaluations)
 
 ## 1. Context
 
@@ -71,6 +71,21 @@ back silently.
     synthesized correctly.
   - Test chat sessions/tasks cleaned up afterward; the `Assistant`
     orchestrator agent itself was kept (the actual deliverable).
+- Follow-up live verification for the two other sessionless callers:
+  - **A2A**: `POST /api/a2a/tasks` ran through the real ASGI route, database,
+    auth, and LLM. Task `645a51f7-cae0-4426-9be3-3360af164f0d` succeeded and
+    returned the exact unique marker supplied in the A2A input. The test agent's
+    temporary `a2a_exposed` flag was restored to `False` afterward.
+  - **Evaluations**: live suite `c86d1241-618e-47aa-9c59-cb0ac9bfc437`, case
+    `4b3bb217-b9cc-4c6f-8221-ce78a3e1072d`, and run
+    `6b4a1cb2-4fec-4ac1-8bb8-6b5b75690281` exercised the real evaluation API,
+    `LiveAgentExecutor`, database, and LLM. The run completed with pass rate
+    `1.0`, no result error, and the exact marker from `case.input` in output.
+- No caller-specific regression test was added: both A2A and Evaluations only
+  forward their input to `run_agent_loop`, while
+  `test_run_agent_loop_includes_message_without_session_id` directly guards the
+  shared message-building root cause. Their existing route/executor tests cover
+  the forwarding boundaries without duplicating that implementation test.
 
 ## 5. Not done in this pass
 
