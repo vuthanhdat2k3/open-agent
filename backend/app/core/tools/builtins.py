@@ -197,6 +197,7 @@ async def _call_agent(args: dict[str, Any], ctx: ToolContext) -> str:
     from app.core.agent_loop import run_agent_loop
     from app.db.base import utc_now
     from app.models.agent import Agent
+    from app.models.approval_request import ApprovalRequest
     from app.models.task import Task
 
     result = await ctx.db.execute(
@@ -229,6 +230,7 @@ async def _call_agent(args: dict[str, Any], ctx: ToolContext) -> str:
             depth=ctx.depth + 1,
             current_task_id=task.id,
             root_run_id=task.root_run_id,
+            user_id=ctx.user_id,
         )
     except Exception as exc:  # noqa: BLE001
         task.status = "failed"
@@ -236,6 +238,21 @@ async def _call_agent(args: dict[str, Any], ctx: ToolContext) -> str:
         task.finished_at = utc_now()
         await ctx.db.commit()
         return f"error: subagent failed: {exc}"
+
+    pending = await ctx.db.execute(
+        select(ApprovalRequest).where(
+            ApprovalRequest.run_id == task.root_run_id,
+            ApprovalRequest.org_id == agent.org_id,
+            ApprovalRequest.status == "pending",
+        ).limit(1)
+    )
+    approval = pending.scalar_one_or_none()
+    if approval is not None:
+        task.status = "waiting_approval"
+        task.result = f"approval required ({approval.id})"
+        task.finished_at = None
+        await ctx.db.commit()
+        return f"approval required for {approval.tool_name} (approval_id: {approval.id})"
 
     task.status = "succeeded"
     task.result = loop_result.content
