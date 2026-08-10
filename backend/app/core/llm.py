@@ -61,6 +61,7 @@ class LLMClient:
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None = None,
         temperature: float = 0.7,
+        tool_choice: Any | None = None,
     ) -> tuple[str, dict[str, int], list[dict[str, Any]]]:
         """Non-streaming completion. Returns (content, usage, tool_calls)."""
         kwargs: dict[str, Any] = {
@@ -70,7 +71,7 @@ class LLMClient:
         }
         if tools:
             kwargs["tools"] = tools
-            kwargs["tool_choice"] = "auto"
+            kwargs["tool_choice"] = tool_choice if tool_choice is not None else "auto"
         resp = await self._client.chat.completions.create(**kwargs)
         msg = resp.choices[0].message
         content = msg.content or ""
@@ -94,6 +95,7 @@ class LLMClient:
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None = None,
         temperature: float = 0.7,
+        tool_choice: Any | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         """Streaming completion. Yields dicts:
         {"type": "content", "text": str},
@@ -114,7 +116,7 @@ class LLMClient:
         }
         if tools:
             kwargs["tools"] = tools
-            kwargs["tool_choice"] = "auto"
+            kwargs["tool_choice"] = tool_choice if tool_choice is not None else "auto"
 
         async def _open() -> Any:
             try:
