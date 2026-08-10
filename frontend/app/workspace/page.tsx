@@ -16,6 +16,7 @@ import {
 import {
   useDeleteSandboxExecution,
   useDeleteWorkspaceArtifact,
+  useCurrentRole,
   useRunWorkspaceArtifact,
   useSandboxExecutions,
   useWorkspaceArtifacts,
@@ -100,6 +101,7 @@ async function downloadArtifact(artifact: WorkspaceArtifact) {
 }
 
 export default function WorkspacePage() {
+  const isAdmin = useCurrentRole() === "admin";
   const artifacts = useWorkspaceArtifacts();
   const executions = useSandboxExecutions();
   const deleteArtifact = useDeleteWorkspaceArtifact();
@@ -142,7 +144,7 @@ export default function WorkspacePage() {
       <PageHeader
         icon={FolderKanban}
         title="Workspace"
-        description="Manage agent-generated files and code execution history"
+        description={isAdmin ? "Manage agent-generated files and code execution history" : "Review your agent-generated files and execution history"}
         actions={
           <Button
             variant="outline"
@@ -196,14 +198,15 @@ export default function WorkspacePage() {
                       <TableCell>
                         <div className="flex justify-end gap-1.5">
                           {(() => {
-                            const runnable = isRunnableArtifact(artifact.path);
+                            const runnable = isAdmin && isRunnableArtifact(artifact.path);
                             const renderable = isRenderableArtifact(artifact.path);
+                            const viewable = renderable || !isAdmin;
                             return (
                               <Button
                                 size="icon"
                                 variant="ghost"
                                 className="h-8 w-8 text-primary"
-                                disabled={!artifact.exists || (!runnable && !renderable) || runArtifact.isPending}
+                                disabled={!artifact.exists || (!runnable && !viewable) || runArtifact.isPending}
                                 onClick={() => (runnable ? runWorkspaceArtifact(artifact) : openArtifact(artifact))}
                                 title={runnable ? "Run file" : renderable ? "Open file" : "Preview file"}
                                 aria-label={`${runnable ? "Run" : "Open"} ${artifact.path}`}
@@ -222,14 +225,14 @@ export default function WorkspacePage() {
                           >
                             <Download className="h-4 w-4" />
                           </Button>
-                          <ConfirmDialog
+                          {isAdmin && <ConfirmDialog
                             trigger={<Button size="icon" variant="ghost" className="h-10 w-10 text-muted-foreground hover:text-destructive" aria-label={`Delete ${artifact.path}`}><Trash2 className="h-4 w-4" /></Button>}
                             title={`Delete ${artifact.path}?`}
                             description="This workspace artifact will be permanently removed."
                             confirmLabel="Delete artifact"
                             destructive
                             onConfirm={() => deleteArtifact.mutateAsync(artifact.id).then(() => undefined)}
-                          />
+                          />}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -292,14 +295,14 @@ export default function WorkspacePage() {
                           <Button size="icon" variant="ghost" className="h-10 w-10" onClick={() => openExecution(execution)} aria-label={`View execution ${execution.id}`}>
                             <Eye className="h-4 w-4" />
                           </Button>
-                          <ConfirmDialog
+                          {isAdmin && <ConfirmDialog
                             trigger={<Button size="icon" variant="ghost" className="h-10 w-10 text-muted-foreground hover:text-destructive" aria-label={`Delete execution ${execution.id}`}><Trash2 className="h-4 w-4" /></Button>}
                             title="Delete this execution?"
                             description="The execution record and its output preview will be removed."
                             confirmLabel="Delete execution"
                             destructive
                             onConfirm={() => deleteExecution.mutateAsync(execution.id).then(() => undefined)}
-                          />
+                          />}
                         </div>
                       </TableCell>
                     </TableRow>

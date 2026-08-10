@@ -3,11 +3,11 @@ import { api } from "@/lib/api";
 import type { Agent, AgentToolInfo, McpServer, Model, Provider, Session, SandboxExecution, UploadedFile, UsageSummary, Workflow as WorkflowT, WorkspaceArtifact } from "@/types";
 import {
   Activity, Bot, Bug, CalendarDays, Cpu, FileUp, FlaskConical, FolderKanban,
-  Gauge, LayoutDashboard, MessageSquare, Plug, Server, ShieldCheck, Users, Workflow,
+  Gauge, LayoutDashboard, MessageSquare, PlayCircle, Plug, Server, ShieldCheck, Users, Workflow,
   type LucideIcon,
 } from "lucide-react";
 
-export interface NavItem { href: string; label: string; icon: LucideIcon; adminOnly?: boolean; }
+export interface NavItem { href: string; label: string; icon: LucideIcon; adminOnly?: boolean; userOnly?: boolean; }
 export interface NavGroup { title: string; items: NavItem[]; }
 
 // adminOnly items configure/operate the product (agents, workflows authoring,
@@ -18,6 +18,7 @@ export const navGroups: NavGroup[] = [
   { title: "Overview", items: [
     { href: "/", label: "Dashboard", icon: LayoutDashboard },
     { href: "/chat", label: "Chat", icon: MessageSquare },
+    { href: "/run-workflow", label: "Run Workflow", icon: PlayCircle, userOnly: true },
   ] },
   { title: "AI Infrastructure", items: [
     { href: "/agents", label: "Agents", icon: Bot, adminOnly: true },
@@ -46,12 +47,8 @@ export function isActive(pathname: string, href: string) {
 type PrefetchSpec = { queryKey: QueryKey; queryFn: () => Promise<unknown> };
 const tabQueries: Record<string, PrefetchSpec[]> = {
   "/": [
-    { queryKey: ["usage"], queryFn: () => api.get<UsageSummary[]>("/api/debug/usage") },
-    { queryKey: ["providers"], queryFn: () => api.get<Provider[]>("/api/providers") },
-    { queryKey: ["models"], queryFn: () => api.get<Model[]>("/api/models") },
     { queryKey: ["agents"], queryFn: () => api.get<Agent[]>("/api/agents") },
     { queryKey: ["workflows"], queryFn: () => api.get<WorkflowT[]>("/api/workflows") },
-    { queryKey: ["mcp"], queryFn: () => api.get<McpServer[]>("/api/mcp/servers") },
   ],
   "/providers": [{ queryKey: ["providers"], queryFn: () => api.get<Provider[]>("/api/providers") }],
   "/models": [{ queryKey: ["models"], queryFn: () => api.get<Model[]>("/api/models") }],
@@ -62,6 +59,7 @@ const tabQueries: Record<string, PrefetchSpec[]> = {
   ],
   "/mcp": [{ queryKey: ["mcp"], queryFn: () => api.get<McpServer[]>("/api/mcp/servers") }],
   "/workflows": [{ queryKey: ["workflows"], queryFn: () => api.get<WorkflowT[]>("/api/workflows") }],
+  "/run-workflow": [{ queryKey: ["workflows"], queryFn: () => api.get<WorkflowT[]>("/api/workflows") }],
   "/workspace": [
     { queryKey: ["workspace-artifacts"], queryFn: () => api.get<WorkspaceArtifact[]>("/api/workspace/artifacts") },
     { queryKey: ["sandbox-executions"], queryFn: () => api.get<SandboxExecution[]>("/api/workspace/executions") },

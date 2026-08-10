@@ -54,6 +54,14 @@ workflow.
 - Org creation / registration (`auth.py`, `orgs.py`): the org creator becomes
   `admin` (previously `owner`); member invites accept `admin`/`user`,
   default `user`.
+- `core/authz/scope.py` stores the authenticated ownership scope on the
+  request-scoped `AsyncSession`. Workspace, approval, and quota services use
+  that shared scope so `user` queries are filtered by their creator/requester
+  column while `admin` queries remain organization-wide.
+- Agent/workflow execution now attributes messages, usage events, workflow
+  runs, tool contexts, approval requests, sub-workflows, and detached jobs to
+  the caller. This gives ownership filtering a stable actor identity instead
+  of incorrectly inheriting the agent/workflow creator.
 
 **Frontend**
 - `types/index.ts`, `useCurrentRole()` (new hook in `hooks/index.ts`):
@@ -66,6 +74,13 @@ workflow.
 - `chat-header-controls.tsx` / `chat-thread.tsx`: agent and model dropdowns
   render as plain non-interactive labels when `canSwitchAgent` is false
   (role !== admin); session switching stays fully functional for everyone.
+- `/run-workflow` is the lightweight user surface: choose an existing
+  workflow, enter input, run it, then review the reused workflow console's
+  live node log and final output. The admin builder remains at `/workflows`.
+- Workspace and Approvals retain read-only controls for `user`; Quotas shows
+  only personal monthly cost/storage usage. Admin-only controls and queries
+  are not rendered or fetched. The Dashboard workflow CTA also routes users
+  to `/run-workflow` and avoids admin-only resource requests.
 
 ## 4. Verification
 
@@ -88,16 +103,28 @@ workflow.
   session switcher remains interactive). Test account and membership
   cleaned up afterward.
 
-## 5. Explicitly deferred (not built in this pass)
+## 5. Follow-up completed on 2026-08-10
 
-- **Ownership-scoped data filtering**: Workspace/Approvals/Quotas currently
-  gate by role only (nav item visible, backend permission granted) — they do
-  not yet filter query results to "rows created by this user" vs. the whole
-  org. The permission layer is in place; the query-level scoping is a
-  follow-up.
-- **Simplified "Run Workflow" UI for users**: `workflows:run` is granted to
-  `user`, but there is no user-facing surface yet distinct from the full
-  admin workflow builder canvas. A lightweight input-only trigger UI is a
-  separate, real net-new feature, not part of this RBAC pass.
+- Ownership-scoped Workspace/Approvals/Quotas filtering is implemented at
+  the shared service/query layer, including correct caller attribution for
+  agent and workflow execution paths.
+- The simplified user-only Run Workflow surface is implemented and reuses
+  the existing workflow console rather than duplicating execution UI.
+- Docker live verification used frontend `:3000`, API `:8000`, and the real
+  Postgres-backed stack. A temporary `user` ran deterministic workflow
+  `2d651d59-86c8-4fc5-a20d-f96533ff7300`; run
+  `6fc0d165-284f-48cc-919f-d3912f07834a` succeeded with exact output
+  `RBAC_DOCKER_ECHO_FE55C5AD`, and `triggered_by_user_id` matched the caller.
+  The temporary users, memberships, workflow, and run were removed afterward.
+- Browser checks covered both roles: the user received the runner and
+  read-only/personal Workspace, Approvals, and Quotas views with no forbidden
+  Dashboard requests; the admin retained builder/navigation and quota policy
+  controls. The runner was also checked at a 375×812 viewport.
+- Regression coverage includes mixed-owner Workspace artifacts/executions,
+  approvals, usage, agents, workflows, and files for both roles. The complete
+  backend suite passes: **244 passed**.
+
+## 6. Still out of scope
+
 - Telegram/X/Facebook search integrations (from the earlier web-search work)
   remain out of scope, unrelated to this change.

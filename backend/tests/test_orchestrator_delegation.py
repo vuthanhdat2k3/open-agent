@@ -12,6 +12,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.agent_loop import _build_orchestrator_roster, run_agent_loop
@@ -20,6 +21,7 @@ from app.models.agent import Agent
 from app.models.model import Model
 from app.models.organization import Organization
 from app.models.provider import Provider
+from app.models.usage import UsageEvent
 from app.models.user import User
 
 
@@ -147,12 +149,15 @@ async def test_run_agent_loop_includes_message_without_session_id() -> None:
                 db=session,
                 depth=1,
                 session_id=None,
+                user_id="u-orch",
             )
 
         assert result.content == "got it"
         user_messages = [m for m in captured_messages if m.get("role") == "user"]
         assert len(user_messages) == 1
         assert user_messages[0]["content"] == "find a specific fact about widgets"
+        usage = (await session.execute(select(UsageEvent))).scalar_one()
+        assert usage.created_by_user_id == "u-orch"
     await engine.dispose()
 
 
