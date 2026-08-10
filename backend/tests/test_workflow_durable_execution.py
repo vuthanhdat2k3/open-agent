@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from sqlalchemy import select
@@ -139,6 +140,92 @@ async def test_workflow_retry_records_each_attempt() -> None:
         tool_runs = [node for node in node_runs if node.node_id == "tool"]
         assert [node.status for node in tool_runs] == ["failed", "failed", "succeeded"]
         assert [node.attempt for node in tool_runs] == [1, 2, 3]
+
+    await engine.dispose()
+
+
+async def test_parallel_tool_nodes_use_independent_db_sessions() -> None:
+    waiting = 0
+    both_ready = asyncio.Event()
+
+    async def write_org(args: dict[str, Any], ctx: ToolContext) -> str:
+        nonlocal waiting
+        waiting += 1
+        if waiting == 2:
+            both_ready.set()
+        await asyncio.wait_for(both_ready.wait(), timeout=5)
+
+        label = str(args["label"])
+        ctx.db.add(Organization(name=f"Parallel {label}", slug=f"parallel-{label}"))
+        await ctx.db.commit()
+        return f"{label} succeeded"
+
+    register(
+        ToolSpec(
+            name="parallel_db_write",
+            description="writes through the workflow node's database session",
+            input_schema={
+                "type": "object",
+                "properties": {"label": {"type": "string"}},
+                "required": ["label"],
+                "additionalProperties": False,
+            },
+            run=write_org,
+        )
+    )
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with session_factory() as session:
+        workflow = await _seed_workflow(
+            session,
+            {
+                "nodes": [
+                    {"id": "in", "kind": "input"},
+                    {
+                        "id": "a",
+                        "kind": "tool",
+                        "config": {"tool": "parallel_db_write", "label": "a"},
+                    },
+                    {
+                        "id": "b",
+                        "kind": "tool",
+                        "config": {"tool": "parallel_db_write", "label": "b"},
+                    },
+                    {"id": "merge", "kind": "merge"},
+                    {"id": "out", "kind": "output"},
+                ],
+                "edges": [
+                    {"from_": "in", "to": "a"},
+                    {"from_": "in", "to": "b"},
+                    {"from_": "a", "to": "merge"},
+                    {"from_": "b", "to": "merge"},
+                    {"from_": "merge", "to": "out"},
+                ],
+            },
+        )
+
+        output, _events, workflow_run_id = await run_workflow(workflow, "start", session)
+
+        assert output == "a succeeded\n\nb succeeded"
+        node_runs = (
+            await session.execute(
+                select(WorkflowNodeRun).where(
+                    WorkflowNodeRun.workflow_run_id == workflow_run_id
+                )
+            )
+        ).scalars().all()
+        statuses = {node.node_id: node.status for node in node_runs}
+        assert statuses["a"] == "succeeded"
+        assert statuses["b"] == "succeeded"
+        assert statuses["merge"] == "succeeded"
+        org_slugs = set(
+            (await session.execute(select(Organization.slug))).scalars().all()
+        )
+        assert {"parallel-a", "parallel-b"} <= org_slugs
 
     await engine.dispose()
 
