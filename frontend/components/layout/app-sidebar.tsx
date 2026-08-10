@@ -1,6 +1,5 @@
 "use client";
 
-import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { QueryClient } from "@tanstack/react-query";
@@ -21,8 +20,6 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { IntegrationsPanel } from "@/components/integrations/integrations-panel";
 import { isActive, navGroups, prefetchTab } from "./navigation";
 
 export function AppSidebar({ queryClient }: { queryClient: QueryClient }) {
@@ -31,7 +28,6 @@ export function AppSidebar({ queryClient }: { queryClient: QueryClient }) {
   const collapsed = state === "collapsed";
   const approvals = useApprovals(true);
   const pending = approvals.data?.length ?? 0;
-  const [integrationsOpen, setIntegrationsOpen] = React.useState(false);
 
   return (
     <Sidebar collapsible="icon">
@@ -58,28 +54,20 @@ export function AppSidebar({ queryClient }: { queryClient: QueryClient }) {
               {group.items.map((item) => {
                 const Icon = item.icon;
                 const active = isActive(pathname, item.href);
-                const isIntegrations = item.href === "/integrations";
                 return (
                   <SidebarMenuItem key={item.href}>
-                    {isIntegrations ? (
-                      <SidebarMenuButton isActive={active} tooltip={item.label} onClick={() => setIntegrationsOpen(true)}>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={active}
+                      tooltip={item.label}
+                      onMouseEnter={() => prefetchTab(queryClient, item.href)}
+                      onFocus={() => prefetchTab(queryClient, item.href)}
+                    >
+                      <Link href={item.href} aria-current={active ? "page" : undefined}>
                         <Icon aria-hidden="true" />
                         <span>{item.label}</span>
-                      </SidebarMenuButton>
-                    ) : (
-                      <SidebarMenuButton
-                        asChild
-                        isActive={active}
-                        tooltip={item.label}
-                        onMouseEnter={() => prefetchTab(queryClient, item.href)}
-                        onFocus={() => prefetchTab(queryClient, item.href)}
-                      >
-                        <Link href={item.href} aria-current={active ? "page" : undefined}>
-                          <Icon aria-hidden="true" />
-                          <span>{item.label}</span>
-                        </Link>
-                      </SidebarMenuButton>
-                    )}
+                      </Link>
+                    </SidebarMenuButton>
                     {item.href === "/approvals" && pending > 0 && (
                       <SidebarMenuBadge aria-label={`${pending} pending approvals`}>{pending}</SidebarMenuBadge>
                     )}
@@ -94,18 +82,6 @@ export function AppSidebar({ queryClient }: { queryClient: QueryClient }) {
       <SidebarFooter>
         <UserNav collapsed={collapsed} />
       </SidebarFooter>
-
-      <Sheet open={integrationsOpen} onOpenChange={setIntegrationsOpen}>
-        <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-lg">
-          <SheetHeader>
-            <SheetTitle>Integrations</SheetTitle>
-            <SheetDescription>Manage connected Google Drive, Calendar, and Email accounts without leaving your work.</SheetDescription>
-          </SheetHeader>
-          <div className="mt-4">
-            <IntegrationsPanel withHeader={false} />
-          </div>
-        </SheetContent>
-      </Sheet>
     </Sidebar>
   );
 }
