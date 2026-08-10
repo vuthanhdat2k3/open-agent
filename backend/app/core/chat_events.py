@@ -254,6 +254,9 @@ class ChatEventRecorder:
         await publish_run_event(
             self.org_id, self.run_id, {"seq": seq, "event": event, "data": data}
         )
+        if event in {"message_start", "message_done"}:
+            await self._flush()
+            return ev
         # Both triggers below schedule the write as a background task rather
         # than awaiting it here: this coroutine is inline in the LLM stream
         # read loop, so awaiting a DB round trip would stall token delivery

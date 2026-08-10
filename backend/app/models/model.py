@@ -28,6 +28,16 @@ class Model(Base):
     input_cost_per_1k: Mapped[float] = mapped_column(Float, default=0.0)
     output_cost_per_1k: Mapped[float] = mapped_column(Float, default=0.0)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
+    discovered: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    last_seen_at: Mapped["utc_now"] = mapped_column(DateTime, nullable=True)
+    source: Mapped[str] = mapped_column(String(16), default="manual", nullable=False)
+    catalog_source: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    catalog_version: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    last_discovered_at: Mapped["utc_now"] = mapped_column(DateTime, nullable=True)
+    supports_tools: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    supports_reasoning: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    supports_vision: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
 
     created_at: Mapped["utc_now"] = mapped_column(DateTime, default=utc_now)
 

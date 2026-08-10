@@ -3,6 +3,7 @@ import os
 
 from sqlalchemy import func, select
 
+from app.core.credential_secrets import encrypt_string
 from app.db.session import SessionLocal
 from app.models.agent import Agent
 from app.models.mcp import McpServer, McpTool
@@ -67,7 +68,13 @@ async def _provider(db, org_id, user_id, name, **kwargs):
     )
     if row:
         return row
-    row = Provider(org_id=org_id, created_by_user_id=user_id, name=name, **kwargs)
+    values = dict(kwargs)
+    raw_key = values.pop("api_key", "") or ""
+    values["api_key"] = ""
+    values["api_key_encrypted"] = encrypt_string(raw_key) if raw_key else None
+    values["api_key_last4"] = raw_key[-4:] if raw_key else None
+    values["normalized_base_url"] = values.get("base_url", "").rstrip("/").lower()
+    row = Provider(org_id=org_id, created_by_user_id=user_id, name=name, **values)
     db.add(row)
     await db.commit()
     await db.refresh(row)
@@ -88,8 +95,10 @@ async def _model(db, org_id, user_id, provider_id, name, **kwargs):
     )
     if row:
         return row
+    values = dict(kwargs)
+    values.setdefault("enabled", bool(values.get("active", True)))
     row = Model(
-        org_id=org_id, created_by_user_id=user_id, provider_id=provider_id, name=name, **kwargs
+        org_id=org_id, created_by_user_id=user_id, provider_id=provider_id, name=name, **values
     )
     db.add(row)
     await db.commit()
