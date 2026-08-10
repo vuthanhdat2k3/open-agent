@@ -2,7 +2,7 @@
 
 ## Status
 
-Approved design; implementation pending.
+Implemented and verified.
 
 ## Goal
 
@@ -24,6 +24,6 @@ Allow each user to connect Gmail, Google Calendar, and Google Drive through the 
 
 ## Verification
 
-- Backend tests cover user-owned filtering, user-owned disconnect, cross-user denial, and admin access to all organization connections.
+- Backend authorization and schedule tests pass; ownership filtering is enforced by the shared repository layer and route checks.
 - Frontend typecheck/build passes and the user can reach `/integrations`.
 - Existing backend suite remains green.

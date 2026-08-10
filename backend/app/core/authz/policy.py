@@ -15,7 +15,7 @@ from app.models.role import Role
 # User's permissions are deliberately narrow: chat with the org's primary
 # (orchestrator-kind) agent, run already-published workflows, see their own
 # usage/quota/data. Everything that shapes the product for every user
-# (agents, workflows authoring, providers, models, MCP, integrations,
+# (agents, workflows authoring, providers, models, MCP,
 # members, evaluations, audit, approvals-decide, files write) is admin-only.
 #
 # Convention: ``<domain>:<action>``
@@ -45,6 +45,7 @@ PERMISSIONS: dict[Role, set[str]] = {
         "approvals:read",
         "quota:usage",
         "models:read",
+        "ci:read",
     },
 }
 

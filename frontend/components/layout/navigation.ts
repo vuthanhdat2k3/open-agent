@@ -25,7 +25,7 @@ export const navGroups: NavGroup[] = [
     { href: "/workflows", label: "Workflows", icon: Workflow, adminOnly: true },
     { href: "/workspace", label: "Workspace", icon: FolderKanban },
     { href: "/mcp", label: "MCP Servers", icon: Plug, adminOnly: true },
-    { href: "/integrations", label: "Integrations", icon: CalendarDays, adminOnly: true },
+    { href: "/integrations", label: "Integrations", icon: CalendarDays },
     { href: "/models", label: "Models", icon: Cpu, adminOnly: true },
     { href: "/providers", label: "Providers", icon: Server, adminOnly: true },
     { href: "/files", label: "Files", icon: FileUp },
