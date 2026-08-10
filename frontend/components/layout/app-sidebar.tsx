@@ -1,9 +1,9 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { QueryClient } from "@tanstack/react-query";
-import { Bot } from "lucide-react";
 import { useApprovals, useCurrentRole } from "@/hooks";
 import { OrgSwitcher } from "@/components/org-switcher";
 import { UserNav } from "@/components/user-nav";
@@ -34,8 +34,15 @@ export function AppSidebar({ queryClient }: { queryClient: QueryClient }) {
     <Sidebar collapsible="icon">
       <SidebarHeader className="gap-3">
         <div className="flex items-center gap-3 px-1 py-1 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:gap-0">
-          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-primary/20 bg-primary text-primary-foreground shadow-card">
-            <Bot className="h-5 w-5" aria-hidden="true" />
+          <div className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-xl border border-primary/20 bg-primary text-primary-foreground shadow-card">
+            <Image
+              src="/openagent-logo.png"
+              alt="OpenAgent"
+              width={36}
+              height={36}
+              className="h-full w-full object-cover"
+              priority
+            />
           </div>
           <div className="min-w-0 group-data-[collapsible=icon]:hidden">
             <div className="truncate text-base font-bold tracking-tight text-foreground">OpenAgent</div>

@@ -57,7 +57,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
   return (
     <html lang="en" className={`${sans.variable} ${mono.variable} dark`}>
-      <head><link rel="icon" href="/icon.svg" type="image/svg+xml" /></head>
+      <head><link rel="icon" href="/openagent-logo.png" type="image/png" /></head>
       <body className="min-h-dvh bg-background font-sans text-foreground antialiased">
         <QueryClientProvider client={client}>
           <AuthGate>
