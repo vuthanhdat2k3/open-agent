@@ -29,10 +29,10 @@ interface ChatHeaderControlsProps {
   onSessionChange: (sessionId: string) => void;
   onNewSession: () => void;
   onDeleteSession: (sessionId: string) => Promise<void>;
-  // Plain users chat with the org's one primary (orchestrator) agent - no
-  // agent/model picker, just a session switcher. Admin keeps full control
-  // to build/test each agent.
+  // Plain users chat with the org's one primary (orchestrator) agent. They
+  // may choose an admin-configured model, but never switch agents.
   canSwitchAgent: boolean;
+  canSwitchModel: boolean;
 }
 
 const triggerClass = "h-7 gap-1.5 rounded-full px-2.5 text-xs font-medium text-muted-foreground hover:text-foreground";
@@ -58,6 +58,7 @@ export function ChatHeaderControls({
   onNewSession,
   onDeleteSession,
   canSwitchAgent,
+  canSwitchModel,
 }: ChatHeaderControlsProps) {
   const agentSessions = sessions?.filter((s) => s.agent_id === agentId) ?? [];
   const effectiveModelId = pendingSessionModelId || currentAgentModel?.id || "";
@@ -92,7 +93,7 @@ export function ChatHeaderControls({
         </span>
       )}
 
-      {canSwitchAgent ? (
+      {canSwitchModel ? (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button type="button" variant="ghost" size="sm" disabled={streaming || updateAgentPending} className={triggerClass}>
@@ -102,7 +103,7 @@ export function ChatHeaderControls({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-64">
-            <DropdownMenuLabel>Default model</DropdownMenuLabel>
+            <DropdownMenuLabel>{canSwitchAgent ? "Default model" : "Model"}</DropdownMenuLabel>
             <DropdownMenuSeparator />
             {models?.filter((m) => m.active).map((m) => (
               <DropdownMenuItem key={m.id} onSelect={() => onDefaultModelChange(m.id)} className={m.id === effectiveModelId ? "font-semibold text-foreground" : undefined}>
@@ -112,6 +113,11 @@ export function ChatHeaderControls({
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
+      ) : !canSwitchAgent ? (
+        <span className={`${triggerClass} pointer-events-none inline-flex`}>
+          <Cpu className="h-3.5 w-3.5" aria-hidden="true" />
+          <span className="max-w-[9rem] truncate font-mono">{effectiveModel?.display_name || effectiveModel?.name || "Model"}</span>
+        </span>
       ) : null}
 
       <DropdownMenu>

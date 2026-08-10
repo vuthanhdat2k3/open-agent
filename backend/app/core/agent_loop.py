@@ -257,6 +257,7 @@ async def _agent_stream(
     root_run_id: str | None = None,
     replay_cursor: ReplayCursor | None = None,
     user_id: str | None = None,
+    model_id: str | None = None,
     user_role: str | None = None,
     actor_agent_identity_id: str | None = None,
     delegation_chain: list | dict | None = None,
@@ -303,13 +304,17 @@ async def _agent_stream(
         current_task_id = root_task.id
         root_run_id = root_task.root_run_id
 
-    res = await db.execute(select(Model).where(Model.id == agent.model_id))
+    selected_model_id = model_id or agent.model_id
+    model_stmt = select(Model).where(Model.id == selected_model_id, Model.org_id == agent.org_id)
+    if model_id and user_role == "user":
+        model_stmt = model_stmt.where(Model.active.is_(True))
+    res = await db.execute(model_stmt)
     model = res.scalar_one_or_none()
     if model is None:
         msg = (
             "no model assigned to this agent — assign one before chatting"
-            if agent.model_id is None
-            else f"model {agent.model_id} not found"
+            if selected_model_id is None
+            else f"model {selected_model_id} not found or unavailable"
         )
         await _finish_task(db, root_task, status="failed", result=msg)
         yield {"event": "error", "data": {"message": msg}}
@@ -1141,6 +1146,7 @@ async def run_agent_loop(
     root_run_id: str | None = None,
     replay_cursor: ReplayCursor | None = None,
     user_id: str | None = None,
+    model_id: str | None = None,
     user_role: str | None = None,
     actor_agent_identity_id: str | None = None,
     delegation_chain: list | dict | None = None,
@@ -1163,6 +1169,7 @@ async def run_agent_loop(
         root_run_id=root_run_id,
         replay_cursor=replay_cursor,
         user_id=user_id,
+        model_id=model_id,
         user_role=user_role,
         actor_agent_identity_id=actor_agent_identity_id,
         delegation_chain=delegation_chain,

@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.agent_loop import run_agent_loop
 from app.db.base import utc_now
 from app.models.agent import Agent
+from app.models.model import Model
 from app.models.session import Session
 from app.models.task import Task
 from app.schemas.chat import AgentLoopResult, ChatRequest
@@ -22,13 +23,27 @@ class ChatService:
         return await AgentService(self.db).runtime_agent(org_id, agent_id, release_id)
 
     async def ensure_session(
-        self, org_id: str, request: ChatRequest, user_id: str | None = None
+        self,
+        org_id: str,
+        request: ChatRequest,
+        user_id: str | None = None,
+        user_role: str | None = None,
     ) -> Session:
+        if request.model_id and user_role == "user":
+            model = await self.db.scalar(
+                select(Model).where(
+                    Model.id == request.model_id,
+                    Model.org_id == org_id,
+                    Model.active.is_(True),
+                )
+            )
+            if model is None:
+                raise ValueError("model is not available for this organization")
         selected_agent: Agent | RuntimeAgent | None = None
         if request.model_id:
-            # The Agent update endpoint already persisted the default model.
-            # This is only a one-shot instruction to repin the current session
-            # to that active release, not a second model authorization check.
+            # Admin model changes publish a new agent release. Repin an
+            # existing session only for that default-model path; a user model
+            # choice is a per-request override and must not mutate the release.
             selected_agent = await self._load_agent(org_id, request.agent_id)
         if request.session_id:
             res = await self.db.execute(
@@ -38,7 +53,11 @@ class ChatService:
             if session is not None:
                 if session.agent_id != request.agent_id:
                     raise ValueError("session belongs to a different agent")
-                if selected_agent and session.agent_release_id != selected_agent.active_release_id:
+                if (
+                    selected_agent
+                    and (user_role != "user" or request.model_id == selected_agent.model_id)
+                    and session.agent_release_id != selected_agent.active_release_id
+                ):
                     session.agent_release_id = selected_agent.active_release_id
                     await self.db.commit()
                     await self.db.refresh(session)
@@ -65,8 +84,9 @@ class ChatService:
         request: ChatRequest,
         run_id: str,
         user_id: str | None = None,
+        user_role: str | None = None,
     ) -> tuple[Session, Agent | RuntimeAgent, Task]:
-        session = await self.ensure_session(org_id, request, user_id)
+        session = await self.ensure_session(org_id, request, user_id, user_role)
         agent = await self._load_agent(org_id, request.agent_id, session.agent_release_id)
         res = await self.db.execute(
             select(Task).where(Task.id == run_id, Task.org_id == org_id)
@@ -115,8 +135,9 @@ class ChatService:
         root_run_id: str | None = None,
         current_task_id: str | None = None,
         approval_resume_id: str | None = None,
+        user_role: str | None = None,
     ) -> AgentLoopResult:
-        session = await self.ensure_session(org_id, request, user_id)
+        session = await self.ensure_session(org_id, request, user_id, user_role)
         agent = await self._load_agent(org_id, request.agent_id, session.agent_release_id)
         return await run_agent_loop(
             agent,
@@ -126,5 +147,7 @@ class ChatService:
             current_task_id=current_task_id,
             root_run_id=root_run_id or request.run_id,
             user_id=user_id,
+            model_id=request.model_id,
+            user_role=user_role,
             approval_resume_id=approval_resume_id,
         )

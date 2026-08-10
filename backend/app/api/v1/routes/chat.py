@@ -76,6 +76,7 @@ async def run_chat_detached(payload: dict) -> None:
                 payload["org_id"],
                 request,
                 user_id=payload.get("user_id"),
+                user_role=payload.get("user_role"),
                 root_run_id=request.run_id,
                 current_task_id=task.id,
                 approval_resume_id=payload.get("approval_resume_id"),
@@ -94,6 +95,7 @@ async def run_chat_detached(payload: dict) -> None:
 async def chat(
     body: ChatRequest,
     background_tasks: BackgroundTasks,
+    http_request: Request,
     org_id: str = Depends(get_current_org_id),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -101,26 +103,35 @@ async def chat(
     svc = ChatService(db)
     if not body.stream:
         try:
-            result = await svc.run(org_id, body, user_id=current_user.id, root_run_id=body.run_id)
+            result = await svc.run(
+                org_id,
+                body,
+                user_id=current_user.id,
+                user_role=getattr(http_request.state, "role", None),
+                root_run_id=body.run_id,
+            )
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
         return result.model_dump()
 
     run_id = body.run_id or gen_id()
-    request = body.model_copy(update={"run_id": run_id})
+    chat_request = body.model_copy(update={"run_id": run_id})
     try:
         session, _agent, task = await svc.prepare_run(
-            org_id, request, run_id, user_id=current_user.id
+            org_id,
+            chat_request,
+            run_id,
+            user_id=current_user.id,
+            user_role=getattr(http_request.state, "role", None),
         )
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
-    # The selected model has been consumed by prepare_run. Detached execution
-    # must use this captured release even if the Agent default changes later.
-    request = request.model_copy(update={"session_id": session.id, "model_id": None})
+    chat_request = chat_request.model_copy(update={"session_id": session.id})
     payload = {
-        **request.model_dump(),
+        **chat_request.model_dump(),
         "org_id": org_id,
         "user_id": current_user.id,
+        "user_role": getattr(http_request.state, "role", None),
     }
     if task.status in {"succeeded", "failed", "diverged", "cancelled"}:
         run_status = task.status

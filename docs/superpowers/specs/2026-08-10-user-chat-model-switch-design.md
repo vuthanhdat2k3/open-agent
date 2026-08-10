@@ -1,7 +1,7 @@
 # User Chat Model Switching
 
 Date: 2026-08-10
-Status: Approved design, implementation pending
+Status: Implemented and live-verified
 
 ## Goal
 
@@ -48,3 +48,10 @@ orchestrator agent.
 - Frontend typecheck/build pass.
 - Docker live test covers a user selecting an admin-configured model in Chat,
   receiving a response, and confirms admin model configuration remains intact.
+
+## Result
+
+- Backend regression coverage passes as part of the full **245-test** suite.
+- Docker live verification selected `Qwen 3.6 fast` as `user@openagent.com` and
+  received `USER_MODEL_SWITCH_OK`; the persisted usage event matched the
+  selected model and user owner.

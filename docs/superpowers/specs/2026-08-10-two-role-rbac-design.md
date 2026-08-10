@@ -11,14 +11,14 @@ The user asked for a simpler, product-ready split into exactly 2 roles —
 **user** (consumes the product) and **admin** (configures/operates it) —
 with one specific, explicit constraint: in Chat, a `user` must not be able to
 switch agents. Once multi-agent orchestration is standardized, a user only
-ever talks to the org's primary agent, or supplies input to a published
-workflow.
+ever talks to the org's primary agent, may choose an admin-configured model,
+or supplies input to a published workflow.
 
 ## 2. Feature → role mapping
 
 | Feature | User | Admin |
 |---|---|---|
-| Chat | Chats with the org's primary (`kind=orchestrator`) agent only — no agent/model switcher | Full — any agent, any model |
+| Chat | Chats with the org's primary (`kind=orchestrator`) agent only; may switch among active admin-configured models | Full — any agent, any model |
 | Agents (builder) | No access | Full |
 | Workflows (builder) | No access | Full |
 | Workflows (run) | Can run published workflows (`workflows:run` retained) | Full |
@@ -71,9 +71,9 @@ workflow.
   Integrations/Models/Providers/Evaluations/Members/Debug; `app-sidebar.tsx`
   filters the rendered menu by role (defense-in-depth UI hide — the backend
   already enforces the real permission on every route).
-- `chat-header-controls.tsx` / `chat-thread.tsx`: agent and model dropdowns
-  render as plain non-interactive labels when `canSwitchAgent` is false
-  (role !== admin); session switching stays fully functional for everyone.
+- `chat-header-controls.tsx` / `chat-thread.tsx`: the agent dropdown remains
+  locked to a plain label for users, while the model dropdown is available for
+  active admin-configured models. Session switching stays fully functional.
 - `/run-workflow` is the lightweight user surface: choose an existing
   workflow, enter input, run it, then review the reused workflow console's
   live node log and final output. The admin builder remains at `/workflows`.
@@ -99,8 +99,8 @@ workflow.
   invited it into the real org as `user` via the real Members UI, logged in
   as that account, switched org context, and confirmed the sidebar shows
   only Dashboard/Chat/Workspace/Files/Approvals/Quotas, and Chat's header
-  shows a static "Assistant" label with no agent/model dropdown (only the
-  session switcher remains interactive). Test account and membership
+  shows a static "Assistant" agent label alongside the model dropdown (only
+  the agent selector is locked; session switching remains interactive). Test account and membership
   cleaned up afterward.
 
 ## 5. Follow-up completed on 2026-08-10
@@ -122,9 +122,21 @@ workflow.
   controls. The runner was also checked at a 375×812 viewport.
 - Regression coverage includes mixed-owner Workspace artifacts/executions,
   approvals, usage, agents, workflows, and files for both roles. The complete
-  backend suite passes: **244 passed**.
+  backend suite passes: **245 passed**.
 
-## 6. Still out of scope
+## 6. User model switching completed on 2026-08-10
+
+- `ChatRequest.model_id` is now a per-chat model override. User requests are
+  validated against the active organization and `Model.active`; cross-org and
+  inactive selections are rejected without changing the orchestrator default.
+- Admin model selection keeps the existing agent-default/release behavior.
+- Backend suite passes: **245 passed**. Frontend typecheck and Docker
+  production build pass.
+- Docker live test with `user@openagent.com` selected `Qwen 3.6 fast` and
+  received exact response marker `USER_MODEL_SWITCH_OK`; the resulting usage
+  event recorded the selected model and the user as owner.
+
+## 7. Still out of scope
 
 - Telegram/X/Facebook search integrations (from the earlier web-search work)
   remain out of scope, unrelated to this change.
