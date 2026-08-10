@@ -125,7 +125,10 @@ async def decide_approval(
             payload = {
                 "agent_id": task.agent_id,
                 "message": task.goal,
-                "session_id": (task.progress or {}).get("session_id"),
+                # Delegated workers may inherit the parent chat's session
+                # checkpoint; resuming with it would fail agent ownership
+                # validation. ChatService creates a worker-owned session.
+                "session_id": None,
                 "run_id": task.id,
                 "root_run_id": approval.run_id,
                 "stream": True,
