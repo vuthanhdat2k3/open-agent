@@ -9,6 +9,7 @@ turn/tool-call handling or the orchestrator directive changes.
 
 from __future__ import annotations
 
+from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -18,14 +19,17 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from app.core.agent_loop import (
     _build_orchestrator_roster,
     _infer_capabilities,
+    _recent_delegate_agent_id,
     _route_orchestrator_turn,
     run_agent_loop,
 )
-from app.db.base import Base
+from app.core.tools.types import ToolSpec
+from app.db.base import Base, utc_now
 from app.models.agent import Agent
 from app.models.model import Model
 from app.models.organization import Organization
 from app.models.provider import Provider
+from app.models.task import Task
 from app.models.usage import UsageEvent
 from app.models.user import User
 
@@ -139,6 +143,68 @@ def test_ambiguous_or_unmatched_route_keeps_auto_tool_choice() -> None:
     )
     assert choice == "auto"
     assert directive is None
+
+
+def test_sticky_route_for_short_followup() -> None:
+    email = Agent(id="email", name="email-intelligence", tools=["email_send"])
+    spec = ToolSpec(name="delegate_to_email", description="email", input_schema={}, run=None)
+    choice, directive = _route_orchestrator_turn(
+        "hãy gửi", [], {"email": [email]}, {"email": spec}, "email"
+    )
+    assert choice == {"type": "function", "function": {"name": "delegate_to_email"}}
+    assert directive and "short follow-up" in directive
+
+
+def test_sticky_route_does_not_hijack_long_message_or_tier1() -> None:
+    email = Agent(id="email", name="email-intelligence", tools=["email_send"])
+    calendar = Agent(id="calendar", name="calendar-intelligence", tools=["calendar_create_event"])
+    email_spec = ToolSpec(name="delegate_to_email", description="email", input_schema={}, run=None)
+    calendar_spec = ToolSpec(name="delegate_to_calendar", description="calendar", input_schema={}, run=None)
+    choice, _ = _route_orchestrator_turn(
+        "please send this very long request with many details and no capability keyword",
+        [], {"email": [email]}, {"email": email_spec}, "email"
+    )
+    assert choice == "auto"
+    choice, _ = _route_orchestrator_turn(
+        "schedule a meeting", [], {"email": [email], "calendar": [calendar]},
+        {"email": email_spec, "calendar": calendar_spec}, "email"
+    )
+    assert choice == {"type": "function", "function": {"name": "delegate_to_calendar"}}
+
+
+async def test_recent_delegate_agent_id_is_fresh_and_unambiguous() -> None:
+    engine, factory = await _make_session_factory()
+    async with factory() as session:
+        org, orchestrator, _, _ = await _seed(session)
+        email = Agent(org_id=org.id, name="email-intelligence", kind="worker")
+        calendar = Agent(org_id=org.id, name="calendar-intelligence", kind="worker")
+        session.add_all([email, calendar])
+        await session.commit()
+        session.add(Task(org_id=org.id, root_run_id="root", agent_id=email.id, started_at=utc_now()))
+        await session.commit()
+        assert await _recent_delegate_agent_id(session, org.id, "root", orchestrator.id) == email.id
+        session.add(Task(org_id=org.id, root_run_id="root", agent_id=calendar.id, started_at=utc_now()))
+        await session.commit()
+        assert await _recent_delegate_agent_id(session, org.id, "root", orchestrator.id) is None
+        session.add(Task(org_id=org.id, root_run_id="old", agent_id=email.id,
+                         started_at=utc_now() - timedelta(minutes=31)))
+        await session.commit()
+        assert await _recent_delegate_agent_id(session, org.id, "old", orchestrator.id) is None
+        session.add(Task(
+            org_id=org.id,
+            root_run_id="previous-turn",
+            agent_id=email.id,
+            started_at=utc_now(),
+            progress={"session_id": "chat-session"},
+        ))
+        await session.commit()
+        assert (
+            await _recent_delegate_agent_id(
+                session, org.id, "new-turn", orchestrator.id, "chat-session"
+            )
+            == email.id
+        )
+    await engine.dispose()
 
 
 async def test_orchestrator_forces_named_email_delegate() -> None:
