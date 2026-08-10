@@ -68,7 +68,7 @@ async def run_chat(ctx, payload: dict) -> None:  # noqa: ARG001
                 payload["org_id"],
                 request,
                 user_id=payload.get("user_id"),
-                root_run_id=request.run_id,
+                root_run_id=payload.get("root_run_id") or request.run_id,
                 current_task_id=task.id,
                 approval_resume_id=payload.get("approval_resume_id"),
             )
