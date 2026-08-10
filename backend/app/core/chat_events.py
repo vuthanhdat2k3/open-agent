@@ -17,8 +17,9 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from collections.abc import AsyncIterator
 from datetime import timedelta
-from typing import Any, AsyncIterator
+from typing import Any
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
