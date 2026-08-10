@@ -34,9 +34,9 @@ export function AppSidebar({ queryClient }: { queryClient: QueryClient }) {
     <Sidebar collapsible="icon">
       <SidebarHeader className="gap-3">
         <div className="flex items-center gap-3 px-1 py-1 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:gap-0">
-          <div className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-xl border border-primary/20 bg-primary text-primary-foreground shadow-card">
+          <div className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-xl bg-primary text-primary-foreground shadow-card">
             <Image
-              src="/openagent-logo.png"
+              src="/openagent-icon.png"
               alt="OpenAgent"
               width={36}
               height={36}
