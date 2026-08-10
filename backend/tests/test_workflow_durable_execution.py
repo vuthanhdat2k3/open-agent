@@ -56,6 +56,7 @@ async def test_workflow_persists_run_and_node_runs_inline() -> None:
             "hello durable",
             session,
             stream=False,
+            user_id="workflow-runner",
         )
 
         assert output == "hello durable"
@@ -66,6 +67,7 @@ async def test_workflow_persists_run_and_node_runs_inline() -> None:
         ).scalar_one()
         assert run.status == "succeeded"
         assert run.output == {"text": "hello durable"}
+        assert run.triggered_by_user_id == "workflow-runner"
         node_runs = (
             await session.execute(
                 select(WorkflowNodeRun).where(WorkflowNodeRun.workflow_run_id == workflow_run_id)

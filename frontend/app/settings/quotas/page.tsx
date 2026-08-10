@@ -5,6 +5,7 @@ import { Gauge, Save } from "lucide-react";
 import { toast } from "sonner";
 import {
   useMe,
+  useCurrentRole,
   useOrganizationQuota,
   useQuotaUsage,
   useUpdateOrganizationQuota,
@@ -46,9 +47,10 @@ function optionalNumber(value: string) {
 
 export default function QuotasPage() {
   const me = useMe();
+  const isAdmin = useCurrentRole() === "admin";
   const activeOrgId = getActiveOrgId();
   const orgId = activeOrgId || me.data?.memberships?.[0]?.org_id;
-  const quota = useOrganizationQuota(orgId);
+  const quota = useOrganizationQuota(isAdmin ? orgId : undefined);
   const usage = useQuotaUsage(orgId);
   const updateQuota = useUpdateOrganizationQuota(orgId);
   const [form, setForm] = React.useState<FormState>(EMPTY_FORM);
@@ -89,8 +91,8 @@ export default function QuotasPage() {
     }
   };
 
-  if (quota.isError || usage.isError) {
-    return <div className="space-y-6"><PageHeader icon={Gauge} title="Tenant quotas" description="Admission and spend controls" /><ErrorState title="Unable to load quota data" description="Quota policy or usage data could not be loaded." onRetry={() => { void quota.refetch(); void usage.refetch(); }} /></div>;
+  if ((isAdmin && quota.isError) || usage.isError) {
+    return <div className="space-y-6"><PageHeader icon={Gauge} title={isAdmin ? "Tenant quotas" : "My usage"} description={isAdmin ? "Admission and spend controls" : "Your usage in the current organization"} /><ErrorState title="Unable to load quota data" description="Quota policy or usage data could not be loaded." onRetry={() => { if (isAdmin) void quota.refetch(); void usage.refetch(); }} /></div>;
   }
 
 
@@ -123,24 +125,24 @@ export default function QuotasPage() {
           value: String(usage.data.active_run_leases),
           limit: String(usage.data.concurrent_run_limit),
         },
-      ]
+      ].filter((row) => isAdmin || ["Monthly cost", "Storage"].includes(row.label))
     : [];
 
   return (
     <div className="space-y-7">
       <PageHeader
         icon={Gauge}
-        title="Tenant quotas"
-        description={`Admission and spend controls for ${usage.data?.month ?? "current month"}`}
+        title={isAdmin ? "Tenant quotas" : "My usage"}
+        description={isAdmin ? `Admission and spend controls for ${usage.data?.month ?? "current month"}` : `Your usage for ${usage.data?.month ?? "the current month"}`}
         actions={
-          <Button
+          isAdmin ? <Button
             className="gap-2 active-tactile transition-transform"
             onClick={save}
             disabled={updateQuota.isPending}
           >
             <Save className="h-4 w-4" />
             {updateQuota.isPending ? "Saving..." : "Save"}
-          </Button>
+          </Button> : undefined
         }
       />
 
@@ -159,7 +161,7 @@ export default function QuotasPage() {
         </div>
       </section>
 
-      <Card glass className="p-6 shadow-3d-card space-y-6">
+      {isAdmin && <Card glass className="p-6 shadow-3d-card space-y-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between border-b border-border/60 pb-5">
           <div>
             <h2 className="text-base font-semibold tracking-tight text-foreground">Admission policy</h2>
@@ -206,7 +208,7 @@ export default function QuotasPage() {
             </div>
           ))}
         </div>
-      </Card>
+      </Card>}
     </div>
   );
 }

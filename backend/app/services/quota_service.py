@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
+from app.core.authz.scope import ownership_user_id, scope_to_owner
 from app.core.quota.redis_backend import RedisQuotaBackend
 from app.models.agent import Agent
 from app.models.files import UploadedFile
@@ -88,9 +89,10 @@ class QuotaService:
                 pass
         return quota
 
-    async def monthly_cost(self, org_id: str) -> float:
+    async def monthly_cost(self, org_id: str, *, personal: bool = False) -> float:
+        owner_id = ownership_user_id(self.db) if personal else None
         key = self._cost_cache_key(org_id)
-        if self.redis is not None:
+        if self.redis is not None and owner_id is None:
             try:
                 cached = await self.redis.get(key)
                 if cached is not None:
@@ -99,14 +101,15 @@ class QuotaService:
                 pass
         now = datetime.now(timezone.utc)
         month_start = datetime(now.year, now.month, 1)
-        value = await self.db.scalar(
-            select(func.coalesce(func.sum(UsageEvent.cost_usd), 0.0)).where(
-                UsageEvent.org_id == org_id,
-                UsageEvent.created_at >= month_start,
-            )
+        stmt = select(func.coalesce(func.sum(UsageEvent.cost_usd), 0.0)).where(
+            UsageEvent.org_id == org_id,
+            UsageEvent.created_at >= month_start,
         )
+        if personal:
+            stmt = scope_to_owner(stmt, self.db, UsageEvent.created_by_user_id)
+        value = await self.db.scalar(stmt)
         cost = float(value or 0.0)
-        if self.redis is not None:
+        if self.redis is not None and owner_id is None:
             try:
                 await self.redis.set(
                     key, str(cost), ex=self.settings.quota_usage_cache_seconds
@@ -119,15 +122,17 @@ class QuotaService:
         quota = await self.get(org_id)
         if quota is None:
             raise ValueError("organization not found")
-        agents = await self._count(Agent, org_id)
-        workflows = await self._count(Workflow, org_id)
+        owner_id = ownership_user_id(self.db)
+        agents = await self._count(Agent, org_id, personal=True)
+        workflows = await self._count(Workflow, org_id, personal=True)
+        storage_stmt = select(func.coalesce(func.sum(UploadedFile.size), 0)).where(
+            UploadedFile.org_id == org_id
+        )
         storage = await self.db.scalar(
-            select(func.coalesce(func.sum(UploadedFile.size), 0)).where(
-                UploadedFile.org_id == org_id
-            )
+            scope_to_owner(storage_stmt, self.db, UploadedFile.created_by_user_id)
         )
         active = 0
-        if self.redis is not None:
+        if self.redis is not None and owner_id is None:
             try:
                 active = await RedisQuotaBackend(self.redis).active_leases(org_id)
             except Exception:  # noqa: BLE001 - read paths fail open
@@ -136,7 +141,7 @@ class QuotaService:
         return {
             "org_id": org_id,
             "month": f"{now.year:04d}-{now.month:02d}",
-            "monthly_cost_usd": await self.monthly_cost(org_id),
+            "monthly_cost_usd": await self.monthly_cost(org_id, personal=True),
             "monthly_cost_limit_usd": quota.monthly_cost_usd,
             "agents": agents,
             "agent_limit": quota.max_agents,
@@ -160,10 +165,11 @@ class QuotaService:
         )
         return int(value or 0)
 
-    async def _count(self, model, org_id: str) -> int:
-        value = await self.db.scalar(
-            select(func.count(model.id)).where(model.org_id == org_id)
-        )
+    async def _count(self, model, org_id: str, *, personal: bool = False) -> int:
+        stmt = select(func.count(model.id)).where(model.org_id == org_id)
+        if personal:
+            stmt = scope_to_owner(stmt, self.db, model.created_by_user_id)
+        value = await self.db.scalar(stmt)
         return int(value or 0)
 
     @staticmethod

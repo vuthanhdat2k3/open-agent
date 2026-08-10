@@ -49,7 +49,9 @@ export function AppSidebar({ queryClient }: { queryClient: QueryClient }) {
 
       <SidebarContent>
         {navGroups.map((group) => {
-          const items = role === "admin" ? group.items : group.items.filter((item) => !item.adminOnly);
+          const items = group.items.filter((item) =>
+            role === "admin" ? !item.userOnly : !item.adminOnly,
+          );
           if (items.length === 0) return null;
           return (
           <SidebarGroup key={group.title}>

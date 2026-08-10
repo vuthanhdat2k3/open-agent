@@ -44,6 +44,7 @@ async def create_workflow_run(
     input_text: str,
     db: AsyncSession,
     workflow_run_id: str | None = None,
+    user_id: str | None = None,
 ) -> WorkflowRun:
     if workflow_run_id:
         res = await db.execute(
@@ -62,7 +63,7 @@ async def create_workflow_run(
         workflow_id=workflow.id,
         status="running",
         input={"text": input_text},
-        triggered_by_user_id=workflow.created_by_user_id,
+        triggered_by_user_id=user_id or workflow.created_by_user_id,
         started_at=utc_now(),
     )
     db.add(run)
@@ -114,9 +115,13 @@ async def _run_workflow_events(
     workflow_run_id: str | None = None,
     force_inline: bool = False,
     replay_of_run_id: str | None = None,
+    user_id: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     settings = get_settings()
-    workflow_run = await create_workflow_run(workflow, input_text, db, workflow_run_id)
+    workflow_run = await create_workflow_run(
+        workflow, input_text, db, workflow_run_id, user_id
+    )
+    actor_user_id = workflow_run.triggered_by_user_id or user_id or workflow.created_by_user_id
     yield {
         "event": "workflow_start",
         "data": {
@@ -288,7 +293,7 @@ async def _run_workflow_events(
                 depth=0,
                 workspace_dir=settings.workspace_dir,
                 org_id=workflow.org_id,
-                user_id=workflow.created_by_user_id,
+                user_id=actor_user_id,
             )
             started = time.monotonic()
             result = await execute_tool_call(spec, args, ctx)
@@ -317,7 +322,7 @@ async def _run_workflow_events(
                 node_id=node["id"],
                 tool_name=cfg.get("tool_name"),
                 args_snapshot=cfg,
-                requested_by=workflow.created_by_user_id,
+                requested_by=actor_user_id,
             )
             raise WorkflowWaitingApproval(approval.id)
         if kind == "sub_workflow":
@@ -341,6 +346,7 @@ async def _run_workflow_events(
                 db,
                 stream=False,
                 force_inline=True,
+                user_id=actor_user_id,
             )
             return child_output
         if kind == "agent":
@@ -365,6 +371,7 @@ async def _run_workflow_events(
                 depth=0,
                 root_run_id=workflow_run.id,
                 replay_cursor=replay_cursor,
+                user_id=actor_user_id,
             )
             return loop.content
         raise RuntimeError(f"unknown node kind {kind}")
@@ -550,6 +557,7 @@ async def run_workflow_events(
     workflow_run_id: str | None = None,
     force_inline: bool = False,
     replay_of_run_id: str | None = None,
+    user_id: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """Stream workflow events and release any executor lease on close."""
     run_id = workflow_run_id
@@ -561,6 +569,7 @@ async def run_workflow_events(
             workflow_run_id=workflow_run_id,
             force_inline=force_inline,
             replay_of_run_id=replay_of_run_id,
+            user_id=user_id,
         ):
             if event.get("event") == "workflow_start":
                 run_id = event.get("data", {}).get("workflow_run_id") or run_id
@@ -580,6 +589,7 @@ async def run_workflow(
     workflow_run_id: str | None = None,
     force_inline: bool = False,
     replay_of_run_id: str | None = None,
+    user_id: str | None = None,
 ) -> Any:
     """If stream=True, returns the async generator of events.
     Otherwise awaits and returns (final_output, event_log)."""
@@ -591,6 +601,7 @@ async def run_workflow(
             workflow_run_id=workflow_run_id,
             force_inline=force_inline,
             replay_of_run_id=replay_of_run_id,
+            user_id=user_id,
         )
     final = ""
     log: list[dict[str, Any]] = []
@@ -602,6 +613,7 @@ async def run_workflow(
         workflow_run_id=workflow_run_id,
         force_inline=force_inline,
         replay_of_run_id=replay_of_run_id,
+        user_id=user_id,
     ):
         log.append(ev)
         if ev["event"] == "workflow_start":

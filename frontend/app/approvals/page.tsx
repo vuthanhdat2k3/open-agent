@@ -2,7 +2,7 @@
 
 import { toast } from "sonner";
 import { ShieldCheck } from "lucide-react";
-import { useApprovals, useDecideApproval } from "@/hooks";
+import { useApprovals, useCurrentRole, useDecideApproval } from "@/hooks";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import { EmptyState, ErrorState, LoadingSkeleton, ConfirmDialog } from "@/compon
 export default function ApprovalsPage() {
   const approvals = useApprovals();
   const decide = useDecideApproval();
+  const isAdmin = useCurrentRole() === "admin";
 
   async function submit(id: string, decision: "approved" | "rejected") {
     try {
@@ -24,7 +25,7 @@ export default function ApprovalsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader icon={ShieldCheck} title="Approvals" description="Review tool and workflow approval requests" />
+      <PageHeader icon={ShieldCheck} title="Approvals" description={isAdmin ? "Review tool and workflow approval requests" : "Track your pending approval requests"} />
       {approvals.isLoading ? <LoadingSkeleton variant="table" /> : approvals.isError ? <ErrorState title="Unable to load approvals" description="Approval requests could not be loaded." onRetry={() => void approvals.refetch()} /> : approvals.data?.length ? (
         <div className="space-y-4 stagger">
           {approvals.data.map((approval) => (
@@ -40,10 +41,12 @@ export default function ApprovalsPage() {
                 <pre className="max-h-48 overflow-auto rounded-lg border border-border/80 bg-muted/30 p-3 font-mono text-xs text-foreground scrollbar-thin">
                   {JSON.stringify(approval.args_snapshot, null, 2)}
                 </pre>
-                <div className="flex justify-end gap-2">
-                  <ConfirmDialog trigger={<Button variant="outline">Reject</Button>} title="Reject this approval?" description="The requested tool or workflow action will not run." confirmLabel="Reject" destructive onConfirm={() => submit(approval.id, "rejected")} />
-                  <Button className="active-tactile transition-transform" onClick={() => submit(approval.id, "approved")}>Approve</Button>
-                </div>
+                {isAdmin && (
+                  <div className="flex justify-end gap-2">
+                    <ConfirmDialog trigger={<Button variant="outline">Reject</Button>} title="Reject this approval?" description="The requested tool or workflow action will not run." confirmLabel="Reject" destructive onConfirm={() => submit(approval.id, "rejected")} />
+                    <Button className="active-tactile transition-transform" onClick={() => submit(approval.id, "approved")}>Approve</Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
           ))}

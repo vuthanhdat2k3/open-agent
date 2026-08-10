@@ -401,7 +401,7 @@ async def _agent_stream(
             message,
             {},
             org_id=agent.org_id,
-            created_by_user_id=agent.created_by_user_id,
+            created_by_user_id=user_id or agent.created_by_user_id,
         )
 
     # Only the chat root task gets a durable event log: it is the one a
@@ -1087,12 +1087,12 @@ async def _agent_stream(
                         "reasoning": reasoning_text,
                     },
                     org_id=agent.org_id,
-                    created_by_user_id=agent.created_by_user_id,
+                    created_by_user_id=user_id or agent.created_by_user_id,
                 )
             db.add(
                 UsageEvent(
                     org_id=agent.org_id,
-                    created_by_user_id=agent.created_by_user_id,
+                    created_by_user_id=user_id or agent.created_by_user_id,
                     source="call_agent" if depth > 0 else "chat",
                     agent_name=agent.name,
                     model_name=model.name,

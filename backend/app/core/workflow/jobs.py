@@ -38,6 +38,7 @@ async def run_workflow(ctx, workflow_run_id: str) -> None:  # noqa: ARG001
                 stream=False,
                 workflow_run_id=workflow_run.id,
                 force_inline=True,
+                user_id=workflow_run.triggered_by_user_id,
             )
         except Exception as exc:  # noqa: BLE001
             workflow_run.status = "failed"

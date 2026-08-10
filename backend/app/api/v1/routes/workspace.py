@@ -135,6 +135,8 @@ async def get_active_execution(
         await live_run.stop_live_run(org_id, reason="timeout")
         return None
     record = await WorkspaceService(db).get_execution(org_id, run.execution_id)
+    if record is None:
+        return None
     return ActiveRunOut(
         id=run.execution_id,
         status=run.status,

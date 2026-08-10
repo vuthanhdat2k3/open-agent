@@ -209,8 +209,8 @@ export function useCreateEvaluationRun() {
   });
 }
 
-export function useMcpServers() {
-  return useQuery({ queryKey: ["mcp"], queryFn: () => api.get<McpServer[]>("/api/mcp/servers") });
+export function useMcpServers(enabled: boolean = true) {
+  return useQuery({ queryKey: ["mcp"], queryFn: () => api.get<McpServer[]>("/api/mcp/servers"), enabled });
 }
 export function useCreateMcp() {
   const qc = useQueryClient();
@@ -304,8 +304,8 @@ export function useSessionMessages(sessionId: string | null, enabled = true) {
   });
 }
 
-export function useUsageSummary() {
-  return useQuery({ queryKey: ["usage"], queryFn: () => api.get<UsageSummary[]>("/api/debug/usage") });
+export function useUsageSummary(enabled: boolean = true) {
+  return useQuery({ queryKey: ["usage"], queryFn: () => api.get<UsageSummary[]>("/api/debug/usage"), enabled });
 }
 export function useDebugSessions() {
   return useQuery({ queryKey: ["debug-sessions"], queryFn: () => api.get<Session[]>("/api/debug/sessions") });
