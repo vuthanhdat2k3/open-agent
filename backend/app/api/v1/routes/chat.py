@@ -77,7 +77,7 @@ async def run_chat_detached(payload: dict) -> None:
                 request,
                 user_id=payload.get("user_id"),
                 user_role=payload.get("user_role"),
-                root_run_id=request.run_id,
+                root_run_id=payload.get("root_run_id") or request.run_id,
                 current_task_id=task.id,
                 approval_resume_id=payload.get("approval_resume_id"),
             )
