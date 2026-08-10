@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = 8000
     cors_origins: str = "http://localhost:3000"
+    runtime: str = "local"
 
     # Database (async). SQLite for dev; postgres+asyncpg later.
     db_url: str = "sqlite+aiosqlite:///./openagent.db"
@@ -126,8 +127,11 @@ class Settings(BaseSettings):
     ci_max_attachment_bytes: int = 10 * 1024 * 1024
     # How long a pending approval stays valid before it expires.
     ci_approval_expiry_hours: int = 72
-    # 32-byte key (urlsafe base64) for AES-GCM credential encryption at rest.
-    # Empty => derive a stable dev key from jwt_secret_key (never in prod).
+    # Credential encryption at rest. Empty => use the legacy CI key, then
+    # derive a stable development key from jwt_secret_key.
+    credential_encryption_key: str = ""
+    # Deprecated compatibility setting; keep it so existing deployments do
+    # not lose access to encrypted CI credentials during migration.
     ci_credential_encryption_key: str = ""
     # Default daily run time (HH:MM, user timezone) for new connections.
     ci_daily_schedule_default: str = "08:00"

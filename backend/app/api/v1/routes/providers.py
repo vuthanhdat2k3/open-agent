@@ -1,10 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.providers.templates import get_templates
 from app.dependencies import get_current_org_id, get_db, require_permission
 from app.schemas.provider import (
     ProviderCreate,
+    ProviderFromTemplateRequest,
     ProviderOut,
+    ProviderTemplateOut,
     ProviderTestResult,
     ProviderUpdate,
 )
@@ -16,11 +19,49 @@ router = APIRouter(
 )
 
 
+@router.get("/templates", response_model=list[ProviderTemplateOut])
+async def list_provider_templates():
+    return [
+        ProviderTemplateOut(
+            key=template.key,
+            display_name=template.display_name,
+            description=template.description,
+            driver=template.driver,
+            default_base_url=template.default_base_url,
+            api_key_required=template.api_key_required,
+            supports_tools=template.supports_tools,
+            supports_reasoning=template.supports_reasoning,
+            supports_vision=template.supports_vision,
+            catalog_source=template.catalog_source,
+            catalog_version=template.catalog_version,
+        )
+        for template in get_templates()
+    ]
+
+
 @router.get("", response_model=list[ProviderOut], dependencies=[Depends(require_permission("providers:read"))])
 async def list_providers(
     org_id: str = Depends(get_current_org_id), db: AsyncSession = Depends(get_db)
 ):
     return await ProviderService(db).list(org_id)
+
+
+@router.post("/from-template", response_model=ProviderOut, status_code=201, dependencies=[Depends(require_permission("providers:manage"))])
+async def create_from_template(
+    body: ProviderFromTemplateRequest,
+    org_id: str = Depends(get_current_org_id),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        return await ProviderService(db).create_from_template(
+            org_id,
+            body.template_key,
+            body.api_key,
+            body.base_url,
+            body.is_default,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
 
 @router.post("", response_model=ProviderOut, status_code=201, dependencies=[Depends(require_permission("providers:manage"))])

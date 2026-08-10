@@ -18,7 +18,7 @@ from app.core.guardrails.approval import request_approval
 from app.core.guardrails.budget import BudgetTracker, RunBudget
 from app.core.guardrails.injection import wrap_untrusted_if_flagged
 from app.core.guardrails.secrets import scan_and_redact
-from app.core.llm import LLMClient, resolve_api_key
+from app.core.llm import LLMClient
 from app.core.memory.tiers import compact_tiered_memory
 from app.core.observability import genai
 from app.core.observability.audit import log_action
@@ -28,6 +28,7 @@ from app.core.observability.metrics import (
     tool_call_duration_seconds,
     tool_calls_total,
 )
+from app.core.providers.factory import build_driver
 from app.core.tools.registry import BUILTIN_TOOLS, execute_tool_call
 from app.core.tools.risk_tier import RiskTier
 from app.core.tools.types import ToolContext, ToolSpec, tool_to_openai_schema
@@ -475,7 +476,7 @@ async def _agent_stream(
         yield {"event": "error", "data": {"message": "provider not found for model"}}
         return
     try:
-        llm = LLMClient(provider.base_url, resolve_api_key(provider), model.name)
+        llm = build_driver(provider, model)
     except RuntimeError as e:
         await _finish_task(db, root_task, status="failed", result=str(e))
         yield {"event": "error", "data": {"message": str(e)}}
@@ -762,14 +763,18 @@ async def _agent_stream(
                         yield out_ev
                     elif ev["type"] == "tool_calls":
                         for tc in ev["tool_calls"]:
-                            idx = tc.index
+                            # Every driver (OpenAI-compatible, Anthropic, Gemini)
+                            # yields plain dicts with this shape — see
+                            # LLMClient.stream's normalization of the OpenAI SDK
+                            # object into the same dict contract.
+                            idx = tc.get("index", 0)
                             entry = tc_map.setdefault(idx, {"id": None, "name": "", "arguments": ""})
-                            if tc.id:
-                                entry["id"] = tc.id
-                            if tc.function and tc.function.name:
-                                entry["name"] = tc.function.name
-                            if tc.function and tc.function.arguments:
-                                fragment = tc.function.arguments
+                            if tc.get("id"):
+                                entry["id"] = tc["id"]
+                            if tc.get("name"):
+                                entry["name"] = tc["name"]
+                            fragment = tc.get("arguments")
+                            if fragment:
                                 entry["arguments"] += fragment
                                 # Stream the raw fragment so the UI can render
                                 # tool-call arguments as they are composed,
