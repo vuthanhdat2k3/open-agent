@@ -111,24 +111,20 @@ function ChatMessageItemBase({ message: m, debug, hasLiveTools, onApprovalDecisi
   // Always render tool execution cards for rich user feedback
   if (m.role === "user") {
     return (
-      <div
-        key={m.id}
-        className="group relative animate-scale-in self-end max-w-[80%] cursor-text rounded-2xl rounded-br-md bg-primary px-4 py-3 pr-12 text-sm text-primary-foreground shadow-card leading-relaxed select-text"
-        style={{ userSelect: "text", WebkitUserSelect: "text" }}
-      >
-        <span className="whitespace-pre-wrap break-words">{m.content || "…"}</span>
-        <Button
+      <div key={m.id} className="group flex max-w-[80%] flex-col items-end gap-1 self-end">
+        <div className="cursor-text select-text whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-secondary px-4 py-2.5 text-sm leading-relaxed text-secondary-foreground">
+          {m.content || "…"}
+        </div>
+        <button
           type="button"
-          variant="ghost"
-          size="icon"
-          onMouseDown={(event) => event.preventDefault()}
           onClick={() => void copyMessage()}
-          className="absolute right-1 top-1 h-9 w-9 rounded-lg text-primary-foreground/70 opacity-60 transition-opacity hover:bg-primary-foreground/15 hover:text-primary-foreground group-hover:opacity-100 focus-visible:opacity-100"
+          className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none group-hover:opacity-100"
           aria-label={copied ? "User message copied" : "Copy user message"}
           title={copied ? "Copied" : "Copy message"}
         >
-          {copied ? <Check className="h-4 w-4" aria-hidden="true" /> : <Copy className="h-4 w-4" aria-hidden="true" />}
-        </Button>
+          {copied ? <Check className="h-3 w-3" aria-hidden="true" /> : <Copy className="h-3 w-3" aria-hidden="true" />}
+          {copied ? "Copied" : "Copy"}
+        </button>
       </div>
     );
   }
@@ -156,15 +152,15 @@ function ChatMessageItemBase({ message: m, debug, hasLiveTools, onApprovalDecisi
     return (
       <div
         key={m.id}
-        className="animate-scale-in self-start w-full max-w-[92%] shrink-0 rounded-xl border border-primary/30 bg-card/80 backdrop-blur-md shadow-3d-card overflow-hidden"
+        className="animate-scale-in self-start w-full max-w-[92%] shrink-0 rounded-xl border border-border bg-card/80 backdrop-blur-md shadow-card overflow-hidden"
       >
         <div className="flex items-center justify-between border-b border-border/60 bg-muted/30 px-3 py-1.5 text-[10px] font-semibold text-foreground">
           <div className="flex items-center gap-1.5">
-            {isCodeTool ? <Terminal className="h-3.5 w-3.5 text-primary" /> : <Wrench className="h-3.5 w-3.5 text-amber-500" />}
+            {isCodeTool ? <Terminal className="h-3.5 w-3.5 text-primary" /> : <Wrench className="h-3.5 w-3.5 text-warning" />}
             <span className="uppercase tracking-wider font-bold">
               {isCodeTool ? "Code Execution" : "Tool Call"}
             </span>
-            <Badge variant="outline" className="ml-1 font-mono text-[9px] bg-primary/10 text-primary border-primary/20">
+            <Badge variant="outline" className="ml-1 font-mono text-[9px] bg-muted text-foreground border-border">
               {m.meta?.toolName || "tool"}
             </Badge>
             {parsedArgs?.path && (
@@ -177,7 +173,7 @@ function ChatMessageItemBase({ message: m, debug, hasLiveTools, onApprovalDecisi
             <Play className="h-2.5 w-2.5 text-primary animate-pulse" /> Running
           </span>
         </div>
-        <pre className="block w-full min-h-[60px] max-h-60 overflow-y-auto overflow-x-auto p-3 font-mono text-[10.5px] text-foreground leading-relaxed scrollbar-thin whitespace-pre-wrap break-all bg-black/40">
+        <pre className="block w-full min-h-[60px] max-h-60 overflow-y-auto overflow-x-auto p-3 font-mono text-[10.5px] text-foreground leading-relaxed scrollbar-thin whitespace-pre-wrap break-all bg-muted/50">
           {codeStr}
         </pre>
         {m.meta?.progress ? (
@@ -185,7 +181,7 @@ function ChatMessageItemBase({ message: m, debug, hasLiveTools, onApprovalDecisi
             <div className="flex items-center gap-1.5 bg-muted/20 px-3 py-1 text-[9px] uppercase tracking-wider text-muted-foreground/70">
               <Play className="h-2.5 w-2.5 text-primary animate-pulse" /> Live output
             </div>
-            <pre className="block max-h-40 overflow-y-auto overflow-x-auto p-3 font-mono text-[10.5px] text-muted-foreground leading-relaxed scrollbar-thin whitespace-pre-wrap break-all bg-black/40">
+            <pre className="block max-h-40 overflow-y-auto overflow-x-auto p-3 font-mono text-[10.5px] text-muted-foreground leading-relaxed scrollbar-thin whitespace-pre-wrap break-all bg-muted/50">
               {m.meta.progress}
             </pre>
           </div>
@@ -201,7 +197,7 @@ function ChatMessageItemBase({ message: m, debug, hasLiveTools, onApprovalDecisi
     return (
       <div
         key={m.id}
-        className="animate-scale-in self-start w-full max-w-[92%] shrink-0 rounded-xl border border-border/70 bg-card/90 backdrop-blur-md shadow-3d-card overflow-hidden"
+        className="animate-scale-in self-start w-full max-w-[92%] shrink-0 rounded-xl border border-border/70 bg-card/90 backdrop-blur-md shadow-card overflow-hidden"
       >
         <div className="flex items-center justify-between border-b border-border/60 bg-muted/30 px-3 py-1.5 text-[10px] font-semibold text-foreground">
           <div className="flex items-center gap-1.5">
@@ -228,7 +224,7 @@ function ChatMessageItemBase({ message: m, debug, hasLiveTools, onApprovalDecisi
           </div>
         ) : null}
 
-        <pre className="block w-full min-h-[60px] max-h-60 overflow-y-auto overflow-x-auto p-3 font-mono text-[10.5px] text-foreground leading-relaxed scrollbar-thin whitespace-pre-wrap break-all bg-black/40">
+        <pre className="block w-full min-h-[60px] max-h-60 overflow-y-auto overflow-x-auto p-3 font-mono text-[10.5px] text-foreground leading-relaxed scrollbar-thin whitespace-pre-wrap break-all bg-muted/50">
           {m.content}
         </pre>
       </div>
@@ -241,7 +237,7 @@ function ChatMessageItemBase({ message: m, debug, hasLiveTools, onApprovalDecisi
       ? m.meta.approvalArgs
       : JSON.stringify(m.meta?.approvalArgs ?? {}, null, 2);
     return (
-      <div key={m.id} className="animate-scale-in self-start w-full max-w-[92%] rounded-xl border border-warning/40 bg-warning/[0.06] p-3 shadow-3d-card">
+      <div key={m.id} className="animate-scale-in self-start w-full max-w-[92%] rounded-xl border border-warning/40 bg-warning/[0.06] p-3 shadow-card">
         <div className="flex items-center gap-2 text-xs font-semibold">
           {status === "approved" ? <ShieldCheck className="h-4 w-4 text-success" /> : status === "rejected" ? <ShieldX className="h-4 w-4 text-destructive" /> : <ShieldAlert className="h-4 w-4 text-warning" />}
           <span>{status === "pending" ? "Approval required" : status === "approved" ? "Approved" : "Rejected"}</span>
@@ -281,20 +277,20 @@ function ChatMessageItemBase({ message: m, debug, hasLiveTools, onApprovalDecisi
 
         return (
           <React.Fragment key={`hist-tool-${m.id}-${idx}`}>
-            <div className="animate-scale-in self-start w-full max-w-[92%] shrink-0 rounded-xl border border-primary/30 bg-card/80 backdrop-blur-md shadow-3d-card overflow-hidden mb-2">
+            <div className="animate-scale-in self-start w-full max-w-[92%] shrink-0 rounded-xl border border-border bg-card/80 backdrop-blur-md shadow-card overflow-hidden mb-2">
               <div className="flex items-center gap-1.5 border-b border-border/60 bg-muted/30 px-3 py-1.5 text-[10px] font-semibold text-foreground">
                 <Terminal className="h-3.5 w-3.5 text-primary" />
                 <span className="uppercase tracking-wider font-bold">Executed Tool</span>
-                <Badge variant="outline" className="ml-1 font-mono text-[9px] bg-primary/10 text-primary border-primary/20">
+                <Badge variant="outline" className="ml-1 font-mono text-[9px] bg-muted text-foreground border-border">
                   {t.name}
                 </Badge>
               </div>
-              <pre className="block w-full min-h-[60px] max-h-96 overflow-y-auto overflow-x-hidden p-3 font-mono text-[10.5px] text-foreground leading-relaxed scrollbar-thin whitespace-pre-wrap break-words bg-black/40">
+              <pre className="block w-full min-h-[60px] max-h-96 overflow-y-auto overflow-x-hidden p-3 font-mono text-[10.5px] text-foreground leading-relaxed scrollbar-thin whitespace-pre-wrap break-words bg-muted/50">
                 {argsText}
               </pre>
             </div>
 
-            <div className="animate-scale-in self-start w-full max-w-[92%] shrink-0 rounded-xl border border-border/70 bg-card/90 backdrop-blur-md shadow-3d-card overflow-hidden mb-3">
+            <div className="animate-scale-in self-start w-full max-w-[92%] shrink-0 rounded-xl border border-border/70 bg-card/90 backdrop-blur-md shadow-card overflow-hidden mb-3">
               <div className="flex items-center gap-1.5 border-b border-border/60 bg-muted/30 px-3 py-1.5 text-[10px] font-semibold text-foreground">
                 <CheckCircle2 className="h-3.5 w-3.5 text-success" />
                 <span className="uppercase tracking-wider font-bold">Execution Output</span>
@@ -307,7 +303,7 @@ function ChatMessageItemBase({ message: m, debug, hasLiveTools, onApprovalDecisi
                   <SvgPreview html={t.result} />
                 </div>
               ) : null}
-              <pre className="block w-full min-h-[60px] max-h-96 overflow-y-auto overflow-x-hidden p-3 font-mono text-[10.5px] leading-relaxed scrollbar-thin whitespace-pre-wrap break-words bg-black/40">
+              <pre className="block w-full min-h-[60px] max-h-96 overflow-y-auto overflow-x-hidden p-3 font-mono text-[10.5px] leading-relaxed scrollbar-thin whitespace-pre-wrap break-words bg-muted/50">
                 {t.result}
               </pre>
             </div>
@@ -315,13 +311,13 @@ function ChatMessageItemBase({ message: m, debug, hasLiveTools, onApprovalDecisi
         );
       })}
 
-      <div className="flex max-w-[85%] items-start gap-2.5 self-start">
-        <Avatar className="mt-0.5 h-8 w-8 border border-border/60 bg-muted">
-          <AvatarFallback className="bg-primary/10 text-primary">
-            <Bot className="h-4 w-4" aria-hidden="true" />
+      <div className="group flex max-w-[85%] items-start gap-2.5 self-start">
+        <Avatar className="mt-0.5 h-7 w-7 shrink-0 border border-border bg-muted">
+          <AvatarFallback className="bg-transparent text-foreground">
+            <Bot className="h-3.5 w-3.5" aria-hidden="true" />
           </AvatarFallback>
         </Avatar>
-        <div className="min-w-0 flex-1 space-y-1.5">
+        <div className="min-w-0 flex-1 space-y-1.5 pt-0.5">
         {debug && m.meta?.reasoning ? (
           <Collapsible defaultOpen={!m.content}>
             <div className="rounded-xl border border-dashed border-border/70 bg-muted/15 px-3 py-2">
@@ -346,7 +342,7 @@ function ChatMessageItemBase({ message: m, debug, hasLiveTools, onApprovalDecisi
           </Collapsible>
         ) : null}
         {m.content && (
-          <div className="rounded-2xl rounded-bl-md border border-border/80 bg-card px-4 py-3 text-sm leading-relaxed select-text shadow-card">
+          <div className="select-text text-sm leading-relaxed">
           {m.content ? (
             <React.Suspense
               fallback={<span className="whitespace-pre-wrap break-words">{m.content}</span>}
@@ -367,31 +363,47 @@ function ChatMessageItemBase({ message: m, debug, hasLiveTools, onApprovalDecisi
           )}
           </div>
         )}
-        {m.meta?.cost_usd != null && (
-          <div className="flex flex-wrap items-center gap-1.5 px-1">
-            {m.meta.latency_ms != null && (
-              <Badge variant="secondary" className="gap-1 font-mono text-[10px]">
-                <Clock className="h-2.5 w-2.5" aria-hidden="true" />
-                {(m.meta.latency_ms / 1000).toFixed(1)}s
-              </Badge>
+        {(m.meta?.cost_usd != null || m.content) && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            {m.content && (
+              <button
+                type="button"
+                onClick={() => void copyMessage()}
+                className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none group-hover:opacity-100"
+                aria-label={copied ? "Message copied" : "Copy message"}
+                title={copied ? "Copied" : "Copy message"}
+              >
+                {copied ? <Check className="h-3 w-3" aria-hidden="true" /> : <Copy className="h-3 w-3" aria-hidden="true" />}
+                {copied ? "Copied" : "Copy"}
+              </button>
             )}
-            {m.meta.in_tokens != null && (
-              <Badge variant="secondary" className="font-mono text-[10px]">
-                {m.meta.in_tokens + (m.meta.out_tokens ?? 0)} tokens
-              </Badge>
-            )}
-            <Badge variant="secondary" className="gap-1 font-mono text-[10px]">
-              <DollarSign className="h-2.5 w-2.5" aria-hidden="true" />
-              {m.meta.cost_usd.toFixed(5)}
-            </Badge>
-            {m.meta.tools?.length ? (
-              <Badge variant="secondary" className="gap-1 font-mono text-[10px]">
-                <Wrench className="h-2.5 w-2.5" aria-hidden="true" />
-                {m.meta.tools.length} tool{m.meta.tools.length > 1 ? "s" : ""}
-              </Badge>
-            ) : null}
-            {m.meta.model && (
-              <Badge variant="outline" className="ml-auto font-mono text-[10px]">{m.meta.model}</Badge>
+            {m.meta?.cost_usd != null && (
+              <>
+                {m.meta.latency_ms != null && (
+                  <Badge variant="secondary" className="gap-1 font-mono text-[10px]">
+                    <Clock className="h-2.5 w-2.5" aria-hidden="true" />
+                    {(m.meta.latency_ms / 1000).toFixed(1)}s
+                  </Badge>
+                )}
+                {m.meta.in_tokens != null && (
+                  <Badge variant="secondary" className="font-mono text-[10px]">
+                    {m.meta.in_tokens + (m.meta.out_tokens ?? 0)} tokens
+                  </Badge>
+                )}
+                <Badge variant="secondary" className="gap-1 font-mono text-[10px]">
+                  <DollarSign className="h-2.5 w-2.5" aria-hidden="true" />
+                  {m.meta.cost_usd.toFixed(5)}
+                </Badge>
+                {m.meta.tools?.length ? (
+                  <Badge variant="secondary" className="gap-1 font-mono text-[10px]">
+                    <Wrench className="h-2.5 w-2.5" aria-hidden="true" />
+                    {m.meta.tools.length} tool{m.meta.tools.length > 1 ? "s" : ""}
+                  </Badge>
+                ) : null}
+                {m.meta.model && (
+                  <Badge variant="outline" className="ml-auto font-mono text-[10px]">{m.meta.model}</Badge>
+                )}
+              </>
             )}
           </div>
         )}

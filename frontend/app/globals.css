@@ -5,68 +5,91 @@
   button, a, input, select, textarea {
     touch-action: manipulation;
   }
+  :root {
+    /* Mirrors the base tokens 1:1 — one monochrome palette, no second scale. */
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 0 0% 9%;
+    --sidebar-primary: 0 0% 9%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 0 0% 93%;
+    --sidebar-accent-foreground: 0 0% 12%;
+    --sidebar-border: 0 0% 88%;
+    --sidebar-ring: 0 0% 9%;
+  }
+  .dark {
+    --sidebar-background: 0 0% 4%;
+    --sidebar-foreground: 0 0% 98%;
+    --sidebar-primary: 0 0% 98%;
+    --sidebar-primary-foreground: 0 0% 9%;
+    --sidebar-accent: 0 0% 17%;
+    --sidebar-accent-foreground: 0 0% 98%;
+    --sidebar-border: 0 0% 18%;
+    --sidebar-ring: 0 0% 82%;
+  }
 }
 
 
 
 @layer base {
   :root {
-    /* Refined light theme — airy, high-contrast neutral base with a single emerald accent */
-    --background: 210 24% 98%;
-    --foreground: 222 30% 12%;
+    /* Monochrome light theme — pure neutral gray ramp, no brand hue. Destructive
+       stays red: it is a safety convention (danger/delete), not a brand color. */
+    --background: 0 0% 98%;
+    --foreground: 0 0% 9%;
     --card: 0 0% 100%;
-    --card-foreground: 222 30% 12%;
+    --card-foreground: 0 0% 9%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222 30% 12%;
-    --primary: 152 55% 38%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 210 16% 94%;
-    --secondary-foreground: 222 30% 18%;
-    --muted: 210 16% 95%;
-    --muted-foreground: 215 14% 42%;
-    --accent: 210 16% 93%;
-    --accent-foreground: 222 30% 18%;
+    --popover-foreground: 0 0% 9%;
+    --primary: 0 0% 9%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 0 0% 94%;
+    --secondary-foreground: 0 0% 12%;
+    --muted: 0 0% 95%;
+    --muted-foreground: 0 0% 42%;
+    --accent: 0 0% 93%;
+    --accent-foreground: 0 0% 12%;
     --destructive: 0 72% 48%;
     --destructive-foreground: 0 0% 100%;
-    --border: 214 20% 88%;
-    --input: 214 20% 86%;
-    --ring: 152 55% 42%;
-    --success: 142 64% 38%;
+    --border: 0 0% 88%;
+    --input: 0 0% 86%;
+    --ring: 0 0% 9%;
+    --success: 0 0% 30%;
     --success-foreground: 0 0% 100%;
-    --warning: 38 92% 45%;
+    --warning: 0 0% 40%;
     --warning-foreground: 0 0% 100%;
-    --info: 199 89% 44%;
+    --info: 0 0% 35%;
     --info-foreground: 0 0% 100%;
     --radius: 0.75rem;
   }
 
   .dark {
-    /* Refined dark theme — deep "ink" surface, elevated cards, desaturated emerald */
-    --background: 224 28% 5%;
-    --foreground: 210 30% 96%;
-    --card: 224 24% 9%;
-    --card-foreground: 210 30% 96%;
-    --popover: 224 24% 10%;
-    --popover-foreground: 210 30% 96%;
-    --primary: 152 52% 45%;
-    --primary-foreground: 224 30% 8%;
-    --secondary: 220 20% 16%;
-    --secondary-foreground: 210 30% 96%;
-    --muted: 220 18% 14%;
-    --muted-foreground: 215 16% 62%;
-    --accent: 220 20% 17%;
-    --accent-foreground: 210 30% 96%;
+    /* Monochrome dark theme — near-black "moon at night" surface, white primary
+       actions. Destructive stays red for the same reason as light mode. */
+    --background: 0 0% 4%;
+    --foreground: 0 0% 98%;
+    --card: 0 0% 7%;
+    --card-foreground: 0 0% 98%;
+    --popover: 0 0% 8%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 0 0% 9%;
+    --secondary: 0 0% 15%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 0 0% 14%;
+    --muted-foreground: 0 0% 63%;
+    --accent: 0 0% 17%;
+    --accent-foreground: 0 0% 98%;
     --destructive: 0 70% 52%;
     --destructive-foreground: 0 0% 100%;
-    --border: 220 18% 18%;
-    --input: 220 18% 21%;
-    --ring: 152 52% 50%;
-    --success: 142 60% 45%;
-    --success-foreground: 224 30% 8%;
-    --warning: 38 92% 50%;
-    --warning-foreground: 224 30% 8%;
-    --info: 199 89% 52%;
-    --info-foreground: 224 30% 8%;
+    --border: 0 0% 18%;
+    --input: 0 0% 21%;
+    --ring: 0 0% 82%;
+    --success: 0 0% 55%;
+    --success-foreground: 0 0% 9%;
+    --warning: 0 0% 65%;
+    --warning-foreground: 0 0% 9%;
+    --info: 0 0% 60%;
+    --info-foreground: 0 0% 9%;
   }
 }
 
