@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import copy
 import json
+import re
 import time
 from collections.abc import AsyncIterator
 from typing import Any
@@ -27,7 +28,8 @@ from app.core.observability.metrics import (
     tool_calls_total,
 )
 from app.core.tools.registry import BUILTIN_TOOLS, execute_tool_call
-from app.core.tools.types import ToolContext, tool_to_openai_schema
+from app.core.tools.risk_tier import RiskTier
+from app.core.tools.types import ToolContext, ToolSpec, tool_to_openai_schema
 from app.core.workflow.replay import ReplayCursor, ReplayDiverged, record_tool_call
 from app.db.base import gen_id, utc_now
 from app.mcp.client import build_mcp_tool_spec, get_mcp_manager
@@ -101,6 +103,103 @@ async def _build_orchestrator_roster(db: AsyncSession, org_id: str, exclude_agen
         return ""
     lines = [f"- {row.id}: {row.name} - {row.description or 'no description'}" for row in rows]
     return "Agents available to delegate to via call_agent (id: name - description):\n" + "\n".join(lines)
+
+
+def _infer_capabilities(agent: Agent) -> set[str]:
+    """Infer routable capability tags from the agent's tools and name."""
+    tags = {name.split("_", 1)[0].lower() for name in (agent.tools or []) if "_" in name}
+    tags.add(agent.name.lower())
+    return tags
+
+
+def _delegate_slug(name: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
+    return slug or "agent"
+
+
+async def _build_orchestrator_delegate_tools(
+    db: AsyncSession, org_id: str, exclude_agent_id: str
+) -> tuple[str, list[ToolSpec], dict[str, list[Agent]], dict[str, ToolSpec]]:
+    """Build dynamic, named delegate tools and the capability index."""
+    result = await db.execute(
+        select(Agent).where(Agent.org_id == org_id, Agent.id != exclude_agent_id)
+    )
+    agents = list(result.scalars().all())
+    if not agents:
+        return "", [], {}, {}
+
+    used_slugs: set[str] = set()
+    delegate_specs: list[ToolSpec] = []
+    capability_index: dict[str, list[Agent]] = {}
+    delegate_by_agent_id: dict[str, ToolSpec] = {}
+    lines: list[str] = []
+    for target in agents:
+        slug = _delegate_slug(target.name)
+        if slug in used_slugs:
+            slug = f"{slug}_{target.id.replace('-', '')[-6:]}"
+        used_slugs.add(slug)
+        tool_name = f"delegate_to_{slug}"
+        description = target.description or (
+            f"Handles: {', '.join(target.tools or [])}" if target.tools else "Delegate work to this agent."
+        )
+
+        async def run_delegate(args: dict[str, Any], ctx: ToolContext, target_id: str = target.id) -> str:
+            from app.core.tools.builtins import _call_agent
+
+            return await _call_agent(
+                {"target_agent_id": target_id, "instruction": args.get("instruction", "")}, ctx
+            )
+
+        spec = ToolSpec(
+                name=tool_name,
+                description=description,
+                input_schema={
+                    "type": "object",
+                    "properties": {"instruction": {"type": "string"}},
+                    "required": ["instruction"],
+                },
+                run=run_delegate,
+                risk_tier=RiskTier.execute,
+            )
+        delegate_specs.append(spec)
+        delegate_by_agent_id[target.id] = spec
+        lines.append(f"- {target.id}: {target.name} - {description}")
+        for capability in _infer_capabilities(target):
+            capability_index.setdefault(capability, []).append(target)
+    roster = "Agents available to delegate to via named tools:\n" + "\n".join(lines)
+    return roster, delegate_specs, capability_index, delegate_by_agent_id
+
+
+_ROUTING_SYNONYMS: dict[str, tuple[str, ...]] = {
+    "email": ("email", "gmail", "mail", "thư", "email"),
+    "calendar": ("calendar", "lịch", "schedule", "meeting", "cuộc họp"),
+    "drive": ("drive", "tài liệu", "document", "documents", "file", "files"),
+}
+
+
+def _route_orchestrator_turn(
+    message: str,
+    delegate_specs: list[ToolSpec],
+    capability_index: dict[str, list[Agent]],
+    delegate_by_agent_id: dict[str, ToolSpec] | None = None,
+) -> tuple[dict[str, Any] | str, str | None]:
+    """Return a forced delegate tool when one capability has one candidate."""
+    text = message.lower()
+    matched: dict[str, list[Agent]] = {}
+    for capability, agents in capability_index.items():
+        terms = _ROUTING_SYNONYMS.get(capability, (capability,))
+        if any(term in text for term in terms):
+            matched[capability] = agents
+    candidates = {agent.id: agent for agents in matched.values() for agent in agents}
+    if len(candidates) != 1:
+        return "auto", None
+    target = next(iter(candidates.values()))
+    spec = (delegate_by_agent_id or {}).get(target.id)
+    if spec is None:
+        return "auto", None
+    return {"type": "function", "function": {"name": spec.name}}, (
+        f"This request matches the {next(iter(matched))} capability. You MUST call {spec.name}; do not answer or refuse directly."
+    )
 
 
 def _estimate_tokens(text: str) -> int:
@@ -350,7 +449,11 @@ async def _agent_stream(
     )
 
     specs = await _build_specs(agent, db)
-    tool_schemas = [tool_to_openai_schema(s) for s in specs] if specs else None
+    delegate_specs: list[ToolSpec] = []
+    capability_index: dict[str, list[Agent]] = {}
+    delegate_by_agent_id: dict[str, ToolSpec] = {}
+    forced_tool_choice: dict[str, Any] | str = "auto"
+    route_directive: str | None = None
     tool_by_name = {s.name: s for s in specs}
 
     # Auto-inject behavioral directives ONLY for tools the agent actually has
@@ -362,9 +465,20 @@ async def _agent_stream(
         directives.append(RAG_DIRECTIVE)
     if agent.kind == "orchestrator" and "call_agent" in tool_by_name:
         directives.append(ORCHESTRATOR_SYSTEM_SUFFIX)
-        roster = await _build_orchestrator_roster(db, agent.org_id, agent.id)
+        roster, delegate_specs, capability_index, delegate_by_agent_id = await _build_orchestrator_delegate_tools(
+            db, agent.org_id, agent.id
+        )
+        specs.extend(delegate_specs)
+        tool_by_name.update({spec.name: spec for spec in delegate_specs})
         if roster:
             directives.append(roster)
+        forced_tool_choice, route_directive = _route_orchestrator_turn(
+            message, delegate_specs, capability_index, delegate_by_agent_id
+        )
+        if route_directive:
+            directives.append(route_directive)
+
+    tool_schemas = [tool_to_openai_schema(s) for s in specs] if specs else None
 
     system_parts = [base_prompt] if base_prompt else []
     system_parts.extend(directives)
@@ -557,7 +671,13 @@ async def _agent_stream(
                 temperature=agent.temperature,
                 session_id=session_id,
             ) as chat_span:
-                stream_iter = llm.stream(messages, tools=tool_schemas, temperature=agent.temperature)
+                stream_kwargs: dict[str, Any] = {
+                    "tools": tool_schemas,
+                    "temperature": agent.temperature,
+                }
+                if agent.kind == "orchestrator":
+                    stream_kwargs["tool_choice"] = forced_tool_choice if _ == 0 else "auto"
+                stream_iter = llm.stream(messages, **stream_kwargs)
                 async for ev in stream_iter:
                     if await _is_cancelled(db, root_task):
                         if rec is not None:

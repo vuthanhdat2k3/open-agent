@@ -15,7 +15,12 @@ from unittest.mock import patch
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.core.agent_loop import _build_orchestrator_roster, run_agent_loop
+from app.core.agent_loop import (
+    _build_orchestrator_roster,
+    _infer_capabilities,
+    _route_orchestrator_turn,
+    run_agent_loop,
+)
 from app.db.base import Base
 from app.models.agent import Agent
 from app.models.model import Model
@@ -118,6 +123,83 @@ async def test_roster_empty_when_no_siblings() -> None:
 
         roster = await _build_orchestrator_roster(session, org.id, solo.id)
         assert roster == ""
+    await engine.dispose()
+
+
+def test_infer_capabilities_uses_tool_prefix_and_agent_name() -> None:
+    agent = Agent(name="Email Intelligence", tools=["email_send", "email_search", "memory_recall"])
+    assert _infer_capabilities(agent) == {"email", "memory", "email intelligence"}
+
+
+def test_ambiguous_or_unmatched_route_keeps_auto_tool_choice() -> None:
+    a = Agent(id="a", name="email-intelligence", tools=["email_send"])
+    b = Agent(id="b", name="calendar-intelligence", tools=["calendar_create_event"])
+    choice, directive = _route_orchestrator_turn(
+        "Help me with something", [], {"email": [a], "calendar": [b]}, {}
+    )
+    assert choice == "auto"
+    assert directive is None
+
+
+async def test_orchestrator_forces_named_email_delegate() -> None:
+    engine, factory = await _make_session_factory()
+    async with factory() as session:
+        org, orchestrator, _, _ = await _seed(session)
+        email_agent = Agent(
+            org_id=org.id,
+            name="email-intelligence",
+            description="Handles Gmail actions",
+            model_id=orchestrator.model_id,
+            system_prompt="email worker",
+            kind="worker",
+            tools=["email_send"],
+        )
+        session.add(email_agent)
+        await session.commit()
+        await session.refresh(email_agent)
+
+        captured_choices: list[object] = []
+        call_count = {"n": 0}
+
+        async def fake_delegate(agent, message, db, **kwargs):
+            return SimpleNamespace(content="approval requested", usage={"input_tokens": 1}, latency_ms=1)
+
+        async def mock_stream(messages, *args, **kwargs):
+            captured_choices.append(kwargs.get("tool_choice"))
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                yield {
+                    "type": "tool_calls",
+                    "tool_calls": [
+                        _tc(
+                            0,
+                            "call-email",
+                            "delegate_to_email_intelligence",
+                            '{"instruction":"send a greeting email"}',
+                        )
+                    ],
+                }
+            else:
+                yield {"type": "content", "text": "Delegated."}
+            yield {"type": "usage", "usage": {"input_tokens": 1, "output_tokens": 1}, "estimated": False}
+
+        with (
+            patch("app.core.llm.LLMClient.stream", side_effect=mock_stream),
+            patch("app.core.agent_loop.run_agent_loop", side_effect=fake_delegate),
+        ):
+            result = await run_agent_loop(
+                agent=orchestrator,
+                message="Gửi email chào đến dat@example.com",
+                db=session,
+                user_id="u-orch",
+            )
+
+        assert result.content == "Delegated."
+        assert captured_choices[0] == {
+            "type": "function",
+            "function": {"name": "delegate_to_email_intelligence"},
+        }
+        assert captured_choices[1] == "auto"
     await engine.dispose()
 
 
