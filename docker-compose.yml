@@ -69,6 +69,10 @@ services:
       OPENAGENT_S3_ENDPOINT_URL: http://minio:9000
       OPENAGENT_S3_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
       OPENAGENT_S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      OPENAGENT_SEARXNG_URL: ${OPENAGENT_SEARXNG_URL:-http://searxng:8080}
+      OPENAGENT_CRAWLER_URL: ${OPENAGENT_CRAWLER_URL:-http://crawler:11235}
+      OPENAGENT_CRAWLER_API_TOKEN: ${CRAWLER_API_TOKEN:?Set CRAWLER_API_TOKEN in .env to a random 32-byte secret}
+      OPENAGENT_YOUTUBE_API_KEY: ${OPENAGENT_YOUTUBE_API_KEY:-}
       DOCKER_HOST: tcp://docker-socket-proxy:2375
     ports:
       - "8000:8000"
@@ -97,6 +101,10 @@ services:
       OPENAGENT_CI_MCP_URL: http://customer-intelligence-mcp:8301/sse
       OPENAGENT_CI_GOOGLE_OAUTH_CLIENT_ID: ${OPENAGENT_CI_GOOGLE_OAUTH_CLIENT_ID:-}
       OPENAGENT_CI_GOOGLE_OAUTH_CLIENT_SECRET: ${OPENAGENT_CI_GOOGLE_OAUTH_CLIENT_SECRET:-}
+      OPENAGENT_SEARXNG_URL: ${OPENAGENT_SEARXNG_URL:-http://searxng:8080}
+      OPENAGENT_CRAWLER_URL: ${OPENAGENT_CRAWLER_URL:-http://crawler:11235}
+      OPENAGENT_CRAWLER_API_TOKEN: ${CRAWLER_API_TOKEN:?Set CRAWLER_API_TOKEN in .env to a random 32-byte secret}
+      OPENAGENT_YOUTUBE_API_KEY: ${OPENAGENT_YOUTUBE_API_KEY:-}
       DOCKER_HOST: tcp://docker-socket-proxy:2375
     command: ["arq", "app.worker.WorkerSettings"]
     depends_on:
@@ -161,8 +169,39 @@ services:
       MCP_PORT: 8301
       CI_COMPANY_API_URL: ${CI_COMPANY_API_URL:-}
       CI_COMPANY_API_KEY: ${CI_COMPANY_API_KEY:-}
+      SEARXNG_URL: http://searxng:8080
     expose:
       - "8301"
+
+  searxng:
+    image: searxng/searxng:latest
+    environment:
+      SEARXNG_BASE_URL: http://searxng:8080/
+    volumes:
+      - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
+    expose:
+      - "8080"
+
+  crawler:
+    image: unclecode/crawl4ai:latest
+    environment:
+      # The image refuses a non-loopback bind (see crawler/config.yml) unless
+      # this is set - required so the API isn't open/unauthenticated to
+      # everything else on the compose network.
+      CRAWL4AI_API_TOKEN: ${CRAWLER_API_TOKEN:?Set CRAWLER_API_TOKEN in .env to a random 32-byte secret}
+    volumes:
+      - ./crawler/config.yml:/app/config.yml:ro
+    # Headless Chromium needs real shared memory; the 64MB Docker default
+    # makes it crash on non-trivial pages.
+    shm_size: "1gb"
+    expose:
+      - "11235"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:11235/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
 
   prometheus:
     profiles: ["observability"]
