@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
+from app.core.authz.scope import scope_to_owner
 from app.db.base import utc_now
 from app.models.workspace import SandboxExecution, WorkspaceArtifact
 
@@ -55,20 +56,24 @@ class WorkspaceService:
         self.settings = get_settings()
 
     async def list_artifacts(self, org_id: str) -> list[dict[str, Any]]:
-        res = await self.db.execute(
-            select(WorkspaceArtifact)
-            .where(WorkspaceArtifact.org_id == org_id)
-            .order_by(WorkspaceArtifact.updated_at.desc())
+        stmt = scope_to_owner(
+            select(WorkspaceArtifact).where(WorkspaceArtifact.org_id == org_id),
+            self.db,
+            WorkspaceArtifact.created_by_user_id,
         )
+        res = await self.db.execute(stmt.order_by(WorkspaceArtifact.updated_at.desc()))
         return [artifact_out(row) for row in res.scalars().all()]
 
     async def get_artifact(self, org_id: str, artifact_id: str) -> WorkspaceArtifact | None:
-        res = await self.db.execute(
+        stmt = scope_to_owner(
             select(WorkspaceArtifact).where(
                 WorkspaceArtifact.id == artifact_id,
                 WorkspaceArtifact.org_id == org_id,
-            )
+            ),
+            self.db,
+            WorkspaceArtifact.created_by_user_id,
         )
+        res = await self.db.execute(stmt)
         return res.scalar_one_or_none()
 
     async def artifact_path(self, org_id: str, artifact_id: str) -> Path:
@@ -101,21 +106,26 @@ class WorkspaceService:
         return True
 
     async def list_executions(self, org_id: str) -> list[SandboxExecution]:
+        stmt = scope_to_owner(
+            select(SandboxExecution).where(SandboxExecution.org_id == org_id),
+            self.db,
+            SandboxExecution.created_by_user_id,
+        )
         res = await self.db.execute(
-            select(SandboxExecution)
-            .where(SandboxExecution.org_id == org_id)
-            .order_by(SandboxExecution.started_at.desc())
-            .limit(200)
+            stmt.order_by(SandboxExecution.started_at.desc()).limit(200)
         )
         return list(res.scalars().all())
 
     async def get_execution(self, org_id: str, execution_id: str) -> SandboxExecution | None:
-        res = await self.db.execute(
+        stmt = scope_to_owner(
             select(SandboxExecution).where(
                 SandboxExecution.id == execution_id,
                 SandboxExecution.org_id == org_id,
-            )
+            ),
+            self.db,
+            SandboxExecution.created_by_user_id,
         )
+        res = await self.db.execute(stmt)
         return res.scalar_one_or_none()
 
     async def delete_execution(self, org_id: str, execution_id: str) -> bool:

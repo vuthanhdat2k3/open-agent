@@ -29,6 +29,10 @@ interface ChatHeaderControlsProps {
   onSessionChange: (sessionId: string) => void;
   onNewSession: () => void;
   onDeleteSession: (sessionId: string) => Promise<void>;
+  // Plain users chat with the org's one primary (orchestrator) agent. They
+  // may choose an admin-configured model, but never switch agents.
+  canSwitchAgent: boolean;
+  canSwitchModel: boolean;
 }
 
 const triggerClass = "h-7 gap-1.5 rounded-full px-2.5 text-xs font-medium text-muted-foreground hover:text-foreground";
@@ -53,6 +57,8 @@ export function ChatHeaderControls({
   onSessionChange,
   onNewSession,
   onDeleteSession,
+  canSwitchAgent,
+  canSwitchModel,
 }: ChatHeaderControlsProps) {
   const agentSessions = sessions?.filter((s) => s.agent_id === agentId) ?? [];
   const effectiveModelId = pendingSessionModelId || currentAgentModel?.id || "";
@@ -61,44 +67,58 @@ export function ChatHeaderControls({
 
   return (
     <div className="flex min-w-0 items-center gap-1">
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button type="button" variant="ghost" size="sm" className={triggerClass}>
-            <Bot className="h-3.5 w-3.5" aria-hidden="true" />
-            <span className="max-w-[8rem] truncate">{currentAgent?.name ?? "Select agent"}</span>
-            <ChevronDown className="h-3 w-3 opacity-60" aria-hidden="true" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-56">
-          <DropdownMenuLabel>Active agent</DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          {agents?.map((a) => (
-            <DropdownMenuItem key={a.id} onSelect={() => onAgentChange(a.id)} className={a.id === agentId ? "font-semibold text-foreground" : undefined}>
-              {a.name}
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
+      {canSwitchAgent ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button type="button" variant="ghost" size="sm" className={triggerClass}>
+              <Bot className="h-3.5 w-3.5" aria-hidden="true" />
+              <span className="max-w-[8rem] truncate">{currentAgent?.name ?? "Select agent"}</span>
+              <ChevronDown className="h-3 w-3 opacity-60" aria-hidden="true" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-56">
+            <DropdownMenuLabel>Active agent</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {agents?.map((a) => (
+              <DropdownMenuItem key={a.id} onSelect={() => onAgentChange(a.id)} className={a.id === agentId ? "font-semibold text-foreground" : undefined}>
+                {a.name}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : (
+        <span className={`${triggerClass} pointer-events-none inline-flex`}>
+          <Bot className="h-3.5 w-3.5" aria-hidden="true" />
+          <span className="max-w-[8rem] truncate">{currentAgent?.name ?? "Assistant"}</span>
+        </span>
+      )}
 
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button type="button" variant="ghost" size="sm" disabled={streaming || updateAgentPending} className={triggerClass}>
-            <Cpu className="h-3.5 w-3.5" aria-hidden="true" />
-            <span className="max-w-[9rem] truncate font-mono">{effectiveModel?.display_name || effectiveModel?.name || "Model"}</span>
-            <ChevronDown className="h-3 w-3 opacity-60" aria-hidden="true" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-64">
-          <DropdownMenuLabel>Default model</DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          {models?.filter((m) => m.active).map((m) => (
-            <DropdownMenuItem key={m.id} onSelect={() => onDefaultModelChange(m.id)} className={m.id === effectiveModelId ? "font-semibold text-foreground" : undefined}>
-              <span className="flex-1 truncate">{m.display_name || m.name}</span>
-              <span className="ml-2 shrink-0 text-[9px] uppercase tracking-wider text-muted-foreground/60">{m.tier}</span>
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
+      {canSwitchModel ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button type="button" variant="ghost" size="sm" disabled={streaming || updateAgentPending} className={triggerClass}>
+              <Cpu className="h-3.5 w-3.5" aria-hidden="true" />
+              <span className="max-w-[9rem] truncate font-mono">{effectiveModel?.display_name || effectiveModel?.name || "Model"}</span>
+              <ChevronDown className="h-3 w-3 opacity-60" aria-hidden="true" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-64">
+            <DropdownMenuLabel>{canSwitchAgent ? "Default model" : "Model"}</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {models?.filter((m) => m.active).map((m) => (
+              <DropdownMenuItem key={m.id} onSelect={() => onDefaultModelChange(m.id)} className={m.id === effectiveModelId ? "font-semibold text-foreground" : undefined}>
+                <span className="flex-1 truncate">{m.display_name || m.name}</span>
+                <span className="ml-2 shrink-0 text-[9px] uppercase tracking-wider text-muted-foreground/60">{m.tier}</span>
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : !canSwitchAgent ? (
+        <span className={`${triggerClass} pointer-events-none inline-flex`}>
+          <Cpu className="h-3.5 w-3.5" aria-hidden="true" />
+          <span className="max-w-[9rem] truncate font-mono">{effectiveModel?.display_name || effectiveModel?.name || "Model"}</span>
+        </span>
+      ) : null}
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>

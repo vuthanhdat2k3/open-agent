@@ -61,6 +61,7 @@ class CustomerIntelligenceService:
                     "status": "connected",
                     "error": None,
                     "credentials_enc": encrypt_credentials(oauth_payload),
+                    "created_by_user_id": conn.created_by_user_id or created_by_user_id,
                 },
             )
         await log_action(
@@ -96,8 +97,8 @@ class CustomerIntelligenceService:
         )
         return self._to_response(conn)
 
-    async def status(self, *, org_id: str) -> list[ConnectionResponse]:
-        conns = await self.connections.list(org_id)
+    async def status(self, *, org_id: str, created_by_user_id: str | None = None) -> list[ConnectionResponse]:
+        conns = await self.connections.list(org_id, created_by_user_id=created_by_user_id)
         return [self._to_response(c) for c in conns]
 
     async def get_credentials(

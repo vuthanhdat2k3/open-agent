@@ -16,87 +16,48 @@ from app.models.role import Role
 
 
 class TestPermissionMatrix:
-    def test_owner_has_everything(self) -> None:
-        assert has_permission(Role.owner, "anything:at:all")
-        assert has_permission(Role.owner, "")
-        assert has_permission(Role.owner, "*")
-
-    def test_admin_has_explicit_permissions(self) -> None:
-        assert has_permission(Role.admin, "models:manage")
-        assert has_permission(Role.admin, "models:read")
-        assert has_permission(Role.admin, "mcp:manage")
-        assert has_permission(Role.admin, "mcp:read")
-        assert has_permission(Role.admin, "providers:manage")
-        assert has_permission(Role.admin, "providers:read")
-        assert has_permission(Role.admin, "files:manage")
-        assert has_permission(Role.admin, "files:read")
-        assert has_permission(Role.admin, "usage:read")
-        assert has_permission(Role.admin, "orgs:read")
+    def test_admin_has_everything(self) -> None:
+        assert has_permission(Role.admin, "anything:at:all")
+        assert has_permission(Role.admin, "")
+        assert has_permission(Role.admin, "*")
         assert has_permission(Role.admin, "orgs:manage")
-
-    def test_admin_glob_domain_star(self) -> None:
+        assert has_permission(Role.admin, "models:manage")
+        assert has_permission(Role.admin, "mcp:manage")
+        assert has_permission(Role.admin, "providers:manage")
         assert has_permission(Role.admin, "agents:create")
-        assert has_permission(Role.admin, "agents:read")
-        assert has_permission(Role.admin, "agents:update")
-        assert has_permission(Role.admin, "agents:delete")
-        assert has_permission(Role.admin, "workflows:create")
-        assert has_permission(Role.admin, "workflows:read")
-        assert has_permission(Role.admin, "workflows:update")
         assert has_permission(Role.admin, "workflows:delete")
-        assert has_permission(Role.admin, "sessions:read")
-        assert has_permission(Role.admin, "sessions:delete")
 
-    def test_admin_denied_unlisted(self) -> None:
-        assert not has_permission(Role.admin, "orgs:create")
-        assert not has_permission(Role.admin, "analytics:read")
+    def test_user_has_explicit_permissions(self) -> None:
+        assert has_permission(Role.user, "agents:read")
+        assert has_permission(Role.user, "agents:run")
+        assert has_permission(Role.user, "workflows:read")
+        assert has_permission(Role.user, "workflows:run")
+        assert has_permission(Role.user, "tools:use:safe")
+        assert has_permission(Role.user, "tools:use:network")
+        assert has_permission(Role.user, "files:read")
+        assert has_permission(Role.user, "usage:read")
+        assert has_permission(Role.user, "models:read")
+        assert has_permission(Role.user, "approvals:read")
+        assert has_permission(Role.user, "quota:usage")
 
-    def test_developer_has_explicit_permissions(self) -> None:
-        assert has_permission(Role.developer, "agents:create")
-        assert has_permission(Role.developer, "agents:read")
-        assert has_permission(Role.developer, "agents:run")
-        assert has_permission(Role.developer, "agents:update")
-        assert has_permission(Role.developer, "agents:delete")
-        assert has_permission(Role.developer, "workflows:create")
-        assert has_permission(Role.developer, "workflows:read")
-        assert has_permission(Role.developer, "workflows:run")
-        assert has_permission(Role.developer, "workflows:update")
-        assert has_permission(Role.developer, "workflows:delete")
-        assert has_permission(Role.developer, "files:manage")
-        assert has_permission(Role.developer, "files:read")
-        assert has_permission(Role.developer, "usage:read")
-        assert has_permission(Role.developer, "models:read")
-        assert has_permission(Role.developer, "providers:read")
+    def test_user_denied_admin_only(self) -> None:
+        assert not has_permission(Role.user, "models:manage")
+        assert not has_permission(Role.user, "mcp:manage")
+        assert not has_permission(Role.user, "providers:manage")
+        assert not has_permission(Role.user, "orgs:read")
+        assert not has_permission(Role.user, "orgs:manage")
+        assert not has_permission(Role.user, "agents:create")
+        assert not has_permission(Role.user, "agents:update")
+        assert not has_permission(Role.user, "agents:delete")
+        assert not has_permission(Role.user, "workflows:create")
+        assert not has_permission(Role.user, "workflows:delete")
+        assert not has_permission(Role.user, "files:manage")
+        assert not has_permission(Role.user, "approvals:decide")
+        assert not has_permission(Role.user, "evaluations:read")
 
-    def test_developer_denied_admin_only(self) -> None:
-        assert not has_permission(Role.developer, "models:manage")
-        assert not has_permission(Role.developer, "mcp:manage")
-        assert not has_permission(Role.developer, "providers:manage")
-        assert not has_permission(Role.developer, "orgs:read")
-        assert not has_permission(Role.developer, "orgs:manage")
-
-    def test_developer_sessions_glob(self) -> None:
-        assert has_permission(Role.developer, "sessions:read")
-        assert has_permission(Role.developer, "sessions:delete")
-
-    def test_viewer_has_read_only(self) -> None:
-        assert has_permission(Role.viewer, "agents:read")
-        assert has_permission(Role.viewer, "workflows:read")
-        assert has_permission(Role.viewer, "usage:read")
-        assert has_permission(Role.viewer, "sessions:read")
-        assert has_permission(Role.viewer, "models:read")
-        assert has_permission(Role.viewer, "providers:read")
-        assert has_permission(Role.viewer, "orgs:read")
-
-    def test_viewer_denied_mutate(self) -> None:
-        assert not has_permission(Role.viewer, "agents:create")
-        assert not has_permission(Role.viewer, "agents:update")
-        assert not has_permission(Role.viewer, "agents:delete")
-        assert not has_permission(Role.viewer, "workflows:create")
-        assert not has_permission(Role.viewer, "workflows:delete")
-        assert not has_permission(Role.viewer, "files:manage")
-        assert not has_permission(Role.viewer, "providers:manage")
-        assert not has_permission(Role.viewer, "models:manage")
-        assert not has_permission(Role.viewer, "orgs:manage")
+    def test_user_sessions_glob(self) -> None:
+        assert has_permission(Role.user, "sessions:read")
+        assert has_permission(Role.user, "sessions:delete")
 
     def test_unknown_role_returns_false(self) -> None:
         assert not has_permission("superadmin", "agents:read")  # type: ignore[arg-type]
@@ -245,41 +206,38 @@ class TestRouteRBAC:
             json={"name": "owner-agent", "system_prompt": "x", "model_id": model_id},
         ).status_code == 201
 
-    def test_viewer_denied_create_agent(self, client: TestClient) -> None:
-        owner_token = _register(client, "v_owner@test.com", PASSWORD, "ViewerTest")
-        org_id = _get_org_id(client, owner_token)
+    def test_user_denied_create_agent(self, client: TestClient) -> None:
+        admin_token = _register(client, "v_owner@test.com", PASSWORD, "ViewerTest")
+        org_id = _get_org_id(client, admin_token)
 
-        viewer_email = "v_denied@test.com"
-        viewer_home_token = _add_member(client, owner_token, org_id, viewer_email, "viewer")
+        user_email = "v_denied@test.com"
+        user_home_token = _add_member(client, admin_token, org_id, user_email, "user")
 
-        # Viewer can GET agents (requires agents:read)
+        # User can GET agents (requires agents:read)
         assert client.get(
-            "/api/agents", headers=_auth_headers(viewer_home_token, org_id)
+            "/api/agents", headers=_auth_headers(user_home_token, org_id)
         ).status_code == 200
 
-        # Viewer cannot POST agents (requires agents:create)
-        _, model_id = _create_provider_and_model(client, owner_token, org_id)
+        # User cannot POST agents (requires agents:create - admin only)
+        _, model_id = _create_provider_and_model(client, admin_token, org_id)
         resp = client.post(
             "/api/agents",
-            headers=_auth_headers(viewer_home_token, org_id),
+            headers=_auth_headers(user_home_token, org_id),
             json={"name": "should-fail", "system_prompt": "x", "model_id": model_id},
         )
         assert resp.status_code == 403
 
-    def test_developer_can_create_agent(self, client: TestClient) -> None:
-        owner_token = _register(client, "d_owner@test.com", PASSWORD, "DevTest")
-        org_id = _get_org_id(client, owner_token)
+    def test_admin_can_create_agent(self, client: TestClient) -> None:
+        admin_token = _register(client, "d_owner@test.com", PASSWORD, "DevTest")
+        org_id = _get_org_id(client, admin_token)
 
-        dev_email = "d_can_create@test.com"
-        dev_home_token = _add_member(client, owner_token, org_id, dev_email, "developer")
-
-        _, model_id = _create_provider_and_model(client, owner_token, org_id)
+        _, model_id = _create_provider_and_model(client, admin_token, org_id)
         resp = client.post(
             "/api/agents",
-            headers=_auth_headers(dev_home_token, org_id),
-            json={"name": "dev-agent", "system_prompt": "helpful", "model_id": model_id},
+            headers=_auth_headers(admin_token, org_id),
+            json={"name": "admin-agent", "system_prompt": "helpful", "model_id": model_id},
         )
-        assert resp.status_code == 201, f"dev create agent failed: {resp.text}"
+        assert resp.status_code == 201, f"admin create agent failed: {resp.text}"
 
     def test_unauthenticated_request_returns_401(self, client: TestClient) -> None:
         assert client.get("/api/agents").status_code == 401
@@ -289,37 +247,38 @@ class TestRouteRBAC:
         assert client.get("/api/workflows").status_code == 401
         assert client.get("/api/files").status_code == 401
 
-    def test_viewer_denied_provider_management(self, client: TestClient) -> None:
-        owner_token = _register(client, "pm_owner@test.com", PASSWORD, "ProvMgt")
-        org_id = _get_org_id(client, owner_token)
+    def test_user_denied_provider_management(self, client: TestClient) -> None:
+        admin_token = _register(client, "pm_owner@test.com", PASSWORD, "ProvMgt")
+        org_id = _get_org_id(client, admin_token)
 
-        viewer_email = "pm_denied@test.com"
-        viewer_home_token = _add_member(client, owner_token, org_id, viewer_email, "viewer")
+        user_email = "pm_denied@test.com"
+        user_home_token = _add_member(client, admin_token, org_id, user_email, "user")
 
-        # Viewer can read providers
+        # Providers are pure infrastructure (hold API keys/base URLs) - user
+        # can't even read the list, only admin can.
         assert client.get(
-            "/api/providers", headers=_auth_headers(viewer_home_token, org_id)
-        ).status_code == 200
+            "/api/providers", headers=_auth_headers(user_home_token, org_id)
+        ).status_code == 403
 
-        # Viewer cannot create providers (requires providers:manage)
+        # User cannot create providers (requires providers:manage - admin only)
         resp = client.post(
             "/api/providers",
-            headers=_auth_headers(viewer_home_token, org_id),
+            headers=_auth_headers(user_home_token, org_id),
             json={"key": "bad", "name": "bad", "base_url": "http://x", "api_key": "sk-xxx"},
         )
         assert resp.status_code == 403
 
-    def test_developer_denied_mcp_management(self, client: TestClient) -> None:
-        owner_token = _register(client, "mcp_owner@test.com", PASSWORD, "MCPTest")
-        org_id = _get_org_id(client, owner_token)
+    def test_user_denied_mcp_management(self, client: TestClient) -> None:
+        admin_token = _register(client, "mcp_owner@test.com", PASSWORD, "MCPTest")
+        org_id = _get_org_id(client, admin_token)
 
-        dev_email = "mcp_denied@test.com"
-        dev_home_token = _add_member(client, owner_token, org_id, dev_email, "developer")
+        user_email = "mcp_denied@test.com"
+        user_home_token = _add_member(client, admin_token, org_id, user_email, "user")
 
-        # Developer cannot create MCP server (requires mcp:manage)
+        # User cannot create MCP server (requires mcp:manage - admin only)
         resp = client.post(
             "/api/mcp/servers",
-            headers=_auth_headers(dev_home_token, org_id),
+            headers=_auth_headers(user_home_token, org_id),
             json={"name": "mcp-x", "base_url": "http://localhost:9999"},
         )
         assert resp.status_code == 403
@@ -383,23 +342,23 @@ class TestRouteRBAC:
         )
         assert resp.status_code == 403
 
-    def test_developer_cannot_manage_models(self, client: TestClient) -> None:
-        owner_token = _register(client, "mm_owner@test.com", PASSWORD, "ModelMgt")
-        org_id = _get_org_id(client, owner_token)
+    def test_user_cannot_manage_models(self, client: TestClient) -> None:
+        admin_token = _register(client, "mm_owner@test.com", PASSWORD, "ModelMgt")
+        org_id = _get_org_id(client, admin_token)
 
-        dev_email = "mm_denied@test.com"
-        dev_home_token = _add_member(client, owner_token, org_id, dev_email, "developer")
+        user_email = "mm_denied@test.com"
+        user_home_token = _add_member(client, admin_token, org_id, user_email, "user")
 
-        # Developer can read models
+        # User can read models
         assert client.get(
-            "/api/models", headers=_auth_headers(dev_home_token, org_id)
+            "/api/models", headers=_auth_headers(user_home_token, org_id)
         ).status_code == 200
 
-        # Developer cannot create models (requires models:manage)
-        p_id, _ = _create_provider_and_model(client, owner_token, org_id)
+        # User cannot create models (requires models:manage - admin only)
+        p_id, _ = _create_provider_and_model(client, admin_token, org_id)
         resp = client.post(
             "/api/models",
-            headers=_auth_headers(dev_home_token, org_id),
+            headers=_auth_headers(user_home_token, org_id),
             json={
                 "provider_id": p_id,
                 "name": "x",

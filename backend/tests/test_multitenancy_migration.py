@@ -221,7 +221,7 @@ def test_multitenancy_migration_backfill(tmp_path: Path) -> None:
         assert len(memberships) == 1
         assert memberships[0][0] == "default-org-id"
         assert memberships[0][1] == "default-user-id"
-        assert memberships[0][2] == "owner"
+        assert memberships[0][2] == "admin"
 
         releases = conn.execute(
             text(

@@ -75,7 +75,7 @@ async def create_org(
     await db.flush()
     db.add(default_organization_quota(org.id))
 
-    membership = Membership(org_id=org.id, user_id=current_user.id, role=Role.owner)
+    membership = Membership(org_id=org.id, user_id=current_user.id, role=Role.admin)
     db.add(membership)
     await db.commit()
     await db.refresh(org)
@@ -128,7 +128,7 @@ async def add_org_member(
     if res_mem.scalar_one_or_none():
         raise HTTPException(400, "User is already a member of this organization")
 
-    role_val = body.role if body.role in (Role.owner, Role.admin, Role.developer, Role.viewer) else Role.developer
+    role_val = body.role if body.role in (Role.admin, Role.user) else Role.user
     mem = Membership(
         org_id=id,
         user_id=invited_user.id,

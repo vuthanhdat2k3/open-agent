@@ -35,7 +35,7 @@ def _release_error(exc: ValueError) -> HTTPException:
     return HTTPException(404 if "not found" in detail else 400, detail)
 
 
-async def _is_owner(db: AsyncSession, org_id: str, user_id: str | None) -> bool:
+async def _is_admin(db: AsyncSession, org_id: str, user_id: str | None) -> bool:
     if not user_id:
         return False
     result = await db.execute(
@@ -44,14 +44,24 @@ async def _is_owner(db: AsyncSession, org_id: str, user_id: str | None) -> bool:
         )
     )
     membership = result.scalar_one_or_none()
-    return membership is not None and membership.role == Role.owner
+    return membership is not None and membership.role == Role.admin
 
 
 @router.get("", response_model=list[AgentOut], dependencies=[Depends(require_permission("agents:read"))])
 async def list_agents(
-    org_id: str = Depends(get_current_org_id), db: AsyncSession = Depends(get_db)
+    request: Request,
+    org_id: str = Depends(get_current_org_id),
+    db: AsyncSession = Depends(get_db),
 ):
-    return await AgentService(db).list(org_id)
+    agents = await AgentService(db).list(org_id)
+    user_id = getattr(request.state, "user_id", None)
+    # A plain "user" role only ever sees the org's primary (orchestrator-kind)
+    # agent(s) - worker agents are implementation detail the orchestrator
+    # delegates to internally via call_agent, not something a user picks
+    # directly. Admin sees everything (needed to build/test each agent).
+    if not await _is_admin(db, org_id, user_id):
+        agents = [a for a in agents if a.kind == "orchestrator"]
+    return agents
 
 
 @router.get("/tools", response_model=list[AgentToolInfo], dependencies=[Depends(require_permission("agents:read"))])
@@ -223,10 +233,10 @@ async def publish_agent_release(
     user_id = getattr(request.state, "user_id", None)
     force = bool(body and body.force)
 
-    if force and not await _is_owner(db, org_id, user_id):
+    if force and not await _is_admin(db, org_id, user_id):
         # Shipping over a red gate is an owner-level decision, not something
         # anyone holding publish rights may do.
-        raise HTTPException(403, "only an organization owner may force publish")
+        raise HTTPException(403, "only an organization admin may force publish")
 
     try:
         release = await AgentService(db).publish_release(

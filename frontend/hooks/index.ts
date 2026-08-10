@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "@/lib/api";
-import { getAccessToken } from "@/lib/auth";
+import { getAccessToken, getActiveOrgId } from "@/lib/auth";
 import type {
   Agent,
   AgentRelease,
@@ -209,8 +209,8 @@ export function useCreateEvaluationRun() {
   });
 }
 
-export function useMcpServers() {
-  return useQuery({ queryKey: ["mcp"], queryFn: () => api.get<McpServer[]>("/api/mcp/servers") });
+export function useMcpServers(enabled: boolean = true) {
+  return useQuery({ queryKey: ["mcp"], queryFn: () => api.get<McpServer[]>("/api/mcp/servers"), enabled });
 }
 export function useCreateMcp() {
   const qc = useQueryClient();
@@ -304,8 +304,8 @@ export function useSessionMessages(sessionId: string | null, enabled = true) {
   });
 }
 
-export function useUsageSummary() {
-  return useQuery({ queryKey: ["usage"], queryFn: () => api.get<UsageSummary[]>("/api/debug/usage") });
+export function useUsageSummary(enabled: boolean = true) {
+  return useQuery({ queryKey: ["usage"], queryFn: () => api.get<UsageSummary[]>("/api/debug/usage"), enabled });
 }
 export function useDebugSessions() {
   return useQuery({ queryKey: ["debug-sessions"], queryFn: () => api.get<Session[]>("/api/debug/sessions") });
@@ -419,6 +419,16 @@ export function useMe(enabled: boolean = true) {
       api.get<UserProfile>("/api/auth/me"),
     enabled,
   });
+}
+
+// Fails closed: an unresolved role (loading, no membership found for the
+// active org) is treated as "user" rather than "admin" so admin-only UI
+// never flashes open before the real role is known.
+export function useCurrentRole(): "admin" | "user" {
+  const me = useMe();
+  const orgId = getActiveOrgId();
+  const membership = me.data?.memberships?.find((m) => m.org_id === orgId) ?? me.data?.memberships?.[0];
+  return membership?.role === "admin" ? "admin" : "user";
 }
 
 export function useMembers(orgId?: string) {
