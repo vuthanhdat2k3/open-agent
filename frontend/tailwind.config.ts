@@ -85,6 +85,14 @@ const config: Config = {
   				'100%': {
   					backgroundPosition: '-200% 0'
   				}
+  			},
+  			'dash-flow': {
+  				'0%': {
+  					strokeDashoffset: '20'
+  				},
+  				'100%': {
+  					strokeDashoffset: '0'
+  				}
   			}
   		},
   		animation: {
@@ -92,7 +100,8 @@ const config: Config = {
   			'slide-up': 'slide-up 0.45s var(--ease-out-expo) both',
   			'scale-in': 'scale-in 0.35s var(--ease-out-expo) both',
   			'pulse-soft': 'pulse-soft 2.4s ease-in-out infinite',
-  			shimmer: 'shimmer 1.4s ease-in-out infinite'
+  			shimmer: 'shimmer 1.4s ease-in-out infinite',
+  			'dash-flow': 'dash-flow 0.8s linear infinite'
   		},
   		colors: {
   			border: 'hsl(var(--border))',
