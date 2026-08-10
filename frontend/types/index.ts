@@ -3,11 +3,33 @@ export interface Provider {
   key: string;
   name: string;
   base_url: string;
-  api_key?: string;
   env_var?: string;
   is_default: boolean;
+  template_key?: string | null;
+  api_key_configured: boolean;
+  api_key_last4?: string | null;
+  status: string;
+  discovery_status: string;
+  discovery_error?: string | null;
+  models_discovered: number;
+  last_discovery_attempt_at?: string | null;
+  last_successful_discovery_at?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface ProviderTemplate {
+  key: string;
+  display_name: string;
+  description: string;
+  driver: string;
+  default_base_url: string;
+  api_key_required: boolean;
+  supports_tools: boolean;
+  supports_reasoning: boolean;
+  supports_vision: boolean;
+  catalog_source: string;
+  catalog_version: string;
 }
 
 export interface ProviderTestResult {
@@ -27,6 +49,16 @@ export interface Model {
   input_cost_per_1k: number;
   output_cost_per_1k: number;
   active: boolean;
+  enabled: boolean;
+  discovered: boolean;
+  source: "discovered" | "fallback" | "manual";
+  last_seen_at?: string | null;
+  catalog_source?: string | null;
+  catalog_version?: string | null;
+  last_discovered_at?: string | null;
+  supports_tools?: boolean | null;
+  supports_reasoning?: boolean | null;
+  supports_vision?: boolean | null;
   created_at: string;
 }
 
