@@ -87,6 +87,22 @@ ORCHESTRATOR_SYSTEM_SUFFIX = (
 )
 
 
+async def _build_orchestrator_roster(db: AsyncSession, org_id: str, exclude_agent_id: str) -> str:
+    """List sibling agents in the org so an orchestrator knows what it can
+    call_agent() into - target_agent_id is a raw id, not discoverable
+    otherwise."""
+    result = await db.execute(
+        select(Agent.id, Agent.name, Agent.description).where(
+            Agent.org_id == org_id, Agent.id != exclude_agent_id
+        )
+    )
+    rows = result.all()
+    if not rows:
+        return ""
+    lines = [f"- {row.id}: {row.name} - {row.description or 'no description'}" for row in rows]
+    return "Agents available to delegate to via call_agent (id: name - description):\n" + "\n".join(lines)
+
+
 def _estimate_tokens(text: str) -> int:
     return max(1, len(text) // 4)
 
@@ -339,8 +355,11 @@ async def _agent_stream(
         directives.append(MEMORY_DIRECTIVE)
     if "rag_search" in tool_by_name:
         directives.append(RAG_DIRECTIVE)
-    if agent.kind == "orchestrator":
+    if agent.kind == "orchestrator" and "call_agent" in tool_by_name:
         directives.append(ORCHESTRATOR_SYSTEM_SUFFIX)
+        roster = await _build_orchestrator_roster(db, agent.org_id, agent.id)
+        if roster:
+            directives.append(roster)
 
     system_parts = [base_prompt] if base_prompt else []
     system_parts.extend(directives)
@@ -371,8 +390,8 @@ async def _agent_stream(
         else:
             for m in hist:
                 messages.append(_to_openai_message(m))
-        if not approval_resume_id:
-            messages.append({"role": "user", "content": message})
+    if not approval_resume_id:
+        messages.append({"role": "user", "content": message})
 
     if session_id and not approval_resume_id:
         await _persist(

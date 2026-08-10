@@ -48,6 +48,7 @@ type AgentForm = {
   description: string;
   system_prompt: string;
   model_id: string;
+  kind: "worker" | "orchestrator";
   max_iterations: number;
   temperature: number;
   allowed_risk_tiers: string[];
@@ -58,6 +59,7 @@ const DEFAULT_FORM: AgentForm = {
   description: "",
   system_prompt: "",
   model_id: "",
+  kind: "worker",
   max_iterations: 12,
   temperature: 0.7,
   allowed_risk_tiers: ["safe", "read"],
@@ -140,6 +142,7 @@ export default function AgentsPage() {
       description: agent.description,
       system_prompt: agent.system_prompt,
       model_id: agent.model_id,
+      kind: agent.kind,
       max_iterations: agent.max_iterations,
       temperature: agent.temperature,
       allowed_risk_tiers: agent.allowed_risk_tiers ?? ["safe", "read"],
@@ -270,6 +273,18 @@ export default function AgentsPage() {
                       placeholder="Brief description"
                     />
                   </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">Kind</Label>
+                  <Select
+                    value={form.kind}
+                    onChange={(e) => setForm({ ...form, kind: e.target.value as "worker" | "orchestrator" })}
+                    className="w-full"
+                  >
+                    <option value="worker">Worker (called by other agents, not directly by users)</option>
+                    <option value="orchestrator">Orchestrator (chats with users, delegates to workers via call_agent)</option>
+                  </Select>
                 </div>
 
                 <div className="space-y-1.5">
