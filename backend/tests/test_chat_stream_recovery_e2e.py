@@ -13,7 +13,6 @@ engine + dependency overrides + patched LLM stream).
 
 from __future__ import annotations
 
-from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -94,9 +93,10 @@ def _fake_llm_stream():
         yield {"type": "reasoning", "text": "let me think… "}
         yield {"type": "content", "text": "Hello "}
         if calls["n"] == 1:
-            fn = SimpleNamespace(name="test_echo", arguments='{"x":"1"}')
-            tc = SimpleNamespace(index=0, id="tc-1", function=fn)
-            yield {"type": "tool_calls", "tool_calls": [tc]}
+            yield {
+                "type": "tool_calls",
+                "tool_calls": [{"index": 0, "id": "tc-1", "name": "test_echo", "arguments": '{"x":"1"}'}],
+            }
         yield {"type": "content", "text": "after tool "}
         yield {
             "type": "usage",

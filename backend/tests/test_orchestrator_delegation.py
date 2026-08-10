@@ -34,8 +34,8 @@ from app.models.usage import UsageEvent
 from app.models.user import User
 
 
-def _tc(index: int, call_id: str, name: str, arguments: str) -> SimpleNamespace:
-    return SimpleNamespace(index=index, id=call_id, function=SimpleNamespace(name=name, arguments=arguments))
+def _tc(index: int, call_id: str, name: str, arguments: str) -> dict:
+    return {"index": index, "id": call_id, "name": name, "arguments": arguments}
 
 
 async def _seed(session: AsyncSession) -> tuple[Organization, Agent, Agent, Agent]:

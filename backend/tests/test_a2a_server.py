@@ -247,14 +247,10 @@ async def test_a2a_task_execution_with_agent_token_and_audit(async_session_facto
     app.dependency_overrides.clear()
     app.dependency_overrides[get_db] = _override_get_db
 
-    from types import SimpleNamespace
-
     async def mock_stream(*args, **kwargs):
-        fn = SimpleNamespace(name="test_dummy_tool", arguments="{}")
-        tc = SimpleNamespace(index=0, id="tc-1", function=fn)
         yield {
             "type": "tool_calls",
-            "tool_calls": [tc],
+            "tool_calls": [{"index": 0, "id": "tc-1", "name": "test_dummy_tool", "arguments": "{}"}],
         }
         yield {"type": "content", "text": "Task processed via A2A token"}
         yield {"type": "usage", "usage": {"input_tokens": 10, "output_tokens": 10}, "estimated": False}
@@ -285,8 +281,6 @@ async def test_a2a_task_execution_with_agent_token_and_audit(async_session_facto
 
 @pytest.mark.asyncio
 async def test_a2a_guardrail_secret_audit_delegation(async_session_factory):
-    from types import SimpleNamespace
-
     from sqlalchemy import select
 
     from app.core.auth.token_exchange import exchange_token_for_agent
@@ -350,11 +344,9 @@ async def test_a2a_guardrail_secret_audit_delegation(async_session_factory):
     app.dependency_overrides[get_db] = _override_get_db
 
     async def mock_stream(*args, **kwargs):
-        fn = SimpleNamespace(name="test_secret_tool", arguments="{}")
-        tc = SimpleNamespace(index=0, id="tc-sec", function=fn)
         yield {
             "type": "tool_calls",
-            "tool_calls": [tc],
+            "tool_calls": [{"index": 0, "id": "tc-sec", "name": "test_secret_tool", "arguments": "{}"}],
         }
         yield {"type": "content", "text": "Redaction tested"}
         yield {"type": "usage", "usage": {"input_tokens": 10, "output_tokens": 10}, "estimated": False}
