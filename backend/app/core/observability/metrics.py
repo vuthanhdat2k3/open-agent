@@ -46,6 +46,26 @@ guardrail_events_total = Counter(
     "Guardrail decisions by kind and outcome",
     ["org_id", "kind", "outcome"],
 )
+llm_observability_events_total = Counter(
+    "llm_observability_events_total",
+    "LLM observability events emitted by observation kind",
+    ["kind"],
+)
+llm_observability_export_failures_total = Counter(
+    "llm_observability_export_failures_total",
+    "LLM observability sink export failures",
+    ["sink"],
+)
+llm_observability_redactions_total = Counter(
+    "llm_observability_redactions_total",
+    "LLM observability redactions by observation kind",
+    ["kind"],
+)
+llm_observability_dropped_events_total = Counter(
+    "llm_observability_dropped_events_total",
+    "LLM observability events dropped by reason",
+    ["reason"],
+)
 
 queue_depth = Histogram("queue_depth", "Observed queue depth")
 quota_admission_total = Counter(
