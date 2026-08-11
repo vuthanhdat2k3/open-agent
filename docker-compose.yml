@@ -1,6 +1,7 @@
 services:
   postgres:
     image: postgres:17-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_USER: ${OPENAGENT_POSTGRES_USER:-openagent}
       POSTGRES_PASSWORD: ${OPENAGENT_POSTGRES_PASSWORD:?Set OPENAGENT_POSTGRES_PASSWORD in .env to a random secret}
@@ -8,7 +9,7 @@ services:
     ports:
       - "5433:5432"
     volumes:
-      - openagent-postgres-data:/var/lib/postgresql/data
+      - openagent_pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${OPENAGENT_POSTGRES_USER:-openagent} -d ${OPENAGENT_POSTGRES_DB:-openagent}"]
       interval: 5s
@@ -265,6 +266,7 @@ services:
       - "4318:4318"
 
 volumes:
-  openagent-postgres-data:
+  openagent_pgdata:
+    name: openagent_pgdata
   qdrant-data:
   minio-data:

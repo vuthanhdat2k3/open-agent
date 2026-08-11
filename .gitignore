@@ -41,6 +41,10 @@ service-account*.json
 *.sqlite
 *.sqlite3
 
+# Postgres backups (scripts/backup_postgres.ps1) — contain real user/chat data,
+# must never enter git history even transiently.
+backups/
+
 # Alembic
 
 
