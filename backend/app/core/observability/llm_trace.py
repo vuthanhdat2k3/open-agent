@@ -6,6 +6,8 @@ backend. A sink receives only sanitized records after they are finalized.
 
 from __future__ import annotations
 
+import hashlib
+import logging
 import time
 from dataclasses import dataclass, field, replace
 from datetime import datetime
@@ -18,8 +20,12 @@ from app.core.observability.metrics import (
     llm_observability_export_failures_total,
     llm_observability_redactions_total,
 )
-from app.core.observability.redaction import RedactionStats, redact_payload
+from app.core.observability.redaction import RedactionStats, redact_payload, truncate_payload
 from app.db.base import utc_now
+
+logger = logging.getLogger(__name__)
+_export_failure_log_at: dict[str, float] = {}
+_EXPORT_FAILURE_LOG_INTERVAL_SECONDS = 60.0
 
 ObservationKind = Literal["span", "generation", "event"]
 GenerationStatus = Literal["started", "success", "error", "cancelled"]
@@ -130,6 +136,18 @@ class NoopSink:
         return None
 
 
+
+_default_sink: ObservabilitySink = NoopSink()
+
+
+def set_default_sink(sink: ObservabilitySink) -> None:
+    global _default_sink
+    _default_sink = sink
+
+
+def get_default_sink() -> ObservabilitySink:
+    return _default_sink
+
 class _LifecycleHandle:
     def __init__(
         self,
@@ -195,7 +213,7 @@ class ObservabilityContext:
 
     def __init__(self, trace: TraceContext, sink: ObservabilitySink | None = None) -> None:
         self.trace = trace
-        self.sink = sink or NoopSink()
+        self.sink = sink or get_default_sink()
 
     def child(self, parent_observation_id: str | None) -> ObservabilityContext:
         return ObservabilityContext(self.trace.child(parent_observation_id), self.sink)
@@ -271,15 +289,45 @@ class ObservabilityContext:
         metadata = getattr(safe_record, "metadata", {})
         metadata.update(stats.as_metadata(content_capture=context.content_capture))
         safe_record.metadata = metadata
-        llm_observability_redactions_total.labels(kind).inc(stats.count)
+        if stats.count:
+            llm_observability_redactions_total.labels(kind).inc(stats.count)
         llm_observability_events_total.labels(kind).inc()
         try:
             if kind == "generation":
                 self.sink.emit_generation(context, safe_record)
             else:
                 self.sink.emit_tool(context, safe_record)
-        except Exception:  # noqa: BLE001
-            llm_observability_export_failures_total.labels(type(self.sink).__name__).inc()
+        except Exception as exc:  # noqa: BLE001
+            sink_name = type(self.sink).__name__
+            llm_observability_export_failures_total.labels(sink_name).inc()
+            now = time.monotonic()
+            if now - _export_failure_log_at.get(sink_name, 0.0) >= _EXPORT_FAILURE_LOG_INTERVAL_SECONDS:
+                _export_failure_log_at[sink_name] = now
+                logger.warning(
+                    "LLM observability export failed",
+                    extra={"sink": sink_name, "error_type": type(exc).__name__},
+                )
+
+
+def _bound_sanitized_content(
+    fields: dict[str, Any], stats: RedactionStats
+) -> dict[str, Any]:
+    """Bound all content persisted by sinks after it has already been redacted."""
+    bounded, truncated = truncate_payload(
+        fields, max(0, get_settings().observability_max_content_bytes)
+    )
+    if not truncated:
+        return fields
+    stats.content_truncated = True
+    if "input" in fields:
+        return {
+            "input": bounded,
+            "output": None,
+            "error": None,
+            "metadata": {},
+            "tool_calls": [],
+        }
+    return {"arguments": bounded, "result": None, "error": None, "metadata": {}}
 
 
 def _sanitize_record(
@@ -298,6 +346,7 @@ def _sanitize_record(
             safe["input"] = None
             safe["output"] = None
             safe["tool_calls"] = []
+        safe = _bound_sanitized_content(safe, stats)
         return replace(
             record,
             input=safe["input"],
@@ -316,6 +365,7 @@ def _sanitize_record(
     if not context.content_capture:
         safe["arguments"] = None
         safe["result"] = None
+    safe = _bound_sanitized_content(safe, stats)
     return replace(
         record,
         arguments=safe["arguments"],
@@ -329,6 +379,17 @@ def _safe_contentless_record(record: GenerationRecord | ToolObservation):
     if isinstance(record, GenerationRecord):
         return replace(record, input=None, output=None, tool_calls=[], error=None)
     return replace(record, arguments=None, result=None, error=None)
+
+
+def _is_sampled(trace_id: str, sampling_rate: float) -> bool:
+    """Deterministically sample by trace id so retries/reconnects agree."""
+    rate = max(0.0, min(1.0, sampling_rate))
+    if rate == 0.0:
+        return False
+    if rate == 1.0:
+        return True
+    bucket = int.from_bytes(hashlib.sha256(trace_id.encode("utf-8")).digest()[:8], "big")
+    return bucket / (2**64 - 1) < rate
 
 
 def resolve_content_capture(
@@ -361,6 +422,13 @@ def build_trace_context(
     metadata: dict[str, Any] | None = None,
 ) -> TraceContext:
     settings = get_settings()
+    sampling_rate = max(0.0, min(1.0, settings.observability_sampling_rate))
+    policy_allows_content = resolve_content_capture(
+        settings.observability_capture_content,
+        org_allowed=org_allowed,
+        agent_allowed=agent_allowed,
+        request_allowed=request_allowed,
+    )
     return TraceContext(
         trace_id=trace_id,
         session_id=session_id,
@@ -369,12 +437,7 @@ def build_trace_context(
         agent_id=agent_id,
         agent_release_id=agent_release_id,
         parent_observation_id=parent_observation_id,
-        content_capture=resolve_content_capture(
-            settings.observability_capture_content,
-            org_allowed=org_allowed,
-            agent_allowed=agent_allowed,
-            request_allowed=request_allowed,
-        ),
-        sampling_rate=settings.observability_sampling_rate,
+        content_capture=policy_allows_content and _is_sampled(trace_id, sampling_rate),
+        sampling_rate=sampling_rate,
         metadata=dict(metadata or {}),
     )

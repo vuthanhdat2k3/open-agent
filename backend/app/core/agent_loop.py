@@ -22,6 +22,7 @@ from app.core.llm import LLMClient
 from app.core.memory.tiers import compact_tiered_memory
 from app.core.observability import genai
 from app.core.observability.audit import log_action
+from app.core.observability.llm_trace import ObservabilityContext, build_trace_context
 from app.core.observability.metrics import (
     agent_run_cost_usd_total,
     guardrail_events_total,
@@ -475,8 +476,28 @@ async def _agent_stream(
         await _finish_task(db, root_task, status="failed", result="provider not found for model")
         yield {"event": "error", "data": {"message": "provider not found for model"}}
         return
+    observability = (
+        ObservabilityContext(
+            build_trace_context(
+                trace_id=root_run_id or current_task_id or gen_id(),
+                session_id=session_id,
+                org_id=agent.org_id,
+                user_id=user_id or agent.created_by_user_id,
+                agent_id=agent.id,
+                agent_release_id=getattr(agent, "active_release_id", None),
+                metadata={"run_type": "agent", "depth": depth},
+            )
+        )
+        if settings.observability_enabled
+        else None
+    )
     try:
-        llm = build_driver(provider, model)
+        llm = build_driver(
+            provider,
+            model,
+            observability=observability,
+            generation_name="agent-generation",
+        )
     except RuntimeError as e:
         await _finish_task(db, root_task, status="failed", result=str(e))
         yield {"event": "error", "data": {"message": str(e)}}
@@ -562,6 +583,7 @@ async def _agent_stream(
                 agent_id=agent.id,
                 org_id=agent.org_id,
                 created_by_user_id=user_id or agent.created_by_user_id,
+                observability=observability,
             )
             messages.append({"role": "system", "content": f"[Conversation context]\n{tiered['combined']}"})
         else:
@@ -653,6 +675,18 @@ async def _agent_stream(
             await _finish_task(db, root_task, status="failed", result=msg)
             yield {"event": "error", "data": {"message": msg}}
             return
+        tool_index = 0
+        call_id = f"approval-{approval.id}"
+        tool_observation = (
+            observability.child(getattr(llm, "last_observation_id", None)).start_tool_observation(
+                tool_name=name,
+                tool_call_id=call_id,
+                arguments=args,
+                metadata={"risk_tier": spec.risk_tier.value, "approval_id": approval.id},
+            )
+            if observability is not None
+            else None
+        )
         budget_reason = budget.record_call(name, args)
         if budget_reason or spec.risk_tier.value not in agent.allowed_risk_tiers:
             result = budget_reason or (
@@ -664,10 +698,10 @@ async def _agent_stream(
                 await rec.record(result_ev)
                 await rec.close()
             await _finish_task(db, root_task, status="failed", result=result)
+            if tool_observation is not None:
+                tool_observation.finish_error(RuntimeError(result), result=result)
             yield result_ev
             return
-        tool_index = 0
-        call_id = f"approval-{approval.id}"
         call_ev = {
             "event": "tool_call",
             "data": {"index": tool_index, "name": name, "arguments": args, "approved": True},
@@ -679,9 +713,17 @@ async def _agent_stream(
         try:
             result = await execute_tool_call(spec, args, ctx)
             tool_status = "ok"
+            if tool_observation is not None:
+                tool_observation.finish_success(result=result)
+        except asyncio.CancelledError:
+            if tool_observation is not None:
+                tool_observation.finish_cancelled()
+            raise
         except Exception as exc:  # noqa: BLE001
             result = f"error executing tool: {exc}"
             tool_status = "error"
+            if tool_observation is not None:
+                tool_observation.finish_error(exc, result=result)
         result, secret_findings = scan_and_redact(str(result))
         approved_resume_result = result
         await record_tool_call(
@@ -841,6 +883,20 @@ async def _agent_stream(
                         await rec.record(call_ev)
                         await rec.flush_progress(phase=f"tool:{name}")
                     yield call_ev
+                    tool_observation = (
+                        observability.child(
+                            getattr(llm, "last_observation_id", None)
+                        ).start_tool_observation(
+                            tool_name=name,
+                            tool_call_id=entry["id"],
+                            arguments=args,
+                            metadata={
+                                "risk_tier": spec.risk_tier.value if spec else None,
+                            },
+                        )
+                        if observability is not None
+                        else None
+                    )
                     if approved_replay:
                         result = approved_resume_result
                         tool_status = "approved_replay"
@@ -890,9 +946,12 @@ async def _agent_stream(
                                 }
                             )
                             await _finish_task(db, root_task, status="failed", result=result)
+                            if tool_observation is not None:
+                                tool_observation.finish_error(RuntimeError(result), result=result)
                             return
                         # Layer 1: risk-tier capability gate
                         if spec.risk_tier.value not in agent.allowed_risk_tiers:
+                            tool_status = "denied"
                             result = (
                                 f"error: tool '{name}' requires risk tier "
                                 f"'{spec.risk_tier.value}' which is not enabled for this agent. "
@@ -959,6 +1018,10 @@ async def _agent_stream(
                                 status="waiting_approval",
                                 result=f"approval required for tool '{name}'",
                             )
+                            if tool_observation is not None:
+                                tool_observation.finish_cancelled(
+                                    metadata={"approval_id": approval.id, "tool_status": "pending_approval"}
+                                )
                             yield approval_ev
                             return
                         elif replay_cursor is not None:
@@ -984,6 +1047,8 @@ async def _agent_stream(
                                 await _finish_task(
                                     db, root_task, status="diverged", result=str(exc)
                                 )
+                                if tool_observation is not None:
+                                    tool_observation.finish_error(exc)
                                 yield diverged_ev
                                 return
                         else:
@@ -1038,6 +1103,8 @@ async def _agent_stream(
                                 tool_status = "ok"
                             except asyncio.CancelledError:
                                 run_task.cancel()
+                                if tool_observation is not None:
+                                    tool_observation.finish_cancelled()
                                 raise
                             except Exception as e:  # noqa: BLE001
                                 if not run_task.done():
@@ -1114,6 +1181,11 @@ async def _agent_stream(
                                 commit=False,
                             )
                         result = wrapped
+                    if tool_observation is not None:
+                        if tool_status in {"ok", "approved_replay", "replayed"}:
+                            tool_observation.finish_success(result=result)
+                        else:
+                            tool_observation.finish_error(RuntimeError(str(result)), result=result)
                     result, secret_findings = scan_and_redact(str(result))
                     if secret_findings:
                         guardrail_events_total.labels(

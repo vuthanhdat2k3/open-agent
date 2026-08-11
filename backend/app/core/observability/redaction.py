@@ -6,6 +6,7 @@ messages, tool arguments, results, or metadata.
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
 from typing import Any
@@ -29,6 +30,7 @@ class RedactionStats:
     count: int = 0
     kinds: set[str] = field(default_factory=set)
     failed: bool = False
+    content_truncated: bool = False
 
     def add(self, kind: str, count: int = 1) -> None:
         self.count += count
@@ -38,6 +40,7 @@ class RedactionStats:
         self.count += other.count
         self.kinds.update(other.kinds)
         self.failed = self.failed or other.failed
+        self.content_truncated = self.content_truncated or other.content_truncated
 
     def as_metadata(self, *, content_capture: bool) -> dict[str, Any]:
         return {
@@ -46,7 +49,30 @@ class RedactionStats:
             "redaction_kinds": sorted(self.kinds),
             "redaction_failed": self.failed,
             "content_capture": content_capture,
+            "content_truncated": self.content_truncated,
         }
+
+
+def truncate_payload(value: Any, max_bytes: int) -> tuple[Any, bool]:
+    """Bound a sanitized payload without changing its runtime source object.
+
+    The fallback is a JSON preview rather than an arbitrary deep slice, keeping
+    the exported shape valid and making truncation explicit to the sink.
+    """
+    try:
+        serialized = json.dumps(value, ensure_ascii=False, default=str)
+    except (TypeError, ValueError):
+        serialized = str(value)
+    encoded = serialized.encode("utf-8")
+    if len(encoded) <= max_bytes:
+        return value, False
+
+    marker = "[TRUNCATED]"
+    budget = max(0, max_bytes - len(marker.encode("utf-8")))
+    preview = encoded[:budget].decode("utf-8", errors="ignore") + marker
+    if isinstance(value, str):
+        return preview, True
+    return {"_truncated": True, "preview": preview}, True
 
 
 def _redact_string(value: str) -> tuple[str, RedactionStats]:
