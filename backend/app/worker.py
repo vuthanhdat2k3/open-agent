@@ -6,6 +6,7 @@ from arq.connections import RedisSettings
 
 from app.config import get_settings
 from app.core.chat_events import fail_orphaned_chat_runs
+from app.core.observability.llm_trace import NoopSink, set_default_sink
 from app.core.workflow import resume
 from app.core.workflow.jobs import run_chat, run_workflow
 from app.core.workflow.queue import enqueue_workflow_run
@@ -13,6 +14,7 @@ from app.db.session import SessionLocal
 from app.evals.auto_rollback import run_auto_rollback_sweep
 
 logger = structlog.get_logger(__name__)
+_langfuse_sink = None
 
 
 async def _auto_rollback_sweep(ctx: dict) -> None:
@@ -40,6 +42,26 @@ async def _resume_orphaned_runs(ctx: dict) -> None:
                 await logger.aerror("orphan_enqueue_failed", run_id=run_id, error=str(exc))
         if run_ids:
             await logger.ainfo("orphan_runs_resumed", count=len(run_ids), run_ids=run_ids)
+
+
+async def _startup(ctx: dict) -> None:
+    global _langfuse_sink
+    await _resume_orphaned_runs(ctx)
+    settings = get_settings()
+    if settings.observability_enabled and settings.langfuse_enabled:
+        from app.core.observability.langfuse_sink import build_langfuse_sink
+
+        _langfuse_sink = build_langfuse_sink(settings)
+        if _langfuse_sink:
+            set_default_sink(_langfuse_sink)
+
+
+async def _shutdown(ctx: dict) -> None:
+    global _langfuse_sink
+    if _langfuse_sink:
+        _langfuse_sink.flush(get_settings().langfuse_flush_timeout_seconds)
+    _langfuse_sink = None
+    set_default_sink(NoopSink())
 
 
 async def _fail_orphaned_chat_runs(ctx: dict) -> None:
@@ -72,7 +94,8 @@ async def _ci_scheduler_tick(ctx: dict) -> None:
 class WorkerSettings:
     functions = [run_workflow, run_chat]
     redis_settings = RedisSettings.from_dsn(get_settings().redis_url)
-    on_startup = _resume_orphaned_runs
+    on_startup = _startup
+    on_shutdown = _shutdown
     cron_jobs = [
         cron(_auto_rollback_sweep, minute=set(range(0, 60, 5))),
         cron(_fail_orphaned_chat_runs, minute=set(range(0, 60, 2)), run_at_startup=False),
