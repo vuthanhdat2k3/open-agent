@@ -628,6 +628,16 @@ async def _agent_stream(
                 messages.append(_to_openai_message(m))
     if not approval_resume_id:
         messages.append({"role": "user", "content": message})
+    elif not any(m.get("role") == "user" for m in messages):
+        # A freshly-created delegated sub-agent (this nested resume's
+        # current_task_id did not exist before this call) has no prior turn
+        # of its own in the shared session history to have carried the
+        # original request - `messages` would otherwise jump straight from
+        # `system` to the synthetic `assistant`/`tool` pair built below,
+        # which every provider tested rejects (a tool_calls turn with no
+        # preceding user turn to be responding to). Restate the goal as
+        # that user turn so the conversation shape is well-formed.
+        messages.append({"role": "user", "content": message})
 
     if session_id and not approval_resume_id:
         await _persist(
@@ -753,7 +763,7 @@ async def _agent_stream(
                 next_hop.goal,
                 db,
                 depth + 1,
-                session_id,
+                None,
                 current_task_id=next_hop.id,
                 root_run_id=root_run_id,
                 user_id=user_id,
