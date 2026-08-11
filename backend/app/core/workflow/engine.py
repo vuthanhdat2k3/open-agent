@@ -13,6 +13,7 @@ from app.config import get_settings
 from app.core.guardrails.approval import request_approval
 from app.core.guardrails.budget import BudgetTracker, RunBudget
 from app.core.observability import genai
+from app.core.observability.llm_trace import ObservabilityContext, build_trace_context
 from app.core.observability.metrics import workflow_run_duration_seconds
 from app.core.tools.registry import BUILTIN_TOOLS, execute_tool_call
 from app.core.tools.types import ToolContext
@@ -122,6 +123,19 @@ async def _run_workflow_events(
         workflow, input_text, db, workflow_run_id, user_id
     )
     actor_user_id = workflow_run.triggered_by_user_id or user_id or workflow.created_by_user_id
+    workflow_observability = (
+        ObservabilityContext(
+            build_trace_context(
+                trace_id=workflow_run.id,
+                session_id=None,
+                org_id=workflow.org_id,
+                user_id=actor_user_id,
+                metadata={"run_type": "workflow", "workflow_id": workflow.id},
+            )
+        )
+        if settings.observability_enabled
+        else None
+    )
     yield {
         "event": "workflow_start",
         "data": {
@@ -279,14 +293,35 @@ async def _run_workflow_events(
                 spec = await build_mcp_tool_spec(tool_name, db, org_id=workflow.org_id)
             if spec is None:
                 raise RuntimeError(f"tool '{tool_name}' not found")
+            tool_observation = (
+                workflow_observability.start_tool_observation(
+                    tool_name=tool_name,
+                    tool_call_id=None,
+                    arguments=args,
+                    metadata={"workflow_node_id": node["id"], "node_run_id": node_run.id},
+                )
+                if workflow_observability is not None
+                else None
+            )
             budget_reason = budget.record_call(tool_name, args)
             if budget_reason:
-                raise RuntimeError(f"workflow budget exceeded: {budget_reason}")
+                error = RuntimeError(f"workflow budget exceeded: {budget_reason}")
+                if tool_observation is not None:
+                    tool_observation.finish_error(error)
+                raise error
             if replay_cursor is not None:
                 # Replay never executes a tool node. Divergence propagates as
                 # an exception so the node is recorded failed rather than the
                 # tool quietly firing for real.
-                return replay_cursor.next_result(tool_name, args)
+                try:
+                    replayed = replay_cursor.next_result(tool_name, args)
+                except Exception as exc:  # noqa: BLE001
+                    if tool_observation is not None:
+                        tool_observation.finish_error(exc)
+                    raise
+                if tool_observation is not None:
+                    tool_observation.finish_success(result=replayed)
+                return replayed
 
             ctx = ToolContext(
                 db=db,
@@ -296,7 +331,18 @@ async def _run_workflow_events(
                 user_id=actor_user_id,
             )
             started = time.monotonic()
-            result = await execute_tool_call(spec, args, ctx)
+            try:
+                result = await execute_tool_call(spec, args, ctx)
+            except asyncio.CancelledError:
+                if tool_observation is not None:
+                    tool_observation.finish_cancelled()
+                raise
+            except Exception as exc:
+                if tool_observation is not None:
+                    tool_observation.finish_error(exc)
+                raise
+            if tool_observation is not None:
+                tool_observation.finish_success(result=result)
             nonlocal tool_sequence
             tool_sequence += 1
             await record_tool_call(

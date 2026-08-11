@@ -5,7 +5,10 @@ import re
 
 from sqlalchemy import select
 
+from app.config import get_settings
+from app.core.observability.llm_trace import ObservabilityContext, build_trace_context
 from app.core.providers.factory import build_driver
+from app.db.base import gen_id
 from app.models.model import Model
 from app.models.provider import Provider
 from app.models.workflow import Workflow
@@ -81,7 +84,24 @@ class WorkflowService:
         if provider is None:
             raise ValueError("provider not found for model")
 
-        llm = build_driver(provider, model)
+        observability = (
+            ObservabilityContext(
+                build_trace_context(
+                    trace_id=f"workflow-graph-{gen_id()}",
+                    session_id=None,
+                    org_id=org_id,
+                    metadata={"run_type": "workflow_graph_generation"},
+                )
+            )
+            if get_settings().observability_enabled
+            else None
+        )
+        llm = build_driver(
+            provider,
+            model,
+            observability=observability,
+            generation_name="workflow-graph-generation",
+        )
         messages = [
             {"role": "system", "content": _GENERATE_SYSTEM_PROMPT.format(agents=agents_desc)},
             {"role": "user", "content": prompt},
