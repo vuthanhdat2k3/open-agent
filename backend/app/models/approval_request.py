@@ -41,3 +41,15 @@ class ApprovalRequest(Base):
     expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     payload_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
+
+    # The Task that actually issued the gated tool call — the root task for a
+    # direct approval, or the (possibly deeply nested) delegated sub-task for
+    # one raised through call_agent/delegate_to_*. NULL means "the root task"
+    # (both for rows created before this column existed, and for direct
+    # approvals where the owner already is the root). Resuming a decision
+    # must execute the tool in *this* task's agent context, not whichever
+    # task happens to be `waiting_approval` — see agent_loop.py's
+    # approval_resume_id handling.
+    owning_task_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True, index=True
+    )
