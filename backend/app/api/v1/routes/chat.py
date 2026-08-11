@@ -225,7 +225,6 @@ async def stream_chat_run_events(
     follow: bool = Query(True),
     after_seq: int = Query(0, ge=0),
     org_id: str = Depends(get_current_org_id),
-    db: AsyncSession = Depends(get_db),
 ):
     """Drain the durable event log of a chat run, optionally following live.
 
@@ -233,21 +232,31 @@ async def stream_chat_run_events(
     from the drained events (partial text, reasoning, running tool cards),
     then keeps the connection open to receive the rest of the run live.
     ``follow=false`` returns a one-shot JSON snapshot instead of SSE.
+
+    Every database read uses a short-lived session. The SSE generator can stay
+    open for minutes, so retaining a request-scoped session here would leave
+    its transaction ``idle in transaction`` and exhaust the API pool for
+    unrelated requests such as login.
     """
-    res = await db.execute(
-        select(Task).where(Task.root_run_id == run_id, Task.org_id == org_id)
-    )
-    task = res.scalars().first()
-    if task is None:
-        raise HTTPException(404, "chat run not found")
+    async with SessionLocal() as session:
+        res = await session.execute(
+            select(Task).where(Task.root_run_id == run_id, Task.org_id == org_id)
+        )
+        task = res.scalars().first()
+        if task is None:
+            raise HTTPException(404, "chat run not found")
+        task_status = task.status
+        snapshot_rows = (
+            await list_events(session, run_id, org_id, after_seq) if not follow else None
+        )
 
     if not follow:
-        rows = await list_events(db, run_id, org_id, after_seq)
         return {
             "run_id": run_id,
-            "status": task.status,
+            "status": task_status,
             "events": [
-                {"seq": r.seq, "event": r.event, "data": r.data or {}} for r in rows
+                {"seq": r.seq, "event": r.event, "data": r.data or {}}
+                for r in snapshot_rows or []
             ],
         }
 
@@ -258,7 +267,8 @@ async def stream_chat_run_events(
         async def drain_log() -> AsyncIterator[str]:
             """Emit everything already durable past ``last``."""
             nonlocal last, terminal_seen
-            rows = await list_events(db, run_id, org_id, last)
+            async with SessionLocal() as session:
+                rows = await list_events(session, run_id, org_id, last)
             for r in rows:
                 last = r.seq
                 observe_delivery(run_id, r.seq, "polling")
@@ -359,7 +369,8 @@ async def stream_chat_run_events(
             # Client went away (reload / Stop) — stop polling the DB.
             if await request.is_disconnected():
                 return
-            rows = await list_events(db, run_id, org_id, last)
+            async with SessionLocal() as session:
+                rows = await list_events(session, run_id, org_id, last)
             for r in rows:
                 last = r.seq
                 observe_delivery(run_id, r.seq, "polling")

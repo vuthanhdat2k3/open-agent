@@ -145,23 +145,25 @@ export function ChatHeaderControls({
                 const target = event.target as HTMLElement;
                 if (target.closest("[data-delete-trigger]")) {
                   event.preventDefault();
-                  if (window.confirm(`Delete "${s.title}"? This conversation and its messages will be removed.`)) {
-                    void onDeleteSession(s.id);
-                  }
                   return;
                 }
                 onSessionChange(s.id);
               }}
             >
               <span className="flex-1 truncate">{s.title}</span>
-              <span
+              <button
+                type="button"
                 data-delete-trigger
-                role="button"
                 aria-label={`Delete session ${s.title}`}
-                className="shrink-0 rounded p-1 text-muted-foreground/60 opacity-0 transition-opacity hover:bg-destructive/15 hover:text-destructive group-hover:opacity-100 group-focus:opacity-100"
+                className="shrink-0 rounded p-1 text-muted-foreground/60 opacity-0 transition-opacity hover:bg-destructive/15 hover:text-destructive focus:opacity-100 focus:outline-none focus:ring-1 focus:ring-destructive/50 group-hover:opacity-100"
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  void onDeleteSession(s.id);
+                }}
               >
                 <Trash2 className="h-3 w-3" aria-hidden="true" />
-              </span>
+              </button>
             </DropdownMenuItem>
           ))}
         </DropdownMenuContent>

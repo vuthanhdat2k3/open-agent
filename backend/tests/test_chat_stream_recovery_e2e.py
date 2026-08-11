@@ -13,7 +13,6 @@ engine + dependency overrides + patched LLM stream).
 
 from __future__ import annotations
 
-from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -21,6 +20,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.api.v1.routes import chat as chat_route_mod
 from app.core import chat_events as chat_events_mod
 from app.core.quota.dependencies import _redis_client
 from app.core.tools.risk_tier import RiskTier
@@ -75,7 +75,11 @@ def client(async_session_factory, test_user):
     app.dependency_overrides[_redis_client] = _override_redis
     app.dependency_overrides[get_current_user] = _override_user
     app.dependency_overrides[get_current_org_id] = _override_org
-    with patch.object(chat_events_mod, "SessionLocal", async_session_factory), TestClient(app) as test_client:
+    with (
+        patch.object(chat_events_mod, "SessionLocal", async_session_factory),
+        patch.object(chat_route_mod, "SessionLocal", async_session_factory),
+        TestClient(app) as test_client,
+    ):
         yield test_client
     app.dependency_overrides.clear()
 
@@ -94,9 +98,10 @@ def _fake_llm_stream():
         yield {"type": "reasoning", "text": "let me think… "}
         yield {"type": "content", "text": "Hello "}
         if calls["n"] == 1:
-            fn = SimpleNamespace(name="test_echo", arguments='{"x":"1"}')
-            tc = SimpleNamespace(index=0, id="tc-1", function=fn)
-            yield {"type": "tool_calls", "tool_calls": [tc]}
+            yield {
+                "type": "tool_calls",
+                "tool_calls": [{"index": 0, "id": "tc-1", "name": "test_echo", "arguments": '{"x":"1"}'}],
+            }
         yield {"type": "content", "text": "after tool "}
         yield {
             "type": "usage",

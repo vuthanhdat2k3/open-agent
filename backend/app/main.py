@@ -45,12 +45,12 @@ init_tracing(app)
 
 @app.get("/health", response_model=HealthResponse)
 async def health():
-    return HealthResponse()
+    return HealthResponse(runtime=get_settings().runtime)
 
 
 @app.get("/api/health", response_model=HealthResponse)
 async def api_health():
-    return HealthResponse()
+    return HealthResponse(runtime=get_settings().runtime)
 
 
 @app.get("/healthz")

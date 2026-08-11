@@ -18,7 +18,7 @@ plug in over the MCP protocol without backend provider code.
 ## What it does
 
 **Core**
-- **Providers / Models** — manage OpenAI-compatible endpoints and their models.
+- **Providers / Models** — connect OpenAI, OpenRouter, Ollama, Gemini, Anthropic, OpenCode Zen, DeepSeek, or custom OpenAI-compatible endpoints; discover and activate models per organization.
 - **Agents** — system prompt + model + granted tool set + risk-tiered
   capabilities; versioned **releases** with an evaluation quality gate before
   publish.
@@ -65,7 +65,7 @@ plug in over the MCP protocol without backend provider code.
 | Auth | JWT (`pyjwt`), Argon2 password hashing, OAuth2/OIDC (`authlib`) |
 | Queue | Redis + `arq` (durable agent/workflow jobs, quota backend) |
 | Vector DB | Qdrant (via `rag-service`) |
-| LLM | `openai` SDK (OpenAI-compatible endpoints only) |
+| LLM | Provider driver registry: OpenAI-compatible + native Anthropic/Gemini drivers |
 | MCP | `mcp` Python SDK — backend is a client; `rag-service` and `customer-intelligence-mcp` are servers |
 | Sandbox | Docker (hardened container per tool execution) |
 | Observability | `structlog`, OpenTelemetry, Prometheus, Grafana, Loki |

@@ -860,8 +860,13 @@ export default function ChatPage() {
         onSessionChange={handleSessionChange}
         onNewSession={clearMessages}
         onDeleteSession={async (id: string) => {
-          await delSession.mutateAsync(id);
-          if (sessionId === id) clearMessages();
+          try {
+            await delSession.mutateAsync(id);
+            if (sessionId === id) clearMessages();
+            toast.success("Session deleted");
+          } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Could not delete session");
+          }
         }}
         onToggleDebug={() => setDebug((v) => !v)}
         onClearMessages={clearMessages}

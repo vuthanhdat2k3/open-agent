@@ -5,7 +5,7 @@ import re
 
 from sqlalchemy import select
 
-from app.core.llm import LLMClient, resolve_api_key
+from app.core.providers.factory import build_driver
 from app.models.model import Model
 from app.models.provider import Provider
 from app.models.workflow import Workflow
@@ -81,7 +81,7 @@ class WorkflowService:
         if provider is None:
             raise ValueError("provider not found for model")
 
-        llm = LLMClient(provider.base_url, resolve_api_key(provider), model.name)
+        llm = build_driver(provider, model)
         messages = [
             {"role": "system", "content": _GENERATE_SYSTEM_PROMPT.format(agents=agents_desc)},
             {"role": "user", "content": prompt},

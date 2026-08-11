@@ -23,6 +23,7 @@ import type {
   OrganizationQuota,
   OrgMember,
   Provider,
+  ProviderTemplate,
   QuotaUsage,
   SandboxExecution,
   Session,
@@ -35,6 +36,30 @@ import type {
   WorkspaceArtifact,
   UserProfile,
 } from "@/types";
+
+export function useProviderTemplates(enabled: boolean = true) {
+  return useQuery({
+    queryKey: ["provider-templates"],
+    queryFn: () => api.get<ProviderTemplate[]>("/api/providers/templates"),
+    enabled,
+  });
+}
+
+export function useHealth() {
+  return useQuery({ queryKey: ["health"], queryFn: () => api.get<{ runtime: string }>("/api/health") });
+}
+
+export function useCreateProviderFromTemplate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { template_key: string; api_key: string; base_url?: string; is_default?: boolean }) =>
+      api.post<Provider>("/api/providers/from-template", body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["providers"] });
+      qc.invalidateQueries({ queryKey: ["models"] });
+    },
+  });
+}
 
 export function useProviders(enabled: boolean = true) {
   return useQuery({ queryKey: ["providers"], queryFn: () => api.get<Provider[]>("/api/providers"), enabled });
@@ -65,8 +90,19 @@ export function useTestProvider() {
   return useMutation({ mutationFn: (id: string) => api.post<any>(`/api/providers/${id}/test`) });
 }
 
-export function useModels(enabled: boolean = true) {
-  return useQuery({ queryKey: ["models"], queryFn: () => api.get<Model[]>("/api/models"), enabled });
+export function useModels(
+  enabled: boolean = true,
+  options: { withInactive?: boolean; q?: string } = {},
+) {
+  const params = new URLSearchParams();
+  if (options.withInactive) params.set("with_inactive", "true");
+  if (options.q?.trim()) params.set("q", options.q.trim());
+  const suffix = params.toString() ? `?${params.toString()}` : "";
+  return useQuery({
+    queryKey: ["models", options.withInactive ?? false, options.q ?? ""],
+    queryFn: () => api.get<Model[]>(`/api/models${suffix}`),
+    enabled,
+  });
 }
 export function useCreateModel() {
   const qc = useQueryClient();

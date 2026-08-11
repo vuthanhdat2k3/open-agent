@@ -79,13 +79,9 @@ async def _seed(session: AsyncSession, *, tools: list[str], tiers: list[str]) ->
     return agent
 
 
-class _ToolCallDelta:
-    """Mimics the OpenAI streaming tool-call delta shape."""
-
-    def __init__(self, name: str, arguments: str) -> None:
-        self.index = 0
-        self.id = "call-1"
-        self.function = type("F", (), {"name": name, "arguments": arguments})()
+def _tool_call_delta(name: str, arguments: str) -> dict:
+    """Mimics the normalized tool-call delta shape every driver yields."""
+    return {"index": 0, "id": "call-1", "name": name, "arguments": arguments}
 
 
 def _fake_stream(tool_name: str | None):
@@ -95,7 +91,7 @@ def _fake_stream(tool_name: str | None):
     async def stream(self, messages, tools=None, temperature=0.7):  # noqa: ANN001
         calls["n"] += 1
         if calls["n"] == 1 and tool_name:
-            yield {"type": "tool_calls", "tool_calls": [_ToolCallDelta(tool_name, "{}")]}
+            yield {"type": "tool_calls", "tool_calls": [_tool_call_delta(tool_name, "{}")]}
         else:
             yield {"type": "content", "text": "done"}
         yield {

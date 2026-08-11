@@ -5,7 +5,8 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.llm import LLMClient, resolve_api_key
+from app.core.llm import LLMClient  # noqa: F401
+from app.core.providers.factory import build_driver
 from app.models.memory import AgentMemory, SessionMemory
 from app.models.message import Message
 from app.models.model import Model
@@ -71,7 +72,7 @@ async def compact_tiered_memory(
     # 2. Warm Tier: Summarize older transcript
     warm_summary = ""
     try:
-        llm = LLMClient(provider.base_url, resolve_api_key(provider), agent_model.name)
+        llm = build_driver(provider, agent_model)
         summary_text, _, _ = await llm.complete(
             [
                 {

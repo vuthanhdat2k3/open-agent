@@ -18,6 +18,7 @@ from openai import (
 )
 
 from app.config import get_settings
+from app.core.credential_secrets import decrypt_string
 
 settings = get_settings()
 
@@ -37,14 +38,21 @@ def _thinking_tool_choice_error(exc: BadRequestError, tool_choice: Any | None) -
 
 
 def resolve_api_key(provider: Provider) -> str:
-    """Return the API key for a provider.
-
-    Uses the directly-stored ``api_key`` first; falls back to the environment
-    variable named by ``env_var`` so users can still keep secrets in ``.env``.
-    """
-    key = getattr(provider, "api_key", "") or ""
+    """Resolve a provider key without ever logging or returning it to clients."""
+    key = ""
+    encrypted = getattr(provider, "api_key_encrypted", None) or ""
+    if encrypted:
+        try:
+            key = decrypt_string(encrypted)
+        except Exception as exc:  # noqa: BLE001
+            raise RuntimeError("provider API key could not be decrypted") from exc
+    if not key:
+        # Legacy databases and direct ORM fixtures may still populate api_key.
+        key = getattr(provider, "api_key", "") or ""
     if not key:
         key = os.environ.get(getattr(provider, "env_var", "") or "", "")
+    if not key and getattr(provider, "template_key", "") == "ollama":
+        return ""
     if not key:
         raise RuntimeError(
             f"Provider '{getattr(provider, 'name', '?')}' has no API key configured "
@@ -185,7 +193,22 @@ class LLMClient:
                 yield {"type": "reasoning", "text": reasoning}
             tcs = getattr(delta, "tool_calls", None)
             if tcs:
-                yield {"type": "tool_calls", "tool_calls": tcs}
+                # Normalize the OpenAI SDK's ChoiceDeltaToolCall objects into
+                # plain dicts so every driver (OpenAI-compatible, Anthropic,
+                # Gemini) yields the exact same shape and callers never branch
+                # on driver-specific attribute access.
+                yield {
+                    "type": "tool_calls",
+                    "tool_calls": [
+                        {
+                            "index": tc.index,
+                            "id": tc.id,
+                            "name": (tc.function.name if tc.function else None),
+                            "arguments": (tc.function.arguments if tc.function else None),
+                        }
+                        for tc in tcs
+                    ],
+                }
 
         yield {
             "type": "usage",
