@@ -31,7 +31,7 @@ services:
 
   langfuse-clickhouse:
     profiles: ["langfuse"]
-    image: docker.io/clickhouse/clickhouse-server:25.12.1.1-alpine
+    image: docker.io/clickhouse/clickhouse-server:25.12.1.649-alpine
     environment:
       CLICKHOUSE_DB: default
       CLICKHOUSE_USER: ${LANGFUSE_CLICKHOUSE_USER:-langfuse}
@@ -40,7 +40,7 @@ services:
     volumes:
       - langfuse-clickhouse-data:/var/lib/clickhouse
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1"]
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:8123/ping || exit 1"]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -63,6 +63,7 @@ services:
     profiles: ["langfuse"]
     image: docker.io/langfuse/langfuse-worker:4.6.0
     environment: &langfuse-env
+      HOSTNAME: "0.0.0.0"
       NEXTAUTH_URL: http://localhost:3002
       DATABASE_URL: ${LANGFUSE_DATABASE_URL:?Set LANGFUSE_DATABASE_URL in .env}
       SALT: ${LANGFUSE_SALT:?Set LANGFUSE_SALT in .env}
@@ -70,6 +71,7 @@ services:
       TELEMETRY_ENABLED: "false"
       CLICKHOUSE_MIGRATION_URL: clickhouse://langfuse-clickhouse:9000
       CLICKHOUSE_URL: http://langfuse-clickhouse:8123
+      CLICKHOUSE_CLUSTER_ENABLED: "false"
       CLICKHOUSE_USER: ${LANGFUSE_CLICKHOUSE_USER:-langfuse}
       CLICKHOUSE_PASSWORD: ${LANGFUSE_CLICKHOUSE_PASSWORD:?Set LANGFUSE_CLICKHOUSE_PASSWORD in .env}
       REDIS_HOST: langfuse-redis
@@ -97,7 +99,7 @@ services:
       langfuse-minio-init:
         condition: service_completed_successfully
     healthcheck:
-      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3030/api/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))\""]
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3030/api/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))\""]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -122,7 +124,7 @@ services:
       LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_INIT_USER_PASSWORD:?Set LANGFUSE_INIT_USER_PASSWORD in .env}
     depends_on: *langfuse-depends-on
     healthcheck:
-      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3000/api/public/ready').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))\""]
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000/api/public/ready').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))\""]
       interval: 10s
       timeout: 5s
       retries: 12
