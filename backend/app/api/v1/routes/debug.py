@@ -90,6 +90,15 @@ async def task_tree(
             roots.append(node)
     settings = get_settings()
     trace_url = None
+    langfuse_trace_id_value = root_run_id
     if settings.langfuse_base_url:
-        trace_url = f"{settings.langfuse_base_url.rstrip('/')}/trace/{root_run_id}"
-    return {"root_run_id": root_run_id, "trace_id": root_run_id, "langfuse_url": trace_url, "tasks": roots}
+        from app.core.observability.langfuse_sink import langfuse_trace_id
+
+        langfuse_trace_id_value = langfuse_trace_id(root_run_id)
+        trace_url = f"{settings.langfuse_base_url.rstrip('/')}/trace/{langfuse_trace_id_value}"
+    return {
+        "root_run_id": root_run_id,
+        "trace_id": langfuse_trace_id_value,
+        "langfuse_url": trace_url,
+        "tasks": roots,
+    }

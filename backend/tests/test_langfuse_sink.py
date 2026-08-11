@@ -6,7 +6,11 @@ from contextlib import nullcontext
 import pytest
 
 from app.config import Settings
-from app.core.observability.langfuse_sink import LangfuseSink, build_langfuse_sink
+from app.core.observability.langfuse_sink import (
+    LangfuseSink,
+    build_langfuse_sink,
+    langfuse_trace_id,
+)
 from app.core.observability.llm_trace import GenerationRecord, ToolObservation, TraceContext
 
 
@@ -53,6 +57,52 @@ def _context() -> TraceContext:
         org_id="org-1",
         user_id="user-1",
     )
+
+
+def test_langfuse_trace_id_passes_through_valid_32_hex_ids() -> None:
+    valid = "0123456789abcdef0123456789abcdef"
+    assert langfuse_trace_id(valid) == valid
+
+
+def test_langfuse_trace_id_normalizes_dash_uuids_deterministically() -> None:
+    # The chat UI generates run_id via crypto.randomUUID() (dash-formatted),
+    # which the backend accepts as root_run_id unchanged. Langfuse requires
+    # a 32 lowercase hex trace id, so this must hash it consistently rather
+    # than reject or randomize it, or the same chat run would produce a
+    # different, disconnected trace on every retry/reconnect.
+    dash_id = "8fd80210-64d3-4806-bb05-d2a2d2deb610"
+    normalized = langfuse_trace_id(dash_id)
+
+    assert normalized != dash_id
+    assert len(normalized) == 32
+    assert all(c in "0123456789abcdef" for c in normalized)
+    assert normalized == langfuse_trace_id(dash_id)
+
+
+def test_emit_generation_normalizes_non_hex_trace_id() -> None:
+    client = _Client()
+    sink = LangfuseSink("pk", "sk", client=client)
+    context = TraceContext(
+        trace_id="8fd80210-64d3-4806-bb05-d2a2d2deb610",
+        session_id="session-1",
+        org_id="org-1",
+    )
+    record = GenerationRecord(
+        observation_id="gen-1",
+        trace_id=context.trace_id,
+        parent_id=None,
+        name="agent-generation",
+        provider="test",
+        model="test-model",
+        input={"message": "hi"},
+        status="success",
+    )
+
+    sink.emit_generation(context, record)
+
+    sent_trace_id = client.calls[0]["trace_context"]["trace_id"]
+    assert sent_trace_id == langfuse_trace_id(context.trace_id)
+    assert len(sent_trace_id) == 32
 
 
 def test_emit_generation_maps_trace_parent_model_usage_and_status() -> None:
