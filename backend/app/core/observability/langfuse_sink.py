@@ -2,11 +2,31 @@
 
 from __future__ import annotations
 
+import hashlib
+import re
 import threading
 from contextlib import nullcontext
 from typing import Any
 
 from app.core.observability.llm_trace import GenerationRecord, ToolObservation, TraceContext
+
+_VALID_LANGFUSE_TRACE_ID = re.compile(r"^[0-9a-f]{32}$")
+
+
+def langfuse_trace_id(trace_id: str) -> str:
+    """Map any internal trace id to a valid 32 lowercase hex Langfuse trace id.
+
+    ``root_run_id`` is the internal trace identity and must stay exactly as
+    generated everywhere else in OpenAgent (Task.id, debug links, audit
+    logs). Some call sites (the chat UI) still produce dash-formatted UUIDv4
+    values. Rather than changing that internal id, this hashes any
+    non-conforming id deterministically so the same ``root_run_id`` always
+    maps to the same Langfuse trace id across retries/reconnects, and valid
+    32-hex ids (already the common case) pass through untouched.
+    """
+    if _VALID_LANGFUSE_TRACE_ID.match(trace_id):
+        return trace_id
+    return hashlib.sha256(trace_id.encode("utf-8")).hexdigest()[:32]
 
 
 class LangfuseSink:
@@ -36,7 +56,7 @@ class LangfuseSink:
             return nullcontext()
 
     def _trace_context(self, context: TraceContext, parent_id: str | None) -> dict[str, str]:
-        trace_context = {"trace_id": context.trace_id}
+        trace_context = {"trace_id": langfuse_trace_id(context.trace_id)}
         if parent_id:
             with self._lock:
                 trace_context["parent_span_id"] = self._observation_ids.get(parent_id, parent_id)

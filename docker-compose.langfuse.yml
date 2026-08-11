@@ -31,7 +31,7 @@ services:
 
   langfuse-clickhouse:
     profiles: ["langfuse"]
-    image: docker.io/clickhouse/clickhouse-server:25.12.1.649-alpine
+    image: docker.io/clickhouse/clickhouse-server:25.12.11.4-alpine
     environment:
       CLICKHOUSE_DB: default
       CLICKHOUSE_USER: ${LANGFUSE_CLICKHOUSE_USER:-langfuse}
@@ -39,6 +39,7 @@ services:
       TZ: UTC
     volumes:
       - langfuse-clickhouse-data:/var/lib/clickhouse
+      - ./observability/clickhouse/langfuse-settings.xml:/etc/clickhouse-server/config.d/langfuse-settings.xml:ro
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:8123/ping || exit 1"]
       interval: 5s
