@@ -47,6 +47,7 @@ dependencies = [
     # Misc
     "rich>=13.7",
     "tenacity>=9.0",            # retry/backoff for LLM calls
+    "langfuse==4.14.3",
 ]
 
 [project.optional-dependencies]

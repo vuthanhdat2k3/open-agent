@@ -69,6 +69,11 @@ class Settings(BaseSettings):
     observability_capture_content: bool = True
     observability_sampling_rate: float = 1.0
     observability_max_content_bytes: int = 2 * 1024 * 1024
+    langfuse_enabled: bool = False
+    langfuse_public_key: str = ""
+    langfuse_secret_key: str = ""
+    langfuse_base_url: str = ""
+    langfuse_flush_timeout_seconds: float = 5.0
     log_format: Literal["json", "console"] = "json"
     budget_max_tool_calls: int = 40
     budget_max_cost_usd: float = 2.0
