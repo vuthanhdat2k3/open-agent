@@ -82,8 +82,8 @@ class AgentService:
 
     async def create(self, org_id: str, data: dict, user_id: str | None = None) -> Agent:
         m = await self.model_repo.get(org_id, data["model_id"])
-        if m is None:
-            raise ValueError("model not found")
+        if m is None or not m.active:
+            raise ValueError("model not found or inactive")
         data["org_id"] = org_id
         if user_id:
             data["created_by_user_id"] = user_id
@@ -312,8 +312,9 @@ class AgentService:
         return res.scalar_one_or_none()
 
     async def _validate_model(self, org_id: str, model_id: str) -> None:
-        if await self.model_repo.get(org_id, model_id) is None:
-            raise ValueError("model not found")
+        model = await self.model_repo.get(org_id, model_id)
+        if model is None or not model.active:
+            raise ValueError("model not found or inactive")
 
     async def _create_release_locked(
         self,

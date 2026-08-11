@@ -1,19 +1,14 @@
 from __future__ import annotations
 
-import base64
-import hashlib
 import ipaddress
 import re
-import secrets
 import socket
 import urllib.parse
 from json import dumps as _json_dumps
 from json import loads as _json_loads
 from typing import Any
 
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-
-from app.config import get_settings
+from app.core.credential_secrets import decrypt_bytes, encrypt_bytes
 
 _PROMPT_INJECTION_PATTERNS: list[re.Pattern[str]] = [
     re.compile(
@@ -26,26 +21,6 @@ _PROMPT_INJECTION_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"exfiltrate|steal( the)? (api ?key|secret|credentials|token)", re.I),
     re.compile(r"send (this|the (email|data|report)) to", re.I),
 ]
-
-
-def _encryption_key() -> bytes:
-    settings = get_settings()
-    raw = settings.ci_credential_encryption_key
-    if not raw:
-        raw = settings.jwt_secret_key
-    return hashlib.sha256(raw.encode("utf-8")).digest()
-
-
-def encrypt_bytes(data: bytes) -> str:
-    nonce = secrets.token_bytes(12)
-    ciphertext = AESGCM(_encryption_key()).encrypt(nonce, data, None)
-    return base64.urlsafe_b64encode(nonce + ciphertext).decode("ascii")
-
-
-def decrypt_bytes(token: str) -> bytes:
-    raw = base64.urlsafe_b64decode(token.encode("ascii"))
-    nonce, ciphertext = raw[:12], raw[12:]
-    return AESGCM(_encryption_key()).decrypt(nonce, ciphertext, None)
 
 
 def encrypt_credentials(payload: dict[str, Any]) -> str:

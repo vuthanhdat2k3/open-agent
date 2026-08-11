@@ -3,6 +3,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_current_org_id, get_db, require_permission
+from app.models.memory import SessionMemory
 from app.models.message import Message
 from app.models.session import Session
 from app.schemas.chat import ChatMessageOut, SessionOut
@@ -45,6 +46,11 @@ async def delete_session(
     s = res.scalar_one_or_none()
     if s is None:
         raise HTTPException(404, "session not found")
+    await db.execute(
+        delete(SessionMemory).where(
+            SessionMemory.session_id == session_id, SessionMemory.org_id == org_id
+        )
+    )
     await db.execute(
         delete(Message).where(Message.session_id == session_id, Message.org_id == org_id)
     )
