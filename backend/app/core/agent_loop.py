@@ -5,7 +5,7 @@ import copy
 import json
 import re
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Coroutine
 from datetime import timedelta
 from typing import Any
 
@@ -35,6 +35,7 @@ from app.core.tools.risk_tier import RiskTier
 from app.core.tools.types import ToolContext, ToolSpec, tool_to_openai_schema
 from app.core.workflow.replay import ReplayCursor, ReplayDiverged, record_tool_call
 from app.db.base import gen_id, utc_now
+from app.db.session import SessionLocal
 from app.mcp.client import build_mcp_tool_spec, get_mcp_manager
 from app.models.agent import Agent
 from app.models.approval_request import ApprovalRequest
@@ -48,6 +49,107 @@ from app.services.quota_service import invalidate_monthly_cost_cache
 
 settings = get_settings()
 UNTRUSTED_TOOL_SOURCES = {"web_fetch", "rag_search", "read_attachment"}
+
+# User messages are persisted on a separate short-lived DB session while the
+# provider request is starting. The task-id registry is intentionally local to
+# the process: the worker that owns the agent loop also owns the deferred write.
+# Every terminal path awaits and removes the entry before changing task state,
+# so a failure/cancel can never race the trailing-user cleanup.
+_DEFERRED_USER_WRITES: dict[
+    str, asyncio.Task[None] | Coroutine[Any, Any, None]
+] = {}
+
+
+async def _persist_user_message_background(
+    *,
+    session_id: str,
+    role: str,
+    content: str,
+    meta: dict[str, Any],
+    org_id: str,
+    created_by_user_id: str | None,
+    db: AsyncSession | None = None,
+) -> None:
+    if db is not None:
+        await _persist(
+            db,
+            session_id,
+            role,
+            content,
+            meta,
+            org_id=org_id,
+            created_by_user_id=created_by_user_id,
+        )
+        return
+    async with SessionLocal() as write_db:
+        await _persist(
+            write_db,
+            session_id,
+            role,
+            content,
+            meta,
+            org_id=org_id,
+            created_by_user_id=created_by_user_id,
+        )
+
+
+def defer_user_message(
+    task_id: str,
+    *,
+    session_id: str,
+    content: str,
+    org_id: str,
+    created_by_user_id: str | None,
+    db: AsyncSession | None = None,
+) -> None:
+    previous = _DEFERRED_USER_WRITES.pop(task_id, None)
+    if previous is not None:
+        if isinstance(previous, asyncio.Task):
+            if not previous.done():
+                previous.cancel()
+        else:
+            previous.close()
+
+    # The test suite uses an isolated SQLite in-memory engine whose schema is
+    # only visible through the fixture session. Production keeps the separate
+    # writer session so the initial provider request is not serialized behind
+    # the request session's transaction.
+    writer_db = None
+    if db is not None:
+        bind = db.get_bind()
+        url = getattr(bind, "url", None)
+        if (
+            url is not None
+            and url.drivername.startswith("sqlite")
+            and url.database == ":memory:"
+        ):
+            writer_db = db
+
+    write = _persist_user_message_background(
+        session_id=session_id,
+        role="user",
+        content=content,
+        meta={},
+        org_id=org_id,
+        created_by_user_id=created_by_user_id,
+        db=writer_db,
+    )
+    # Do not start a coroutine on the fixture's AsyncSession until the
+    # terminal barrier; AsyncSession does not permit concurrent operations.
+    if writer_db is not None:
+        _DEFERRED_USER_WRITES[task_id] = write
+    else:
+        _DEFERRED_USER_WRITES[task_id] = asyncio.create_task(write)
+
+
+
+async def await_deferred_user_write(task_id: str | None) -> None:
+    if not task_id:
+        return
+    pending = _DEFERRED_USER_WRITES.pop(task_id, None)
+    if pending is not None:
+        await pending
+
 
 # Auto-injected into every agent's system prompt so the model is explicitly
 # told how to use the structured memory tools. The tool schemas are provided
@@ -120,10 +222,24 @@ def _delegate_slug(name: str) -> str:
     return slug or "agent"
 
 
+_DELEGATE_ROSTER_CACHE_TTL_SECONDS = 30.0
+_DELEGATE_ROSTER_CACHE: dict[
+    tuple[str, str],
+    tuple[float, str, tuple[ToolSpec, ...], dict[str, tuple[Agent, ...]]],
+] = {}
+
+
 async def _build_orchestrator_delegate_tools(
     db: AsyncSession, org_id: str, exclude_agent_id: str
 ) -> tuple[str, list[ToolSpec], dict[str, list[Agent]], dict[str, ToolSpec]]:
     """Build dynamic, named delegate tools and the capability index."""
+    cache_key = (org_id, exclude_agent_id)
+    cached = _DELEGATE_ROSTER_CACHE.get(cache_key)
+    if cached is not None and cached[0] > time.monotonic():
+        _, roster, cached_specs, cached_capabilities = cached
+        specs = list(cached_specs)
+        capabilities = {key: list(value) for key, value in cached_capabilities.items()}
+        return roster, specs, capabilities, {spec.name: spec for spec in specs}
     result = await db.execute(
         select(Agent).where(Agent.org_id == org_id, Agent.id != exclude_agent_id)
     )
@@ -170,6 +286,12 @@ async def _build_orchestrator_delegate_tools(
         for capability in _infer_capabilities(target):
             capability_index.setdefault(capability, []).append(target)
     roster = "Agents available to delegate to via named tools:\n" + "\n".join(lines)
+    _DELEGATE_ROSTER_CACHE[cache_key] = (
+        time.monotonic() + _DELEGATE_ROSTER_CACHE_TTL_SECONDS,
+        roster,
+        tuple(delegate_specs),
+        {key: tuple(value) for key, value in capability_index.items()},
+    )
     return roster, delegate_specs, capability_index, delegate_by_agent_id
 
 
@@ -363,6 +485,7 @@ async def fail_chat_run(db: AsyncSession, task: Task, exc: Exception) -> None:
     previously only the inline path deleted the eagerly-saved user message,
     so a queued-mode failure left it to be resent as duplicate context.
     """
+    await await_deferred_user_write(task.id)
     task.status = "failed"
     task.result = str(exc)
     task.finished_at = utc_now()
@@ -418,6 +541,7 @@ async def _finish_task(
 ) -> None:
     if task is None:
         return
+    await await_deferred_user_write(task.id)
     if task.status == "cancelled" and status != "cancelled":
         return
     task.status = status
@@ -464,7 +588,7 @@ async def _agent_stream(
         if root_task is None:
             yield {"event": "error", "data": {"message": "chat run not found"}}
             return
-        if await _is_cancelled(db, root_task):
+        if root_task.status == "cancelled":
             return
         root_task.status = "running"
         root_task.started_at = root_task.started_at or utc_now()
@@ -639,15 +763,14 @@ async def _agent_stream(
         # that user turn so the conversation shape is well-formed.
         messages.append({"role": "user", "content": message})
 
-    if session_id and not approval_resume_id:
-        await _persist(
-            db,
-            session_id,
-            "user",
-            message,
-            {},
+    if session_id and not approval_resume_id and root_task is not None:
+        defer_user_message(
+            root_task.id,
+            session_id=session_id,
+            content=message,
             org_id=agent.org_id,
             created_by_user_id=user_id or agent.created_by_user_id,
+            db=db,
         )
 
     # Only the chat root task gets a durable event log: it is the one a
@@ -663,7 +786,9 @@ async def _agent_stream(
     start = time.monotonic()
     if rec is not None:
         await rec.record({"event": "message_start", "data": {}})
-        await rec.flush_progress(phase="thinking", content_chars=0, reasoning_chars=0)
+        asyncio.create_task(
+            rec.flush_progress(phase="thinking", content_chars=0, reasoning_chars=0)
+        )
     yield {"event": "message_start", "data": {}}
 
     tool_calls_log: list[dict[str, Any]] = []
@@ -939,6 +1064,7 @@ async def _agent_stream(
                     if await _is_cancelled(db, root_task):
                         if rec is not None:
                             await rec.close()
+                        await await_deferred_user_write(root_task.id if root_task else None)
                         return
                     if ev["type"] == "content":
                         content_parts.append(ev["text"])
@@ -1518,6 +1644,7 @@ async def _agent_stream(
             if await _is_cancelled(db, root_task):
                 if rec is not None:
                     await rec.close()
+                await await_deferred_user_write(root_task.id if root_task else None)
                 return
             elapsed = int((time.monotonic() - start) * 1000)
             # Prefer the provider's reported token counts; the char-count

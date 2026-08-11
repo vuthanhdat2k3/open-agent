@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from sqlalchemy import select, update
 
-from app.core.agent_loop import fail_chat_run
+from app.core.agent_loop import await_deferred_user_write, fail_chat_run
 from app.core.workflow.engine import run_workflow as run_workflow_engine
 from app.db.session import SessionLocal
 from app.models.task import Task
@@ -71,6 +71,10 @@ async def run_chat(ctx, payload: dict) -> None:  # noqa: ARG001
                 root_run_id=payload.get("root_run_id") or request.run_id,
                 current_task_id=task.id,
                 approval_resume_id=payload.get("approval_resume_id"),
+                prepared=bool(payload.get("prepared")),
+                prepared_agent_release_id=payload.get("prepared_agent_release_id"),
             )
         except Exception as exc:  # noqa: BLE001
             await fail_chat_run(session, task, exc)
+        finally:
+            await await_deferred_user_write(request.run_id)

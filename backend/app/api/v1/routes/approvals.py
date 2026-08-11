@@ -157,6 +157,8 @@ async def decide_approval(
                 "org_id": org_id,
                 "user_id": current_user.id,
                 "approval_resume_id": approval.id,
+                "prepared": True,
+                "prepared_agent_release_id": task.agent_release_id,
             }
             if get_settings().workflow_execution_mode == "queued":
                 await enqueue_chat_run(payload)
