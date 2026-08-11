@@ -370,6 +370,43 @@ async def fail_chat_run(db: AsyncSession, task: Task, exc: Exception) -> None:
     await db.commit()
 
 
+async def _find_direct_child_toward(
+    db: AsyncSession, from_task_id: str | None, target_task_id: str
+) -> Task | None:
+    """Find the direct child of ``from_task_id`` that leads to ``target_task_id``.
+
+    Delegation can nest arbitrarily deep (call_agent inside a delegated
+    sub-agent), so an approval's owning task may be several ``call_agent``
+    hops below the task that is resuming. Resuming must walk one hop at a
+    time — jumping straight to the owning task would skip every
+    intermediate sub-agent's turn, leaving their in-flight tool call
+    unanswered in their own message history. Walking up ``parent_task_id``
+    from the target to whichever ancestor is a direct child of
+    ``from_task_id`` gives the next single hop to recurse into; that hop
+    then applies this same logic for whatever remains below it.
+    """
+    if from_task_id is None:
+        return None
+    current = (
+        await db.execute(select(Task).where(Task.id == target_task_id))
+    ).scalar_one_or_none()
+    if current is None:
+        return None
+    # Cap the walk to a sane bound so a corrupted/cyclic parent chain can
+    # never turn into an infinite loop.
+    for _ in range(64):
+        if current.parent_task_id == from_task_id:
+            return current
+        if current.parent_task_id is None:
+            return None
+        current = (
+            await db.execute(select(Task).where(Task.id == current.parent_task_id))
+        ).scalar_one_or_none()
+        if current is None:
+            return None
+    return None
+
+
 async def _finish_task(
     db: AsyncSession,
     task: Task | None,
@@ -665,91 +702,201 @@ async def _agent_stream(
         if approval.status != "approved":
             await _finish_task(db, root_task, status="waiting_approval", result="approval pending")
             return
-        name = approval.tool_name or ""
-        args = approval.args_snapshot or {}
-        approved_resume_name = name
-        approved_resume_args = args
-        spec = tool_by_name.get(name)
-        if spec is None:
-            msg = f"error: tool '{name}' not available"
-            await _finish_task(db, root_task, status="failed", result=msg)
-            yield {"event": "error", "data": {"message": msg}}
-            return
-        tool_index = 0
-        call_id = f"approval-{approval.id}"
-        tool_observation = (
-            observability.child(getattr(llm, "last_observation_id", None)).start_tool_observation(
+        # Explicit ownership routing: an approval raised inside a delegated
+        # sub-agent (call_agent / delegate_to_*, possibly several levels
+        # deep) must execute in *that* task's agent context, not this one's -
+        # tool_by_name here only has this agent's tools, so looking the tool
+        # up directly would either 404 ("tool not available") or, worse,
+        # silently run a same-named tool belonging to the wrong agent. NULL
+        # owning_task_id means "this task" (rows from before this column
+        # existed, and direct non-delegated approvals), so it falls through
+        # to the existing direct-execution path unchanged.
+        owning_task_id = approval.owning_task_id
+        if owning_task_id and owning_task_id != current_task_id:
+            next_hop = await _find_direct_child_toward(db, current_task_id, owning_task_id)
+            if next_hop is None:
+                msg = f"approval '{approval.id}' does not belong to this run's delegation tree"
+                await _finish_task(db, root_task, status="failed", result=msg)
+                yield {"event": "error", "data": {"message": msg}}
+                return
+            child_agent_res = await db.execute(
+                select(Agent).where(Agent.id == next_hop.agent_id, Agent.org_id == agent.org_id)
+            )
+            child_agent = child_agent_res.scalar_one_or_none()
+            if child_agent is None:
+                msg = f"error: delegated agent for task '{next_hop.id}' not found"
+                await _finish_task(db, root_task, status="failed", result=msg)
+                yield {"event": "error", "data": {"message": msg}}
+                return
+            # The nested run streams its own events (message_start, tokens,
+            # nested tool calls, its own message_done) live to this same
+            # client - identical to a fresh call_agent invocation - then this
+            # frame folds its final answer back into *this* agent's message
+            # history and lets the normal loop continue, exactly like
+            # _call_agent's non-resume path does.
+            #
+            # The synthetic assistant/tool message pair below must reference
+            # a tool name that actually exists in this agent's tool schema -
+            # an orchestrator's delegate tools are dynamically named per
+            # target agent (delegate_to_<slug>, built in
+            # _build_orchestrator_delegate_tools), not the literal
+            # "call_agent". Using the wrong name here previously made every
+            # provider reject the resume with a generic "parameter is
+            # invalid" 400, because the tool_call referenced a function the
+            # API's own `tools` list never declared.
+            resume_tool_name = "call_agent"
+            resume_tool_spec = delegate_by_agent_id.get(child_agent.id)
+            if resume_tool_spec is not None:
+                resume_tool_name = resume_tool_spec.name
+            async for nested_ev in _agent_stream(
+                child_agent,
+                next_hop.goal,
+                db,
+                depth + 1,
+                session_id,
+                current_task_id=next_hop.id,
+                root_run_id=root_run_id,
+                user_id=user_id,
+                actor_agent_identity_id=actor_agent_identity_id,
+                delegation_chain=delegation_chain,
+                record_stream=False,
+                approval_resume_id=approval_resume_id,
+            ):
+                if nested_ev["event"] == "message_done":
+                    nested_result = nested_ev["data"]["content"]
+                elif nested_ev["event"] in {"approval_required", "error", "replay_diverged"}:
+                    # The nested run itself paused/failed further down the
+                    # tree (e.g. a third approval gate) - surface that
+                    # outcome as-is rather than pretending this level
+                    # finished.
+                    yield nested_ev
+                    return
+            messages.append({
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [{
+                    "id": f"resume-{approval.id}",
+                    "type": "function",
+                    "function": {
+                        "name": resume_tool_name,
+                        "arguments": json.dumps(
+                            {"target_agent_id": child_agent.id, "instruction": next_hop.goal}
+                            if resume_tool_name == "call_agent"
+                            else {"instruction": next_hop.goal},
+                            ensure_ascii=False,
+                        ),
+                    },
+                }],
+            })
+            messages.append({
+                "role": "tool",
+                "tool_call_id": f"resume-{approval.id}",
+                "content": nested_result,
+            })
+            approved_resume_result = nested_result
+            # The routing directive that forced this turn's tool_choice
+            # already did its job (it is why this delegation happened at
+            # all); forcing it again on the next model call - which is what
+            # `_ == 0` in the main loop below would otherwise do, since this
+            # is that loop's first iteration regardless of how many turns
+            # preceded the approval - makes the provider reject the request:
+            # the conversation now has this tool's result already, and
+            # providers respond with a generic "parameter is invalid" 400
+            # when forced to call it again right after being handed its own
+            # output.
+            forced_tool_choice = "auto"
+            await db.commit()
+        else:
+            name = approval.tool_name or ""
+            args = approval.args_snapshot or {}
+            approved_resume_name = name
+            approved_resume_args = args
+            spec = tool_by_name.get(name)
+            if spec is None:
+                msg = f"error: tool '{name}' not available"
+                await _finish_task(db, root_task, status="failed", result=msg)
+                yield {"event": "error", "data": {"message": msg}}
+                return
+            tool_index = 0
+            call_id = f"approval-{approval.id}"
+            tool_observation = (
+                observability.child(getattr(llm, "last_observation_id", None)).start_tool_observation(
+                    tool_name=name,
+                    tool_call_id=call_id,
+                    arguments=args,
+                    metadata={"risk_tier": spec.risk_tier.value, "approval_id": approval.id},
+                )
+                if observability is not None
+                else None
+            )
+            budget_reason = budget.record_call(name, args)
+            if budget_reason or spec.risk_tier.value not in agent.allowed_risk_tiers:
+                result = budget_reason or (
+                    f"error: tool '{name}' requires risk tier '{spec.risk_tier.value}' "
+                    "which is not enabled for this agent"
+                )
+                result_ev = {"event": "tool_result", "data": {"index": 0, "name": name, "result": result}}
+                if rec is not None:
+                    await rec.record(result_ev)
+                    await rec.close()
+                await _finish_task(db, root_task, status="failed", result=result)
+                if tool_observation is not None:
+                    tool_observation.finish_error(RuntimeError(result), result=result)
+                yield result_ev
+                return
+            call_ev = {
+                "event": "tool_call",
+                "data": {"index": tool_index, "name": name, "arguments": args, "approved": True},
+            }
+            if rec is not None:
+                await rec.record(call_ev)
+                await rec.flush_progress(phase=f"tool:{name}")
+            yield call_ev
+            try:
+                result = await execute_tool_call(spec, args, ctx)
+                tool_status = "ok"
+                if tool_observation is not None:
+                    tool_observation.finish_success(result=result)
+            except asyncio.CancelledError:
+                if tool_observation is not None:
+                    tool_observation.finish_cancelled()
+                raise
+            except Exception as exc:  # noqa: BLE001
+                result = f"error executing tool: {exc}"
+                tool_status = "error"
+                if tool_observation is not None:
+                    tool_observation.finish_error(exc, result=result)
+            result, secret_findings = scan_and_redact(str(result))
+            approved_resume_result = result
+            await record_tool_call(
+                db,
+                org_id=agent.org_id,
+                sequence=1,
                 tool_name=name,
-                tool_call_id=call_id,
                 arguments=args,
-                metadata={"risk_tier": spec.risk_tier.value, "approval_id": approval.id},
+                result=result,
+                status=tool_status,
+                duration_ms=0,
+                session_id=session_id,
             )
-            if observability is not None
-            else None
-        )
-        budget_reason = budget.record_call(name, args)
-        if budget_reason or spec.risk_tier.value not in agent.allowed_risk_tiers:
-            result = budget_reason or (
-                f"error: tool '{name}' requires risk tier '{spec.risk_tier.value}' "
-                "which is not enabled for this agent"
-            )
-            result_ev = {"event": "tool_result", "data": {"index": 0, "name": name, "result": result}}
+            result_ev = {"event": "tool_result", "data": {"index": tool_index, "name": name, "result": result}}
             if rec is not None:
                 await rec.record(result_ev)
-                await rec.close()
-            await _finish_task(db, root_task, status="failed", result=result)
-            if tool_observation is not None:
-                tool_observation.finish_error(RuntimeError(result), result=result)
+                await rec.heartbeat(phase="thinking")
             yield result_ev
-            return
-        call_ev = {
-            "event": "tool_call",
-            "data": {"index": tool_index, "name": name, "arguments": args, "approved": True},
-        }
-        if rec is not None:
-            await rec.record(call_ev)
-            await rec.flush_progress(phase=f"tool:{name}")
-        yield call_ev
-        try:
-            result = await execute_tool_call(spec, args, ctx)
-            tool_status = "ok"
-            if tool_observation is not None:
-                tool_observation.finish_success(result=result)
-        except asyncio.CancelledError:
-            if tool_observation is not None:
-                tool_observation.finish_cancelled()
-            raise
-        except Exception as exc:  # noqa: BLE001
-            result = f"error executing tool: {exc}"
-            tool_status = "error"
-            if tool_observation is not None:
-                tool_observation.finish_error(exc, result=result)
-        result, secret_findings = scan_and_redact(str(result))
-        approved_resume_result = result
-        await record_tool_call(
-            db,
-            org_id=agent.org_id,
-            sequence=1,
-            tool_name=name,
-            arguments=args,
-            result=result,
-            status=tool_status,
-            duration_ms=0,
-            session_id=session_id,
-        )
-        result_ev = {"event": "tool_result", "data": {"index": tool_index, "name": name, "result": result}}
-        if rec is not None:
-            await rec.record(result_ev)
-            await rec.heartbeat(phase="thinking")
-        yield result_ev
-        tool_calls_log.append({"name": name, "arguments": args, "result": result, "approval_id": approval.id})
-        messages.append({
-            "role": "assistant",
-            "content": None,
-            "tool_calls": [{"id": call_id, "type": "function", "function": {"name": name, "arguments": json.dumps(args)}}],
-        })
-        messages.append({"role": "tool", "tool_call_id": call_id, "content": result})
-        await db.commit()
+            tool_calls_log.append({"name": name, "arguments": args, "result": result, "approval_id": approval.id})
+            messages.append({
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [{"id": call_id, "type": "function", "function": {"name": name, "arguments": json.dumps(args)}}],
+            })
+            messages.append({"role": "tool", "tool_call_id": call_id, "content": result})
+            # Same reasoning as the delegated-resume branch above: this tool
+            # call already satisfied whatever routing directive forced it,
+            # so the next model call must not be forced into calling it
+            # again.
+            forced_tool_choice = "auto"
+            await db.commit()
 
     for _ in range(agent.max_iterations):
         content_parts: list[str] = []
@@ -985,6 +1132,7 @@ async def _agent_stream(
                                 tool_name=name,
                                 args_snapshot=args,
                                 requested_by=user_id or agent.created_by_user_id,
+                                owning_task_id=current_task_id,
                             )
                             guardrail_events_total.labels(
                                 agent.org_id, "approval_required", "paused"
@@ -1112,6 +1260,74 @@ async def _agent_stream(
                                 tool_calls_total.labels(name, "error").inc()
                                 result = f"error executing tool: {e}"
                                 tool_status = "error"
+                            # A delegated sub-agent (call_agent / delegate_to_*) that hits an
+                            # approval gate returns a plain string summary instead of raising -
+                            # from this loop's point of view that looked like an ordinary tool
+                            # result, so the root run would otherwise answer "waiting for your
+                            # approval" in text and finish as succeeded, leaving the approval
+                            # permanently unreachable from the UI (no approve/reject action is
+                            # ever rendered because no approval_required event was emitted for
+                            # the root run). Detect it here and pause the root run the same way
+                            # a direct tool call would.
+                            if tool_status == "ok" and (
+                                name == "call_agent" or name.startswith("delegate_to_")
+                            ):
+                                pending_sub_approval = await db.execute(
+                                    select(ApprovalRequest).where(
+                                        ApprovalRequest.run_id == root_run_id,
+                                        ApprovalRequest.org_id == agent.org_id,
+                                        ApprovalRequest.status == "pending",
+                                    ).order_by(ApprovalRequest.created_at.desc()).limit(1)
+                                )
+                                sub_approval = pending_sub_approval.scalar_one_or_none()
+                                if sub_approval is not None:
+                                    tool_sequence += 1
+                                    await record_tool_call(
+                                        db,
+                                        org_id=agent.org_id,
+                                        sequence=tool_sequence,
+                                        tool_name=name,
+                                        arguments=args,
+                                        result=str(result),
+                                        status="ok",
+                                        duration_ms=int((time.monotonic() - tool_started) * 1000),
+                                        session_id=session_id,
+                                    )
+                                    result_ev = {
+                                        "event": "tool_result",
+                                        "data": {"index": tool_index, "name": name, "result": result},
+                                    }
+                                    if rec is not None:
+                                        await rec.record(result_ev)
+                                    yield result_ev
+                                    approval_ev = {
+                                        "event": "approval_required",
+                                        "data": {
+                                            "approval_id": sub_approval.id,
+                                            "tool_name": sub_approval.tool_name,
+                                            "run_id": root_run_id,
+                                            "args_snapshot": scan_and_redact(
+                                                json.dumps(sub_approval.args_snapshot or {}, ensure_ascii=False)
+                                            )[0],
+                                        },
+                                    }
+                                    if rec is not None:
+                                        await rec.record(approval_ev)
+                                    await _finish_task(
+                                        db,
+                                        root_task,
+                                        status="waiting_approval",
+                                        result=f"approval required for tool '{sub_approval.tool_name}'",
+                                    )
+                                    if tool_observation is not None:
+                                        tool_observation.finish_cancelled(
+                                            metadata={
+                                                "approval_id": sub_approval.id,
+                                                "tool_status": "pending_approval",
+                                            }
+                                        )
+                                    yield approval_ev
+                                    return
                             # Recorded so this run can be replayed later
                             # without calling the tool again.
                             tool_sequence += 1
