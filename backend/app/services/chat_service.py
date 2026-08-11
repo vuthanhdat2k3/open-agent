@@ -136,14 +136,27 @@ class ChatService:
         current_task_id: str | None = None,
         approval_resume_id: str | None = None,
         user_role: str | None = None,
+        prepared: bool = False,
+        prepared_agent_release_id: str | None = None,
     ) -> AgentLoopResult:
-        session = await self.ensure_session(org_id, request, user_id, user_role)
-        agent = await self._load_agent(org_id, request.agent_id, session.agent_release_id)
+        if prepared:
+            if not request.session_id:
+                raise ValueError("prepared chat run requires a session")
+            session_id = request.session_id
+            agent = await self._load_agent(
+                org_id,
+                request.agent_id,
+                prepared_agent_release_id,
+            )
+        else:
+            session = await self.ensure_session(org_id, request, user_id, user_role)
+            session_id = session.id
+            agent = await self._load_agent(org_id, request.agent_id, session.agent_release_id)
         return await run_agent_loop(
             agent,
             request.message,
             self.db,
-            session_id=session.id,
+            session_id=session_id,
             current_task_id=current_task_id,
             root_run_id=root_run_id or request.run_id,
             user_id=user_id,

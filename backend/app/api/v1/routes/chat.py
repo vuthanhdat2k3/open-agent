@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.sse import format_sse
 from app.config import get_settings
-from app.core.agent_loop import fail_chat_run
+from app.core.agent_loop import await_deferred_user_write, fail_chat_run
 from app.core.chat_events import (
     TERMINAL_EVENTS,
     iter_run_events,
@@ -59,18 +59,7 @@ async def run_chat_detached(payload: dict) -> None:
         active_task = asyncio.current_task()
         if active_task is not None:
             _ACTIVE_CHAT_TASKS[request.run_id] = active_task
-        res = await db.execute(
-            select(Task).where(Task.id == request.run_id, Task.org_id == payload["org_id"])
-        )
-        task = res.scalar_one_or_none()
-        if task is None:
-            _ACTIVE_CHAT_TASKS.pop(request.run_id, None)
-            return
-        if task.status != "queued":
-            _ACTIVE_CHAT_TASKS.pop(request.run_id, None)
-            return
-        task.status = "running"
-        await db.commit()
+        task: Task | None = None
         try:
             await ChatService(db).run(
                 payload["org_id"],
@@ -78,12 +67,20 @@ async def run_chat_detached(payload: dict) -> None:
                 user_id=payload.get("user_id"),
                 user_role=payload.get("user_role"),
                 root_run_id=payload.get("root_run_id") or request.run_id,
-                current_task_id=task.id,
+                current_task_id=request.run_id,
                 approval_resume_id=payload.get("approval_resume_id"),
+                prepared=bool(payload.get("prepared")),
+                prepared_agent_release_id=payload.get("prepared_agent_release_id"),
             )
         except Exception as exc:  # noqa: BLE001
-            await fail_chat_run(db, task, exc)
+            res = await db.execute(
+                select(Task).where(Task.id == request.run_id, Task.org_id == payload["org_id"])
+            )
+            task = res.scalar_one_or_none()
+            if task is not None:
+                await fail_chat_run(db, task, exc)
         finally:
+            await await_deferred_user_write(request.run_id)
             if _ACTIVE_CHAT_TASKS.get(request.run_id) is active_task:
                 _ACTIVE_CHAT_TASKS.pop(request.run_id, None)
 
@@ -132,6 +129,8 @@ async def chat(
         "org_id": org_id,
         "user_id": current_user.id,
         "user_role": getattr(http_request.state, "role", None),
+        "prepared": True,
+        "prepared_agent_release_id": getattr(_agent, "active_release_id", None),
     }
     if task.status in {"succeeded", "failed", "diverged", "cancelled"}:
         run_status = task.status
@@ -168,7 +167,11 @@ async def get_chat_run(
 ):
     res = await db.execute(
         select(Task)
-        .where(Task.root_run_id == run_id, Task.org_id == org_id)
+        .where(
+            Task.root_run_id == run_id,
+            Task.org_id == org_id,
+            Task.parent_task_id.is_(None),
+        )
         .order_by(Task.created_at.desc())
     )
     task = res.scalars().first()
@@ -197,7 +200,11 @@ async def cancel_chat_run(
     db: AsyncSession = Depends(get_db),
 ):
     res = await db.execute(
-        select(Task).where(Task.root_run_id == run_id, Task.org_id == org_id)
+        select(Task).where(
+            Task.root_run_id == run_id,
+            Task.org_id == org_id,
+            Task.parent_task_id.is_(None),
+        )
     )
     task = res.scalars().first()
     if task is None:
@@ -240,7 +247,11 @@ async def stream_chat_run_events(
     """
     async with SessionLocal() as session:
         res = await session.execute(
-            select(Task).where(Task.root_run_id == run_id, Task.org_id == org_id)
+            select(Task).where(
+                Task.root_run_id == run_id,
+                Task.org_id == org_id,
+                Task.parent_task_id.is_(None),
+            )
         )
         task = res.scalars().first()
         if task is None:
