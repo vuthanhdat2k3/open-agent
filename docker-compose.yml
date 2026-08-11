@@ -1,4 +1,21 @@
 services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${OPENAGENT_POSTGRES_USER:-openagent}
+      POSTGRES_PASSWORD: ${OPENAGENT_POSTGRES_PASSWORD:?Set OPENAGENT_POSTGRES_PASSWORD in .env to a random secret}
+      POSTGRES_DB: ${OPENAGENT_POSTGRES_DB:-openagent}
+    ports:
+      - "5433:5432"
+    volumes:
+      - openagent_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${OPENAGENT_POSTGRES_USER:-openagent} -d ${OPENAGENT_POSTGRES_DB:-openagent}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
   redis:
     image: redis:7
     ports:
@@ -83,6 +100,8 @@ services:
     ports:
       - "8000:8000"
     depends_on:
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
       minio:
@@ -120,6 +139,8 @@ services:
       DOCKER_HOST: tcp://docker-socket-proxy:2375
     command: ["arq", "app.worker.WorkerSettings"]
     depends_on:
+      postgres:
+        condition: service_healthy
       api:
         condition: service_healthy
       redis:
@@ -245,5 +266,7 @@ services:
       - "4318:4318"
 
 volumes:
+  openagent_pgdata:
+    name: openagent_pgdata
   qdrant-data:
   minio-data:
