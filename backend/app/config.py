@@ -62,6 +62,18 @@ class Settings(BaseSettings):
     # routinely carries user PII and provider secrets, and the GenAI semantic
     # conventions treat content capture as an explicit choice.
     otel_capture_message_content: bool = False
+    # LLM observability is independently switchable from OTel. Content is
+    # captured after redaction by default when the feature is enabled; org,
+    # agent, and request policy may only narrow this permission.
+    observability_enabled: bool = False
+    observability_capture_content: bool = True
+    observability_sampling_rate: float = 1.0
+    observability_max_content_bytes: int = 2 * 1024 * 1024
+    langfuse_enabled: bool = False
+    langfuse_public_key: str = ""
+    langfuse_secret_key: str = ""
+    langfuse_base_url: str = ""
+    langfuse_flush_timeout_seconds: float = 5.0
     log_format: Literal["json", "console"] = "json"
     budget_max_tool_calls: int = 40
     budget_max_cost_usd: float = 2.0

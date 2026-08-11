@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.dependencies import get_current_org_id, get_db, require_permission
 from app.models.task import Task
 from app.services.debug_service import DebugService
@@ -87,4 +88,17 @@ async def task_tree(
             nodes[task.parent_task_id]["children"].append(node)
         else:
             roots.append(node)
-    return {"root_run_id": root_run_id, "tasks": roots}
+    settings = get_settings()
+    trace_url = None
+    langfuse_trace_id_value = root_run_id
+    if settings.langfuse_base_url:
+        from app.core.observability.langfuse_sink import langfuse_trace_id
+
+        langfuse_trace_id_value = langfuse_trace_id(root_run_id)
+        trace_url = f"{settings.langfuse_base_url.rstrip('/')}/trace/{langfuse_trace_id_value}"
+    return {
+        "root_run_id": root_run_id,
+        "trace_id": langfuse_trace_id_value,
+        "langfuse_url": trace_url,
+        "tasks": roots,
+    }

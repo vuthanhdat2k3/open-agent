@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.router import api_router
 from app.config import get_settings
+from app.core.observability.llm_trace import NoopSink, set_default_sink
 from app.core.observability.logging import configure_logging, request_context_middleware
 from app.core.observability.metrics import mount_metrics
 from app.core.observability.tracing import init_tracing
@@ -23,7 +24,20 @@ from app.schemas.common import HealthResponse
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
-    yield
+    sink = None
+    settings = get_settings()
+    if settings.observability_enabled and settings.langfuse_enabled:
+        from app.core.observability.langfuse_sink import build_langfuse_sink
+
+        sink = build_langfuse_sink(settings)
+        if sink:
+            set_default_sink(sink)
+    try:
+        yield
+    finally:
+        if sink:
+            sink.flush(settings.langfuse_flush_timeout_seconds)
+        set_default_sink(NoopSink())
 
 
 app = FastAPI(title="OpenAgent", version="0.1.0", lifespan=lifespan)

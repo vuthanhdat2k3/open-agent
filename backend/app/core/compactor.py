@@ -3,6 +3,7 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.observability.llm_trace import ObservabilityContext
 from app.core.providers.factory import build_driver
 from app.models.message import Message
 from app.models.model import Model
@@ -15,6 +16,8 @@ async def compact_session(
     agent_model: Model,
     provider: Provider,
     keep_last: int = 4,
+    *,
+    observability: ObservabilityContext | None = None,
 ) -> str:
     """Load a session's messages, summarize the older ones, return a compacted
     context string combining the summary + recent messages."""
@@ -29,7 +32,12 @@ async def compact_session(
     to_summarize = messages[:-keep_last]
     transcript = "\n\n".join(f"{m.role}: {m.content}" for m in to_summarize)
     try:
-        llm = build_driver(provider, agent_model)
+        llm = build_driver(
+            provider,
+            agent_model,
+            observability=observability,
+            generation_name="compactor",
+        )
         summary, _, _ = await llm.complete(
             [
                 {

@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.llm import LLMClient  # noqa: F401
+from app.core.observability.llm_trace import ObservabilityContext
 from app.core.providers.factory import build_driver
 from app.models.memory import AgentMemory, SessionMemory
 from app.models.message import Message
@@ -22,6 +23,8 @@ async def compact_tiered_memory(
     agent_id: str | None = None,
     org_id: str | None = None,
     created_by_user_id: str | None = None,
+    *,
+    observability: ObservabilityContext | None = None,
 ) -> dict[str, Any]:
     """Hierarchical memory management (Hot / Warm / Cold tiering).
 
@@ -72,7 +75,12 @@ async def compact_tiered_memory(
     # 2. Warm Tier: Summarize older transcript
     warm_summary = ""
     try:
-        llm = build_driver(provider, agent_model)
+        llm = build_driver(
+            provider,
+            agent_model,
+            observability=observability,
+            generation_name="memory-summarization",
+        )
         summary_text, _, _ = await llm.complete(
             [
                 {

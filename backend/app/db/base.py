@@ -5,7 +5,9 @@ from sqlalchemy.orm import DeclarativeBase
 
 
 def gen_id() -> str:
-    return str(uuid.uuid4())
+    # Langfuse v4 trace IDs are 32 lowercase hexadecimal characters. New run
+    # IDs therefore remain UUIDv4 values while also mapping 1:1 to trace IDs.
+    return uuid.uuid4().hex
 
 
 def utc_now() -> datetime:
