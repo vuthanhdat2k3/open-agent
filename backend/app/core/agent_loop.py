@@ -26,6 +26,7 @@ from app.core.observability.audit import log_action
 from app.core.observability.llm_trace import ObservabilityContext, build_trace_context
 from app.core.observability.metrics import (
     agent_run_cost_usd_total,
+    chat_finalization_total,
     guardrail_events_total,
     tool_call_duration_seconds,
     tool_calls_total,
@@ -422,6 +423,17 @@ def _is_tool_failure(name: str, result: str) -> bool:
         except (ValueError, IndexError):
             return False
     return False
+
+
+_FINALIZATION_FALLBACK_MAX_CHARS = 12_000
+
+
+def _latest_successful_tool_result(tool_calls: list[dict[str, Any]]) -> str | None:
+    for call in reversed(tool_calls):
+        result = str(call.get("result") or "").strip()
+        if result and not _is_tool_failure(str(call.get("name") or ""), result):
+            return result[:_FINALIZATION_FALLBACK_MAX_CHARS]
+    return None
 
 
 async def _persist(
@@ -1074,6 +1086,31 @@ async def _agent_stream(
             forced_tool_choice = "auto"
             await db.commit()
 
+    finalization_retry_used = False
+    finalization_outcome = "direct"
+
+    async def _retry_finalization_without_tools() -> tuple[str, str, dict[str, int], bool, bool]:
+        parts: list[str] = []
+        reasoning: list[str] = []
+        usage: dict[str, int] = {}
+        estimated = True
+        unexpected_tool_calls = False
+        async for retry_ev in llm.stream(
+            messages,
+            tools=None,
+            temperature=agent.temperature,
+        ):
+            if retry_ev["type"] == "content":
+                parts.append(retry_ev["text"])
+            elif retry_ev["type"] == "reasoning":
+                reasoning.append(retry_ev["text"])
+            elif retry_ev["type"] == "usage":
+                usage = retry_ev["usage"]
+                estimated = bool(retry_ev.get("estimated", True))
+            elif retry_ev["type"] == "tool_calls":
+                unexpected_tool_calls = True
+        return "".join(parts), "".join(reasoning), usage, estimated, unexpected_tool_calls
+
     for _ in range(agent.max_iterations):
         content_parts: list[str] = []
         reasoning_parts: list[str] = []
@@ -1702,21 +1739,92 @@ async def _agent_stream(
 
             # Final answer (no tool calls this step)
             final = "".join(content_parts)
+            reasoning_text = "".join(reasoning_parts)
+            finalization_attempts: list[tuple[dict[str, int], bool]] = [
+                (stream_usage, usage_estimated)
+            ]
+            if (
+                not final.strip()
+                and not reasoning_text.strip()
+                and not finalization_retry_used
+                and budget.exceeded() is None
+            ):
+                finalization_retry_used = True
+                logger.info(
+                    "chat_finalization_retry",
+                    run_id=root_run_id or current_task_id,
+                    task_id=current_task_id,
+                )
+                try:
+                    (
+                        retry_final,
+                        retry_reasoning,
+                        retry_usage,
+                        retry_estimated,
+                        unexpected_tool_calls,
+                    ) = await _retry_finalization_without_tools()
+                    finalization_attempts.append((retry_usage, retry_estimated))
+                    if unexpected_tool_calls:
+                        logger.warning(
+                            "chat_finalization_retry_returned_tool_calls",
+                            run_id=root_run_id or current_task_id,
+                        )
+                    final = retry_final
+                    reasoning_text = retry_reasoning
+                    if final.strip():
+                        finalization_outcome = "retry"
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(
+                        "chat_finalization_retry_failed",
+                        run_id=root_run_id or current_task_id,
+                        error_type=type(exc).__name__,
+                    )
+
             if await _is_cancelled(db, root_task):
                 if rec is not None:
                     await rec.close()
                 await await_deferred_user_write(root_task.id if root_task else None)
                 return
+            if not final.strip():
+                fallback = _latest_successful_tool_result(tool_calls_log)
+                if fallback:
+                    final, _ = scan_and_redact(fallback)
+                    final = final[:_FINALIZATION_FALLBACK_MAX_CHARS].strip()
+                    if final:
+                        finalization_outcome = "tool_result_fallback"
+                if not final.strip():
+                    finalization_outcome = "incomplete"
+                    chat_finalization_total.labels(finalization_outcome).inc()
+                    incomplete_message = "No answer was generated. Please try again."
+                    await _finish_task(
+                        db,
+                        root_task,
+                        status="failed",
+                        result=incomplete_message,
+                    )
+                    error_ev = {"event": "error", "data": {"message": incomplete_message}}
+                    if rec is not None:
+                        await rec.record(error_ev)
+                        await rec.close()
+                    yield error_ev
+                    return
+
+            chat_finalization_total.labels(finalization_outcome).inc()
             elapsed = int((time.monotonic() - start) * 1000)
             # Prefer the provider's reported token counts; the char-count
             # heuristic is only a fallback, and cost derived from it is a
             # guess (flagged via usage_estimated).
-            if stream_usage and not usage_estimated:
-                in_tok = int(stream_usage.get("input_tokens", 0))
-                out_tok = int(stream_usage.get("output_tokens", 0))
+            reported_attempts = [
+                usage for usage, estimated in finalization_attempts if not estimated
+            ]
+            if reported_attempts:
+                in_tok = sum(int(usage.get("input_tokens", 0)) for usage in reported_attempts)
+                out_tok = sum(int(usage.get("output_tokens", 0)) for usage in reported_attempts)
+                usage_estimated = len(reported_attempts) != len(finalization_attempts)
             else:
                 in_tok = _estimate_tokens(json.dumps(messages, ensure_ascii=False))
                 out_tok = _estimate_tokens(final)
+                usage_estimated = True
             cost = LLMClient.estimate_cost(model, {"input_tokens": in_tok, "output_tokens": out_tok})
             usage = {
                 "input_tokens": in_tok,
@@ -1724,7 +1832,7 @@ async def _agent_stream(
                 "estimated": usage_estimated,
             }
             model_label = model.display_name or model.name
-            reasoning_text = "".join(reasoning_parts)
+            reasoning_text = reasoning_text or "".join(reasoning_parts)
             done_ev = {
                 "event": "message_done",
                 "data": {
@@ -1736,6 +1844,7 @@ async def _agent_stream(
                     "session_id": session_id,
                     "model": model_label,
                     "reasoning": reasoning_text,
+                    "finalization": finalization_outcome,
                 },
             }
             if rec is not None:
@@ -1758,6 +1867,7 @@ async def _agent_stream(
                         "tools": tool_calls_log,
                         "model": model_label,
                         "reasoning": reasoning_text,
+                    "finalization": finalization_outcome,
                     },
                     org_id=agent.org_id,
                     created_by_user_id=user_id or agent.created_by_user_id,

@@ -260,8 +260,11 @@ function ChatMessageItemBase({ message: m, debug, hasLiveTools, onApprovalDecisi
 
   // Assistant message
   // The live activity row owns the empty-state status, so do not render a
-  // second placeholder bubble for the same run.
-  if (!m.content && !m.meta?.reasoning && m.meta?.cost_usd == null) return null;
+  // second placeholder bubble for the same run. A terminal message with cost
+  // metadata but no content is a legacy/incomplete response and must remain
+  // visible as an actionable error instead of a blank bubble.
+  const isIncompleteAssistant = !m.content && !m.meta?.reasoning && m.meta?.cost_usd != null;
+  if (!m.content && !m.meta?.reasoning && !isIncompleteAssistant) return null;
   const showHistoricalTools = debug && !hasLiveTools && m.meta?.tools && m.meta.tools.length > 0;
 
   return (
@@ -341,7 +344,7 @@ function ChatMessageItemBase({ message: m, debug, hasLiveTools, onApprovalDecisi
             </div>
           </Collapsible>
         ) : null}
-        {m.content && (
+        {(m.content || isIncompleteAssistant) && (
           <div className="select-text text-sm leading-relaxed">
           {m.content ? (
             <React.Suspense
@@ -351,6 +354,8 @@ function ChatMessageItemBase({ message: m, debug, hasLiveTools, onApprovalDecisi
             </React.Suspense>
           ) : m.meta?.reasoning ? (
             <span className="text-sm text-muted-foreground">Generating answer…</span>
+          ) : isIncompleteAssistant ? (
+            <span className="text-sm text-destructive">No answer was generated. Please try again.</span>
           ) : (
             <span className="flex items-center gap-2 text-muted-foreground">
               <span className="inline-flex gap-0.5">
