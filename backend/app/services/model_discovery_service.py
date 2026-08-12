@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+from app.core.providers.constants import DEFAULT_CONTEXT_WINDOW
 from app.core.providers.driver import LLMDriver, ModelInfo, TestResult
 from app.core.providers.templates import ProviderTemplate
 from app.db.base import utc_now
@@ -86,7 +87,7 @@ class ModelDiscoveryService:
         return {
             "name": info.name,
             "display_name": info.display_name or info.name,
-            "context_window": info.context_window or 8192,
+            "context_window": info.context_window or DEFAULT_CONTEXT_WINDOW,
             "input_cost_per_1k": info.input_cost_per_1k or 0.0,
             "output_cost_per_1k": info.output_cost_per_1k or 0.0,
             "source": source,
