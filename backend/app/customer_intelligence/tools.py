@@ -410,7 +410,11 @@ def register_customer_intelligence_tools() -> None:
     register(
         ToolSpec(
             name="email_list_new",
-            description="List new inbound email for a connected account (id, sender, subject).",
+            description=(
+                "List recent messages in the connected Gmail inbox and return message ID, "
+                "sender, and subject. Use email_search instead for dates, people, subjects, "
+                "attachments, or other filters."
+            ),
             input_schema=EMAIL_LIST_NEW_SCHEMA,
             run=_email_list_new,
             risk_tier=RiskTier.read,
@@ -419,13 +423,28 @@ def register_customer_intelligence_tools() -> None:
     register(
         ToolSpec(
             name="email_get",
-            description="Fetch one inbound email by provider_message_id.",
+            description=(
+                "Read one Gmail message by the provider_message_id returned from "
+                "email_list_new or email_search."
+            ),
             input_schema=EMAIL_GET_SCHEMA,
             run=_email_get,
             risk_tier=RiskTier.read,
         )
     )
-    register(ToolSpec(name="email_search", description="Search connected Gmail by Gmail query syntax.", input_schema=EMAIL_SEARCH_SCHEMA, run=_email_search, risk_tier=RiskTier.read))
+    register(
+        ToolSpec(
+            name="email_search",
+            description=(
+                "Search the connected Gmail account. Convert the user's request to Gmail query "
+                "syntax, including date operators such as newer_than:1d or after:YYYY/MM/DD "
+                "before:YYYY/MM/DD. Returns message ID, sender, and subject."
+            ),
+            input_schema=EMAIL_SEARCH_SCHEMA,
+            run=_email_search,
+            risk_tier=RiskTier.read,
+        )
+    )
     for name, description, runner in (
         ("email_mark_read", "Mark an email as read.", _email_mark_read),
         ("email_mark_unread", "Mark an email as unread.", _email_mark_unread),
@@ -433,18 +452,94 @@ def register_customer_intelligence_tools() -> None:
         ("email_unstar", "Remove the star from an email.", _email_unstar),
         ("email_archive", "Archive an email by removing it from Inbox.", _email_archive),
     ):
-        register(ToolSpec(name=name, description=description, input_schema=EMAIL_STATE_SCHEMA, run=runner, risk_tier=RiskTier.write, requires_approval=True))
-    register(ToolSpec(name="email_trash", description="Move an email to Gmail Trash; never permanently delete.", input_schema=EMAIL_STATE_SCHEMA, run=_email_trash, risk_tier=RiskTier.dangerous, requires_approval=True))
-    register(ToolSpec(name="email_restore", description="Restore an email from Gmail Trash.", input_schema=EMAIL_STATE_SCHEMA, run=_email_restore, risk_tier=RiskTier.write, requires_approval=True))
-    register(ToolSpec(name="email_list_labels", description="List Gmail labels.", input_schema=EMAIL_LABELS_SCHEMA, run=_email_list_labels, risk_tier=RiskTier.read))
-    register(ToolSpec(name="email_apply_label", description="Apply Gmail labels to an email.", input_schema=EMAIL_LABEL_SCHEMA, run=_email_apply_label, risk_tier=RiskTier.write, requires_approval=True))
-    register(ToolSpec(name="email_remove_label", description="Remove Gmail labels from an email.", input_schema=EMAIL_LABEL_SCHEMA, run=_email_remove_label, risk_tier=RiskTier.write, requires_approval=True))
-    register(ToolSpec(name="email_reply", description="Create a reply draft for an email.", input_schema=EMAIL_REPLY_SCHEMA, run=_email_reply, risk_tier=RiskTier.write, requires_approval=True))
-    register(ToolSpec(name="email_forward", description="Create a forwarded email draft.", input_schema=EMAIL_FORWARD_SCHEMA, run=_email_forward, risk_tier=RiskTier.write, requires_approval=True))
+        register(
+            ToolSpec(
+                name=name,
+                description=f"{description} Requires a provider_message_id returned by an email tool.",
+                input_schema=EMAIL_STATE_SCHEMA,
+                run=runner,
+                risk_tier=RiskTier.write,
+                requires_approval=True,
+            )
+        )
+    register(
+        ToolSpec(
+            name="email_trash",
+            description=(
+                "Move one Gmail message to Trash by provider_message_id; never permanently delete it."
+            ),
+            input_schema=EMAIL_STATE_SCHEMA,
+            run=_email_trash,
+            risk_tier=RiskTier.dangerous,
+            requires_approval=True,
+        )
+    )
+    register(
+        ToolSpec(
+            name="email_restore",
+            description="Restore one Gmail message from Trash by provider_message_id.",
+            input_schema=EMAIL_STATE_SCHEMA,
+            run=_email_restore,
+            risk_tier=RiskTier.write,
+            requires_approval=True,
+        )
+    )
+    register(
+        ToolSpec(
+            name="email_list_labels",
+            description="List Gmail label IDs and display names for the connected account.",
+            input_schema=EMAIL_LABELS_SCHEMA,
+            run=_email_list_labels,
+            risk_tier=RiskTier.read,
+        )
+    )
+    register(
+        ToolSpec(
+            name="email_apply_label",
+            description="Apply Gmail label IDs to one message identified by provider_message_id.",
+            input_schema=EMAIL_LABEL_SCHEMA,
+            run=_email_apply_label,
+            risk_tier=RiskTier.write,
+            requires_approval=True,
+        )
+    )
+    register(
+        ToolSpec(
+            name="email_remove_label",
+            description="Remove Gmail label IDs from one message identified by provider_message_id.",
+            input_schema=EMAIL_LABEL_SCHEMA,
+            run=_email_remove_label,
+            risk_tier=RiskTier.write,
+            requires_approval=True,
+        )
+    )
+    register(
+        ToolSpec(
+            name="email_reply",
+            description="Create a reply draft for a Gmail message ID; this does not send it.",
+            input_schema=EMAIL_REPLY_SCHEMA,
+            run=_email_reply,
+            risk_tier=RiskTier.write,
+            requires_approval=True,
+        )
+    )
+    register(
+        ToolSpec(
+            name="email_forward",
+            description="Create a forward draft from a Gmail message ID; this does not send it.",
+            input_schema=EMAIL_FORWARD_SCHEMA,
+            run=_email_forward,
+            risk_tier=RiskTier.write,
+            requires_approval=True,
+        )
+    )
     register(
         ToolSpec(
             name="email_create_draft",
-            description="Create a text/plain email draft on the connected account.",
+            description=(
+                "Create a text/plain email draft on the connected account and return its draft_id. "
+                "Use email_send separately only when the draft should be sent."
+            ),
             input_schema=EMAIL_CREATE_DRAFT_SCHEMA,
             run=_email_create_draft,
             risk_tier=RiskTier.write,
@@ -454,7 +549,10 @@ def register_customer_intelligence_tools() -> None:
     register(
         ToolSpec(
             name="email_send",
-            description="Send a draft with an explicit idempotency key (duplicate keys no-op).",
+            description=(
+                "Send an existing draft_id with an explicit idempotency key; duplicate keys no-op. "
+                "Create the draft first when no draft_id is available."
+            ),
             input_schema=EMAIL_SEND_SCHEMA,
             run=_email_send,
             risk_tier=RiskTier.write,
@@ -462,19 +560,58 @@ def register_customer_intelligence_tools() -> None:
         )
     )
     register(
-        ToolSpec(name="drive_list_files", description="List files in the connected Google Drive.", input_schema=DRIVE_LIST_FILES_SCHEMA, run=_drive_list_files, risk_tier=RiskTier.read)
+        ToolSpec(
+            name="drive_list_files",
+            description=(
+                "List recent non-trashed Google Drive files, optionally filtering by a "
+                "case-insensitive filename substring. Returns file IDs and metadata, not content."
+            ),
+            input_schema=DRIVE_LIST_FILES_SCHEMA,
+            run=_drive_list_files,
+            risk_tier=RiskTier.read,
+        )
     )
     register(
-        ToolSpec(name="drive_get_file", description="Read a text-exportable Google Drive file.", input_schema=DRIVE_GET_FILE_SCHEMA, run=_drive_get_file, risk_tier=RiskTier.read)
+        ToolSpec(
+            name="drive_get_file",
+            description=(
+                "Read text content from one Google Drive file ID returned by drive_list_files. "
+                "Google-native documents are exported as plain text."
+            ),
+            input_schema=DRIVE_GET_FILE_SCHEMA,
+            run=_drive_get_file,
+            risk_tier=RiskTier.read,
+        )
     )
     register(
-        ToolSpec(name="drive_create_file", description="Create a text file in Google Drive after approval.", input_schema=DRIVE_CREATE_FILE_SCHEMA, run=_drive_create_file, risk_tier=RiskTier.write, requires_approval=True)
+        ToolSpec(
+            name="drive_create_file",
+            description="Create a Google Drive text file with a name, content, and optional parent folder ID.",
+            input_schema=DRIVE_CREATE_FILE_SCHEMA,
+            run=_drive_create_file,
+            risk_tier=RiskTier.write,
+            requires_approval=True,
+        )
     )
     register(
-        ToolSpec(name="drive_update_file", description="Update a Google Drive file after approval.", input_schema=DRIVE_UPDATE_FILE_SCHEMA, run=_drive_update_file, risk_tier=RiskTier.write, requires_approval=True)
+        ToolSpec(
+            name="drive_update_file",
+            description="Update content or name for one Google Drive file ID.",
+            input_schema=DRIVE_UPDATE_FILE_SCHEMA,
+            run=_drive_update_file,
+            risk_tier=RiskTier.write,
+            requires_approval=True,
+        )
     )
     register(
-        ToolSpec(name="drive_delete_file", description="Delete a Google Drive file after approval.", input_schema=DRIVE_DELETE_FILE_SCHEMA, run=_drive_delete_file, risk_tier=RiskTier.dangerous, requires_approval=True)
+        ToolSpec(
+            name="drive_delete_file",
+            description="Delete one Google Drive file by file ID.",
+            input_schema=DRIVE_DELETE_FILE_SCHEMA,
+            run=_drive_delete_file,
+            risk_tier=RiskTier.dangerous,
+            requires_approval=True,
+        )
     )
     register(
         ToolSpec(
@@ -506,7 +643,10 @@ def register_customer_intelligence_tools() -> None:
     register(
         ToolSpec(
             name="calendar_list_events",
-            description="List calendar events for the connected account within a time range.",
+            description=(
+                "List connected Google Calendar events in an ISO-8601 time range. Resolve relative "
+                "dates such as today or tomorrow and include timezone offsets before calling."
+            ),
             input_schema=CALENDAR_LIST_EVENTS_SCHEMA,
             run=_calendar_list_events,
             risk_tier=RiskTier.read,
@@ -515,15 +655,48 @@ def register_customer_intelligence_tools() -> None:
     register(
         ToolSpec(
             name="calendar_get_event",
-            description="Get one calendar event by provider_event_id.",
+            description="Get one Google Calendar event by provider_event_id returned by a calendar tool.",
             input_schema=CALENDAR_GET_EVENT_SCHEMA,
             run=_calendar_get_event,
             risk_tier=RiskTier.read,
         )
     )
-    register(ToolSpec(name="calendar_create_event", description="Create a calendar event after approval.", input_schema=CALENDAR_CREATE_EVENT_SCHEMA, run=_calendar_create_event, risk_tier=RiskTier.write, requires_approval=True))
-    register(ToolSpec(name="calendar_update_event", description="Update a calendar event after approval.", input_schema=CALENDAR_UPDATE_EVENT_SCHEMA, run=_calendar_update_event, risk_tier=RiskTier.write, requires_approval=True))
-    register(ToolSpec(name="calendar_delete_event", description="Delete a calendar event after approval.", input_schema=CALENDAR_DELETE_EVENT_SCHEMA, run=_calendar_delete_event, risk_tier=RiskTier.dangerous, requires_approval=True))
+    register(
+        ToolSpec(
+            name="calendar_create_event",
+            description=(
+                "Create a Google Calendar event with ISO-8601 start/end timestamps including "
+                "timezone offsets."
+            ),
+            input_schema=CALENDAR_CREATE_EVENT_SCHEMA,
+            run=_calendar_create_event,
+            risk_tier=RiskTier.write,
+            requires_approval=True,
+        )
+    )
+    register(
+        ToolSpec(
+            name="calendar_update_event",
+            description=(
+                "Update fields on one Google Calendar provider_event_id; any replacement times "
+                "must be ISO-8601 with timezone offsets."
+            ),
+            input_schema=CALENDAR_UPDATE_EVENT_SCHEMA,
+            run=_calendar_update_event,
+            risk_tier=RiskTier.write,
+            requires_approval=True,
+        )
+    )
+    register(
+        ToolSpec(
+            name="calendar_delete_event",
+            description="Delete one Google Calendar event by provider_event_id.",
+            input_schema=CALENDAR_DELETE_EVENT_SCHEMA,
+            run=_calendar_delete_event,
+            risk_tier=RiskTier.dangerous,
+            requires_approval=True,
+        )
+    )
 
 
 register_customer_intelligence_tools()

@@ -49,8 +49,13 @@ def test_gemini_payload_normalizes_email_tool_schemas_without_mutating_input() -
         declaration["parameters"]
         for declaration in payload["tools"][0]["functionDeclarations"]
     ]
+    declarations = {
+        declaration["name"]: declaration
+        for declaration in payload["tools"][0]["functionDeclarations"]
+    }
     assert len(parameters) == len(EMAIL_TOOL_NAMES)
     assert not any(_contains_key(schema, "additionalProperties") for schema in parameters)
+    assert "newer_than:1d" in declarations["email_search"]["parameters"]["properties"]["query"]["description"]
     assert tools == original
 
 
