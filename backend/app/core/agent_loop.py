@@ -811,7 +811,12 @@ async def _agent_stream(
     # Only the chat root task gets a durable event log: it is the one a
     # browser reconnects to. Subagent loops (call_agent) just emit in-process.
     rec: ChatEventRecorder | None = (
-        ChatEventRecorder(agent.org_id, root_run_id, session_id=session_id)
+        ChatEventRecorder(
+            agent.org_id,
+            root_run_id,
+            session_id=session_id,
+            model_id=selected_model_id,
+        )
         if (depth == 0 and root_run_id and record_stream)
         else None
     )
