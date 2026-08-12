@@ -694,6 +694,7 @@ async def _agent_stream(
         user_id=user_id or agent.created_by_user_id,
         current_task_id=current_task_id,
         root_run_id=root_run_id or session_id or current_task_id,
+        model_id=selected_model_id,
         actor_agent_identity_id=actor_agent_identity_id,
         delegation_chain=delegation_chain,
     )
@@ -926,6 +927,7 @@ async def _agent_stream(
                 current_task_id=next_hop.id,
                 root_run_id=root_run_id,
                 user_id=user_id,
+                model_id=model_id or selected_model_id,
                 actor_agent_identity_id=actor_agent_identity_id,
                 delegation_chain=delegation_chain,
                 record_stream=False,

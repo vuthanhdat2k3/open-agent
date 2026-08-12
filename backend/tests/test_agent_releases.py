@@ -116,6 +116,7 @@ def test_release_draft_publish_and_rollback(client: TestClient) -> None:
     assert draft.status_code == 201, draft.text
     assert draft.json()["version"] == 2
     assert draft.json()["status"] == "draft"
+    assert draft.json()["model_id"] == agent["model_id"]
 
     unchanged = client.get(f"/api/agents/{agent['id']}", headers=headers)
     assert unchanged.json()["system_prompt"] == "version one"
@@ -210,6 +211,7 @@ def test_existing_update_auto_publishes_release(client: TestClient) -> None:
         json={"system_prompt": "compatible update"},
     )
     assert updated.status_code == 200, updated.text
+    assert updated.json()["model_id"] == agent["model_id"]
     assert updated.json()["latest_release_number"] == 2
 
     releases = client.get(

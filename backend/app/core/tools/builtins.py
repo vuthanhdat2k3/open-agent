@@ -215,6 +215,7 @@ async def _call_agent(args: dict[str, Any], ctx: ToolContext) -> str:
         agent_release_id=agent.active_release_id,
         goal=instruction,
         status="running",
+        progress={"model_id": ctx.model_id},
         depth=ctx.depth + 1,
         started_at=utc_now(),
     )
@@ -231,6 +232,7 @@ async def _call_agent(args: dict[str, Any], ctx: ToolContext) -> str:
             current_task_id=task.id,
             root_run_id=task.root_run_id,
             user_id=ctx.user_id,
+            model_id=ctx.model_id,
         )
     except Exception as exc:  # noqa: BLE001
         task.status = "failed"

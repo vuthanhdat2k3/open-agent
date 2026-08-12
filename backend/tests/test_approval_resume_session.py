@@ -75,7 +75,7 @@ def test_decide_approval_resumes_the_root_chat_session(
 ) -> None:
     token, org_id = _register(client, "resume-owner@test.com")
 
-    async def _seed() -> tuple[str, str, str]:
+    async def _seed() -> tuple[str, str, str, str]:
         async with async_session_factory() as session:
             provider = Provider(
                 org_id=org_id, name="OpenAI", key="openai", base_url="http://x", api_key="k"
@@ -112,7 +112,11 @@ def test_decide_approval_resumes_the_root_chat_session(
                 depth=0,
                 goal="send the farewell email",
                 status="waiting_approval",
-                progress={"session_id": chat_session.id, "phase": "waiting_approval"},
+                progress={
+                    "session_id": chat_session.id,
+                    "phase": "waiting_approval",
+                    "model_id": model.id,
+                },
                 created_at=utc_now(),
             )
             session.add(root_task)
@@ -128,11 +132,11 @@ def test_decide_approval_resumes_the_root_chat_session(
                 requested_by=None,
                 owning_task_id=root_task.id,
             )
-            return approval.id, chat_session.id, agent.id
+            return approval.id, chat_session.id, agent.id, model.id
 
     import anyio
 
-    approval_id, chat_session_id, agent_id = anyio.run(_seed)
+    approval_id, chat_session_id, agent_id, model_id = anyio.run(_seed)
     headers = {"Authorization": f"Bearer {token}", "X-Org-Id": org_id}
 
     with patch("app.api.v1.routes.approvals.run_chat_detached", new=AsyncMock()) as mock_resume:
@@ -149,6 +153,7 @@ def test_decide_approval_resumes_the_root_chat_session(
         f"resume must reuse the root task's own chat session, not create a "
         f"disconnected new one (payload was: {payload!r})"
     )
+    assert payload["model_id"] == model_id
     assert payload["agent_id"] == agent_id
 
 
@@ -164,7 +169,7 @@ def test_decide_approval_ignores_a_paused_sub_task_sharing_root_run_id(
     root task is ever meant to be resumed directly from this route."""
     token, org_id = _register(client, "resume-owner-2@test.com")
 
-    async def _seed() -> tuple[str, str, str]:
+    async def _seed() -> tuple[str, str, str, str]:
         async with async_session_factory() as session:
             provider = Provider(
                 org_id=org_id, name="OpenAI", key="openai", base_url="http://x", api_key="k"
@@ -227,7 +232,11 @@ def test_decide_approval_ignores_a_paused_sub_task_sharing_root_run_id(
                 depth=0,
                 goal="send the farewell email",
                 status="waiting_approval",
-                progress={"session_id": chat_session.id, "phase": "waiting_approval"},
+                progress={
+                    "session_id": chat_session.id,
+                    "phase": "waiting_approval",
+                    "model_id": model.id,
+                },
                 created_at=utc_now(),
             )
             session.add(root_task)
@@ -243,11 +252,11 @@ def test_decide_approval_ignores_a_paused_sub_task_sharing_root_run_id(
                 requested_by=None,
                 owning_task_id=sub_task.id,
             )
-            return approval.id, chat_session.id, root_agent.id
+            return approval.id, chat_session.id, root_agent.id, model.id
 
     import anyio
 
-    approval_id, chat_session_id, root_agent_id = anyio.run(_seed)
+    approval_id, chat_session_id, root_agent_id, model_id = anyio.run(_seed)
     headers = {"Authorization": f"Bearer {token}", "X-Org-Id": org_id}
 
     with patch("app.api.v1.routes.approvals.run_chat_detached", new=AsyncMock()) as mock_resume:
@@ -265,4 +274,61 @@ def test_decide_approval_ignores_a_paused_sub_task_sharing_root_run_id(
         f"sharing its root_run_id (payload was: {payload!r})"
     )
     assert payload["session_id"] == chat_session_id
+    assert payload["model_id"] == model_id
     assert payload["run_id"] == "root-task-2"
+
+
+@pytest.mark.asyncio
+async def test_prepare_run_pins_model_override_for_process_resume(async_session_factory) -> None:
+    async with async_session_factory() as session:
+        from app.models.organization import Organization
+
+        org = Organization(id="org-model-pin", name="Model Pin Org", slug="model-pin-org")
+        provider = Provider(
+            id="provider-model-pin",
+            org_id=org.id,
+            name="Provider",
+            key="provider",
+            base_url="http://provider",
+            api_key="key",
+        )
+        default_model = Model(
+            id="model-default-pin",
+            org_id=org.id,
+            provider_id=provider.id,
+            name="default",
+            display_name="Default",
+        )
+        switched_model = Model(
+            id="model-switched-pin",
+            org_id=org.id,
+            provider_id=provider.id,
+            name="switched",
+            display_name="Switched",
+        )
+        agent = Agent(
+            id="agent-model-pin",
+            org_id=org.id,
+            name="Pinned Agent",
+            model_id=default_model.id,
+        )
+        session.add_all([org, provider, default_model, switched_model, agent])
+        await session.commit()
+
+        from app.schemas.chat import ChatRequest
+        from app.services.chat_service import ChatService
+
+        _, _, task = await ChatService(session).prepare_run(
+            org.id,
+            ChatRequest(
+                agent_id=agent.id,
+                model_id=switched_model.id,
+                message="continue after approval",
+                run_id="run-model-pin",
+            ),
+            "run-model-pin",
+            user_id="user-model-pin",
+            user_role="admin",
+        )
+
+        assert task.progress["model_id"] == switched_model.id

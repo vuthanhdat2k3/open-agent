@@ -66,7 +66,7 @@ class RuntimeAgent:
 
 def _snapshot(source: Agent | AgentRelease, overrides: dict | None = None) -> dict:
     values = {field: getattr(source, field) for field in RELEASE_CONFIG_FIELDS}
-    values.update({k: v for k, v in (overrides or {}).items() if k in RELEASE_CONFIG_FIELDS})
+    values.update({k: v for k, v in (overrides or {}).items() if k in RELEASE_CONFIG_FIELDS and v is not None})
     return values
 
 

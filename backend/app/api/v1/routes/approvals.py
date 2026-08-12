@@ -157,6 +157,7 @@ async def decide_approval(
                 "org_id": org_id,
                 "user_id": current_user.id,
                 "approval_resume_id": approval.id,
+                "model_id": (task.progress or {}).get("model_id"),
                 "prepared": True,
                 "prepared_agent_release_id": task.agent_release_id,
             }

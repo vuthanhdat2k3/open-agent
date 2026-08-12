@@ -74,6 +74,7 @@ async def test_call_agent_records_succeeded_child_task(monkeypatch) -> None:
         async def fake_run_agent_loop(*args, **kwargs):
             assert kwargs["current_task_id"] != root.id
             assert kwargs["root_run_id"] == "root-run"
+            assert kwargs["model_id"] == "process-model"
             return SimpleNamespace(content="done", usage={"input_tokens": 1}, latency_ms=1)
 
         monkeypatch.setattr("app.core.agent_loop.run_agent_loop", fake_run_agent_loop)
@@ -86,6 +87,7 @@ async def test_call_agent_records_succeeded_child_task(monkeypatch) -> None:
                 org_id=org.id,
                 current_task_id=root.id,
                 root_run_id="root-run",
+                model_id="process-model",
             ),
         )
 
@@ -96,6 +98,7 @@ async def test_call_agent_records_succeeded_child_task(monkeypatch) -> None:
         assert child.parent_task_id == root.id
         assert child.root_run_id == "root-run"
         assert child.agent_id == agent.id
+        assert child.progress == {"model_id": "process-model"}
         assert child.goal == "do child work"
         assert child.status == "succeeded"
         assert child.result == "done"
@@ -126,6 +129,7 @@ async def test_call_agent_records_failed_child_task(monkeypatch) -> None:
                 org_id=org.id,
                 current_task_id=root.id,
                 root_run_id="root-run",
+                model_id="process-model",
             ),
         )
 

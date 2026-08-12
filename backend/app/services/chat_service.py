@@ -111,16 +111,23 @@ class ChatService:
             select(Task).where(Task.id == run_id, Task.org_id == org_id)
         )
         task = res.scalar_one_or_none()
+        effective_model_id = request.model_id or getattr(agent, "model_id", None)
         if task is not None:
             if task.agent_id != agent.id or task.root_run_id != run_id:
                 raise ValueError("chat run belongs to a different agent or organization")
-            if not task.progress:
-                task.progress = {
-                    "session_id": session.id,
-                    "phase": task.status,
-                    "last_seq": 0,
-                    "updated_at": utc_now().isoformat(),
-                }
+            progress = dict(task.progress or {})
+            changed = False
+            if "session_id" not in progress:
+                progress["session_id"] = session.id
+                changed = True
+            if "model_id" not in progress:
+                progress["model_id"] = effective_model_id
+                changed = True
+            if changed:
+                progress.setdefault("phase", task.status)
+                progress.setdefault("last_seq", 0)
+                progress.setdefault("updated_at", utc_now().isoformat())
+                task.progress = progress
                 await self.db.commit()
             logger.info(
                 "chat_latency_phase",
@@ -140,6 +147,7 @@ class ChatService:
             status="queued",
             progress={
                 "session_id": session.id,
+                "model_id": effective_model_id,
                 "phase": "queued",
                 "last_seq": 0,
                 "updated_at": utc_now().isoformat(),
