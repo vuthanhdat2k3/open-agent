@@ -14,6 +14,7 @@ from app.core.providers.jobs import run_provider_discovery
 from app.core.workflow import resume
 from app.core.workflow.jobs import run_chat, run_workflow
 from app.core.workflow.queue import enqueue_workflow_run
+from app.customer_intelligence.jobs import run_ci_research
 from app.db.session import SessionLocal
 from app.evals.auto_rollback import run_auto_rollback_sweep
 
@@ -122,7 +123,7 @@ async def _ci_retry_due_cases_tick(ctx: dict) -> None:
 
 
 class WorkerSettings:
-    functions = [run_workflow, run_chat, run_provider_discovery]
+    functions = [run_workflow, run_chat, run_provider_discovery, run_ci_research]
     redis_settings = RedisSettings.from_dsn(get_settings().redis_url)
     on_startup = _startup
     on_shutdown = _shutdown

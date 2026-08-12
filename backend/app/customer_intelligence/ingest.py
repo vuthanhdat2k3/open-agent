@@ -4,6 +4,7 @@ import hashlib
 import time
 from typing import Any
 
+import structlog
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,6 +15,7 @@ from app.core.observability.metrics import (
     ci_sync_duration_seconds,
     ci_syncs_total,
 )
+from app.core.workflow.queue import enqueue_ci_research
 from app.customer_intelligence.contracts import NormalizedEmail, SyncPage
 from app.customer_intelligence.oauth import load_fresh_credentials
 from app.customer_intelligence.providers.email import bind_email_provider, get_email_provider
@@ -28,6 +30,8 @@ from app.repositories.customer_intelligence import (
     InboundEmailRepository,
     ResearchCaseRepository,
 )
+
+logger = structlog.get_logger(__name__)
 
 
 class IngestionError(Exception):
@@ -120,6 +124,7 @@ async def _sync_connection_impl(
     synced = 0
     deduplicated = 0
     new_cases = 0
+    new_case_ids: list[str] = []
     warnings: list[str] = []
     last_cursor = cursor
     pages = 0
@@ -185,6 +190,7 @@ async def _sync_connection_impl(
             )
             await case_repo.create(case)
             new_cases += 1
+            new_case_ids.append(case.id)
         if not page.has_more or pages >= 20:
             break
         if last_cursor is None:
@@ -213,6 +219,24 @@ async def _sync_connection_impl(
             "correlation_id": correlation_id,
         },
     )
+    # Enqueue research after every case is durably committed: a case is
+    # created (and thus already persisted) the moment case_repo.create()
+    # returns, so a job for an earlier case in this sync must not be lost if
+    # a later email in the same page raises. Enqueue failures (Redis down)
+    # are logged, not raised - the sync itself already succeeded and must
+    # not be reported as failed just because the follow-up job could not be
+    # queued; the case stays INGESTED and can still be researched manually
+    # or picked up by a future retry sweep.
+    for new_case_id in new_case_ids:
+        try:
+            await enqueue_ci_research(org_id, new_case_id)
+        except Exception as exc:  # noqa: BLE001 - queue outage must not fail the sync.
+            await logger.aerror(
+                "ci_auto_research_enqueue_failed",
+                org_id=org_id,
+                case_id=new_case_id,
+                error=str(exc),
+            )
     return {
         "connection_id": connection_id,
         "synced": synced,
