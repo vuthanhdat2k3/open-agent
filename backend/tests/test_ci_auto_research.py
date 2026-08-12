@@ -245,8 +245,6 @@ async def test_run_ci_research_skips_case_already_past_ingested(
 
 
 async def test_run_ci_research_retries_transient_failure(async_session_factory, monkeypatch):
-    from arq import Retry
-
     from app.customer_intelligence.jobs import run_ci_research
 
     now = utc_now()
@@ -290,9 +288,12 @@ async def test_run_ci_research_retries_transient_failure(async_session_factory, 
         "app.customer_intelligence.jobs.SessionLocal", async_session_factory
     )
 
-    with pytest.raises(Retry):
-        await run_ci_research({"job_try": 1}, "org-job-retry", case_id)
+    await run_ci_research({"job_try": 1}, "org-job-retry", case_id)
 
-    # Exhausted: the last allowed try must not raise Retry again, so ARQ
-    # gives up instead of retrying forever.
+    async with async_session_factory() as session:
+        refreshed = await ResearchCaseRepository(session).get("org-job-retry", case_id)
+    assert refreshed.status == "RETRYING"
+    assert refreshed.retry_count == 1
+
+    # A duplicate message while backoff is pending is a safe no-op.
     await run_ci_research({"job_try": 3}, "org-job-retry", case_id)

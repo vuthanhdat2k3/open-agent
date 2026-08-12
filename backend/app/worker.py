@@ -122,6 +122,22 @@ async def _ci_retry_due_cases_tick(ctx: dict) -> None:
         )
 
 
+async def _ci_dispatch_ingested_tick(ctx: dict) -> None:
+    from app.core.scheduling.job_keys import JobKey
+    from app.core.scheduling.tick import run_leased_tick
+    from app.customer_intelligence.scheduler import dispatch_ingested_cases
+
+    async with SessionLocal() as db:
+        await run_leased_tick(
+            db,
+            job_key=JobKey.CI_DISPATCH_INGESTED,
+            interval_seconds=60,
+            lease_seconds=50,
+            worker_id=_worker_identity(),
+            run=lambda: dispatch_ingested_cases(db),
+        )
+
+
 class WorkerSettings:
     functions = [run_workflow, run_chat, run_provider_discovery, run_ci_research]
     redis_settings = RedisSettings.from_dsn(get_settings().redis_url)
@@ -132,4 +148,5 @@ class WorkerSettings:
         cron(_fail_orphaned_chat_runs, minute=set(range(0, 60, 2)), run_at_startup=False),
         cron(_ci_scheduler_tick, minute=set(range(0, 60, 5)), run_at_startup=False),
         cron(_ci_retry_due_cases_tick, minute=set(range(0, 60, 1)), run_at_startup=False),
+        cron(_ci_dispatch_ingested_tick, minute=set(range(0, 60, 1)), run_at_startup=False),
     ]

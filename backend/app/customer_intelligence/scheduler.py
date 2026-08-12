@@ -25,6 +25,7 @@ import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.observability.audit import log_action
+from app.core.workflow.queue import enqueue_ci_research
 from app.customer_intelligence.ingest import IngestionError, sync_connection
 from app.db.base import gen_id, utc_now
 from app.models.customer_intelligence import CiSchedule
@@ -341,3 +342,25 @@ async def process_due_retries(db: AsyncSession, *, max_cases: int = 50) -> dict[
         "dead_lettered": dead_lettered,
         "failed": failed,
     }
+
+
+async def dispatch_ingested_cases(db: AsyncSession, *, max_cases: int = 100) -> dict[str, Any]:
+    """Recover cases whose Redis enqueue failed after successful ingest."""
+    from app.repositories.customer_intelligence import ResearchCaseRepository
+
+    cases = await ResearchCaseRepository(db).list_dispatchable(limit=max_cases)
+    queued = 0
+    failed = 0
+    for case in cases:
+        try:
+            await enqueue_ci_research(case.org_id, case.id)
+            queued += 1
+        except Exception as exc:  # noqa: BLE001 - next tick retries dispatch.
+            failed += 1
+            await logger.aerror(
+                "ci_research_dispatch_failed",
+                org_id=case.org_id,
+                case_id=case.id,
+                error=str(exc),
+            )
+    return {"candidates": len(cases), "queued": queued, "failed": failed}
