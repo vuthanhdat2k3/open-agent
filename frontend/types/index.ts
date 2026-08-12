@@ -460,3 +460,52 @@ export interface UserProfile {
   memberships: UserMembership[];
 }
 
+export interface CustomerIntelligenceCase {
+  id: string;
+  email_id: string;
+  company_name: string | null;
+  company_domain: string | null;
+  status: string;
+  confidence: number | null;
+  trigger: string | null;
+  created_at: string;
+  finished_at: string | null;
+}
+
+export interface CustomerIntelligenceSource {
+  id: string;
+  url: string;
+  source_type: string;
+  title: string;
+  publisher: string | null;
+  published_date: string | null;
+  retrieved_date: string | null;
+  excerpt: string;
+  confidence: number | null;
+}
+
+export interface CustomerIntelligenceMeeting {
+  id: string;
+  provider_event_id: string;
+  title: string;
+  start_at: string | null;
+  end_at: string | null;
+  attendees: string[];
+  match_type: string;
+  confidence: number | null;
+}
+
+export interface CustomerIntelligenceCaseDetail extends CustomerIntelligenceCase {
+  error: string | null;
+  sources: CustomerIntelligenceSource[];
+  meetings: CustomerIntelligenceMeeting[];
+  report: {
+    id: string;
+    case_id: string;
+    version: number;
+    canonical_markdown: string;
+    confidence: number | null;
+    status: string;
+    created_at: string;
+  } | null;
+}

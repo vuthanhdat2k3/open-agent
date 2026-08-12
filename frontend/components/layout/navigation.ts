@@ -26,6 +26,7 @@ export const navGroups: NavGroup[] = [
     { href: "/workspace", label: "Workspace", icon: FolderKanban },
     { href: "/mcp", label: "MCP Servers", icon: Plug, adminOnly: true },
     { href: "/integrations", label: "Integrations", icon: CalendarDays },
+    { href: "/customer-intelligence", label: "Research Cases", icon: Activity },
     { href: "/models", label: "Models", icon: Cpu, adminOnly: true },
     { href: "/providers", label: "Providers", icon: Server, adminOnly: true },
     { href: "/files", label: "Files", icon: FileUp },
@@ -65,6 +66,7 @@ const tabQueries: Record<string, PrefetchSpec[]> = {
     { queryKey: ["sandbox-executions"], queryFn: () => api.get<SandboxExecution[]>("/api/workspace/executions") },
   ],
   "/chat": [{ queryKey: ["sessions"], queryFn: () => api.get<Session[]>("/api/sessions") }],
+  "/customer-intelligence": [{ queryKey: ["ci-cases"], queryFn: () => api.get("/api/customer-intelligence/cases") }],
   "/debug": [
     { queryKey: ["debug-sessions"], queryFn: () => api.get<Session[]>("/api/debug/sessions") },
     { queryKey: ["usage"], queryFn: () => api.get<UsageSummary[]>("/api/debug/usage") },
