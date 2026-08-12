@@ -215,6 +215,7 @@ async def _call_agent(args: dict[str, Any], ctx: ToolContext) -> str:
         agent_release_id=agent.active_release_id,
         goal=instruction,
         status="running",
+        progress={"model_id": ctx.model_id},
         depth=ctx.depth + 1,
         started_at=utc_now(),
     )
@@ -231,6 +232,7 @@ async def _call_agent(args: dict[str, Any], ctx: ToolContext) -> str:
             current_task_id=task.id,
             root_run_id=task.root_run_id,
             user_id=ctx.user_id,
+            model_id=ctx.model_id,
         )
     except Exception as exc:  # noqa: BLE001
         task.status = "failed"
@@ -248,9 +250,19 @@ async def _call_agent(args: dict[str, Any], ctx: ToolContext) -> str:
     )
     approval = pending.scalar_one_or_none()
     if approval is not None:
-        task.status = "waiting_approval"
-        task.result = f"approval required ({approval.id})"
-        task.finished_at = None
+        # The root run (agent_loop._agent_stream) is the one the UI resumes
+        # via /api/approvals — it detects this same pending approval right
+        # after this call returns and puts itself into waiting_approval.
+        # This sub-task must NOT also claim waiting_approval: a decide-approval
+        # resume re-runs the *root* run from its original message, it never
+        # re-enters this delegated sub-task, so leaving it at waiting_approval
+        # would strand it there forever (and previously made the approval
+        # decision endpoint's `Task.status == "waiting_approval"` query
+        # ambiguous between this row and the root task, resuming whichever
+        # one the query happened to return first — often the wrong one).
+        task.status = "succeeded"
+        task.result = f"approval required for {approval.tool_name} (approval_id: {approval.id})"
+        task.finished_at = utc_now()
         await ctx.db.commit()
         return f"approval required for {approval.tool_name} (approval_id: {approval.id})"
 

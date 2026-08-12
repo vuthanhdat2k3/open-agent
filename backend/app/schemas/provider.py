@@ -42,6 +42,8 @@ class ProviderOut(BaseModel):
     discovery_status: str
     discovery_error: str | None = None
     models_discovered: int
+    discovery_generation: int
+
     last_discovery_attempt_at: datetime | None = None
     last_successful_discovery_at: datetime | None = None
     created_at: datetime

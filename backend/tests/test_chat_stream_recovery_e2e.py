@@ -190,3 +190,89 @@ async def test_chat_stream_recovery_e2e(client, async_session_factory, test_user
             (await db.execute(select(Message).where(Message.role == "assistant"))).scalars().all()
         )
     assert any("Hello" in m.content for m in msgs)
+
+
+@pytest.mark.asyncio
+async def test_empty_finalization_retries_without_tools_or_duplicate_execution(
+    async_session_factory,
+):
+    from app.core.tools.registry import register
+
+    execution_count = 0
+
+    async def _once_tool(args, ctx):
+        nonlocal execution_count
+        execution_count += 1
+        return "No emails found."
+
+    register(
+        ToolSpec(
+            name="finalization_once_tool",
+            description="Tool for finalization retry regression",
+            input_schema={"type": "object", "properties": {}},
+            run=_once_tool,
+            risk_tier=RiskTier.safe,
+        )
+    )
+
+    calls: list[dict] = []
+
+    async def _empty_then_final(self, messages, tools=None, temperature=0.7, tool_choice=None):
+        calls.append({"tools": tools, "tool_choice": tool_choice})
+        if len(calls) == 1:
+            yield {
+                "type": "tool_calls",
+                "tool_calls": [
+                    {
+                        "index": 0,
+                        "id": "finalization-call-1",
+                        "name": "finalization_once_tool",
+                        "arguments": "{}",
+                    }
+                ],
+            }
+        elif len(calls) == 2:
+            yield {
+                "type": "usage",
+                "usage": {"input_tokens": 10, "output_tokens": 0},
+                "estimated": False,
+            }
+        else:
+            yield {"type": "content", "text": "Final answer after retry."}
+            yield {
+                "type": "usage",
+                "usage": {"input_tokens": 11, "output_tokens": 5},
+                "estimated": False,
+            }
+
+    async with async_session_factory() as db:
+        prov = Provider(
+            id="p-finalization", org_id="org-chat", key="finalization", name="finalization", base_url="http://test", api_key="sk-test"
+        )
+        mdl = Model(
+            id="m-finalization", org_id="org-chat", provider_id=prov.id,
+            name="finalization-model", display_name="finalization-model"
+        )
+        agent = Agent(
+            id="agent-finalization", org_id="org-chat", name="Finalization Agent",
+            model_id=mdl.id, tools=["finalization_once_tool"], allowed_risk_tiers=["safe"]
+        )
+        db.add_all([prov, mdl, agent])
+        await db.commit()
+
+        with patch("app.core.llm.LLMClient.stream", new=_empty_then_final):
+            result = await ChatService(db).run(
+                "org-chat",
+                ChatRequest(agent_id=agent.id, message="find emails", stream=False),
+                root_run_id="run-finalization-retry",
+            )
+
+    assert result.error is None
+    assert result.content == "Final answer after retry."
+    assert execution_count == 1
+    assert len(calls) == 3
+    assert calls[0]["tools"]
+    assert calls[1]["tools"]
+    assert calls[2]["tools"] is None
+    assert calls[2]["tool_choice"] is None
+    assert result.usage == {"input_tokens": 21, "output_tokens": 5, "estimated": False}

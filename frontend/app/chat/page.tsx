@@ -99,6 +99,7 @@ export default function ChatPage() {
   // live — that round trip was pure added time-to-first-token.
   const justStartedRunRef = React.useRef<string | null>(null);
   const terminalRunRef = React.useRef<string | null>(null);
+  const terminalSyncRef = React.useRef(false);
   const reattachAbortRef = React.useRef<AbortController | null>(null);
   const lastEventSeqRef = React.useRef(0);
   // Tracks whether the user is pinned to the bottom of the thread so we only
@@ -136,6 +137,57 @@ export default function ChatPage() {
     agentReady && sessions.isSuccess && sessionBelongsToAgent,
   );
   const { refetch: refetchMessages } = messagesQuery;
+  const syncPersistedMessages = React.useCallback(async () => {
+    if (!sessionId) return;
+    terminalSyncRef.current = true;
+    try {
+      for (let attempt = 0; attempt < 8; attempt += 1) {
+        const result = await refetchMessages();
+        if (!result.isSuccess || !result.data) return;
+        const persisted: UIMessage[] = result.data.map((m) => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          meta: m.meta,
+        }));
+        const persistedHasAssistant = persisted.some(
+          (message) => message.role === "assistant" && message.content.trim(),
+        );
+        const liveHasAssistant = liveRef.current.some(
+          (message) => message.role === "assistant" && message.content.trim(),
+        );
+        // message_done can reach the browser just before the transaction that
+        // writes the assistant message commits. Keep the already-rendered live
+        // answer and retry briefly instead of replacing it with user-only
+        // history (which used to make the answer appear only after reload).
+        if (!persistedHasAssistant && liveHasAssistant) {
+          // message_done can reach the browser before the assistant transaction
+          // commits. Keep the live answer/fallback visible; if persistence is
+          // still catching up, the next poll will reconcile it.
+          if (attempt < 7) {
+            await new Promise((resolve) => window.setTimeout(resolve, 150));
+            continue;
+          }
+          return;
+        }
+        // A provider can fail before the backend persists any transcript. Keep
+        // the optimistic user/error messages visible instead of replacing them
+        // with an empty history.
+        if (persisted.length === 0 && liveRef.current.length > 0) {
+          return;
+        }
+        if (rafRef.current != null) {
+          cancelAnimationFrame(rafRef.current);
+          rafRef.current = null;
+        }
+        liveRef.current = persisted;
+        setMessages(persisted);
+        return;
+      }
+    } finally {
+      terminalSyncRef.current = false;
+    }
+  }, [refetchMessages, sessionId]);
   const { refetch: refetchSessions } = sessions;
 
   React.useEffect(() => {
@@ -180,14 +232,27 @@ export default function ChatPage() {
     // While a stream is live (send or reattached follow) the partial UI is
     // authoritative; a background refetch must not overwrite it.
     if (messagesQuery.data) {
+      if (messagesQuery.data.length === 0 && chatRun.data?.status === "failed" && chatRun.data.error) {
+        // Provider failures can leave the durable transcript empty. The run
+        // effect below owns the visible user/error messages in that case.
+        return;
+      }
       const initial: UIMessage[] = messagesQuery.data.map((m) => ({
         id: m.id,
         role: m.role,
         content: m.content,
         meta: m.meta,
       }));
-      const hasApproval = liveRef.current.some((message) => message.role === "approval");
-      if (!streamingRef.current && !hasApproval) {
+      const hasPendingApproval = liveRef.current.some(
+        (message) => message.role === "approval" && message.meta?.approvalStatus === "pending",
+      );
+      const terminalSyncInFlight = terminalSyncRef.current;
+      if (!streamingRef.current && !hasPendingApproval && !terminalSyncInFlight) {
+        // Keep the live approval card while the run is waiting for a human
+        // decision; approval events are run-scoped and are not part of the
+        // persisted message transcript. Once the approval is decided, the
+        // persisted transcript becomes authoritative so stale tool cards and
+        // placeholders are replaced by the final assistant response.
         liveRef.current = initial;
         setMessages(initial);
       } else {
@@ -205,7 +270,7 @@ export default function ChatPage() {
         setMessages(merged);
       }
     }
-  }, [agentReady, messagesQuery.data, pendingSession, sessionBelongsToAgent, sessionId, streaming]);
+  }, [agentReady, chatRun.data, messagesQuery.data, pendingSession, sessionBelongsToAgent, sessionId, streaming]);
 
   React.useEffect(() => {
     const run = chatRun.data;
@@ -218,17 +283,31 @@ export default function ChatPage() {
       setPhase(run.progress?.phase && run.progress.phase !== "queued" ? run.progress.phase : "thinking");
     }
     if (["succeeded", "failed", "diverged", "cancelled", "waiting_approval"].includes(run.status)) {
-      if (terminalRunRef.current === run.id) return;
-      terminalRunRef.current = run.id;
-      setStreaming(false);
-      setPhase(run.status === "waiting_approval" ? "approval" : "");
-      void refetchMessages();
-      if (run.status !== "succeeded" && run.error) toast.error(run.error);
+      const alreadyTerminal = terminalRunRef.current === run.id;
+      if (!alreadyTerminal) {
+        terminalRunRef.current = run.id;
+        setStreaming(false);
+        setPhase(run.status === "waiting_approval" ? "approval" : "");
+      }
+      if (run.status !== "waiting_approval") {
+        if (run.status === "failed" && run.error) {
+          const message = run.message || "Your request";
+          const current = liveRef.current;
+          if (!current.some((item) => item.role === "user")) {
+            current.unshift({ id: `u-${run.id}`, role: "user", content: message });
+          }
+          if (!current.some((item) => item.role === "error")) {
+            current.push({ id: `e-${run.id}`, role: "error", content: run.error, meta: { error: true } });
+          }
+          setMessages([...current]);
+        }
+        if (!alreadyTerminal) void syncPersistedMessages();
+      }
     } else {
       if (terminalRunRef.current !== run.id) terminalRunRef.current = null;
       setStreaming(true);
     }
-  }, [chatRun.data, refetchMessages, sessionId, setSession, setStreaming]);
+  }, [chatRun.data, sessionId, setSession, setStreaming, syncPersistedMessages]);
 
   // Smooth auto-scroll: follow the bottom only while the user is already
   // reading along, so streaming tokens don't yank them up if they scroll back.
@@ -429,12 +508,14 @@ export default function ChatPage() {
       } else if (ev.event === "message_done") {
         setPhase("");
         flushTypewriter(assistantId);
+        const hasContent = Boolean(String(d.content ?? "").trim());
         const filtered = msgs
           .filter((x) => x.role !== "tool_call" && x.role !== "tool_result")
           .map((x) =>
             x.id === assistantId
               ? {
                   ...x,
+                  content: hasContent ? d.content : "No answer was generated. Please try again.",
                   meta: {
                     ...x.meta,
                     in_tokens: d.usage?.input_tokens,
@@ -443,6 +524,7 @@ export default function ChatPage() {
                     latency_ms: d.latency_ms,
                     tools: d.tools,
                     model: d.model,
+                    finalization: d.finalization ?? (hasContent ? "direct" : "incomplete"),
                     ...(d.reasoning ? { reasoning: d.reasoning } : {}),
                   },
                 }
@@ -450,11 +532,19 @@ export default function ChatPage() {
           );
         liveRef.current = filtered;
         commit();
+        setStreaming(false);
         if (d.session_id) setSession(d.session_id);
+        void syncPersistedMessages();
         void refetchSessions();
       } else if (ev.event === "error") {
         setPhase("");
-        toast.error(d.message ?? "Stream error");
+        const message = String(d.message ?? "Stream error");
+        if (!msgs.some((x) => x.role === "error")) {
+          msgs.push({ id: `e-${Date.now()}`, role: "error", content: message, meta: { error: true } });
+          commit();
+        }
+        setStreaming(false);
+        toast.error(message);
       } else if (ev.event === "approval_required") {
         setPhase("approval");
         if (!msgs.some((x) => x.role === "approval" && x.meta?.approvalId === d.approval_id)) {
@@ -483,7 +573,7 @@ export default function ChatPage() {
       }
       touch();
     },
-    [commit, feedTypewriter, flushTypewriter, refetchSessions, setSession, touch],
+    [commit, feedTypewriter, flushTypewriter, refetchSessions, setSession, setStreaming, syncPersistedMessages, touch],
   );
 
   const chatRunLoaded = Boolean(chatRun.data);
@@ -514,7 +604,9 @@ export default function ChatPage() {
         terminalRunRef.current = run.id;
         setStreaming(false);
         setPhase(run.status === "waiting_approval" ? "approval" : "");
-        void refetchMessages();
+        if (run.status !== "waiting_approval") {
+          void syncPersistedMessages();
+        }
         if (run.status !== "succeeded" && run.error) toast.error(run.error);
       }
       return;
@@ -594,7 +686,7 @@ export default function ChatPage() {
     // replaying from after_seq=0, so every event was reduced twice. Terminal
     // transitions are owned by the sibling chatRun effect instead. */
     chatRunLoaded,
-    refetchMessages,
+    syncPersistedMessages,
   ]);
 
   React.useEffect(() => {

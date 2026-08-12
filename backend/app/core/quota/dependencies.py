@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.core.observability.audit import log_action
+from app.core.observability.chat_timing import mark_chat_phase
 from app.core.observability.metrics import (
     quota_active_run_leases,
     quota_admission_total,
@@ -83,6 +84,8 @@ async def enforce_request_quota(
     org_id: str = Depends(_authenticated_org_id),
 ) -> None:
     quota = await QuotaService(db, redis).get(org_id)
+    request.state.org_quota = quota
+    mark_chat_phase(request, "request_quota_loaded")
     if quota is None or redis is None:
         return
     observe = quota.enforcement_mode == "observe"
@@ -93,6 +96,7 @@ async def enforce_request_quota(
             quota.requests_per_minute,
             observe=observe,
         )
+        mark_chat_phase(request, "request_quota_checked")
     except Exception as exc:  # noqa: BLE001
         quota_backend_failures_total.labels("request_window").inc()
         await logger.awarning(
@@ -130,9 +134,13 @@ async def agent_run_admission(
     redis: Redis = Depends(_redis_client),
     org_id: str = Depends(_authenticated_org_id),
 ) -> AsyncGenerator[None, None]:
-    quota = await QuotaService(db, redis).get(org_id)
+    quota = getattr(request.state, "org_quota", None)
+    if quota is None:
+        quota = await QuotaService(db, redis).get(org_id)
+        request.state.org_quota = quota
     if quota is None:
         raise HTTPException(404, "organization not found")
+    mark_chat_phase(request, "agent_quota_start")
     if redis is None:
         yield
         return
@@ -146,6 +154,7 @@ async def agent_run_admission(
             quota.agent_runs_per_minute,
             observe=observe,
         )
+        mark_chat_phase(request, "agent_rate_checked")
         if not rate.allowed:
             quota_admission_total.labels(
                 "agent_runs", "observe" if observe else "reject"
@@ -164,6 +173,7 @@ async def agent_run_admission(
             quota_admission_total.labels("agent_runs", "allow").inc()
 
         cost = await QuotaService(db, redis).monthly_cost(org_id)
+        mark_chat_phase(request, "monthly_cost_checked")
         if cost >= quota.monthly_cost_usd:
             quota_admission_total.labels(
                 "monthly_cost", "observe" if observe else "reject"
@@ -180,6 +190,7 @@ async def agent_run_admission(
             ttl_seconds=get_settings().quota_run_lease_ttl_seconds,
             observe=observe,
         )
+        mark_chat_phase(request, "concurrency_lease_checked")
         quota_active_run_leases.set(lease.active)
         if not lease.allowed:
             quota_admission_total.labels(

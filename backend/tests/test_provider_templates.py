@@ -6,6 +6,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.core.providers.constants import DEFAULT_CONTEXT_WINDOW
 from app.core.providers.driver import ModelInfo
 from app.core.providers.driver import TestResult as DriverTestResult
 from app.core.providers.templates import get_templates
@@ -13,6 +14,7 @@ from app.db.base import Base, utc_now
 from app.models.model import Model
 from app.models.organization import Organization
 from app.models.provider import Provider
+from app.schemas.model import ModelBase
 from app.services.model_discovery_service import DiscoveryResult, ModelDiscoveryService
 from app.services.model_service import ModelService
 from app.services.provider_service import ProviderService
@@ -29,6 +31,25 @@ async def provider_session_factory():
         await db.commit()
     yield factory
     await engine.dispose()
+
+
+def test_context_window_defaults_to_138000() -> None:
+    template = next(item for item in get_templates() if item.key == "openai")
+    values = ModelDiscoveryService.model_values(
+        ModelInfo("model-without-context", "Model without context"),
+        source="discovered",
+        template=template,
+        now=utc_now(),
+    )
+    assert values["context_window"] == DEFAULT_CONTEXT_WINDOW
+
+    schema_model = ModelBase(
+        provider_id="provider-id",
+        name="manual-model",
+        display_name="Manual model",
+    )
+    assert schema_model.context_window == DEFAULT_CONTEXT_WINDOW
+    assert Model.__table__.c.context_window.default.arg == DEFAULT_CONTEXT_WINDOW
 
 
 async def _success_probe(*_args, **_kwargs) -> DiscoveryResult:
@@ -118,6 +139,76 @@ async def test_discovery_failure_keeps_existing_model_state(
         assert refreshed.enabled is True
         assert refreshed.active is True
         assert refreshed.last_seen_at == old_seen
+
+
+@pytest.mark.asyncio
+async def test_provider_update_queues_discovery_for_credentials_and_endpoint(
+    provider_session_factory, monkeypatch: pytest.MonkeyPatch
+):
+    queued: list[tuple[str, int]] = []
+
+    async def enqueue(provider_id: str, generation: int) -> str:
+        queued.append((provider_id, generation))
+        return "job-provider-discovery"
+
+    monkeypatch.setattr("app.services.provider_service.enqueue_provider_discovery", enqueue)
+    async with provider_session_factory() as db:
+        service = ProviderService(db)
+        provider = await service.create(
+            "org-provider",
+            {
+                "key": "custom",
+                "name": "Custom",
+                "base_url": "https://example.test/v1",
+                "api_key": "old-secret",
+            },
+        )
+        queued.clear()
+
+        updated = await service.update("org-provider", provider.id, {"api_key": "new-secret"})
+        assert updated.discovery_generation == 1
+        assert updated.discovery_status == "pending"
+        assert updated.api_key == ""
+        assert updated.api_key_encrypted
+        assert updated.api_key_last4 == "cret"
+        assert queued == [(provider.id, 1)]
+
+        queued.clear()
+        renamed = await service.update("org-provider", provider.id, {"name": "Renamed"})
+        assert renamed.discovery_generation == 1
+        assert queued == []
+
+        queued.clear()
+        moved = await service.update(
+            "org-provider", provider.id, {"base_url": "https://new.example.test/v1"}
+        )
+        assert moved.discovery_generation == 2
+        assert moved.discovery_status == "pending"
+        assert queued == [(provider.id, 2)]
+
+
+@pytest.mark.asyncio
+async def test_provider_update_keeps_pending_when_enqueue_fails(
+    provider_session_factory, monkeypatch: pytest.MonkeyPatch
+):
+    async def enqueue(*_args, **_kwargs):
+        raise RuntimeError("redis unavailable")
+
+    monkeypatch.setattr("app.services.provider_service.enqueue_provider_discovery", enqueue)
+    async with provider_session_factory() as db:
+        service = ProviderService(db)
+        provider = await service.create(
+            "org-provider",
+            {
+                "key": "custom",
+                "name": "Custom",
+                "base_url": "https://example.test/v1",
+                "api_key": "old-secret",
+            },
+        )
+        updated = await service.update("org-provider", provider.id, {"api_key": "new-secret"})
+        assert updated.discovery_generation == 1
+        assert updated.discovery_status == "pending"
 
 
 @pytest.mark.asyncio

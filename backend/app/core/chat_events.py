@@ -204,10 +204,17 @@ class ChatEventRecorder:
     commits on.
     """
 
-    def __init__(self, org_id: str, run_id: str, session_id: str | None = None):
+    def __init__(
+        self,
+        org_id: str,
+        run_id: str,
+        session_id: str | None = None,
+        model_id: str | None = None,
+    ):
         self.org_id = org_id
         self.run_id = run_id
         self.session_id = session_id
+        self.model_id = model_id
         self.seq = 0
         self._pending: list[ChatRunEvent] = []
         self._flush_task: asyncio.Task | None = None
@@ -254,7 +261,7 @@ class ChatEventRecorder:
         await publish_run_event(
             self.org_id, self.run_id, {"seq": seq, "event": event, "data": data}
         )
-        if event in {"message_start", "message_done"}:
+        if event == "message_done":
             await self._flush()
             return ev
         # Both triggers below schedule the write as a background task rather
@@ -313,6 +320,7 @@ class ChatEventRecorder:
             "last_seq": self.seq,
             "updated_at": utc_now().isoformat(),
             **({"session_id": self.session_id} if self.session_id else {}),
+            **({"model_id": self.model_id} if self.model_id else {}),
             **fields,
         }
         try:

@@ -176,6 +176,33 @@ async def test_list_events_filters_after_seq_and_scopes_org(session_factory):
 
 
 @pytest.mark.asyncio
+async def test_flush_progress_preserves_pinned_model_for_user_resume(session_factory, monkeypatch):
+    monkeypatch.setattr(chat_events, "SessionLocal", session_factory)
+    org_id, task_id = await _mk_org_and_task(session_factory)
+
+    async with session_factory() as s:
+        task = await s.get(Task, task_id)
+        task.progress = {"session_id": "session-user", "model_id": "model-switched"}
+        await s.commit()
+
+    rec = chat_events.ChatEventRecorder(
+        org_id,
+        "run-1",
+        session_id="session-user",
+        model_id="model-switched",
+    )
+    await rec.flush_progress(phase="thinking")
+    await rec.close()
+
+    async with session_factory() as s:
+        task = await s.get(Task, task_id)
+    assert task.progress["session_id"] == "session-user"
+    assert task.progress["model_id"] == "model-switched"
+    assert task.progress["phase"] == "thinking"
+
+
+
+@pytest.mark.asyncio
 async def test_orphan_sweep_fails_only_stale_running_chat_tasks(session_factory):
     org_id, _ = await _mk_org_and_task(session_factory)
     async with session_factory() as s:

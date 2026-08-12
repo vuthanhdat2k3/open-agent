@@ -110,6 +110,18 @@ async def decide_approval(
                 Task.root_run_id == approval.run_id,
                 Task.org_id == org_id,
                 Task.status == "waiting_approval",
+                # `root_run_id` is shared by the root task and every nested
+                # delegated sub-task spawned under it (see agent_loop.py's
+                # nested-resume recursion), so this filter alone is
+                # ambiguous whenever more than one of them is paused at
+                # once - e.g. a sub-agent's *own* new tool call also hits an
+                # approval gate while it is mid-resume, leaving both the
+                # root and that sub-task at `waiting_approval`
+                # simultaneously. Only the root task (no parent) is ever
+                # meant to be resumed directly here; agent_loop.py's
+                # `_find_direct_child_toward` walks down to whichever
+                # delegated sub-agent actually owns the approval.
+                Task.parent_task_id.is_(None),
             )
         )
         task = task_res.scalars().first()
@@ -125,16 +137,29 @@ async def decide_approval(
             payload = {
                 "agent_id": task.agent_id,
                 "message": task.goal,
-                # Delegated workers may inherit the parent chat's session
-                # checkpoint; resuming with it would fail agent ownership
-                # validation. ChatService creates a worker-owned session.
-                "session_id": None,
+                # Reuse the root chat session so the resumed run's messages
+                # land back in the same conversation the user is looking
+                # at, instead of a disconnected session with none of the
+                # prior turns. `task` here is always the *root* task (looked
+                # up by `root_run_id`), so its `agent_id` is the same agent
+                # the session was created for on the first turn - passing
+                # this session_id through can never trip ChatService's
+                # "session belongs to a different agent" check. The session
+                # id is persisted once in `task.progress["session_id"]` when
+                # the root task is first created (see
+                # ChatService.prepare_run) and never changes afterwards, so
+                # it is safe to reuse across any number of approval
+                # round-trips through delegated sub-agents.
+                "session_id": (task.progress or {}).get("session_id"),
                 "run_id": task.id,
                 "root_run_id": approval.run_id,
                 "stream": True,
                 "org_id": org_id,
                 "user_id": current_user.id,
                 "approval_resume_id": approval.id,
+                "model_id": (task.progress or {}).get("model_id"),
+                "prepared": True,
+                "prepared_agent_release_id": task.agent_release_id,
             }
             if get_settings().workflow_execution_mode == "queued":
                 await enqueue_chat_run(payload)

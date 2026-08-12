@@ -71,6 +71,7 @@ export type UIMessage = {
     approvalTool?: string;
     approvalArgs?: unknown;
     approvalStatus?: "pending" | "approved" | "rejected";
+    error?: boolean;
   };
 };
 
@@ -258,10 +259,25 @@ function ChatMessageItemBase({ message: m, debug, hasLiveTools, onApprovalDecisi
     );
   }
 
+  if (m.role === "error") {
+    return (
+      <div key={m.id} role="alert" className="animate-scale-in self-start w-full max-w-[92%] rounded-xl border border-destructive/40 bg-destructive/[0.06] p-3 text-sm text-destructive shadow-card">
+        <div className="flex items-center gap-2 font-semibold">
+          <XCircle className="h-4 w-4" />
+          <span>Model error</span>
+        </div>
+        <p className="mt-2 whitespace-pre-wrap break-words text-foreground">{m.content}</p>
+      </div>
+    );
+  }
+
   // Assistant message
   // The live activity row owns the empty-state status, so do not render a
-  // second placeholder bubble for the same run.
-  if (!m.content && !m.meta?.reasoning && m.meta?.cost_usd == null) return null;
+  // second placeholder bubble for the same run. A terminal message with cost
+  // metadata but no content is a legacy/incomplete response and must remain
+  // visible as an actionable error instead of a blank bubble.
+  const isIncompleteAssistant = !m.content && !m.meta?.reasoning && m.meta?.cost_usd != null;
+  if (!m.content && !m.meta?.reasoning && !isIncompleteAssistant) return null;
   const showHistoricalTools = debug && !hasLiveTools && m.meta?.tools && m.meta.tools.length > 0;
 
   return (
@@ -341,7 +357,7 @@ function ChatMessageItemBase({ message: m, debug, hasLiveTools, onApprovalDecisi
             </div>
           </Collapsible>
         ) : null}
-        {m.content && (
+        {(m.content || isIncompleteAssistant) && (
           <div className="select-text text-sm leading-relaxed">
           {m.content ? (
             <React.Suspense
@@ -351,6 +367,8 @@ function ChatMessageItemBase({ message: m, debug, hasLiveTools, onApprovalDecisi
             </React.Suspense>
           ) : m.meta?.reasoning ? (
             <span className="text-sm text-muted-foreground">Generating answer…</span>
+          ) : isIncompleteAssistant ? (
+            <span className="text-sm text-destructive">No answer was generated. Please try again.</span>
           ) : (
             <span className="flex items-center gap-2 text-muted-foreground">
               <span className="inline-flex gap-0.5">

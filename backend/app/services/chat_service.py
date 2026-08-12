@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from time import monotonic
+
+import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,6 +14,8 @@ from app.models.session import Session
 from app.models.task import Task
 from app.schemas.chat import AgentLoopResult, ChatRequest
 from app.services.agent_service import AgentService, RuntimeAgent
+
+logger = structlog.get_logger(__name__)
 
 
 class ChatService:
@@ -86,23 +91,50 @@ class ChatService:
         user_id: str | None = None,
         user_role: str | None = None,
     ) -> tuple[Session, Agent | RuntimeAgent, Task]:
+        started_at = monotonic()
+        logger.info("chat_latency_phase", phase="prepare_run_start", run_id=run_id)
         session = await self.ensure_session(org_id, request, user_id, user_role)
+        logger.info(
+            "chat_latency_phase",
+            phase="session_ready",
+            run_id=run_id,
+            elapsed_ms=round((monotonic() - started_at) * 1000, 1),
+        )
         agent = await self._load_agent(org_id, request.agent_id, session.agent_release_id)
+        logger.info(
+            "chat_latency_phase",
+            phase="agent_ready",
+            run_id=run_id,
+            elapsed_ms=round((monotonic() - started_at) * 1000, 1),
+        )
         res = await self.db.execute(
             select(Task).where(Task.id == run_id, Task.org_id == org_id)
         )
         task = res.scalar_one_or_none()
+        effective_model_id = request.model_id or getattr(agent, "model_id", None)
         if task is not None:
             if task.agent_id != agent.id or task.root_run_id != run_id:
                 raise ValueError("chat run belongs to a different agent or organization")
-            if not task.progress:
-                task.progress = {
-                    "session_id": session.id,
-                    "phase": task.status,
-                    "last_seq": 0,
-                    "updated_at": utc_now().isoformat(),
-                }
+            progress = dict(task.progress or {})
+            changed = False
+            if "session_id" not in progress:
+                progress["session_id"] = session.id
+                changed = True
+            if "model_id" not in progress:
+                progress["model_id"] = effective_model_id
+                changed = True
+            if changed:
+                progress.setdefault("phase", task.status)
+                progress.setdefault("last_seq", 0)
+                progress.setdefault("updated_at", utc_now().isoformat())
+                task.progress = progress
                 await self.db.commit()
+            logger.info(
+                "chat_latency_phase",
+                phase="task_ready",
+                run_id=run_id,
+                elapsed_ms=round((monotonic() - started_at) * 1000, 1),
+            )
             return session, agent, task
         task = Task(
             id=run_id,
@@ -115,6 +147,7 @@ class ChatService:
             status="queued",
             progress={
                 "session_id": session.id,
+                "model_id": effective_model_id,
                 "phase": "queued",
                 "last_seq": 0,
                 "updated_at": utc_now().isoformat(),
@@ -136,14 +169,27 @@ class ChatService:
         current_task_id: str | None = None,
         approval_resume_id: str | None = None,
         user_role: str | None = None,
+        prepared: bool = False,
+        prepared_agent_release_id: str | None = None,
     ) -> AgentLoopResult:
-        session = await self.ensure_session(org_id, request, user_id, user_role)
-        agent = await self._load_agent(org_id, request.agent_id, session.agent_release_id)
+        if prepared:
+            if not request.session_id:
+                raise ValueError("prepared chat run requires a session")
+            session_id = request.session_id
+            agent = await self._load_agent(
+                org_id,
+                request.agent_id,
+                prepared_agent_release_id,
+            )
+        else:
+            session = await self.ensure_session(org_id, request, user_id, user_role)
+            session_id = session.id
+            agent = await self._load_agent(org_id, request.agent_id, session.agent_release_id)
         return await run_agent_loop(
             agent,
             request.message,
             self.db,
-            session_id=session.id,
+            session_id=session_id,
             current_task_id=current_task_id,
             root_run_id=root_run_id or request.run_id,
             user_id=user_id,

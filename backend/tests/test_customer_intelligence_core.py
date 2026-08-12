@@ -2,6 +2,7 @@ from datetime import datetime
 
 import pytest
 
+from app.core.tools.registry import BUILTIN_TOOLS
 from app.customer_intelligence.contracts import CompanyRecord, NormalizedEmail
 from app.customer_intelligence.matching import match_companies
 from app.customer_intelligence.security import decrypt_bytes, encrypt_bytes
@@ -52,3 +53,16 @@ def test_credential_encryption_uses_a_fresh_nonce() -> None:
     assert first != second
     assert decrypt_bytes(first) == b"same credentials"
     assert decrypt_bytes(second) == b"same credentials"
+
+
+def test_google_tool_contracts_explain_provider_specific_arguments() -> None:
+    email_search = BUILTIN_TOOLS["email_search"]
+    drive_list = BUILTIN_TOOLS["drive_list_files"]
+    calendar_list = BUILTIN_TOOLS["calendar_list_events"]
+
+    assert "Gmail query syntax" in email_search.description
+    assert "newer_than:1d" in email_search.input_schema["properties"]["query"]["description"]
+    assert "filename substring" in drive_list.description
+    assert "not raw Drive query syntax" in drive_list.input_schema["properties"]["query"]["description"]
+    assert "ISO-8601" in calendar_list.description
+    assert "timezone offset" in calendar_list.input_schema["properties"]["from"]["description"]

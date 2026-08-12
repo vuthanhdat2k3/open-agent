@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.providers.constants import DEFAULT_CONTEXT_WINDOW
 from app.db.base import Base, gen_id, utc_now
 
 if TYPE_CHECKING:
@@ -24,7 +25,7 @@ class Model(Base):
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     display_name: Mapped[str] = mapped_column(String(128), nullable=False)
     tier: Mapped[str] = mapped_column(String(32), default="balanced", nullable=False)
-    context_window: Mapped[int] = mapped_column(Integer, default=8192, nullable=False)
+    context_window: Mapped[int] = mapped_column(Integer, default=DEFAULT_CONTEXT_WINDOW, nullable=False)
     input_cost_per_1k: Mapped[float] = mapped_column(Float, default=0.0)
     output_cost_per_1k: Mapped[float] = mapped_column(Float, default=0.0)
     active: Mapped[bool] = mapped_column(Boolean, default=True)

@@ -73,6 +73,11 @@ quota_admission_total = Counter(
     "Quota admission decisions",
     ["limit_type", "decision"],
 )
+chat_finalization_total = Counter(
+    "chat_finalization_total",
+    "Chat finalization outcomes",
+    ["outcome"],  # direct | retry | tool_result_fallback | incomplete
+)
 quota_backend_failures_total = Counter(
     "quota_backend_failures_total",
     "Quota backend failures",

@@ -90,7 +90,7 @@ def _tool_call_delta(name: str, arguments: str) -> dict:
 def _fake_stream(tool_name: str, arguments: str = "{}"):
     calls = {"n": 0}
 
-    async def stream(self, messages, tools=None, temperature=0.7):  # noqa: ANN001
+    async def stream(self, messages, tools=None, temperature=0.7, tool_choice=None):  # noqa: ANN001
         calls["n"] += 1
         if calls["n"] == 1:
             yield {"type": "tool_calls", "tool_calls": [_tool_call_delta(tool_name, arguments)]}

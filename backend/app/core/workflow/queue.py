@@ -27,3 +27,7 @@ async def enqueue_workflow_run(workflow_run_id: str) -> str:
 
 async def enqueue_chat_run(payload: dict[str, Any]) -> str:
     return await _enqueue("run_chat", payload)
+
+
+async def enqueue_provider_discovery(provider_id: str, discovery_generation: int) -> str:
+    return await _enqueue("run_provider_discovery", provider_id, discovery_generation)
