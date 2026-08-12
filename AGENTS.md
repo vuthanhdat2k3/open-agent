@@ -95,6 +95,7 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 | Branch | Worktree path | Phạm vi/task | Agent/người phụ trách |
 |---|---|---|---|
 | `dev` | `G:\open-agent` | Nhánh tích hợp chính — không code trực tiếp ở đây | — |
+| `feat/runtime-date-time` | `G:\open-agent-worktrees\runtime-date-time` | Runtime date/time context for all agents and workflows | Codex |
 
 ## 8. Quy tắc chung khác (áp dụng mọi branch/worktree)
 

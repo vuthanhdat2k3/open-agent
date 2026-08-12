@@ -266,7 +266,7 @@ export default function WorkflowsPage() {
     try {
       await streamSSE(
         `/api/workflows/${editId}/run`,
-        { input, stream: true },
+        { input, stream: true, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone },
         (ev) => {
           const d = ev.data;
           const ts = Date.now();

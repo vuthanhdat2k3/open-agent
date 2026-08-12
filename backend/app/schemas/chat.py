@@ -15,6 +15,7 @@ class ChatRequest(BaseModel):
     session_id: str | None = None
     run_id: str | None = None
     stream: bool = True
+    timezone: str | None = None
 
 
 class ChatMessageOut(BaseModel):

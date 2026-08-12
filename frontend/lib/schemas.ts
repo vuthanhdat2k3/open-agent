@@ -85,11 +85,13 @@ export const chatRequest = z.object({
   message: z.string().min(1),
   session_id: z.string().optional(),
   stream: z.boolean().optional().default(true),
+  timezone: z.string().optional(),
 });
 export type ChatRequest = z.infer<typeof chatRequest>;
 
 export const runWorkflowRequest = z.object({
   input: z.string().min(1),
   stream: z.boolean().optional().default(true),
+  timezone: z.string().optional(),
 });
 export type RunWorkflowRequest = z.infer<typeof runWorkflowRequest>;
