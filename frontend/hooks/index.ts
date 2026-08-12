@@ -82,12 +82,22 @@ export function useUpdateProvider() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, ...body }: any) => api.put<Provider>(`/api/providers/${id}`, body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["providers"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["providers"] });
+      qc.invalidateQueries({ queryKey: ["models"] });
+    },
   });
 }
 
 export function useTestProvider() {
-  return useMutation({ mutationFn: (id: string) => api.post<any>(`/api/providers/${id}/test`) });
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.post<any>(`/api/providers/${id}/test`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["providers"] });
+      qc.invalidateQueries({ queryKey: ["models"] });
+    },
+  });
 }
 
 export function useModels(

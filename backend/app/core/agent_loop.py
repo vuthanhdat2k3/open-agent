@@ -5,10 +5,12 @@ import copy
 import json
 import re
 import time
-from collections.abc import AsyncIterator
+import unicodedata
+from collections.abc import AsyncIterator, Coroutine
 from datetime import timedelta
 from typing import Any
 
+import structlog
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,6 +27,7 @@ from app.core.observability.audit import log_action
 from app.core.observability.llm_trace import ObservabilityContext, build_trace_context
 from app.core.observability.metrics import (
     agent_run_cost_usd_total,
+    chat_finalization_total,
     guardrail_events_total,
     tool_call_duration_seconds,
     tool_calls_total,
@@ -35,6 +38,7 @@ from app.core.tools.risk_tier import RiskTier
 from app.core.tools.types import ToolContext, ToolSpec, tool_to_openai_schema
 from app.core.workflow.replay import ReplayCursor, ReplayDiverged, record_tool_call
 from app.db.base import gen_id, utc_now
+from app.db.session import SessionLocal
 from app.mcp.client import build_mcp_tool_spec, get_mcp_manager
 from app.models.agent import Agent
 from app.models.approval_request import ApprovalRequest
@@ -47,7 +51,109 @@ from app.schemas.chat import AgentLoopResult
 from app.services.quota_service import invalidate_monthly_cost_cache
 
 settings = get_settings()
+logger = structlog.get_logger(__name__)
 UNTRUSTED_TOOL_SOURCES = {"web_fetch", "rag_search", "read_attachment"}
+
+# User messages are persisted on a separate short-lived DB session while the
+# provider request is starting. The task-id registry is intentionally local to
+# the process: the worker that owns the agent loop also owns the deferred write.
+# Every terminal path awaits and removes the entry before changing task state,
+# so a failure/cancel can never race the trailing-user cleanup.
+_DEFERRED_USER_WRITES: dict[
+    str, asyncio.Task[None] | Coroutine[Any, Any, None]
+] = {}
+
+
+async def _persist_user_message_background(
+    *,
+    session_id: str,
+    role: str,
+    content: str,
+    meta: dict[str, Any],
+    org_id: str,
+    created_by_user_id: str | None,
+    db: AsyncSession | None = None,
+) -> None:
+    if db is not None:
+        await _persist(
+            db,
+            session_id,
+            role,
+            content,
+            meta,
+            org_id=org_id,
+            created_by_user_id=created_by_user_id,
+        )
+        return
+    async with SessionLocal() as write_db:
+        await _persist(
+            write_db,
+            session_id,
+            role,
+            content,
+            meta,
+            org_id=org_id,
+            created_by_user_id=created_by_user_id,
+        )
+
+
+def defer_user_message(
+    task_id: str,
+    *,
+    session_id: str,
+    content: str,
+    org_id: str,
+    created_by_user_id: str | None,
+    db: AsyncSession | None = None,
+) -> None:
+    previous = _DEFERRED_USER_WRITES.pop(task_id, None)
+    if previous is not None:
+        if isinstance(previous, asyncio.Task):
+            if not previous.done():
+                previous.cancel()
+        else:
+            previous.close()
+
+    # The test suite uses an isolated SQLite in-memory engine whose schema is
+    # only visible through the fixture session. Production keeps the separate
+    # writer session so the initial provider request is not serialized behind
+    # the request session's transaction.
+    writer_db = None
+    if db is not None:
+        bind = db.get_bind()
+        url = getattr(bind, "url", None)
+        if (
+            url is not None
+            and url.drivername.startswith("sqlite")
+            and url.database == ":memory:"
+        ):
+            writer_db = db
+
+    write = _persist_user_message_background(
+        session_id=session_id,
+        role="user",
+        content=content,
+        meta={},
+        org_id=org_id,
+        created_by_user_id=created_by_user_id,
+        db=writer_db,
+    )
+    # Do not start a coroutine on the fixture's AsyncSession until the
+    # terminal barrier; AsyncSession does not permit concurrent operations.
+    if writer_db is not None:
+        _DEFERRED_USER_WRITES[task_id] = write
+    else:
+        _DEFERRED_USER_WRITES[task_id] = asyncio.create_task(write)
+
+
+
+async def await_deferred_user_write(task_id: str | None) -> None:
+    if not task_id:
+        return
+    pending = _DEFERRED_USER_WRITES.pop(task_id, None)
+    if pending is not None:
+        await pending
+
 
 # Auto-injected into every agent's system prompt so the model is explicitly
 # told how to use the structured memory tools. The tool schemas are provided
@@ -120,10 +226,24 @@ def _delegate_slug(name: str) -> str:
     return slug or "agent"
 
 
+_DELEGATE_ROSTER_CACHE_TTL_SECONDS = 30.0
+_DELEGATE_ROSTER_CACHE: dict[
+    tuple[str, str],
+    tuple[float, str, tuple[ToolSpec, ...], dict[str, tuple[Agent, ...]]],
+] = {}
+
+
 async def _build_orchestrator_delegate_tools(
     db: AsyncSession, org_id: str, exclude_agent_id: str
 ) -> tuple[str, list[ToolSpec], dict[str, list[Agent]], dict[str, ToolSpec]]:
     """Build dynamic, named delegate tools and the capability index."""
+    cache_key = (org_id, exclude_agent_id)
+    cached = _DELEGATE_ROSTER_CACHE.get(cache_key)
+    if cached is not None and cached[0] > time.monotonic():
+        _, roster, cached_specs, cached_capabilities = cached
+        specs = list(cached_specs)
+        capabilities = {key: list(value) for key, value in cached_capabilities.items()}
+        return roster, specs, capabilities, {spec.name: spec for spec in specs}
     result = await db.execute(
         select(Agent).where(Agent.org_id == org_id, Agent.id != exclude_agent_id)
     )
@@ -170,6 +290,12 @@ async def _build_orchestrator_delegate_tools(
         for capability in _infer_capabilities(target):
             capability_index.setdefault(capability, []).append(target)
     roster = "Agents available to delegate to via named tools:\n" + "\n".join(lines)
+    _DELEGATE_ROSTER_CACHE[cache_key] = (
+        time.monotonic() + _DELEGATE_ROSTER_CACHE_TTL_SECONDS,
+        roster,
+        tuple(delegate_specs),
+        {key: tuple(value) for key, value in capability_index.items()},
+    )
     return roster, delegate_specs, capability_index, delegate_by_agent_id
 
 
@@ -177,6 +303,50 @@ _ROUTING_SYNONYMS: dict[str, tuple[str, ...]] = {
     "email": ("email", "gmail", "mail", "thư", "email"),
     "calendar": ("calendar", "lịch", "schedule", "meeting", "cuộc họp"),
     "drive": ("drive", "tài liệu", "document", "documents", "file", "files"),
+}
+
+_GOOGLE_TOOL_PREFIXES = ("email_", "drive_", "calendar_")
+_GOOGLE_RESOURCE_TERMS = {
+    "email": ("email", "gmail", "mail", "thu"),
+    "drive": ("drive", "file", "files", "tai lieu", "tep"),
+    "calendar": ("calendar", "event", "events", "meeting", "lich", "cuoc hop", "su kien"),
+}
+_GOOGLE_TOOL_ACTION_TERMS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("email_remove_label", ("remove label", "go nhan", "xoa nhan")),
+    ("email_apply_label", ("apply label", "add label", "gan nhan", "them nhan")),
+    ("email_list_labels", ("list labels", "show labels", "danh sach nhan")),
+    ("email_mark_unread", ("mark unread", "danh dau chua doc")),
+    ("email_mark_read", ("mark read", "danh dau da doc")),
+    ("email_unstar", ("unstar", "remove star", "bo sao")),
+    ("email_star", ("star", "gan sao", "danh dau sao")),
+    ("email_archive", ("archive", "luu tru")),
+    ("email_restore", ("restore", "khoi phuc")),
+    ("email_trash", ("trash", "move to trash", "bo vao thung rac", "xoa mail", "xoa email")),
+    ("email_reply", ("reply", "tra loi", "phan hoi")),
+    ("email_forward", ("forward", "chuyen tiep")),
+    ("email_send", ("send draft", "gui ban nhap")),
+    ("email_create_draft", ("create draft", "draft email", "compose email", "soan email", "tao ban nhap")),
+    ("email_get", ("email id", "message id", "provider message id", "ma email", "ma thu")),
+    ("email_search", ("search", "find", "filter", "tim", "kiem", "hom nay", "hom qua", "today", "yesterday", "date", "ngay", "week", "tuan", "month", "thang")),
+    ("email_list_new", ("inbox", "new mail", "new email", "unread", "mail moi", "email moi", "thu moi", "chua doc")),
+    ("drive_delete_file", ("delete", "remove", "xoa")),
+    ("drive_update_file", ("update", "edit", "rename", "cap nhat", "sua", "doi ten")),
+    ("drive_create_file", ("create", "new file", "tao", "tep moi", "tai lieu moi")),
+    ("drive_get_file", ("file id", "provider file id", "ma file", "ma tep", "ma tai lieu")),
+    ("drive_list_files", ("search", "find", "list", "show", "tim", "kiem", "liet ke", "danh sach")),
+    ("calendar_delete_event", ("delete", "cancel", "xoa", "huy")),
+    ("calendar_update_event", ("update", "edit", "reschedule", "cap nhat", "sua", "doi lich")),
+    ("calendar_create_event", ("create", "schedule", "book", "tao", "dat lich", "len lich")),
+    ("calendar_get_event", ("event id", "provider event id", "ma event", "ma su kien")),
+    ("calendar_list_events", ("search", "find", "list", "show", "today", "tomorrow", "tim", "kiem", "liet ke", "danh sach", "hom nay", "ngay mai")),
+)
+_GOOGLE_LOOKUP_FALLBACK_TOOLS = {
+    "email_get",
+    "email_list_new",
+    "drive_get_file",
+    "drive_list_files",
+    "calendar_get_event",
+    "calendar_list_events",
 }
 
 _STICKY_ROUTE_TTL_MINUTES = 30
@@ -250,7 +420,75 @@ def _route_orchestrator_turn(
     if spec is None:
         return "auto", None
     return {"type": "function", "function": {"name": spec.name}}, (
-        f"This request matches the {next(iter(matched))} capability. You MUST call {spec.name}; do not answer or refuse directly."
+        f"This request matches the {next(iter(matched))} capability. You MUST call {spec.name}; do not answer or refuse directly. "
+        "Pass the user's request faithfully in the delegation instruction; do not add requirements the user did not ask for."
+    )
+
+
+def _normalized_route_text(message: str) -> str:
+    text = unicodedata.normalize("NFKD", message.lower().replace("đ", "d"))
+    ascii_text = "".join(char for char in text if not unicodedata.combining(char))
+    return f" {re.sub(r'[^a-z0-9]+', ' ', ascii_text).strip()} "
+
+
+def _contains_route_term(text: str, terms: tuple[str, ...]) -> bool:
+    return any(f" {term} " in text for term in terms)
+
+
+def _route_google_worker_tool(
+    message: str, tool_by_name: dict[str, ToolSpec]
+) -> dict[str, Any] | str:
+    """Force one available Google integration tool for an explicit intent."""
+    available_families = {
+        prefix.removesuffix("_")
+        for prefix in _GOOGLE_TOOL_PREFIXES
+        if any(name.startswith(prefix) for name in tool_by_name)
+    }
+    if not available_families:
+        return "auto"
+    text = _normalized_route_text(message)
+    matched_families = {
+        family
+        for family in available_families
+        if _contains_route_term(text, _GOOGLE_RESOURCE_TERMS[family])
+    }
+    if len(matched_families) != 1:
+        return "auto"
+    family = next(iter(matched_families))
+    candidates = [
+        name
+        for name, terms in _GOOGLE_TOOL_ACTION_TERMS
+        if name.startswith(f"{family}_")
+        and name in tool_by_name
+        and _contains_route_term(text, terms)
+    ]
+    if not candidates:
+        return "auto"
+    if "email_send" in candidates:
+        candidates = [name for name in candidates if name != "email_create_draft"]
+    specific = [name for name in candidates if name not in _GOOGLE_LOOKUP_FALLBACK_TOOLS]
+    resolved = specific or candidates
+    if len(resolved) != 1:
+        return "auto"
+    selected = resolved[0]
+    return {"type": "function", "function": {"name": selected}}
+
+
+def _connected_data_directive() -> str:
+    now_dt = utc_now()
+    now = now_dt.isoformat(timespec="seconds") + "Z"
+    today = now_dt.date()
+    tomorrow = today + timedelta(days=1)
+    return (
+        "Connected-data tool behavior:\n"
+        "- Use the relevant tool before answering requests that require current Email, Drive, or Calendar data.\n"
+        "- Do not claim a connected service is inaccessible before attempting its relevant read tool.\n"
+        "- Convert relative dates to provider-supported arguments. Current UTC time: "
+        f"{now}. For Gmail, today's UTC range is after:{today:%Y/%m/%d} "
+        f"before:{tomorrow:%Y/%m/%d}. Preserve an explicit user timezone; otherwise use UTC and state that assumption.\n"
+        "- After a successful list/search read, summarize that result and stop. Do not fetch every item individually "
+        "unless the user explicitly asks for message/file/event details.\n"
+        "- Ask for clarification when a write action or its required details are ambiguous."
     )
 
 
@@ -298,6 +536,17 @@ def _is_tool_failure(name: str, result: str) -> bool:
         except (ValueError, IndexError):
             return False
     return False
+
+
+_FINALIZATION_FALLBACK_MAX_CHARS = 12_000
+
+
+def _latest_successful_tool_result(tool_calls: list[dict[str, Any]]) -> str | None:
+    for call in reversed(tool_calls):
+        result = str(call.get("result") or "").strip()
+        if result and not _is_tool_failure(str(call.get("name") or ""), result):
+            return result[:_FINALIZATION_FALLBACK_MAX_CHARS]
+    return None
 
 
 async def _persist(
@@ -363,11 +612,49 @@ async def fail_chat_run(db: AsyncSession, task: Task, exc: Exception) -> None:
     previously only the inline path deleted the eagerly-saved user message,
     so a queued-mode failure left it to be resent as duplicate context.
     """
+    await await_deferred_user_write(task.id)
     task.status = "failed"
     task.result = str(exc)
     task.finished_at = utc_now()
     await _delete_trailing_user_message(db, (task.progress or {}).get("session_id"))
     await db.commit()
+
+
+async def _find_direct_child_toward(
+    db: AsyncSession, from_task_id: str | None, target_task_id: str
+) -> Task | None:
+    """Find the direct child of ``from_task_id`` that leads to ``target_task_id``.
+
+    Delegation can nest arbitrarily deep (call_agent inside a delegated
+    sub-agent), so an approval's owning task may be several ``call_agent``
+    hops below the task that is resuming. Resuming must walk one hop at a
+    time — jumping straight to the owning task would skip every
+    intermediate sub-agent's turn, leaving their in-flight tool call
+    unanswered in their own message history. Walking up ``parent_task_id``
+    from the target to whichever ancestor is a direct child of
+    ``from_task_id`` gives the next single hop to recurse into; that hop
+    then applies this same logic for whatever remains below it.
+    """
+    if from_task_id is None:
+        return None
+    current = (
+        await db.execute(select(Task).where(Task.id == target_task_id))
+    ).scalar_one_or_none()
+    if current is None:
+        return None
+    # Cap the walk to a sane bound so a corrupted/cyclic parent chain can
+    # never turn into an infinite loop.
+    for _ in range(64):
+        if current.parent_task_id == from_task_id:
+            return current
+        if current.parent_task_id is None:
+            return None
+        current = (
+            await db.execute(select(Task).where(Task.id == current.parent_task_id))
+        ).scalar_one_or_none()
+        if current is None:
+            return None
+    return None
 
 
 async def _finish_task(
@@ -381,6 +668,7 @@ async def _finish_task(
 ) -> None:
     if task is None:
         return
+    await await_deferred_user_write(task.id)
     if task.status == "cancelled" and status != "cancelled":
         return
     task.status = status
@@ -415,6 +703,14 @@ async def _agent_stream(
     record_stream: bool = True,
     approval_resume_id: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
+    phase_started_at = time.monotonic()
+    logger.info(
+        "chat_latency_phase",
+        phase="agent_loop_start",
+        run_id=root_run_id or current_task_id,
+        task_id=current_task_id,
+        depth=depth,
+    )
     root_task: Task | None = None
     # A detached chat creates its durable Task before starting model work. Reuse
     # that row so status/result survive an SSE disconnect and no duplicate root
@@ -427,7 +723,7 @@ async def _agent_stream(
         if root_task is None:
             yield {"event": "error", "data": {"message": "chat run not found"}}
             return
-        if await _is_cancelled(db, root_task):
+        if root_task.status == "cancelled":
             return
         root_task.status = "running"
         root_task.started_at = root_task.started_at or utc_now()
@@ -476,6 +772,13 @@ async def _agent_stream(
         await _finish_task(db, root_task, status="failed", result="provider not found for model")
         yield {"event": "error", "data": {"message": "provider not found for model"}}
         return
+    logger.info(
+        "chat_latency_phase",
+        phase="provider_context_ready",
+        run_id=root_run_id or current_task_id,
+        task_id=current_task_id,
+        elapsed_ms=round((time.monotonic() - phase_started_at) * 1000, 1),
+    )
     observability = (
         ObservabilityContext(
             build_trace_context(
@@ -516,6 +819,7 @@ async def _agent_stream(
         user_id=user_id or agent.created_by_user_id,
         current_task_id=current_task_id,
         root_run_id=root_run_id or session_id or current_task_id,
+        model_id=selected_model_id,
         actor_agent_identity_id=actor_agent_identity_id,
         delegation_chain=delegation_chain,
     )
@@ -535,6 +839,8 @@ async def _agent_stream(
         directives.append(MEMORY_DIRECTIVE)
     if "rag_search" in tool_by_name:
         directives.append(RAG_DIRECTIVE)
+    if any(name.startswith(_GOOGLE_TOOL_PREFIXES) for name in tool_by_name):
+        directives.append(_connected_data_directive())
     if agent.kind == "orchestrator" and "call_agent" in tool_by_name:
         directives.append(ORCHESTRATOR_SYSTEM_SUFFIX)
         roster, delegate_specs, capability_index, delegate_by_agent_id = await _build_orchestrator_delegate_tools(
@@ -556,8 +862,18 @@ async def _agent_stream(
         )
         if route_directive:
             directives.append(route_directive)
+    elif agent.kind != "orchestrator":
+        forced_tool_choice = _route_google_worker_tool(message, tool_by_name)
 
     tool_schemas = [tool_to_openai_schema(s) for s in specs] if specs else None
+    logger.info(
+        "chat_latency_phase",
+        phase="prompt_tools_ready",
+        run_id=root_run_id or current_task_id,
+        task_id=current_task_id,
+        tool_count=len(specs),
+        elapsed_ms=round((time.monotonic() - phase_started_at) * 1000, 1),
+    )
 
     system_parts = [base_prompt] if base_prompt else []
     system_parts.extend(directives)
@@ -591,22 +907,45 @@ async def _agent_stream(
                 messages.append(_to_openai_message(m))
     if not approval_resume_id:
         messages.append({"role": "user", "content": message})
+    elif not any(m.get("role") == "user" for m in messages):
+        # A freshly-created delegated sub-agent (this nested resume's
+        # current_task_id did not exist before this call) has no prior turn
+        # of its own in the shared session history to have carried the
+        # original request - `messages` would otherwise jump straight from
+        # `system` to the synthetic `assistant`/`tool` pair built below,
+        # which every provider tested rejects (a tool_calls turn with no
+        # preceding user turn to be responding to). Restate the goal as
+        # that user turn so the conversation shape is well-formed.
+        messages.append({"role": "user", "content": message})
 
-    if session_id and not approval_resume_id:
-        await _persist(
-            db,
-            session_id,
-            "user",
-            message,
-            {},
+    logger.info(
+        "chat_latency_phase",
+        phase="prompt_history_ready",
+        run_id=root_run_id or current_task_id,
+        task_id=current_task_id,
+        history_messages=max(0, len(messages) - 1),
+        elapsed_ms=round((time.monotonic() - phase_started_at) * 1000, 1),
+    )
+
+    if session_id and not approval_resume_id and root_task is not None:
+        defer_user_message(
+            root_task.id,
+            session_id=session_id,
+            content=message,
             org_id=agent.org_id,
             created_by_user_id=user_id or agent.created_by_user_id,
+            db=db,
         )
 
     # Only the chat root task gets a durable event log: it is the one a
     # browser reconnects to. Subagent loops (call_agent) just emit in-process.
     rec: ChatEventRecorder | None = (
-        ChatEventRecorder(agent.org_id, root_run_id, session_id=session_id)
+        ChatEventRecorder(
+            agent.org_id,
+            root_run_id,
+            session_id=session_id,
+            model_id=selected_model_id,
+        )
         if (depth == 0 and root_run_id and record_stream)
         else None
     )
@@ -616,7 +955,9 @@ async def _agent_stream(
     start = time.monotonic()
     if rec is not None:
         await rec.record({"event": "message_start", "data": {}})
-        await rec.flush_progress(phase="thinking", content_chars=0, reasoning_chars=0)
+        asyncio.create_task(
+            rec.flush_progress(phase="thinking", content_chars=0, reasoning_chars=0)
+        )
     yield {"event": "message_start", "data": {}}
 
     tool_calls_log: list[dict[str, Any]] = []
@@ -665,91 +1006,227 @@ async def _agent_stream(
         if approval.status != "approved":
             await _finish_task(db, root_task, status="waiting_approval", result="approval pending")
             return
-        name = approval.tool_name or ""
-        args = approval.args_snapshot or {}
-        approved_resume_name = name
-        approved_resume_args = args
-        spec = tool_by_name.get(name)
-        if spec is None:
-            msg = f"error: tool '{name}' not available"
-            await _finish_task(db, root_task, status="failed", result=msg)
-            yield {"event": "error", "data": {"message": msg}}
-            return
-        tool_index = 0
-        call_id = f"approval-{approval.id}"
-        tool_observation = (
-            observability.child(getattr(llm, "last_observation_id", None)).start_tool_observation(
+        # Explicit ownership routing: an approval raised inside a delegated
+        # sub-agent (call_agent / delegate_to_*, possibly several levels
+        # deep) must execute in *that* task's agent context, not this one's -
+        # tool_by_name here only has this agent's tools, so looking the tool
+        # up directly would either 404 ("tool not available") or, worse,
+        # silently run a same-named tool belonging to the wrong agent. NULL
+        # owning_task_id means "this task" (rows from before this column
+        # existed, and direct non-delegated approvals), so it falls through
+        # to the existing direct-execution path unchanged.
+        owning_task_id = approval.owning_task_id
+        if owning_task_id and owning_task_id != current_task_id:
+            next_hop = await _find_direct_child_toward(db, current_task_id, owning_task_id)
+            if next_hop is None:
+                msg = f"approval '{approval.id}' does not belong to this run's delegation tree"
+                await _finish_task(db, root_task, status="failed", result=msg)
+                yield {"event": "error", "data": {"message": msg}}
+                return
+            child_agent_res = await db.execute(
+                select(Agent).where(Agent.id == next_hop.agent_id, Agent.org_id == agent.org_id)
+            )
+            child_agent = child_agent_res.scalar_one_or_none()
+            if child_agent is None:
+                msg = f"error: delegated agent for task '{next_hop.id}' not found"
+                await _finish_task(db, root_task, status="failed", result=msg)
+                yield {"event": "error", "data": {"message": msg}}
+                return
+            # The nested run streams its own events (message_start, tokens,
+            # nested tool calls, its own message_done) live to this same
+            # client - identical to a fresh call_agent invocation - then this
+            # frame folds its final answer back into *this* agent's message
+            # history and lets the normal loop continue, exactly like
+            # _call_agent's non-resume path does.
+            #
+            # The synthetic assistant/tool message pair below must reference
+            # a tool name that actually exists in this agent's tool schema -
+            # an orchestrator's delegate tools are dynamically named per
+            # target agent (delegate_to_<slug>, built in
+            # _build_orchestrator_delegate_tools), not the literal
+            # "call_agent". Using the wrong name here previously made every
+            # provider reject the resume with a generic "parameter is
+            # invalid" 400, because the tool_call referenced a function the
+            # API's own `tools` list never declared.
+            resume_tool_name = "call_agent"
+            resume_tool_spec = delegate_by_agent_id.get(child_agent.id)
+            if resume_tool_spec is not None:
+                resume_tool_name = resume_tool_spec.name
+            async for nested_ev in _agent_stream(
+                child_agent,
+                next_hop.goal,
+                db,
+                depth + 1,
+                None,
+                current_task_id=next_hop.id,
+                root_run_id=root_run_id,
+                user_id=user_id,
+                model_id=model_id or selected_model_id,
+                actor_agent_identity_id=actor_agent_identity_id,
+                delegation_chain=delegation_chain,
+                record_stream=False,
+                approval_resume_id=approval_resume_id,
+            ):
+                if nested_ev["event"] == "message_done":
+                    nested_result = nested_ev["data"]["content"]
+                elif nested_ev["event"] in {"approval_required", "error", "replay_diverged"}:
+                    # The nested run itself paused/failed further down the
+                    # tree (e.g. a third approval gate) - surface that
+                    # outcome as-is rather than pretending this level
+                    # finished.
+                    yield nested_ev
+                    return
+            messages.append({
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [{
+                    "id": f"resume-{approval.id}",
+                    "type": "function",
+                    "function": {
+                        "name": resume_tool_name,
+                        "arguments": json.dumps(
+                            {"target_agent_id": child_agent.id, "instruction": next_hop.goal}
+                            if resume_tool_name == "call_agent"
+                            else {"instruction": next_hop.goal},
+                            ensure_ascii=False,
+                        ),
+                    },
+                }],
+            })
+            messages.append({
+                "role": "tool",
+                "tool_call_id": f"resume-{approval.id}",
+                "content": nested_result,
+            })
+            approved_resume_result = nested_result
+            # The routing directive that forced this turn's tool_choice
+            # already did its job (it is why this delegation happened at
+            # all); forcing it again on the next model call - which is what
+            # `_ == 0` in the main loop below would otherwise do, since this
+            # is that loop's first iteration regardless of how many turns
+            # preceded the approval - makes the provider reject the request:
+            # the conversation now has this tool's result already, and
+            # providers respond with a generic "parameter is invalid" 400
+            # when forced to call it again right after being handed its own
+            # output.
+            forced_tool_choice = "auto"
+            await db.commit()
+        else:
+            name = approval.tool_name or ""
+            args = approval.args_snapshot or {}
+            approved_resume_name = name
+            approved_resume_args = args
+            spec = tool_by_name.get(name)
+            if spec is None:
+                msg = f"error: tool '{name}' not available"
+                await _finish_task(db, root_task, status="failed", result=msg)
+                yield {"event": "error", "data": {"message": msg}}
+                return
+            tool_index = 0
+            call_id = f"approval-{approval.id}"
+            tool_observation = (
+                observability.child(getattr(llm, "last_observation_id", None)).start_tool_observation(
+                    tool_name=name,
+                    tool_call_id=call_id,
+                    arguments=args,
+                    metadata={"risk_tier": spec.risk_tier.value, "approval_id": approval.id},
+                )
+                if observability is not None
+                else None
+            )
+            budget_reason = budget.record_call(name, args)
+            if budget_reason or spec.risk_tier.value not in agent.allowed_risk_tiers:
+                result = budget_reason or (
+                    f"error: tool '{name}' requires risk tier '{spec.risk_tier.value}' "
+                    "which is not enabled for this agent"
+                )
+                result_ev = {"event": "tool_result", "data": {"index": 0, "name": name, "result": result}}
+                if rec is not None:
+                    await rec.record(result_ev)
+                    await rec.close()
+                await _finish_task(db, root_task, status="failed", result=result)
+                if tool_observation is not None:
+                    tool_observation.finish_error(RuntimeError(result), result=result)
+                yield result_ev
+                return
+            call_ev = {
+                "event": "tool_call",
+                "data": {"index": tool_index, "name": name, "arguments": args, "approved": True},
+            }
+            if rec is not None:
+                await rec.record(call_ev)
+                await rec.flush_progress(phase=f"tool:{name}")
+            yield call_ev
+            try:
+                result = await execute_tool_call(spec, args, ctx)
+                tool_status = "ok"
+                if tool_observation is not None:
+                    tool_observation.finish_success(result=result)
+            except asyncio.CancelledError:
+                if tool_observation is not None:
+                    tool_observation.finish_cancelled()
+                raise
+            except Exception as exc:  # noqa: BLE001
+                result = f"error executing tool: {exc}"
+                tool_status = "error"
+                if tool_observation is not None:
+                    tool_observation.finish_error(exc, result=result)
+            result, secret_findings = scan_and_redact(str(result))
+            approved_resume_result = result
+            await record_tool_call(
+                db,
+                org_id=agent.org_id,
+                sequence=1,
                 tool_name=name,
-                tool_call_id=call_id,
                 arguments=args,
-                metadata={"risk_tier": spec.risk_tier.value, "approval_id": approval.id},
+                result=result,
+                status=tool_status,
+                duration_ms=0,
+                session_id=session_id,
             )
-            if observability is not None
-            else None
-        )
-        budget_reason = budget.record_call(name, args)
-        if budget_reason or spec.risk_tier.value not in agent.allowed_risk_tiers:
-            result = budget_reason or (
-                f"error: tool '{name}' requires risk tier '{spec.risk_tier.value}' "
-                "which is not enabled for this agent"
-            )
-            result_ev = {"event": "tool_result", "data": {"index": 0, "name": name, "result": result}}
+            result_ev = {"event": "tool_result", "data": {"index": tool_index, "name": name, "result": result}}
             if rec is not None:
                 await rec.record(result_ev)
-                await rec.close()
-            await _finish_task(db, root_task, status="failed", result=result)
-            if tool_observation is not None:
-                tool_observation.finish_error(RuntimeError(result), result=result)
+                await rec.heartbeat(phase="thinking")
             yield result_ev
-            return
-        call_ev = {
-            "event": "tool_call",
-            "data": {"index": tool_index, "name": name, "arguments": args, "approved": True},
-        }
-        if rec is not None:
-            await rec.record(call_ev)
-            await rec.flush_progress(phase=f"tool:{name}")
-        yield call_ev
-        try:
-            result = await execute_tool_call(spec, args, ctx)
-            tool_status = "ok"
-            if tool_observation is not None:
-                tool_observation.finish_success(result=result)
-        except asyncio.CancelledError:
-            if tool_observation is not None:
-                tool_observation.finish_cancelled()
-            raise
-        except Exception as exc:  # noqa: BLE001
-            result = f"error executing tool: {exc}"
-            tool_status = "error"
-            if tool_observation is not None:
-                tool_observation.finish_error(exc, result=result)
-        result, secret_findings = scan_and_redact(str(result))
-        approved_resume_result = result
-        await record_tool_call(
-            db,
-            org_id=agent.org_id,
-            sequence=1,
-            tool_name=name,
-            arguments=args,
-            result=result,
-            status=tool_status,
-            duration_ms=0,
-            session_id=session_id,
-        )
-        result_ev = {"event": "tool_result", "data": {"index": tool_index, "name": name, "result": result}}
-        if rec is not None:
-            await rec.record(result_ev)
-            await rec.heartbeat(phase="thinking")
-        yield result_ev
-        tool_calls_log.append({"name": name, "arguments": args, "result": result, "approval_id": approval.id})
-        messages.append({
-            "role": "assistant",
-            "content": None,
-            "tool_calls": [{"id": call_id, "type": "function", "function": {"name": name, "arguments": json.dumps(args)}}],
-        })
-        messages.append({"role": "tool", "tool_call_id": call_id, "content": result})
-        await db.commit()
+            tool_calls_log.append({"name": name, "arguments": args, "result": result, "approval_id": approval.id})
+            messages.append({
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [{"id": call_id, "type": "function", "function": {"name": name, "arguments": json.dumps(args)}}],
+            })
+            messages.append({"role": "tool", "tool_call_id": call_id, "content": result})
+            # Same reasoning as the delegated-resume branch above: this tool
+            # call already satisfied whatever routing directive forced it,
+            # so the next model call must not be forced into calling it
+            # again.
+            forced_tool_choice = "auto"
+            await db.commit()
+
+    finalization_retry_used = False
+    finalization_outcome = "direct"
+
+    async def _retry_finalization_without_tools() -> tuple[str, str, dict[str, int], bool, bool]:
+        parts: list[str] = []
+        reasoning: list[str] = []
+        usage: dict[str, int] = {}
+        estimated = True
+        unexpected_tool_calls = False
+        async for retry_ev in llm.stream(
+            messages,
+            tools=None,
+            temperature=agent.temperature,
+        ):
+            if retry_ev["type"] == "content":
+                parts.append(retry_ev["text"])
+            elif retry_ev["type"] == "reasoning":
+                reasoning.append(retry_ev["text"])
+            elif retry_ev["type"] == "usage":
+                usage = retry_ev["usage"]
+                estimated = bool(retry_ev.get("estimated", True))
+            elif retry_ev["type"] == "tool_calls":
+                unexpected_tool_calls = True
+        return "".join(parts), "".join(reasoning), usage, estimated, unexpected_tool_calls
 
     for _ in range(agent.max_iterations):
         content_parts: list[str] = []
@@ -775,13 +1252,33 @@ async def _agent_stream(
                     "tools": tool_schemas,
                     "temperature": agent.temperature,
                 }
-                if agent.kind == "orchestrator":
-                    stream_kwargs["tool_choice"] = forced_tool_choice if _ == 0 else "auto"
+                stream_kwargs["tool_choice"] = forced_tool_choice if _ == 0 else "auto"
+                logger.info(
+                    "chat_latency_phase",
+                    phase="provider_stream_start",
+                    run_id=root_run_id or current_task_id,
+                    task_id=current_task_id,
+                    iteration=_,
+                    elapsed_ms=round((time.monotonic() - phase_started_at) * 1000, 1),
+                )
                 stream_iter = llm.stream(messages, **stream_kwargs)
+                first_provider_event = True
                 async for ev in stream_iter:
+                    if first_provider_event:
+                        first_provider_event = False
+                        logger.info(
+                            "chat_latency_phase",
+                            phase="provider_first_event",
+                            run_id=root_run_id or current_task_id,
+                            task_id=current_task_id,
+                            iteration=_,
+                            event_type=ev.get("type"),
+                            elapsed_ms=round((time.monotonic() - phase_started_at) * 1000, 1),
+                        )
                     if await _is_cancelled(db, root_task):
                         if rec is not None:
                             await rec.close()
+                        await await_deferred_user_write(root_task.id if root_task else None)
                         return
                     if ev["type"] == "content":
                         content_parts.append(ev["text"])
@@ -985,6 +1482,7 @@ async def _agent_stream(
                                 tool_name=name,
                                 args_snapshot=args,
                                 requested_by=user_id or agent.created_by_user_id,
+                                owning_task_id=current_task_id,
                             )
                             guardrail_events_total.labels(
                                 agent.org_id, "approval_required", "paused"
@@ -1112,6 +1610,74 @@ async def _agent_stream(
                                 tool_calls_total.labels(name, "error").inc()
                                 result = f"error executing tool: {e}"
                                 tool_status = "error"
+                            # A delegated sub-agent (call_agent / delegate_to_*) that hits an
+                            # approval gate returns a plain string summary instead of raising -
+                            # from this loop's point of view that looked like an ordinary tool
+                            # result, so the root run would otherwise answer "waiting for your
+                            # approval" in text and finish as succeeded, leaving the approval
+                            # permanently unreachable from the UI (no approve/reject action is
+                            # ever rendered because no approval_required event was emitted for
+                            # the root run). Detect it here and pause the root run the same way
+                            # a direct tool call would.
+                            if tool_status == "ok" and (
+                                name == "call_agent" or name.startswith("delegate_to_")
+                            ):
+                                pending_sub_approval = await db.execute(
+                                    select(ApprovalRequest).where(
+                                        ApprovalRequest.run_id == root_run_id,
+                                        ApprovalRequest.org_id == agent.org_id,
+                                        ApprovalRequest.status == "pending",
+                                    ).order_by(ApprovalRequest.created_at.desc()).limit(1)
+                                )
+                                sub_approval = pending_sub_approval.scalar_one_or_none()
+                                if sub_approval is not None:
+                                    tool_sequence += 1
+                                    await record_tool_call(
+                                        db,
+                                        org_id=agent.org_id,
+                                        sequence=tool_sequence,
+                                        tool_name=name,
+                                        arguments=args,
+                                        result=str(result),
+                                        status="ok",
+                                        duration_ms=int((time.monotonic() - tool_started) * 1000),
+                                        session_id=session_id,
+                                    )
+                                    result_ev = {
+                                        "event": "tool_result",
+                                        "data": {"index": tool_index, "name": name, "result": result},
+                                    }
+                                    if rec is not None:
+                                        await rec.record(result_ev)
+                                    yield result_ev
+                                    approval_ev = {
+                                        "event": "approval_required",
+                                        "data": {
+                                            "approval_id": sub_approval.id,
+                                            "tool_name": sub_approval.tool_name,
+                                            "run_id": root_run_id,
+                                            "args_snapshot": scan_and_redact(
+                                                json.dumps(sub_approval.args_snapshot or {}, ensure_ascii=False)
+                                            )[0],
+                                        },
+                                    }
+                                    if rec is not None:
+                                        await rec.record(approval_ev)
+                                    await _finish_task(
+                                        db,
+                                        root_task,
+                                        status="waiting_approval",
+                                        result=f"approval required for tool '{sub_approval.tool_name}'",
+                                    )
+                                    if tool_observation is not None:
+                                        tool_observation.finish_cancelled(
+                                            metadata={
+                                                "approval_id": sub_approval.id,
+                                                "tool_status": "pending_approval",
+                                            }
+                                        )
+                                    yield approval_ev
+                                    return
                             # Recorded so this run can be replayed later
                             # without calling the tool again.
                             tool_sequence += 1
@@ -1289,20 +1855,92 @@ async def _agent_stream(
 
             # Final answer (no tool calls this step)
             final = "".join(content_parts)
+            reasoning_text = "".join(reasoning_parts)
+            finalization_attempts: list[tuple[dict[str, int], bool]] = [
+                (stream_usage, usage_estimated)
+            ]
+            if (
+                not final.strip()
+                and not reasoning_text.strip()
+                and not finalization_retry_used
+                and budget.exceeded() is None
+            ):
+                finalization_retry_used = True
+                logger.info(
+                    "chat_finalization_retry",
+                    run_id=root_run_id or current_task_id,
+                    task_id=current_task_id,
+                )
+                try:
+                    (
+                        retry_final,
+                        retry_reasoning,
+                        retry_usage,
+                        retry_estimated,
+                        unexpected_tool_calls,
+                    ) = await _retry_finalization_without_tools()
+                    finalization_attempts.append((retry_usage, retry_estimated))
+                    if unexpected_tool_calls:
+                        logger.warning(
+                            "chat_finalization_retry_returned_tool_calls",
+                            run_id=root_run_id or current_task_id,
+                        )
+                    final = retry_final
+                    reasoning_text = retry_reasoning
+                    if final.strip():
+                        finalization_outcome = "retry"
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(
+                        "chat_finalization_retry_failed",
+                        run_id=root_run_id or current_task_id,
+                        error_type=type(exc).__name__,
+                    )
+
             if await _is_cancelled(db, root_task):
                 if rec is not None:
                     await rec.close()
+                await await_deferred_user_write(root_task.id if root_task else None)
                 return
+            if not final.strip():
+                fallback = _latest_successful_tool_result(tool_calls_log)
+                if fallback:
+                    final, _ = scan_and_redact(fallback)
+                    final = final[:_FINALIZATION_FALLBACK_MAX_CHARS].strip()
+                    if final:
+                        finalization_outcome = "tool_result_fallback"
+                if not final.strip():
+                    finalization_outcome = "incomplete"
+                    chat_finalization_total.labels(finalization_outcome).inc()
+                    incomplete_message = "No answer was generated. Please try again."
+                    await _finish_task(
+                        db,
+                        root_task,
+                        status="failed",
+                        result=incomplete_message,
+                    )
+                    error_ev = {"event": "error", "data": {"message": incomplete_message}}
+                    if rec is not None:
+                        await rec.record(error_ev)
+                        await rec.close()
+                    yield error_ev
+                    return
+
+            chat_finalization_total.labels(finalization_outcome).inc()
             elapsed = int((time.monotonic() - start) * 1000)
             # Prefer the provider's reported token counts; the char-count
             # heuristic is only a fallback, and cost derived from it is a
             # guess (flagged via usage_estimated).
-            if stream_usage and not usage_estimated:
-                in_tok = int(stream_usage.get("input_tokens", 0))
-                out_tok = int(stream_usage.get("output_tokens", 0))
+            reported_attempts = [
+                usage for usage, estimated in finalization_attempts if not estimated
+            ]
+            if reported_attempts:
+                in_tok = sum(int(usage.get("input_tokens", 0)) for usage in reported_attempts)
+                out_tok = sum(int(usage.get("output_tokens", 0)) for usage in reported_attempts)
+                usage_estimated = len(reported_attempts) != len(finalization_attempts)
             else:
                 in_tok = _estimate_tokens(json.dumps(messages, ensure_ascii=False))
                 out_tok = _estimate_tokens(final)
+                usage_estimated = True
             cost = LLMClient.estimate_cost(model, {"input_tokens": in_tok, "output_tokens": out_tok})
             usage = {
                 "input_tokens": in_tok,
@@ -1310,7 +1948,7 @@ async def _agent_stream(
                 "estimated": usage_estimated,
             }
             model_label = model.display_name or model.name
-            reasoning_text = "".join(reasoning_parts)
+            reasoning_text = reasoning_text or "".join(reasoning_parts)
             done_ev = {
                 "event": "message_done",
                 "data": {
@@ -1322,6 +1960,7 @@ async def _agent_stream(
                     "session_id": session_id,
                     "model": model_label,
                     "reasoning": reasoning_text,
+                    "finalization": finalization_outcome,
                 },
             }
             if rec is not None:
@@ -1344,6 +1983,7 @@ async def _agent_stream(
                         "tools": tool_calls_log,
                         "model": model_label,
                         "reasoning": reasoning_text,
+                    "finalization": finalization_outcome,
                     },
                     org_id=agent.org_id,
                     created_by_user_id=user_id or agent.created_by_user_id,

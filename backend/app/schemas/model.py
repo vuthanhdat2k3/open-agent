@@ -3,6 +3,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
+from app.core.providers.constants import DEFAULT_CONTEXT_WINDOW
+
 Tier = Literal["frontier", "balanced", "economy"]
 
 
@@ -11,7 +13,7 @@ class ModelBase(BaseModel):
     name: str
     display_name: str
     tier: Tier = "balanced"
-    context_window: int = 8192
+    context_window: int = DEFAULT_CONTEXT_WINDOW
     input_cost_per_1k: float = 0.0
     output_cost_per_1k: float = 0.0
     active: bool = True

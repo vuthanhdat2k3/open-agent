@@ -22,6 +22,7 @@ async def request_approval(
     node_id: str | None = None,
     args_snapshot: dict[str, Any] | None = None,
     requested_by: str | None = None,
+    owning_task_id: str | None = None,
 ) -> ApprovalRequest:
     approval = ApprovalRequest(
         org_id=org_id,
@@ -32,6 +33,7 @@ async def request_approval(
         args_snapshot=args_snapshot or {},
         requested_by=requested_by,
         status="pending",
+        owning_task_id=owning_task_id,
     )
     db.add(approval)
     await db.commit()

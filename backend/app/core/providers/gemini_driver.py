@@ -10,6 +10,81 @@ import httpx
 
 from app.core.providers.driver import ModelInfo, TestResult
 
+_GEMINI_SCHEMA_KEYS = frozenset(
+    {
+        "type",
+        "format",
+        "title",
+        "description",
+        "nullable",
+        "enum",
+        "maxItems",
+        "minItems",
+        "properties",
+        "required",
+        "minProperties",
+        "maxProperties",
+        "items",
+        "anyOf",
+        "propertyOrdering",
+    }
+)
+
+
+def _normalize_schema_for_gemini(schema: Any) -> dict[str, Any]:
+    """Convert a JSON Schema object to Gemini's supported Schema dialect.
+
+    Tool specs are authored in the OpenAI JSON-Schema dialect. Gemini's
+    ``Schema`` message is only a subset and rejects fields such as
+    ``additionalProperties`` with HTTP 400. Normalize at this adapter boundary
+    so OpenAI-compatible and Anthropic drivers continue receiving the original
+    schema unchanged.
+    """
+    if not isinstance(schema, dict):
+        return {"type": "OBJECT"}
+
+    normalized: dict[str, Any] = {}
+    for key, value in schema.items():
+        if key not in _GEMINI_SCHEMA_KEYS:
+            continue
+        if key == "properties" and isinstance(value, dict):
+            normalized[key] = {
+                name: _normalize_schema_for_gemini(property_schema)
+                for name, property_schema in value.items()
+            }
+        elif key == "items":
+            normalized[key] = _normalize_schema_for_gemini(value)
+        elif key == "anyOf" and isinstance(value, list):
+            variants = [_normalize_schema_for_gemini(item) for item in value]
+            non_null = [
+                item for item in variants if str(item.get("type", "")).upper() != "NULL"
+            ]
+            if len(non_null) == 1 and len(non_null) != len(variants):
+                normalized.update(non_null[0])
+                normalized["nullable"] = True
+            else:
+                normalized[key] = variants
+        else:
+            normalized[key] = value
+
+    schema_type = normalized.get("type")
+    if isinstance(schema_type, list):
+        non_null_types = [item for item in schema_type if str(item).lower() != "null"]
+        if len(non_null_types) == 1:
+            normalized["type"] = non_null_types[0]
+            if len(non_null_types) != len(schema_type):
+                normalized["nullable"] = True
+        elif non_null_types:
+            normalized["anyOf"] = [{"type": item} for item in non_null_types]
+            normalized.pop("type", None)
+            if len(non_null_types) != len(schema_type):
+                normalized["nullable"] = True
+        else:
+            normalized.pop("type", None)
+            normalized["nullable"] = True
+
+    return normalized
+
 
 class GeminiDriver:
     supports_tools = True
@@ -73,20 +148,37 @@ class GeminiDriver:
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None,
         temperature: float,
+        tool_choice: Any | None = None,
     ) -> dict[str, Any]:
         system_parts: list[dict[str, Any]] = []
         contents: list[dict[str, Any]] = []
+        tool_names_by_id: dict[str, str] = {}
+        for message in messages:
+            if message.get("role") == "assistant":
+                for tool_call in message.get("tool_calls", []):
+                    function = tool_call.get("function", {})
+                    call_id = tool_call.get("id")
+                    function_name = function.get("name")
+                    if call_id and function_name:
+                        tool_names_by_id[str(call_id)] = str(function_name)
+
         for message in messages:
             role = message.get("role")
             if role == "system":
                 system_parts.extend(self._parts(message.get("content")))
                 continue
             if role == "tool":
+                tool_call_id = str(message.get("tool_call_id", ""))
                 contents.append({
                     "role": "user",
                     "parts": [{
                         "functionResponse": {
-                            "name": message.get("name", message.get("tool_call_id", "tool")),
+                            "name": (
+                                message.get("name")
+                                or tool_names_by_id.get(tool_call_id)
+                                or tool_call_id
+                                or "tool"
+                            ),
                             "response": {"content": str(message.get("content", ""))},
                         }
                     }],
@@ -106,11 +198,23 @@ class GeminiDriver:
                     {
                         "name": tool["function"]["name"],
                         "description": tool["function"].get("description", ""),
-                        "parameters": tool["function"].get("parameters", {"type": "object"}),
+                        "parameters": _normalize_schema_for_gemini(
+                            tool["function"].get("parameters", {"type": "object"})
+                        ),
                     }
                     for tool in tools
                 ]
             }]
+        if tool_choice and isinstance(tool_choice, dict):
+            function = tool_choice.get("function", {})
+            function_name = function.get("name")
+            if tool_choice.get("type") == "function" and function_name:
+                payload["toolConfig"] = {
+                    "functionCallingConfig": {
+                        "mode": "ANY",
+                        "allowedFunctionNames": [function_name],
+                    }
+                }
         return payload
 
     @staticmethod
@@ -147,7 +251,7 @@ class GeminiDriver:
         tool_choice: Any | None = None,
     ) -> tuple[str, dict[str, int], list[dict[str, Any]]]:
         async with httpx.AsyncClient(timeout=120.0) as client:
-            response = await client.post(self._url("/generate"), headers=self._headers(), json=self._payload(messages, tools, temperature))
+            response = await client.post(self._url("/generate"), headers=self._headers(), json=self._payload(messages, tools, temperature, tool_choice))
         response.raise_for_status()
         text, calls, usage = self._response(response.json())
         return text.replace("__REASONING__", ""), usage, calls
@@ -163,7 +267,7 @@ class GeminiDriver:
         calls: list[dict[str, Any]] = []
         async with (
             httpx.AsyncClient(timeout=120.0) as client,
-            client.stream("POST", self._url("/generate", stream=True), headers=self._headers(), json=self._payload(messages, tools, temperature)) as response,
+            client.stream("POST", self._url("/generate", stream=True), headers=self._headers(), json=self._payload(messages, tools, temperature, tool_choice)) as response,
         ):
                 response.raise_for_status()
                 async for line in response.aiter_lines():
