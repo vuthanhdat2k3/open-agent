@@ -78,7 +78,7 @@ export default function RunWorkflowPage() {
     try {
       await streamSSE(
         `/api/workflows/${workflowId}/run`,
-        { input: input.trim(), stream: true },
+        { input: input.trim(), stream: true, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone },
         (streamEvent) => {
           if (streamEvent.event === "workflow_start") {
             runId = streamEvent.data.workflow_run_id;

@@ -775,6 +775,7 @@ export default function ChatPage() {
       message: sentDraft,
       session_id: sessionId || undefined,
       stream: true,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     };
     if (pendingSessionModelId) payload.model_id = pendingSessionModelId;
     // The POST creates the durable Task and then emits chat_run_start. Do not

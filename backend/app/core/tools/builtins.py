@@ -1,8 +1,10 @@
+from datetime import timezone
 from typing import Any
 
 import httpx
 
 from app.config import get_settings
+from app.core.runtime_context import now_in_timezone
 
 # Register the additional builtin tools (filesystem, shell, web search).
 # Importing this module triggers their registration as a side effect.
@@ -25,6 +27,25 @@ settings = get_settings()
 MEMORY: dict[str, str] = {}
 
 MAX_ATTACHMENT_CHARS = 50_000
+
+
+async def _get_current_time(args: dict[str, Any], ctx: ToolContext) -> str:
+    del args
+    current = now_in_timezone(ctx.timezone_name)
+    return (
+        f"UTC: {current.astimezone(timezone.utc).isoformat()}\n"
+        f"Timezone: {ctx.timezone_name}\n"
+        f"Local time: {current.isoformat()}\n"
+        f"Local date: {current.strftime('%A, %Y-%m-%d')}"
+    )
+
+
+register(ToolSpec(
+    name="get_current_time",
+    description="Return the authoritative current UTC and local time for this run.",
+    input_schema={"type": "object", "properties": {}, "additionalProperties": False},
+    run=_get_current_time,
+))
 
 
 async def _read_attachment(args: dict[str, Any], ctx: ToolContext) -> str:
@@ -233,6 +254,7 @@ async def _call_agent(args: dict[str, Any], ctx: ToolContext) -> str:
             root_run_id=task.root_run_id,
             user_id=ctx.user_id,
             model_id=ctx.model_id,
+            timezone_name=ctx.timezone_name,
         )
     except Exception as exc:  # noqa: BLE001
         task.status = "failed"

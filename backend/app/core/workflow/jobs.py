@@ -39,6 +39,7 @@ async def run_workflow(ctx, workflow_run_id: str) -> None:  # noqa: ARG001
                 workflow_run_id=workflow_run.id,
                 force_inline=True,
                 user_id=workflow_run.triggered_by_user_id,
+                timezone_name=(workflow_run.input or {}).get("timezone"),
             )
         except Exception as exc:  # noqa: BLE001
             workflow_run.status = "failed"
