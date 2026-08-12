@@ -10,6 +10,81 @@ import httpx
 
 from app.core.providers.driver import ModelInfo, TestResult
 
+_GEMINI_SCHEMA_KEYS = frozenset(
+    {
+        "type",
+        "format",
+        "title",
+        "description",
+        "nullable",
+        "enum",
+        "maxItems",
+        "minItems",
+        "properties",
+        "required",
+        "minProperties",
+        "maxProperties",
+        "items",
+        "anyOf",
+        "propertyOrdering",
+    }
+)
+
+
+def _normalize_schema_for_gemini(schema: Any) -> dict[str, Any]:
+    """Convert a JSON Schema object to Gemini's supported Schema dialect.
+
+    Tool specs are authored in the OpenAI JSON-Schema dialect. Gemini's
+    ``Schema`` message is only a subset and rejects fields such as
+    ``additionalProperties`` with HTTP 400. Normalize at this adapter boundary
+    so OpenAI-compatible and Anthropic drivers continue receiving the original
+    schema unchanged.
+    """
+    if not isinstance(schema, dict):
+        return {"type": "OBJECT"}
+
+    normalized: dict[str, Any] = {}
+    for key, value in schema.items():
+        if key not in _GEMINI_SCHEMA_KEYS:
+            continue
+        if key == "properties" and isinstance(value, dict):
+            normalized[key] = {
+                name: _normalize_schema_for_gemini(property_schema)
+                for name, property_schema in value.items()
+            }
+        elif key == "items":
+            normalized[key] = _normalize_schema_for_gemini(value)
+        elif key == "anyOf" and isinstance(value, list):
+            variants = [_normalize_schema_for_gemini(item) for item in value]
+            non_null = [
+                item for item in variants if str(item.get("type", "")).upper() != "NULL"
+            ]
+            if len(non_null) == 1 and len(non_null) != len(variants):
+                normalized.update(non_null[0])
+                normalized["nullable"] = True
+            else:
+                normalized[key] = variants
+        else:
+            normalized[key] = value
+
+    schema_type = normalized.get("type")
+    if isinstance(schema_type, list):
+        non_null_types = [item for item in schema_type if str(item).lower() != "null"]
+        if len(non_null_types) == 1:
+            normalized["type"] = non_null_types[0]
+            if len(non_null_types) != len(schema_type):
+                normalized["nullable"] = True
+        elif non_null_types:
+            normalized["anyOf"] = [{"type": item} for item in non_null_types]
+            normalized.pop("type", None)
+            if len(non_null_types) != len(schema_type):
+                normalized["nullable"] = True
+        else:
+            normalized.pop("type", None)
+            normalized["nullable"] = True
+
+    return normalized
+
 
 class GeminiDriver:
     supports_tools = True
@@ -106,7 +181,9 @@ class GeminiDriver:
                     {
                         "name": tool["function"]["name"],
                         "description": tool["function"].get("description", ""),
-                        "parameters": tool["function"].get("parameters", {"type": "object"}),
+                        "parameters": _normalize_schema_for_gemini(
+                            tool["function"].get("parameters", {"type": "object"})
+                        ),
                     }
                     for tool in tools
                 ]
