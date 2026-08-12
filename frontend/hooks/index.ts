@@ -35,7 +35,46 @@ import type {
   WorkflowRunDetail,
   WorkspaceArtifact,
   UserProfile,
+  CustomerIntelligenceCase,
+  CustomerIntelligenceCaseDetail,
 } from "@/types";
+
+export function useCustomerIntelligenceCases() {
+  return useQuery({
+    queryKey: ["ci-cases"],
+    queryFn: () => api.get<CustomerIntelligenceCase[]>("/api/customer-intelligence/cases"),
+  });
+}
+
+export function useCustomerIntelligenceCase(id: string | null) {
+  return useQuery({
+    queryKey: ["ci-case", id],
+    queryFn: () => api.get<CustomerIntelligenceCaseDetail>(`/api/customer-intelligence/cases/${id}`),
+    enabled: Boolean(id),
+  });
+}
+
+export function useResearchCustomerIntelligenceCase() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.post(`/api/customer-intelligence/cases/${id}/research`, {}),
+    onSuccess: (_data, id) => {
+      void qc.invalidateQueries({ queryKey: ["ci-cases"] });
+      void qc.invalidateQueries({ queryKey: ["ci-case", id] });
+    },
+  });
+}
+
+export function useRetryCustomerIntelligenceCase() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.post(`/api/customer-intelligence/cases/${id}/retry`, {}),
+    onSuccess: (_data, id) => {
+      void qc.invalidateQueries({ queryKey: ["ci-cases"] });
+      void qc.invalidateQueries({ queryKey: ["ci-case", id] });
+    },
+  });
+}
 
 export function useProviderTemplates(enabled: boolean = true) {
   return useQuery({

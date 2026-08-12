@@ -175,7 +175,6 @@ class ResearchCaseRepository(BaseRepository[ResearchCase]):
             .values(status="RESEARCHING", started_at=now, error=None)
         )
         if result.rowcount != 1:
-            await self.db.rollback()
             return None
         await self.db.commit()
         return await self.get(org_id, case_id)
