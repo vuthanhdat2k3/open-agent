@@ -160,9 +160,15 @@ export default function ChatPage() {
         // writes the assistant message commits. Keep the already-rendered live
         // answer and retry briefly instead of replacing it with user-only
         // history (which used to make the answer appear only after reload).
-        if (!persistedHasAssistant && liveHasAssistant && attempt < 7) {
-          await new Promise((resolve) => window.setTimeout(resolve, 150));
-          continue;
+        if (!persistedHasAssistant && liveHasAssistant) {
+          // message_done can reach the browser before the assistant transaction
+          // commits. Keep the live answer/fallback visible; if persistence is
+          // still catching up, the next poll will reconcile it.
+          if (attempt < 7) {
+            await new Promise((resolve) => window.setTimeout(resolve, 150));
+            continue;
+          }
+          return;
         }
         if (rafRef.current != null) {
           cancelAnimationFrame(rafRef.current);
@@ -478,13 +484,14 @@ export default function ChatPage() {
       } else if (ev.event === "message_done") {
         setPhase("");
         flushTypewriter(assistantId);
+        const hasContent = Boolean(String(d.content ?? "").trim());
         const filtered = msgs
           .filter((x) => x.role !== "tool_call" && x.role !== "tool_result")
           .map((x) =>
             x.id === assistantId
               ? {
                   ...x,
-                  content: d.content ?? x.content,
+                  content: hasContent ? d.content : "No answer was generated. Please try again.",
                   meta: {
                     ...x.meta,
                     in_tokens: d.usage?.input_tokens,
@@ -493,6 +500,7 @@ export default function ChatPage() {
                     latency_ms: d.latency_ms,
                     tools: d.tools,
                     model: d.model,
+                    finalization: d.finalization ?? (hasContent ? "direct" : "incomplete"),
                     ...(d.reasoning ? { reasoning: d.reasoning } : {}),
                   },
                 }

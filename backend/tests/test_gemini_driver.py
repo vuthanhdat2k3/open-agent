@@ -84,3 +84,35 @@ def test_gemini_payload_converts_nullable_union_schema() -> None:
     assert value_schema["nullable"] is True
     assert "default" not in value_schema
     assert "additionalProperties" not in parameters
+
+
+
+def test_gemini_payload_maps_tool_call_id_to_declared_function_name() -> None:
+    messages = [
+        {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [
+                {
+                    "id": "delegate_to_email_intelligence-0-abc12345",
+                    "type": "function",
+                    "function": {
+                        "name": "delegate_to_email_intelligence",
+                        "arguments": '{"instruction":"find mail"}',
+                    },
+                }
+            ],
+        },
+        {
+            "role": "tool",
+            "tool_call_id": "delegate_to_email_intelligence-0-abc12345",
+            "content": "No emails found.",
+        },
+    ]
+
+    payload = GeminiDriver("https://example.test/v1beta", "key", "gemini-test")._payload(
+        messages, None, 0.7
+    )
+
+    response = payload["contents"][1]["parts"][0]["functionResponse"]
+    assert response["name"] == "delegate_to_email_intelligence"

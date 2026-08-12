@@ -151,17 +151,33 @@ class GeminiDriver:
     ) -> dict[str, Any]:
         system_parts: list[dict[str, Any]] = []
         contents: list[dict[str, Any]] = []
+        tool_names_by_id: dict[str, str] = {}
+        for message in messages:
+            if message.get("role") == "assistant":
+                for tool_call in message.get("tool_calls", []):
+                    function = tool_call.get("function", {})
+                    call_id = tool_call.get("id")
+                    function_name = function.get("name")
+                    if call_id and function_name:
+                        tool_names_by_id[str(call_id)] = str(function_name)
+
         for message in messages:
             role = message.get("role")
             if role == "system":
                 system_parts.extend(self._parts(message.get("content")))
                 continue
             if role == "tool":
+                tool_call_id = str(message.get("tool_call_id", ""))
                 contents.append({
                     "role": "user",
                     "parts": [{
                         "functionResponse": {
-                            "name": message.get("name", message.get("tool_call_id", "tool")),
+                            "name": (
+                                message.get("name")
+                                or tool_names_by_id.get(tool_call_id)
+                                or tool_call_id
+                                or "tool"
+                            ),
                             "response": {"content": str(message.get("content", ""))},
                         }
                     }],
