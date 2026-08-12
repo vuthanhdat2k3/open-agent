@@ -121,6 +121,76 @@ async def test_discovery_failure_keeps_existing_model_state(
 
 
 @pytest.mark.asyncio
+async def test_provider_update_queues_discovery_for_credentials_and_endpoint(
+    provider_session_factory, monkeypatch: pytest.MonkeyPatch
+):
+    queued: list[tuple[str, int]] = []
+
+    async def enqueue(provider_id: str, generation: int) -> str:
+        queued.append((provider_id, generation))
+        return "job-provider-discovery"
+
+    monkeypatch.setattr("app.services.provider_service.enqueue_provider_discovery", enqueue)
+    async with provider_session_factory() as db:
+        service = ProviderService(db)
+        provider = await service.create(
+            "org-provider",
+            {
+                "key": "custom",
+                "name": "Custom",
+                "base_url": "https://example.test/v1",
+                "api_key": "old-secret",
+            },
+        )
+        queued.clear()
+
+        updated = await service.update("org-provider", provider.id, {"api_key": "new-secret"})
+        assert updated.discovery_generation == 1
+        assert updated.discovery_status == "pending"
+        assert updated.api_key == ""
+        assert updated.api_key_encrypted
+        assert updated.api_key_last4 == "cret"
+        assert queued == [(provider.id, 1)]
+
+        queued.clear()
+        renamed = await service.update("org-provider", provider.id, {"name": "Renamed"})
+        assert renamed.discovery_generation == 1
+        assert queued == []
+
+        queued.clear()
+        moved = await service.update(
+            "org-provider", provider.id, {"base_url": "https://new.example.test/v1"}
+        )
+        assert moved.discovery_generation == 2
+        assert moved.discovery_status == "pending"
+        assert queued == [(provider.id, 2)]
+
+
+@pytest.mark.asyncio
+async def test_provider_update_keeps_pending_when_enqueue_fails(
+    provider_session_factory, monkeypatch: pytest.MonkeyPatch
+):
+    async def enqueue(*_args, **_kwargs):
+        raise RuntimeError("redis unavailable")
+
+    monkeypatch.setattr("app.services.provider_service.enqueue_provider_discovery", enqueue)
+    async with provider_session_factory() as db:
+        service = ProviderService(db)
+        provider = await service.create(
+            "org-provider",
+            {
+                "key": "custom",
+                "name": "Custom",
+                "base_url": "https://example.test/v1",
+                "api_key": "old-secret",
+            },
+        )
+        updated = await service.update("org-provider", provider.id, {"api_key": "new-secret"})
+        assert updated.discovery_generation == 1
+        assert updated.discovery_status == "pending"
+
+
+@pytest.mark.asyncio
 async def test_grace_period_recomputes_active(provider_session_factory):
     async with provider_session_factory() as db:
         model = Model(

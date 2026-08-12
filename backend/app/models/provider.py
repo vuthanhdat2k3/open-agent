@@ -59,6 +59,8 @@ class Provider(Base):
     discovery_status: Mapped[str] = mapped_column(String(16), default="pending", nullable=False)
     discovery_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     models_discovered: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    discovery_generation: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
     last_discovery_attempt_at: Mapped["utc_now"] = mapped_column(DateTime, nullable=True)
     last_successful_discovery_at: Mapped["utc_now"] = mapped_column(DateTime, nullable=True)
     created_at: Mapped["utc_now"] = mapped_column(DateTime, default=utc_now)
