@@ -12,6 +12,7 @@ from app.core.auth.api_key import hash_api_key
 from app.core.auth.jwt import verify_access_token
 from app.core.authz.policy import has_permission
 from app.core.authz.scope import set_ownership_scope
+from app.core.observability.chat_timing import mark_chat_phase
 from app.db.session import get_db
 from app.models.api_key import ApiKey
 from app.models.membership import Membership
@@ -27,6 +28,7 @@ async def get_current_user(
     bearer: HTTPAuthorizationCredentials | None = Depends(security_bearer),
     x_api_key: str | None = Header(None, alias="X-API-Key"),
 ) -> User:
+    mark_chat_phase(request, "auth_start")
     # 1. Check Bearer token or access_token cookie
     token = None
     if bearer and bearer.credentials:
@@ -67,6 +69,7 @@ async def get_current_user(
                         request.state.org_id = org_id or DEFAULT_ORG_ID
                         request.state.actor_agent_identity_id = agent_payload.get("actor_agent_identity_id")
                         request.state.delegation_chain = agent_payload.get("delegation_chain")
+                        mark_chat_phase(request, "auth_done", auth_method="agent_token")
                         return user
             else:
                 payload = verify_access_token(token)
@@ -80,6 +83,7 @@ async def get_current_user(
                     if user:
                         request.state.user_id = user.id
                         request.state.org_id = org_id or DEFAULT_ORG_ID
+                        mark_chat_phase(request, "auth_done", auth_method="jwt")
                         return user
         except Exception:
             pass
@@ -117,6 +121,7 @@ async def get_current_user(
                 )
                 user = res_u.scalar_one_or_none()
                 if user:
+                    mark_chat_phase(request, "auth_done", auth_method="api_key")
                     return user
 
     # 3. Global OPENAGENT_API_KEY machine fallback (only if settings.api_key is set and matches)
@@ -133,6 +138,7 @@ async def get_current_user(
         if admin_user:
             request.state.org_id = getattr(request.state, "org_id", DEFAULT_ORG_ID)
             request.state.user_id = admin_user.id
+            mark_chat_phase(request, "auth_done", auth_method="global_api_key")
             return admin_user
 
     raise HTTPException(
@@ -240,6 +246,7 @@ def require_permission(permission: str):
             )
         request.state.role = membership.role.value if hasattr(membership.role, "value") else str(membership.role)
         set_ownership_scope(db, user_id=current_user.id, role=membership.role)
+        mark_chat_phase(request, "rbac_done", permission=permission)
 
     return _checker
 

@@ -9,6 +9,7 @@ from collections.abc import AsyncIterator, Coroutine
 from datetime import timedelta
 from typing import Any
 
+import structlog
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -48,6 +49,7 @@ from app.schemas.chat import AgentLoopResult
 from app.services.quota_service import invalidate_monthly_cost_cache
 
 settings = get_settings()
+logger = structlog.get_logger(__name__)
 UNTRUSTED_TOOL_SOURCES = {"web_fetch", "rag_search", "read_attachment"}
 
 # User messages are persisted on a separate short-lived DB session while the
@@ -576,6 +578,14 @@ async def _agent_stream(
     record_stream: bool = True,
     approval_resume_id: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
+    phase_started_at = time.monotonic()
+    logger.info(
+        "chat_latency_phase",
+        phase="agent_loop_start",
+        run_id=root_run_id or current_task_id,
+        task_id=current_task_id,
+        depth=depth,
+    )
     root_task: Task | None = None
     # A detached chat creates its durable Task before starting model work. Reuse
     # that row so status/result survive an SSE disconnect and no duplicate root
@@ -637,6 +647,13 @@ async def _agent_stream(
         await _finish_task(db, root_task, status="failed", result="provider not found for model")
         yield {"event": "error", "data": {"message": "provider not found for model"}}
         return
+    logger.info(
+        "chat_latency_phase",
+        phase="provider_context_ready",
+        run_id=root_run_id or current_task_id,
+        task_id=current_task_id,
+        elapsed_ms=round((time.monotonic() - phase_started_at) * 1000, 1),
+    )
     observability = (
         ObservabilityContext(
             build_trace_context(
@@ -719,6 +736,14 @@ async def _agent_stream(
             directives.append(route_directive)
 
     tool_schemas = [tool_to_openai_schema(s) for s in specs] if specs else None
+    logger.info(
+        "chat_latency_phase",
+        phase="prompt_tools_ready",
+        run_id=root_run_id or current_task_id,
+        task_id=current_task_id,
+        tool_count=len(specs),
+        elapsed_ms=round((time.monotonic() - phase_started_at) * 1000, 1),
+    )
 
     system_parts = [base_prompt] if base_prompt else []
     system_parts.extend(directives)
@@ -762,6 +787,15 @@ async def _agent_stream(
         # preceding user turn to be responding to). Restate the goal as
         # that user turn so the conversation shape is well-formed.
         messages.append({"role": "user", "content": message})
+
+    logger.info(
+        "chat_latency_phase",
+        phase="prompt_history_ready",
+        run_id=root_run_id or current_task_id,
+        task_id=current_task_id,
+        history_messages=max(0, len(messages) - 1),
+        elapsed_ms=round((time.monotonic() - phase_started_at) * 1000, 1),
+    )
 
     if session_id and not approval_resume_id and root_task is not None:
         defer_user_message(
@@ -1059,8 +1093,28 @@ async def _agent_stream(
                 }
                 if agent.kind == "orchestrator":
                     stream_kwargs["tool_choice"] = forced_tool_choice if _ == 0 else "auto"
+                logger.info(
+                    "chat_latency_phase",
+                    phase="provider_stream_start",
+                    run_id=root_run_id or current_task_id,
+                    task_id=current_task_id,
+                    iteration=_,
+                    elapsed_ms=round((time.monotonic() - phase_started_at) * 1000, 1),
+                )
                 stream_iter = llm.stream(messages, **stream_kwargs)
+                first_provider_event = True
                 async for ev in stream_iter:
+                    if first_provider_event:
+                        first_provider_event = False
+                        logger.info(
+                            "chat_latency_phase",
+                            phase="provider_first_event",
+                            run_id=root_run_id or current_task_id,
+                            task_id=current_task_id,
+                            iteration=_,
+                            event_type=ev.get("type"),
+                            elapsed_ms=round((time.monotonic() - phase_started_at) * 1000, 1),
+                        )
                     if await _is_cancelled(db, root_task):
                         if rec is not None:
                             await rec.close()
