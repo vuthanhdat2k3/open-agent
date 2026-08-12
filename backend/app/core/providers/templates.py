@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
+from app.core.providers.constants import DEFAULT_CONTEXT_WINDOW
+
 DriverKey = Literal["openai_compatible", "anthropic", "gemini"]
 
 
@@ -10,7 +12,7 @@ DriverKey = Literal["openai_compatible", "anthropic", "gemini"]
 class FallbackModelSpec:
     name: str
     display_name: str
-    context_window: int = 8192
+    context_window: int = DEFAULT_CONTEXT_WINDOW
     input_cost_per_1k: float = 0.0
     output_cost_per_1k: float = 0.0
     supports_tools: bool | None = None

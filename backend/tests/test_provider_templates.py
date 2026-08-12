@@ -6,6 +6,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.core.providers.constants import DEFAULT_CONTEXT_WINDOW
 from app.core.providers.driver import ModelInfo
 from app.core.providers.driver import TestResult as DriverTestResult
 from app.core.providers.templates import get_templates
@@ -13,6 +14,7 @@ from app.db.base import Base, utc_now
 from app.models.model import Model
 from app.models.organization import Organization
 from app.models.provider import Provider
+from app.schemas.model import ModelBase
 from app.services.model_discovery_service import DiscoveryResult, ModelDiscoveryService
 from app.services.model_service import ModelService
 from app.services.provider_service import ProviderService
@@ -29,6 +31,25 @@ async def provider_session_factory():
         await db.commit()
     yield factory
     await engine.dispose()
+
+
+def test_context_window_defaults_to_138000() -> None:
+    template = next(item for item in get_templates() if item.key == "openai")
+    values = ModelDiscoveryService.model_values(
+        ModelInfo("model-without-context", "Model without context"),
+        source="discovered",
+        template=template,
+        now=utc_now(),
+    )
+    assert values["context_window"] == DEFAULT_CONTEXT_WINDOW
+
+    schema_model = ModelBase(
+        provider_id="provider-id",
+        name="manual-model",
+        display_name="Manual model",
+    )
+    assert schema_model.context_window == DEFAULT_CONTEXT_WINDOW
+    assert Model.__table__.c.context_window.default.arg == DEFAULT_CONTEXT_WINDOW
 
 
 async def _success_probe(*_args, **_kwargs) -> DiscoveryResult:
