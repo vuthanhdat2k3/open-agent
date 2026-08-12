@@ -71,6 +71,7 @@ export type UIMessage = {
     approvalTool?: string;
     approvalArgs?: unknown;
     approvalStatus?: "pending" | "approved" | "rejected";
+    error?: boolean;
   };
 };
 
@@ -254,6 +255,18 @@ function ChatMessageItemBase({ message: m, debug, hasLiveTools, onApprovalDecisi
             </Button>
           </div>
         ) : null}
+      </div>
+    );
+  }
+
+  if (m.role === "error") {
+    return (
+      <div key={m.id} role="alert" className="animate-scale-in self-start w-full max-w-[92%] rounded-xl border border-destructive/40 bg-destructive/[0.06] p-3 text-sm text-destructive shadow-card">
+        <div className="flex items-center gap-2 font-semibold">
+          <XCircle className="h-4 w-4" />
+          <span>Model error</span>
+        </div>
+        <p className="mt-2 whitespace-pre-wrap break-words text-foreground">{m.content}</p>
       </div>
     );
   }
