@@ -5,8 +5,8 @@ from __future__ import annotations
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0028_job_scheduling_hardening"
-down_revision = "0027_approval_owning_task"
+revision = "0030_job_scheduling_hardening"
+down_revision = "0029_context_window_default"
 branch_labels = None
 depends_on = None
 
