@@ -45,6 +45,7 @@ async def _run_workflow_detached(workflow_id: str, org_id: str, workflow_run_id:
                 workflow_run_id=workflow_run_id,
                 force_inline=True,
                 user_id=run.triggered_by_user_id,
+                timezone_name=(run.input or {}).get("timezone"),
             )
         except Exception as exc:  # noqa: BLE001
             run.status = "failed"
@@ -158,12 +159,13 @@ async def run_workflow_endpoint(
             stream=False,
             workflow_run_id=body.workflow_run_id,
             user_id=current_user.id,
+            timezone_name=body.timezone,
         )
         return {"workflow_run_id": workflow_run_id, "output": output, "events": log}
 
     try:
         run = await create_workflow_run(
-            wf, body.input, db, body.workflow_run_id, current_user.id
+            wf, body.input, db, body.workflow_run_id, current_user.id, body.timezone
         )
     except ValueError as exc:
         raise HTTPException(404, str(exc)) from exc

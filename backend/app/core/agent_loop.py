@@ -33,6 +33,7 @@ from app.core.observability.metrics import (
     tool_calls_total,
 )
 from app.core.providers.factory import build_driver
+from app.core.runtime_context import build_runtime_context, normalize_timezone
 from app.core.tools.registry import BUILTIN_TOOLS, execute_tool_call
 from app.core.tools.risk_tier import RiskTier
 from app.core.tools.types import ToolContext, ToolSpec, tool_to_openai_schema
@@ -702,6 +703,7 @@ async def _agent_stream(
     delegation_chain: list | dict | None = None,
     record_stream: bool = True,
     approval_resume_id: str | None = None,
+    timezone_name: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     phase_started_at = time.monotonic()
     logger.info(
@@ -822,6 +824,7 @@ async def _agent_stream(
         model_id=selected_model_id,
         actor_agent_identity_id=actor_agent_identity_id,
         delegation_chain=delegation_chain,
+        timezone_name=normalize_timezone(timezone_name),
     )
 
     specs = await _build_specs(agent, db)
@@ -875,7 +878,9 @@ async def _agent_stream(
         elapsed_ms=round((time.monotonic() - phase_started_at) * 1000, 1),
     )
 
-    system_parts = [base_prompt] if base_prompt else []
+    system_parts = [build_runtime_context(timezone_name)]
+    if base_prompt:
+        system_parts.append(base_prompt)
     system_parts.extend(directives)
     system_prompt = "\n\n".join(system_parts)
 
@@ -2046,6 +2051,7 @@ async def run_agent_loop(
     delegation_chain: list | dict | None = None,
     record_stream: bool = True,
     approval_resume_id: str | None = None,
+    timezone_name: str | None = None,
 ) -> AgentLoopResult:
     content = ""
     usage: dict[str, Any] = {"input_tokens": 0, "output_tokens": 0}
@@ -2069,6 +2075,7 @@ async def run_agent_loop(
         delegation_chain=delegation_chain,
         record_stream=record_stream,
         approval_resume_id=approval_resume_id,
+        timezone_name=timezone_name,
     ):
         if ev["event"] == "message_done":
             data = ev["data"]

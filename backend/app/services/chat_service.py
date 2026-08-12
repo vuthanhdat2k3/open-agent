@@ -196,4 +196,5 @@ class ChatService:
             model_id=request.model_id,
             user_role=user_role,
             approval_resume_id=approval_resume_id,
+            timezone_name=request.timezone,
         )
