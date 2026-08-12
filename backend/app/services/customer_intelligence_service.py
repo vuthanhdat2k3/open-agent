@@ -1,7 +1,8 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from typing import Any
 
+import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.observability.audit import log_action
@@ -11,9 +12,12 @@ from app.customer_intelligence.security import (
     encrypt_credentials,
     redact_oauth_payload,
 )
+from app.db.base import utc_now
 from app.models.customer_intelligence import EmailConnection
 from app.repositories.customer_intelligence import EmailConnectionRepository
 from app.schemas.customer_intelligence import ConnectionResponse
+
+logger = structlog.get_logger(__name__)
 
 
 class CustomerIntelligenceService:
@@ -143,15 +147,85 @@ class CustomerIntelligenceService:
     async def research_case(
         self, *, org_id: str, case_id: str, actor_user_id: str | None = None
     ) -> dict[str, Any]:
-        """Run the research DAG for an INGESTED case and persist the briefing."""
-        from app.customer_intelligence.workflow import run_research
+        """Run research and schedule transient failures for retry."""
+        from datetime import timedelta
 
-        return await run_research(
+        from app.core.scheduling.backoff import MAX_RETRY_COUNT, compute_backoff_seconds
+        from app.customer_intelligence.workflow import ResearchError, run_research
+        from app.repositories.customer_intelligence import ResearchCaseRepository
+
+        try:
+            return await run_research(
+                self.db,
+                org_id=org_id,
+                case_id=case_id,
+                actor_user_id=actor_user_id,
+            )
+        except ResearchError:
+            raise
+        except Exception as exc:
+            # This is intentionally broad: a network blip, a provider 5xx, or
+            # a genuine programming bug all land here and are treated as
+            # retryable up to MAX_RETRY_COUNT before dead-lettering. Logging
+            # the full exception (not just swallowing it) means a real bug
+            # is still visible in logs/traces well before the 5th retry.
+            await logger.aerror(
+                "research_case_failed_scheduling_retry",
+                org_id=org_id,
+                case_id=case_id,
+                error=str(exc),
+                exc_info=True,
+            )
+            repository = ResearchCaseRepository(self.db)
+            case = await repository.get(org_id, case_id)
+            if case is not None and case.status == "RESEARCHING":
+                next_count = case.retry_count + 1
+                if next_count > MAX_RETRY_COUNT:
+                    case.error = "research retry limit exceeded"
+                    await repository.transition(case, "DEAD_LETTER")
+                else:
+                    await repository.schedule_retry(
+                        case,
+                        next_retry_at=utc_now()
+                        + timedelta(seconds=compute_backoff_seconds(case.retry_count)),
+                        triggered_by=None,
+                    )
+            raise
+
+    async def retry_case(self, *, org_id: str, case_id: str, actor_user_id: str):
+        """Schedule a manual retry for a failed Customer Intelligence case."""
+        from app.core.observability.metrics import ci_case_retry_total
+        from app.repositories.customer_intelligence import ResearchCaseRepository
+
+        repository = ResearchCaseRepository(self.db)
+        case = await repository.get(org_id, case_id)
+        if case is None:
+            raise LookupError("case not found")
+        if case.status not in {"RETRYING", "DEAD_LETTER"}:
+            raise ValueError(f"case cannot be retried from status={case.status}")
+        previous_status = case.status
+        if previous_status == "DEAD_LETTER":
+            await repository.transition(case, "RETRYING")
+        case = await repository.schedule_retry(
+            case,
+            next_retry_at=utc_now(),
+            triggered_by=actor_user_id,
+        )
+        ci_case_retry_total.labels(trigger="manual", outcome="retried").inc()
+        await log_action(
             self.db,
             org_id=org_id,
-            case_id=case_id,
             actor_user_id=actor_user_id,
+            action="ci.case.retry_triggered",
+            resource_type="ci_case",
+            resource_id=case_id,
+            metadata={
+                "trigger": "manual",
+                "previous_status": previous_status,
+                "retry_count": case.retry_count,
+            },
         )
+        return case
 
     async def propose_delivery(
         self,

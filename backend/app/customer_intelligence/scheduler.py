@@ -17,7 +17,6 @@ failures so one bad schedule never kills the tick.
 
 from __future__ import annotations
 
-import asyncio
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -33,12 +32,7 @@ from app.repositories.customer_intelligence import CiScheduleRepository
 
 logger = structlog.get_logger(__name__)
 
-# Bound the payload size per scheduled sync (mirrors the manual default).
 SCHEDULED_MAX_MESSAGES = 20
-
-# ponytail: process-local lock prevents overlapping ticks in one worker;
-# use a Redis/DB lease if multiple worker processes share schedules.
-_scheduler_tick_lock = asyncio.Lock()
 
 
 def _coerce_zone(tz_name: str) -> ZoneInfo:
@@ -113,8 +107,7 @@ async def _run_due_schedules_unlocked(
 async def run_due_schedules(
     db: AsyncSession, *, now: datetime | None = None, actor_user_id: str | None = None
 ) -> dict[str, Any]:
-    async with _scheduler_tick_lock:
-        return await _run_due_schedules_unlocked(db, now=now, actor_user_id=actor_user_id)
+    return await _run_due_schedules_unlocked(db, now=now, actor_user_id=actor_user_id)
 
 
 async def run_schedule_now(
@@ -204,3 +197,147 @@ async def _run_one(
         correlation_id=correlation_id,
     )
     return synced, cases
+
+
+async def process_due_retries(db: AsyncSession, *, max_cases: int = 50) -> dict[str, Any]:
+    """Retry due CI cases and move exhausted cases to DEAD_LETTER.
+
+    A case with a report failed during delivery; a case without a report failed
+    during research. The distinction is persisted state, not an inference from
+    a worker exception.
+    """
+    from sqlalchemy import func, select
+
+    from app.core.observability.metrics import ci_case_retry_total, ci_dead_letter_gauge
+    from app.core.scheduling.backoff import MAX_RETRY_COUNT, compute_backoff_seconds
+    from app.customer_intelligence.delivery import DeliveryError, run_delivery
+    from app.customer_intelligence.workflow import ResearchError
+    from app.models.approval_request import ApprovalRequest
+    from app.models.customer_intelligence import ResearchCase
+    from app.repositories.customer_intelligence import (
+        BriefingReportRepository,
+        ResearchCaseRepository,
+    )
+    from app.services.customer_intelligence_service import CustomerIntelligenceService
+
+    case_repo = ResearchCaseRepository(db)
+    report_repo = BriefingReportRepository(db)
+    cases = await case_repo.list_due_for_retry(utc_now(), limit=max_cases)
+    retried = 0
+    dead_lettered = 0
+    failed: list[tuple[str, str]] = []
+
+    for case in cases:
+        case_id = case.id
+        case_org_id = case.org_id
+        report = await report_repo.latest_by_case(case.org_id, case.id)
+        try:
+            if report is None:
+                await CustomerIntelligenceService(db).research_case(
+                    org_id=case.org_id,
+                    case_id=case.id,
+                    actor_user_id=None,
+                )
+            else:
+                approval_result = await db.execute(
+                    select(ApprovalRequest)
+                    .where(
+                        ApprovalRequest.org_id == case.org_id,
+                        ApprovalRequest.case_id == case.id,
+                        ApprovalRequest.status == "approved",
+                    )
+                    .order_by(ApprovalRequest.decided_at.desc())
+                    .limit(1)
+                )
+                approval = approval_result.scalar_one_or_none()
+                if approval is None:
+                    raise DeliveryError("approved delivery request not found for retry")
+                await case_repo.transition(case, "EXECUTING")
+                await run_delivery(
+                    db,
+                    org_id=case.org_id,
+                    case=case,
+                    approval=approval,
+                    actor_user_id=None,
+                )
+                await case_repo.transition(case, "COMPLETED")
+            retried += 1
+            ci_case_retry_total.labels(trigger="auto", outcome="retried").inc()
+        except ResearchError as exc:
+            failed.append((case_id, type(exc).__name__))
+            refreshed = await case_repo.get(case_org_id, case_id)
+            if refreshed is None or refreshed.status in {"COMPLETED", "DEAD_LETTER"}:
+                continue
+            # ResearchError represents a non-transient validation/data problem
+            # (for example a missing source email). Retrying it automatically
+            # would only create repeated work; an operator can reopen it via
+            # the manual retry API after correcting the underlying issue.
+            refreshed.error = str(exc)[:4000]
+            await case_repo.transition(refreshed, "DEAD_LETTER")
+            dead_lettered += 1
+            ci_case_retry_total.labels(trigger="auto", outcome="dead_lettered").inc()
+        except DeliveryError as exc:
+            failed.append((case_id, type(exc).__name__))
+            refreshed = await case_repo.get(case_org_id, case_id)
+            if refreshed is None or refreshed.status in {"COMPLETED", "DEAD_LETTER"}:
+                continue
+            # A missing approval or an unsupported/malformed delivery action is
+            # a configuration problem, not a transient one - retrying it five
+            # times before dead-lettering only delays the operator finding out.
+            # EXECUTING cannot transition straight to DEAD_LETTER, so route
+            # through RETRYING first (mirrors the state machine's own path).
+            refreshed.error = str(exc)[:4000]
+            if refreshed.status == "EXECUTING":
+                await case_repo.transition(refreshed, "RETRYING")
+            if refreshed.status != "DEAD_LETTER":
+                await case_repo.transition(refreshed, "DEAD_LETTER")
+            dead_lettered += 1
+            ci_case_retry_total.labels(trigger="auto", outcome="dead_lettered").inc()
+        except Exception as exc:  # noqa: BLE001 - isolate one case from the tick.
+            # A failed flush/commit earlier in this iteration (a genuine DB
+            # error, not a business-rule DeliveryError/ResearchError) leaves
+            # the session unable to run further statements. Roll back before
+            # touching anything else so one bad case cannot poison the rest
+            # of the batch; use the id captured before the failure since the
+            # ORM object's attributes are expired by the rollback.
+            await db.rollback()
+            failed.append((case_id, type(exc).__name__))
+            refreshed = await case_repo.get(case_org_id, case_id)
+            if refreshed is None or refreshed.status in {"COMPLETED", "DEAD_LETTER"}:
+                continue
+            if (
+                report is None
+                and refreshed.status == "RETRYING"
+                and refreshed.next_retry_at is not None
+                and refreshed.next_retry_at > utc_now()
+            ):
+                # CustomerIntelligenceService already recorded the retry for
+                # transient research failures; do not increment twice.
+                continue
+            if refreshed.retry_count >= MAX_RETRY_COUNT:
+                refreshed.error = "customer intelligence retry limit exceeded"
+                # EXECUTING cannot transition straight to DEAD_LETTER; route
+                # through RETRYING first (mirrors the state machine's path).
+                if refreshed.status == "EXECUTING":
+                    await case_repo.transition(refreshed, "RETRYING")
+                await case_repo.transition(refreshed, "DEAD_LETTER")
+                dead_lettered += 1
+                ci_case_retry_total.labels(trigger="auto", outcome="dead_lettered").inc()
+                continue
+            await case_repo.schedule_retry(
+                refreshed,
+                next_retry_at=utc_now()
+                + timedelta(seconds=compute_backoff_seconds(refreshed.retry_count)),
+                triggered_by=None,
+            )
+
+    count_result = await db.execute(
+        select(func.count(ResearchCase.id)).where(ResearchCase.status == "DEAD_LETTER")
+    )
+    ci_dead_letter_gauge.set(int(count_result.scalar_one()))
+    return {
+        "due": len(cases),
+        "retried": retried,
+        "dead_lettered": dead_lettered,
+        "failed": failed,
+    }
