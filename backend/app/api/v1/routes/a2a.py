@@ -21,6 +21,7 @@ router = APIRouter(prefix="/api/a2a", tags=["a2a"])
 class A2ATaskRequest(BaseModel):
     agent_id: str
     input: str
+    timezone: str | None = None
 
 
 class A2ATaskResponse(BaseModel):
@@ -82,6 +83,7 @@ async def create_a2a_task(
             delegation_chain=delegation_chain,
             current_task_id=task.id,
             root_run_id=task.id,
+            timezone_name=payload.timezone,
         )
         if res.error:
             task.status = "failed"

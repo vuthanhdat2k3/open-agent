@@ -46,6 +46,7 @@ async def create_workflow_run(
     db: AsyncSession,
     workflow_run_id: str | None = None,
     user_id: str | None = None,
+    timezone_name: str | None = None,
 ) -> WorkflowRun:
     if workflow_run_id:
         res = await db.execute(
@@ -63,7 +64,7 @@ async def create_workflow_run(
         org_id=workflow.org_id,
         workflow_id=workflow.id,
         status="running",
-        input={"text": input_text},
+        input={"text": input_text, "timezone": timezone_name},
         triggered_by_user_id=user_id or workflow.created_by_user_id,
         started_at=utc_now(),
     )
@@ -117,11 +118,13 @@ async def _run_workflow_events(
     force_inline: bool = False,
     replay_of_run_id: str | None = None,
     user_id: str | None = None,
+    timezone_name: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     settings = get_settings()
     workflow_run = await create_workflow_run(
-        workflow, input_text, db, workflow_run_id, user_id
+        workflow, input_text, db, workflow_run_id, user_id, timezone_name
     )
+    timezone_name = (workflow_run.input or {}).get("timezone") or timezone_name
     actor_user_id = workflow_run.triggered_by_user_id or user_id or workflow.created_by_user_id
     workflow_observability = (
         ObservabilityContext(
@@ -329,6 +332,7 @@ async def _run_workflow_events(
                 workspace_dir=settings.workspace_dir,
                 org_id=workflow.org_id,
                 user_id=actor_user_id,
+                timezone_name=timezone_name,
             )
             started = time.monotonic()
             try:
@@ -393,6 +397,7 @@ async def _run_workflow_events(
                 stream=False,
                 force_inline=True,
                 user_id=actor_user_id,
+                timezone_name=timezone_name,
             )
             return child_output
         if kind == "agent":
@@ -418,6 +423,7 @@ async def _run_workflow_events(
                 root_run_id=workflow_run.id,
                 replay_cursor=replay_cursor,
                 user_id=actor_user_id,
+                timezone_name=timezone_name,
             )
             return loop.content
         raise RuntimeError(f"unknown node kind {kind}")
@@ -604,6 +610,7 @@ async def run_workflow_events(
     force_inline: bool = False,
     replay_of_run_id: str | None = None,
     user_id: str | None = None,
+    timezone_name: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """Stream workflow events and release any executor lease on close."""
     run_id = workflow_run_id
@@ -616,6 +623,7 @@ async def run_workflow_events(
             force_inline=force_inline,
             replay_of_run_id=replay_of_run_id,
             user_id=user_id,
+            timezone_name=timezone_name,
         ):
             if event.get("event") == "workflow_start":
                 run_id = event.get("data", {}).get("workflow_run_id") or run_id
@@ -636,6 +644,7 @@ async def run_workflow(
     force_inline: bool = False,
     replay_of_run_id: str | None = None,
     user_id: str | None = None,
+    timezone_name: str | None = None,
 ) -> Any:
     """If stream=True, returns the async generator of events.
     Otherwise awaits and returns (final_output, event_log)."""
@@ -648,6 +657,7 @@ async def run_workflow(
             force_inline=force_inline,
             replay_of_run_id=replay_of_run_id,
             user_id=user_id,
+            timezone_name=timezone_name,
         )
     final = ""
     log: list[dict[str, Any]] = []
@@ -660,6 +670,7 @@ async def run_workflow(
         force_inline=force_inline,
         replay_of_run_id=replay_of_run_id,
         user_id=user_id,
+        timezone_name=timezone_name,
     ):
         log.append(ev)
         if ev["event"] == "workflow_start":
