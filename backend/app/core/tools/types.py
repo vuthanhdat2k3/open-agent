@@ -24,6 +24,7 @@ class ToolContext:
     user_id: str | None = None
     current_task_id: str | None = None
     root_run_id: str | None = None
+    model_id: str | None = None
     actor_agent_identity_id: str | None = None
     delegation_chain: list | dict | None = None
     # Optional async callback for streaming incremental progress (e.g. stdout
