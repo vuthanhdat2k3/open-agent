@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from time import monotonic
+
+import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,6 +14,8 @@ from app.models.session import Session
 from app.models.task import Task
 from app.schemas.chat import AgentLoopResult, ChatRequest
 from app.services.agent_service import AgentService, RuntimeAgent
+
+logger = structlog.get_logger(__name__)
 
 
 class ChatService:
@@ -86,8 +91,22 @@ class ChatService:
         user_id: str | None = None,
         user_role: str | None = None,
     ) -> tuple[Session, Agent | RuntimeAgent, Task]:
+        started_at = monotonic()
+        logger.info("chat_latency_phase", phase="prepare_run_start", run_id=run_id)
         session = await self.ensure_session(org_id, request, user_id, user_role)
+        logger.info(
+            "chat_latency_phase",
+            phase="session_ready",
+            run_id=run_id,
+            elapsed_ms=round((monotonic() - started_at) * 1000, 1),
+        )
         agent = await self._load_agent(org_id, request.agent_id, session.agent_release_id)
+        logger.info(
+            "chat_latency_phase",
+            phase="agent_ready",
+            run_id=run_id,
+            elapsed_ms=round((monotonic() - started_at) * 1000, 1),
+        )
         res = await self.db.execute(
             select(Task).where(Task.id == run_id, Task.org_id == org_id)
         )
@@ -103,6 +122,12 @@ class ChatService:
                     "updated_at": utc_now().isoformat(),
                 }
                 await self.db.commit()
+            logger.info(
+                "chat_latency_phase",
+                phase="task_ready",
+                run_id=run_id,
+                elapsed_ms=round((monotonic() - started_at) * 1000, 1),
+            )
             return session, agent, task
         task = Task(
             id=run_id,

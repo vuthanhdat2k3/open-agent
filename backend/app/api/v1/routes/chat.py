@@ -17,6 +17,7 @@ from app.core.chat_events import (
     list_events,
     observe_delivery,
 )
+from app.core.observability.chat_timing import mark_chat_phase
 from app.core.observability.metrics import (
     chat_event_bus_failures_total,
     chat_event_stream_transport_total,
@@ -97,6 +98,7 @@ async def chat(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    mark_chat_phase(http_request, "route_handler_start")
     svc = ChatService(db)
     if not body.stream:
         try:
@@ -113,6 +115,7 @@ async def chat(
 
     run_id = body.run_id or gen_id()
     chat_request = body.model_copy(update={"run_id": run_id})
+    mark_chat_phase(http_request, "prepare_run_start", run_id=run_id)
     try:
         session, _agent, task = await svc.prepare_run(
             org_id,
@@ -123,6 +126,7 @@ async def chat(
         )
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
+    mark_chat_phase(http_request, "prepare_run_done", run_id=run_id)
     chat_request = chat_request.model_copy(update={"session_id": session.id})
     payload = {
         **chat_request.model_dump(),
@@ -142,6 +146,7 @@ async def chat(
     else:
         background_tasks.add_task(run_chat_detached, payload)
         run_status = "running"
+    mark_chat_phase(http_request, "chat_run_start_ready", run_id=run_id, run_status=run_status)
 
     async def gen():
         yield format_sse({"event": "session_start", "data": {"session_id": session.id}})
