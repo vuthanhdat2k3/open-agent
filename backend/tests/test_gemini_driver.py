@@ -86,7 +86,6 @@ def test_gemini_payload_converts_nullable_union_schema() -> None:
     assert "additionalProperties" not in parameters
 
 
-
 def test_gemini_payload_maps_tool_call_id_to_declared_function_name() -> None:
     messages = [
         {
@@ -116,3 +115,19 @@ def test_gemini_payload_maps_tool_call_id_to_declared_function_name() -> None:
 
     response = payload["contents"][1]["parts"][0]["functionResponse"]
     assert response["name"] == "delegate_to_email_intelligence"
+
+
+def test_gemini_payload_maps_forced_function_choice_and_keeps_auto_default() -> None:
+    tool_choice = {"type": "function", "function": {"name": "delegate_to_email_intelligence"}}
+    driver = GeminiDriver("https://example.test/v1beta", "key", "gemini-test")
+    forced = driver._payload([], [], 0.7, tool_choice)
+    assert forced["toolConfig"] == {
+        "functionCallingConfig": {
+            "mode": "ANY",
+            "allowedFunctionNames": ["delegate_to_email_intelligence"],
+        }
+    }
+    auto = driver._payload([], [], 0.7, "auto")
+    assert "toolConfig" not in auto
+    default = driver._payload([], [], 0.7, None)
+    assert "toolConfig" not in default

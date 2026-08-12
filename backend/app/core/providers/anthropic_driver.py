@@ -64,6 +64,7 @@ class AnthropicDriver:
         tools: list[dict[str, Any]] | None,
         temperature: float,
         stream: bool = False,
+        tool_choice: Any | None = None,
     ) -> dict[str, Any]:
         system = "\n\n".join(str(m.get("content", "")) for m in messages if m.get("role") == "system")
         converted: list[dict[str, Any]] = []
@@ -97,6 +98,11 @@ class AnthropicDriver:
                 }
                 for tool in tools
             ]
+        if tool_choice and isinstance(tool_choice, dict):
+            function = tool_choice.get("function", {})
+            function_name = function.get("name")
+            if tool_choice.get("type") == "function" and function_name:
+                payload["tool_choice"] = {"type": "tool", "name": function_name}
         if stream:
             payload["stream"] = True
         return payload
@@ -128,7 +134,7 @@ class AnthropicDriver:
             response = await client.post(
                 f"{self.base_url}/v1/messages",
                 headers=self._headers(),
-                json=self._request_payload(messages, tools, temperature),
+                json=self._request_payload(messages, tools, temperature, tool_choice=tool_choice),
             )
         response.raise_for_status()
         text, tool_calls, usage = self._response_parts(response.json())
@@ -153,7 +159,7 @@ class AnthropicDriver:
                 "POST",
                 f"{self.base_url}/v1/messages",
                 headers=self._headers(),
-                json=self._request_payload(messages, tools, temperature, stream=True),
+                json=self._request_payload(messages, tools, temperature, stream=True, tool_choice=tool_choice),
             ) as response,
         ):
                 response.raise_for_status()

@@ -148,6 +148,7 @@ class GeminiDriver:
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None,
         temperature: float,
+        tool_choice: Any | None = None,
     ) -> dict[str, Any]:
         system_parts: list[dict[str, Any]] = []
         contents: list[dict[str, Any]] = []
@@ -204,6 +205,16 @@ class GeminiDriver:
                     for tool in tools
                 ]
             }]
+        if tool_choice and isinstance(tool_choice, dict):
+            function = tool_choice.get("function", {})
+            function_name = function.get("name")
+            if tool_choice.get("type") == "function" and function_name:
+                payload["toolConfig"] = {
+                    "functionCallingConfig": {
+                        "mode": "ANY",
+                        "allowedFunctionNames": [function_name],
+                    }
+                }
         return payload
 
     @staticmethod
@@ -240,7 +251,7 @@ class GeminiDriver:
         tool_choice: Any | None = None,
     ) -> tuple[str, dict[str, int], list[dict[str, Any]]]:
         async with httpx.AsyncClient(timeout=120.0) as client:
-            response = await client.post(self._url("/generate"), headers=self._headers(), json=self._payload(messages, tools, temperature))
+            response = await client.post(self._url("/generate"), headers=self._headers(), json=self._payload(messages, tools, temperature, tool_choice))
         response.raise_for_status()
         text, calls, usage = self._response(response.json())
         return text.replace("__REASONING__", ""), usage, calls
@@ -256,7 +267,7 @@ class GeminiDriver:
         calls: list[dict[str, Any]] = []
         async with (
             httpx.AsyncClient(timeout=120.0) as client,
-            client.stream("POST", self._url("/generate", stream=True), headers=self._headers(), json=self._payload(messages, tools, temperature)) as response,
+            client.stream("POST", self._url("/generate", stream=True), headers=self._headers(), json=self._payload(messages, tools, temperature, tool_choice)) as response,
         ):
                 response.raise_for_status()
                 async for line in response.aiter_lines():
