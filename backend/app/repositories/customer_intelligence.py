@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from datetime import datetime
 
@@ -23,12 +23,13 @@ from app.repositories.base import BaseRepository
 CASE_TRANSITIONS: dict[str, set[str]] = {
     "NEW": {"INGESTED"},
     "INGESTED": {"RESEARCHING"},
-    "RESEARCHING": {"REPORT_READY", "RETRYING"},
+    "RESEARCHING": {"REPORT_READY", "RETRYING", "DEAD_LETTER"},
     "REPORT_READY": {"AWAITING_APPROVAL"},
     "AWAITING_APPROVAL": {"APPROVED", "REJECTED", "EXPIRED"},
     "APPROVED": {"EXECUTING"},
     "EXECUTING": {"COMPLETED", "RETRYING"},
     "RETRYING": {"RESEARCHING", "EXECUTING", "DEAD_LETTER"},
+    "DEAD_LETTER": {"RETRYING"},
 }
 
 
@@ -147,6 +148,40 @@ class ResearchCaseRepository(BaseRepository[ResearchCase]):
         await self.db.commit()
         await self.db.refresh(case)
         return case
+
+    async def schedule_retry(
+        self,
+        case: ResearchCase,
+        *,
+        next_retry_at: datetime,
+        triggered_by: str | None,
+    ) -> ResearchCase:
+        """Move a case into RETRYING and schedule its next attempt."""
+        if case.status != "RETRYING":
+            allowed = CASE_TRANSITIONS.get(case.status, set())
+            if "RETRYING" not in allowed:
+                raise ValueError(f"illegal case transition: {case.status} -> RETRYING")
+            case.status = "RETRYING"
+        case.retry_count += 1
+        case.next_retry_at = next_retry_at
+        case.last_retry_triggered_by = triggered_by
+        case.error = None
+        await self.db.commit()
+        await self.db.refresh(case)
+        return case
+
+    async def list_due_for_retry(self, now: datetime, *, limit: int = 50) -> list[ResearchCase]:
+        result = await self.db.execute(
+            select(ResearchCase)
+            .where(
+                ResearchCase.status == "RETRYING",
+                ResearchCase.next_retry_at.is_not(None),
+                ResearchCase.next_retry_at <= now,
+            )
+            .order_by(ResearchCase.next_retry_at, ResearchCase.created_at)
+            .limit(limit)
+        )
+        return list(result.scalars().all())
 
 
 class ResearchSourceRepository(BaseRepository[ResearchSource]):

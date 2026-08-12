@@ -246,3 +246,83 @@ def test_schedule_ops_write_audit_rows_with_correlation_id(
     deleted_rows = anyio.run(_rows, "ci.schedule.deleted")
     assert len(deleted_rows) == 1
     assert deleted_rows[0].resource_id == schedule_id
+
+
+
+def test_case_manual_retry_api_validates_and_audits(
+    client: TestClient, async_session_factory, ci_enabled
+) -> None:
+    from sqlalchemy import select
+
+    from app.db.base import utc_now
+    from app.models.audit_log import AuditLog
+    from app.models.customer_intelligence import InboundEmail, ResearchCase
+
+    token, org_id = _register(client, "retry-owner-1@test.com")
+    profile = client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+    user_id = profile.json()["id"]
+    header = {"Authorization": f"Bearer {token}", "X-Org-Id": org_id}
+    conn_id = _seed_connection(async_session_factory, org_id)
+
+    case_ids = {"dead": "case-api-dead-letter", "invalid": "case-api-invalid"}
+
+    async def _seed_cases() -> None:
+        async with async_session_factory() as session:
+            emails = []
+            cases = []
+            for key, status in (("dead", "DEAD_LETTER"), ("invalid", "REPORT_READY")):
+                email = InboundEmail(
+                    id=f"email-api-{key}",
+                    org_id=org_id,
+                    connection_id=conn_id,
+                    provider="gmail",
+                    provider_message_id=f"provider-api-{key}",
+                    sender_email="sender@example.com",
+                    sender_domain="example.com",
+                    received_at=utc_now(),
+                )
+                emails.append(email)
+                cases.append(
+                    ResearchCase(
+                        id=case_ids[key],
+                        org_id=org_id,
+                        email_id=email.id,
+                        connection_id=conn_id,
+                        status=status,
+                        retry_count=5 if status == "DEAD_LETTER" else 0,
+                    )
+                )
+            session.add_all([*emails, *cases])
+            await session.commit()
+
+    anyio.run(_seed_cases)
+
+    missing = client.post("/api/customer-intelligence/cases/missing/retry", headers=header)
+    assert missing.status_code == 404, missing.text
+
+    invalid = client.post(
+        f"/api/customer-intelligence/cases/{case_ids['invalid']}/retry", headers=header
+    )
+    assert invalid.status_code == 400, invalid.text
+
+    retried = client.post(
+        f"/api/customer-intelligence/cases/{case_ids['dead']}/retry", headers=header
+    )
+    assert retried.status_code == 200, retried.text
+    assert retried.json()["status"] == "RETRYING"
+
+    async def _audit_rows() -> list[AuditLog]:
+        async with async_session_factory() as session:
+            result = await session.execute(
+                select(AuditLog).where(
+                    AuditLog.org_id == org_id,
+                    AuditLog.action == "ci.case.retry_triggered",
+                )
+            )
+            return list(result.scalars().all())
+
+    rows = anyio.run(_audit_rows)
+    assert len(rows) == 1
+    assert rows[0].resource_id == case_ids["dead"]
+    assert rows[0].actor_user_id == user_id
+    assert rows[0].metadata_["trigger"] == "manual"

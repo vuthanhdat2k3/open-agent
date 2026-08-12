@@ -118,6 +118,7 @@ services:
       retries: 12
 
   worker:
+    restart: unless-stopped
     build:
       context: ./backend
     environment:
@@ -141,6 +142,12 @@ services:
       OPENAGENT_YOUTUBE_API_KEY: ${OPENAGENT_YOUTUBE_API_KEY:-}
       DOCKER_HOST: tcp://docker-socket-proxy:2375
     command: ["arq", "app.worker.WorkerSettings"]
+    healthcheck:
+      test: ["CMD", "arq", "app.worker.WorkerSettings", "--check"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
     depends_on:
       postgres:
         condition: service_healthy
