@@ -7,6 +7,7 @@ from arq.connections import RedisSettings
 from app.config import get_settings
 from app.core.chat_events import fail_orphaned_chat_runs
 from app.core.observability.llm_trace import NoopSink, set_default_sink
+from app.core.providers.jobs import run_provider_discovery
 from app.core.workflow import resume
 from app.core.workflow.jobs import run_chat, run_workflow
 from app.core.workflow.queue import enqueue_workflow_run
@@ -92,7 +93,7 @@ async def _ci_scheduler_tick(ctx: dict) -> None:
 
 
 class WorkerSettings:
-    functions = [run_workflow, run_chat]
+    functions = [run_workflow, run_chat, run_provider_discovery]
     redis_settings = RedisSettings.from_dsn(get_settings().redis_url)
     on_startup = _startup
     on_shutdown = _shutdown

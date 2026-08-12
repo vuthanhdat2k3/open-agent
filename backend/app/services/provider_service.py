@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import structlog
 from sqlalchemy import select
 
 from app.core.credential_secrets import encrypt_string
 from app.core.providers.factory import build_driver
 from app.core.providers.templates import ProviderTemplate, get_template
+from app.core.workflow.queue import enqueue_provider_discovery
 from app.db.base import utc_now
 from app.models.model import Model
 from app.models.provider import Provider
@@ -22,6 +24,8 @@ _ENV_VARS = {
     "opencode": "OPENCODE_API_KEY",
     "deepseek": "DEEPSEEK_API_KEY",
 }
+
+logger = structlog.get_logger(__name__)
 
 
 def normalize_base_url(url: str) -> str:
@@ -64,6 +68,8 @@ class ProviderService:
         data = dict(data)
         clear_key = bool(data.pop("clear_api_key", False))
         raw_key = data.pop("api_key", None)
+        discovery_requested = clear_key or bool(raw_key)
+        old_base_url = prov.normalized_base_url or normalize_base_url(prov.base_url)
         if clear_key:
             prov.api_key = ""
             prov.api_key_encrypted = None
@@ -79,7 +85,25 @@ class ProviderService:
                 self.db.add(existing)
         if "base_url" in data and data["base_url"]:
             data["normalized_base_url"] = normalize_base_url(data["base_url"])
-        return await self.repo.update(prov, data)
+            discovery_requested = discovery_requested or data["normalized_base_url"] != old_base_url
+        if discovery_requested:
+            prov.discovery_generation = (prov.discovery_generation or 0) + 1
+            prov.discovery_status = "pending"
+            prov.discovery_error = None
+        updated = await self.repo.update(prov, data)
+        if discovery_requested:
+            try:
+                await enqueue_provider_discovery(
+                    updated.id, updated.discovery_generation
+                )
+            except Exception as exc:  # noqa: BLE001 - reconcile pending state later.
+                await logger.awarning(
+                    "provider_discovery_enqueue_failed",
+                    provider_id=updated.id,
+                    discovery_generation=updated.discovery_generation,
+                    error_type=type(exc).__name__,
+                )
+        return updated
 
     async def delete(self, org_id: str, id: str) -> bool:
         return await self.repo.delete(org_id, id)
