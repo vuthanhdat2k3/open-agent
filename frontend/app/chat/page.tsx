@@ -170,6 +170,12 @@ export default function ChatPage() {
           }
           return;
         }
+        // A provider can fail before the backend persists any transcript. Keep
+        // the optimistic user/error messages visible instead of replacing them
+        // with an empty history.
+        if (persisted.length === 0 && liveRef.current.length > 0) {
+          return;
+        }
         if (rafRef.current != null) {
           cancelAnimationFrame(rafRef.current);
           rafRef.current = null;
@@ -226,6 +232,11 @@ export default function ChatPage() {
     // While a stream is live (send or reattached follow) the partial UI is
     // authoritative; a background refetch must not overwrite it.
     if (messagesQuery.data) {
+      if (messagesQuery.data.length === 0 && chatRun.data?.status === "failed" && chatRun.data.error) {
+        // Provider failures can leave the durable transcript empty. The run
+        // effect below owns the visible user/error messages in that case.
+        return;
+      }
       const initial: UIMessage[] = messagesQuery.data.map((m) => ({
         id: m.id,
         role: m.role,
@@ -259,7 +270,7 @@ export default function ChatPage() {
         setMessages(merged);
       }
     }
-  }, [agentReady, messagesQuery.data, pendingSession, sessionBelongsToAgent, sessionId, streaming]);
+  }, [agentReady, chatRun.data, messagesQuery.data, pendingSession, sessionBelongsToAgent, sessionId, streaming]);
 
   React.useEffect(() => {
     const run = chatRun.data;
@@ -272,12 +283,25 @@ export default function ChatPage() {
       setPhase(run.progress?.phase && run.progress.phase !== "queued" ? run.progress.phase : "thinking");
     }
     if (["succeeded", "failed", "diverged", "cancelled", "waiting_approval"].includes(run.status)) {
-      if (terminalRunRef.current === run.id) return;
-      terminalRunRef.current = run.id;
-      setStreaming(false);
-      setPhase(run.status === "waiting_approval" ? "approval" : "");
+      const alreadyTerminal = terminalRunRef.current === run.id;
+      if (!alreadyTerminal) {
+        terminalRunRef.current = run.id;
+        setStreaming(false);
+        setPhase(run.status === "waiting_approval" ? "approval" : "");
+      }
       if (run.status !== "waiting_approval") {
-        void syncPersistedMessages();
+        if (run.status === "failed" && run.error) {
+          const message = run.message || "Your request";
+          const current = liveRef.current;
+          if (!current.some((item) => item.role === "user")) {
+            current.unshift({ id: `u-${run.id}`, role: "user", content: message });
+          }
+          if (!current.some((item) => item.role === "error")) {
+            current.push({ id: `e-${run.id}`, role: "error", content: run.error, meta: { error: true } });
+          }
+          setMessages([...current]);
+        }
+        if (!alreadyTerminal) void syncPersistedMessages();
       }
     } else {
       if (terminalRunRef.current !== run.id) terminalRunRef.current = null;
@@ -514,7 +538,13 @@ export default function ChatPage() {
         void refetchSessions();
       } else if (ev.event === "error") {
         setPhase("");
-        toast.error(d.message ?? "Stream error");
+        const message = String(d.message ?? "Stream error");
+        if (!msgs.some((x) => x.role === "error")) {
+          msgs.push({ id: `e-${Date.now()}`, role: "error", content: message, meta: { error: true } });
+          commit();
+        }
+        setStreaming(false);
+        toast.error(message);
       } else if (ev.event === "approval_required") {
         setPhase("approval");
         if (!msgs.some((x) => x.role === "approval" && x.meta?.approvalId === d.approval_id)) {
