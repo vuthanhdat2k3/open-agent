@@ -1,8 +1,8 @@
 ﻿from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import utc_now
@@ -148,6 +148,56 @@ class ResearchCaseRepository(BaseRepository[ResearchCase]):
         await self.db.commit()
         await self.db.refresh(case)
         return case
+
+    async def claim_for_research(self, org_id: str, case_id: str) -> ResearchCase | None:
+        """Atomically claim an INGESTED or due RETRYING case."""
+        now = utc_now()
+        stale_before = now - timedelta(minutes=30)
+        result = await self.db.execute(
+            update(ResearchCase)
+            .where(
+                ResearchCase.org_id == org_id,
+                ResearchCase.id == case_id,
+                or_(
+                    ResearchCase.status == "INGESTED",
+                    and_(
+                        ResearchCase.status == "RETRYING",
+                        ResearchCase.next_retry_at.is_not(None),
+                        ResearchCase.next_retry_at <= now,
+                    ),
+                    and_(
+                        ResearchCase.status == "RESEARCHING",
+                        ResearchCase.started_at.is_not(None),
+                        ResearchCase.started_at <= stale_before,
+                    ),
+                ),
+            )
+            .values(status="RESEARCHING", started_at=now, error=None)
+        )
+        if result.rowcount != 1:
+            await self.db.rollback()
+            return None
+        await self.db.commit()
+        return await self.get(org_id, case_id)
+
+    async def list_dispatchable(self, *, limit: int = 100) -> list[ResearchCase]:
+        stale_before = utc_now() - timedelta(minutes=30)
+        result = await self.db.execute(
+            select(ResearchCase)
+            .where(
+                or_(
+                    ResearchCase.status == "INGESTED",
+                    and_(
+                        ResearchCase.status == "RESEARCHING",
+                        ResearchCase.started_at.is_not(None),
+                        ResearchCase.started_at <= stale_before,
+                    ),
+                )
+            )
+            .order_by(ResearchCase.created_at)
+            .limit(limit)
+        )
+        return list(result.scalars().all())
 
     async def schedule_retry(
         self,

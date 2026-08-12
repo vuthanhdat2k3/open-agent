@@ -147,7 +147,7 @@ async def run_research(
     case = await case_repo.get(org_id, case_id)
     if case is None:
         raise ResearchError("case not found")
-    if case.status not in {"INGESTED", "RETRYING"}:
+    if case.status not in {"INGESTED", "RETRYING", "RESEARCHING"}:
         raise ResearchError(f"case is not researchable (status={case.status})")
 
     email = await email_repo.get(org_id, case.email_id)
@@ -156,7 +156,8 @@ async def run_research(
 
     case.workflow_run_id = case.workflow_run_id or f"ci-{case.id}"
     case.started_at = utc_now()
-    await case_repo.transition(case, "RESEARCHING")
+    if case.status != "RESEARCHING":
+        await case_repo.transition(case, "RESEARCHING")
 
     warnings: list[str] = []
     sources: list[ResearchSource] = []

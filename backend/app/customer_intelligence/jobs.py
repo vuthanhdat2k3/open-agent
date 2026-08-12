@@ -14,19 +14,10 @@ from __future__ import annotations
 from typing import Any
 
 import structlog
-from arq import Retry
 
 from app.db.session import SessionLocal
-from app.repositories.customer_intelligence import ResearchCaseRepository
 
 logger = structlog.get_logger(__name__)
-
-# Research calls out to web search, news search, company lookup and calendar
-# providers - all soft-fail individually, but a hard failure (provider outage,
-# transient DB error) should not be treated as permanent on the first try.
-_MAX_RESEARCH_TRIES = 3
-_RETRY_BASE_SECONDS = 30
-
 
 async def run_ci_research(ctx: dict[str, Any], org_id: str, case_id: str) -> None:
     """Research one ingested Customer Intelligence case.
@@ -36,31 +27,26 @@ async def run_ci_research(ctx: dict[str, Any], org_id: str, case_id: str) -> Non
     ``INGESTED``/``RETRYING`` (manual research via the API, or a duplicate
     enqueue), in which case there is nothing to do.
     """
-    from app.customer_intelligence.workflow import ResearchError, run_research
+    from app.customer_intelligence.workflow import ResearchError
+    from app.services.customer_intelligence_service import CustomerIntelligenceService
 
     async with SessionLocal() as db:
-        case = await ResearchCaseRepository(db).get(org_id, case_id)
-        if case is None or case.status not in {"INGESTED", "RETRYING"}:
-            return
         try:
-            await run_research(db, org_id=org_id, case_id=case_id, actor_user_id=None)
+            await CustomerIntelligenceService(db).research_case(
+                org_id=org_id, case_id=case_id, actor_user_id=None
+            )
         except ResearchError as exc:
             # Not researchable (bad state, missing email) - retrying will not
             # help, so log it and stop instead of burning retry attempts.
             await logger.aerror(
                 "ci_auto_research_rejected", org_id=org_id, case_id=case_id, error=str(exc)
             )
-        except Exception as exc:  # noqa: BLE001 - transient provider/DB failure, worth a retry.
-            job_try = int(ctx.get("job_try", 1))
+        except Exception as exc:  # noqa: BLE001 - durable retry state is recorded.
             await logger.awarning(
                 "ci_auto_research_failed",
                 org_id=org_id,
                 case_id=case_id,
-                job_try=job_try,
+                job_try=int(ctx.get("job_try", 1)),
                 error=str(exc),
-            )
-            if job_try < _MAX_RESEARCH_TRIES:
-                raise Retry(defer=_RETRY_BASE_SECONDS * (2 ** (job_try - 1))) from exc
-            await logger.aerror(
-                "ci_auto_research_exhausted", org_id=org_id, case_id=case_id
+                exc_info=True,
             )
