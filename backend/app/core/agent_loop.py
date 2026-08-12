@@ -5,6 +5,7 @@ import copy
 import json
 import re
 import time
+import unicodedata
 from collections.abc import AsyncIterator, Coroutine
 from datetime import timedelta
 from typing import Any
@@ -304,6 +305,50 @@ _ROUTING_SYNONYMS: dict[str, tuple[str, ...]] = {
     "drive": ("drive", "tài liệu", "document", "documents", "file", "files"),
 }
 
+_GOOGLE_TOOL_PREFIXES = ("email_", "drive_", "calendar_")
+_GOOGLE_RESOURCE_TERMS = {
+    "email": ("email", "gmail", "mail", "thu"),
+    "drive": ("drive", "file", "files", "tai lieu", "tep"),
+    "calendar": ("calendar", "event", "events", "meeting", "lich", "cuoc hop", "su kien"),
+}
+_GOOGLE_TOOL_ACTION_TERMS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("email_remove_label", ("remove label", "go nhan", "xoa nhan")),
+    ("email_apply_label", ("apply label", "add label", "gan nhan", "them nhan")),
+    ("email_list_labels", ("list labels", "show labels", "danh sach nhan")),
+    ("email_mark_unread", ("mark unread", "danh dau chua doc")),
+    ("email_mark_read", ("mark read", "danh dau da doc")),
+    ("email_unstar", ("unstar", "remove star", "bo sao")),
+    ("email_star", ("star", "gan sao", "danh dau sao")),
+    ("email_archive", ("archive", "luu tru")),
+    ("email_restore", ("restore", "khoi phuc")),
+    ("email_trash", ("trash", "move to trash", "bo vao thung rac", "xoa mail", "xoa email")),
+    ("email_reply", ("reply", "tra loi", "phan hoi")),
+    ("email_forward", ("forward", "chuyen tiep")),
+    ("email_send", ("send draft", "gui ban nhap")),
+    ("email_create_draft", ("create draft", "draft email", "compose email", "soan email", "tao ban nhap")),
+    ("email_get", ("email id", "message id", "provider message id", "ma email", "ma thu")),
+    ("email_search", ("search", "find", "filter", "tim", "kiem", "hom nay", "hom qua", "today", "yesterday", "date", "ngay", "week", "tuan", "month", "thang")),
+    ("email_list_new", ("inbox", "new mail", "new email", "unread", "mail moi", "email moi", "thu moi", "chua doc")),
+    ("drive_delete_file", ("delete", "remove", "xoa")),
+    ("drive_update_file", ("update", "edit", "rename", "cap nhat", "sua", "doi ten")),
+    ("drive_create_file", ("create", "new file", "tao", "tep moi", "tai lieu moi")),
+    ("drive_get_file", ("file id", "provider file id", "ma file", "ma tep", "ma tai lieu")),
+    ("drive_list_files", ("search", "find", "list", "show", "tim", "kiem", "liet ke", "danh sach")),
+    ("calendar_delete_event", ("delete", "cancel", "xoa", "huy")),
+    ("calendar_update_event", ("update", "edit", "reschedule", "cap nhat", "sua", "doi lich")),
+    ("calendar_create_event", ("create", "schedule", "book", "tao", "dat lich", "len lich")),
+    ("calendar_get_event", ("event id", "provider event id", "ma event", "ma su kien")),
+    ("calendar_list_events", ("search", "find", "list", "show", "today", "tomorrow", "tim", "kiem", "liet ke", "danh sach", "hom nay", "ngay mai")),
+)
+_GOOGLE_LOOKUP_FALLBACK_TOOLS = {
+    "email_get",
+    "email_list_new",
+    "drive_get_file",
+    "drive_list_files",
+    "calendar_get_event",
+    "calendar_list_events",
+}
+
 _STICKY_ROUTE_TTL_MINUTES = 30
 _STICKY_ROUTE_LOOKBACK = 5
 _SHORT_FOLLOWUP_MAX_WORDS = 8
@@ -375,7 +420,75 @@ def _route_orchestrator_turn(
     if spec is None:
         return "auto", None
     return {"type": "function", "function": {"name": spec.name}}, (
-        f"This request matches the {next(iter(matched))} capability. You MUST call {spec.name}; do not answer or refuse directly."
+        f"This request matches the {next(iter(matched))} capability. You MUST call {spec.name}; do not answer or refuse directly. "
+        "Pass the user's request faithfully in the delegation instruction; do not add requirements the user did not ask for."
+    )
+
+
+def _normalized_route_text(message: str) -> str:
+    text = unicodedata.normalize("NFKD", message.lower().replace("đ", "d"))
+    ascii_text = "".join(char for char in text if not unicodedata.combining(char))
+    return f" {re.sub(r'[^a-z0-9]+', ' ', ascii_text).strip()} "
+
+
+def _contains_route_term(text: str, terms: tuple[str, ...]) -> bool:
+    return any(f" {term} " in text for term in terms)
+
+
+def _route_google_worker_tool(
+    message: str, tool_by_name: dict[str, ToolSpec]
+) -> dict[str, Any] | str:
+    """Force one available Google integration tool for an explicit intent."""
+    available_families = {
+        prefix.removesuffix("_")
+        for prefix in _GOOGLE_TOOL_PREFIXES
+        if any(name.startswith(prefix) for name in tool_by_name)
+    }
+    if not available_families:
+        return "auto"
+    text = _normalized_route_text(message)
+    matched_families = {
+        family
+        for family in available_families
+        if _contains_route_term(text, _GOOGLE_RESOURCE_TERMS[family])
+    }
+    if len(matched_families) != 1:
+        return "auto"
+    family = next(iter(matched_families))
+    candidates = [
+        name
+        for name, terms in _GOOGLE_TOOL_ACTION_TERMS
+        if name.startswith(f"{family}_")
+        and name in tool_by_name
+        and _contains_route_term(text, terms)
+    ]
+    if not candidates:
+        return "auto"
+    if "email_send" in candidates:
+        candidates = [name for name in candidates if name != "email_create_draft"]
+    specific = [name for name in candidates if name not in _GOOGLE_LOOKUP_FALLBACK_TOOLS]
+    resolved = specific or candidates
+    if len(resolved) != 1:
+        return "auto"
+    selected = resolved[0]
+    return {"type": "function", "function": {"name": selected}}
+
+
+def _connected_data_directive() -> str:
+    now_dt = utc_now()
+    now = now_dt.isoformat(timespec="seconds") + "Z"
+    today = now_dt.date()
+    tomorrow = today + timedelta(days=1)
+    return (
+        "Connected-data tool behavior:\n"
+        "- Use the relevant tool before answering requests that require current Email, Drive, or Calendar data.\n"
+        "- Do not claim a connected service is inaccessible before attempting its relevant read tool.\n"
+        "- Convert relative dates to provider-supported arguments. Current UTC time: "
+        f"{now}. For Gmail, today's UTC range is after:{today:%Y/%m/%d} "
+        f"before:{tomorrow:%Y/%m/%d}. Preserve an explicit user timezone; otherwise use UTC and state that assumption.\n"
+        "- After a successful list/search read, summarize that result and stop. Do not fetch every item individually "
+        "unless the user explicitly asks for message/file/event details.\n"
+        "- Ask for clarification when a write action or its required details are ambiguous."
     )
 
 
@@ -726,6 +839,8 @@ async def _agent_stream(
         directives.append(MEMORY_DIRECTIVE)
     if "rag_search" in tool_by_name:
         directives.append(RAG_DIRECTIVE)
+    if any(name.startswith(_GOOGLE_TOOL_PREFIXES) for name in tool_by_name):
+        directives.append(_connected_data_directive())
     if agent.kind == "orchestrator" and "call_agent" in tool_by_name:
         directives.append(ORCHESTRATOR_SYSTEM_SUFFIX)
         roster, delegate_specs, capability_index, delegate_by_agent_id = await _build_orchestrator_delegate_tools(
@@ -747,6 +862,8 @@ async def _agent_stream(
         )
         if route_directive:
             directives.append(route_directive)
+    elif agent.kind != "orchestrator":
+        forced_tool_choice = _route_google_worker_tool(message, tool_by_name)
 
     tool_schemas = [tool_to_openai_schema(s) for s in specs] if specs else None
     logger.info(
@@ -1135,8 +1252,7 @@ async def _agent_stream(
                     "tools": tool_schemas,
                     "temperature": agent.temperature,
                 }
-                if agent.kind == "orchestrator":
-                    stream_kwargs["tool_choice"] = forced_tool_choice if _ == 0 else "auto"
+                stream_kwargs["tool_choice"] = forced_tool_choice if _ == 0 else "auto"
                 logger.info(
                     "chat_latency_phase",
                     phase="provider_stream_start",

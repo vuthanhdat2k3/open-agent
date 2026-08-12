@@ -20,6 +20,7 @@ from app.core.agent_loop import (
     _build_orchestrator_roster,
     _infer_capabilities,
     _recent_delegate_agent_id,
+    _route_google_worker_tool,
     _route_orchestrator_turn,
     run_agent_loop,
 )
@@ -145,6 +146,76 @@ def test_ambiguous_or_unmatched_route_keeps_auto_tool_choice() -> None:
     assert directive is None
 
 
+def test_google_worker_routes_clear_english_and_vietnamese_intents() -> None:
+    cases = (
+        ("remove label from email", "email_remove_label"),
+        ("gắn nhãn cho mail", "email_apply_label"),
+        ("list labels in Gmail", "email_list_labels"),
+        ("mark unread email", "email_mark_unread"),
+        ("đánh dấu đã đọc mail", "email_mark_read"),
+        ("unstar email", "email_unstar"),
+        ("gắn sao email", "email_star"),
+        ("archive mail", "email_archive"),
+        ("khôi phục email", "email_restore"),
+        ("xóa mail", "email_trash"),
+        ("reply to email", "email_reply"),
+        ("chuyển tiếp mail", "email_forward"),
+        ("send draft email", "email_send"),
+        ("compose email to alice@example.com", "email_create_draft"),
+        ("read email id abc", "email_get"),
+        ("tìm các mail trong hôm nay", "email_search"),
+        ("list new email in inbox", "email_list_new"),
+        ("find the quarterly plan in Drive", "drive_list_files"),
+        ("read Drive file id abc", "drive_get_file"),
+        ("tạo file mới trên Drive", "drive_create_file"),
+        ("update Drive file id abc", "drive_update_file"),
+        ("xóa file này trên Drive", "drive_delete_file"),
+        ("show my calendar events today", "calendar_list_events"),
+        ("read calendar event id abc", "calendar_get_event"),
+        ("đặt lịch họp ngày mai", "calendar_create_event"),
+        ("reschedule calendar event id abc", "calendar_update_event"),
+        ("hủy sự kiện lịch", "calendar_delete_event"),
+    )
+    names = {expected for _, expected in cases}
+    tools = {
+        name: ToolSpec(name=name, description=name, input_schema={}, run=None)
+        for name in names
+    }
+    for message, expected in cases:
+        assert _route_google_worker_tool(message, tools) == {
+            "type": "function",
+            "function": {"name": expected},
+        }
+
+
+def test_google_worker_keeps_auto_for_ambiguity_or_missing_tool() -> None:
+    email_search = ToolSpec(
+        name="email_search", description="email", input_schema={}, run=None
+    )
+    drive_list = ToolSpec(
+        name="drive_list_files", description="drive", input_schema={}, run=None
+    )
+    assert _route_google_worker_tool("hello", {email_search.name: email_search}) == "auto"
+    assert _route_google_worker_tool(
+        "find mail and Drive files",
+        {email_search.name: email_search, drive_list.name: drive_list},
+    ) == "auto"
+    calendar_create = ToolSpec(
+        name="calendar_create_event", description="calendar", input_schema={}, run=None
+    )
+    calendar_delete = ToolSpec(
+        name="calendar_delete_event", description="calendar", input_schema={}, run=None
+    )
+    assert _route_google_worker_tool(
+        "create and delete a calendar event",
+        {
+            calendar_create.name: calendar_create,
+            calendar_delete.name: calendar_delete,
+        },
+    ) == "auto"
+    assert _route_google_worker_tool("find mail", {}) == "auto"
+
+
 def test_sticky_route_for_short_followup() -> None:
     email = Agent(id="email", name="email-intelligence", tools=["email_send"])
     spec = ToolSpec(name="delegate_to_email", description="email", input_schema={}, run=None)
@@ -266,6 +337,69 @@ async def test_orchestrator_forces_named_email_delegate() -> None:
             "function": {"name": "delegate_to_email_intelligence"},
         }
         assert captured_choices[1] == "auto"
+    await engine.dispose()
+
+
+async def test_worker_forces_google_tool_only_on_first_iteration() -> None:
+    engine, factory = await _make_session_factory()
+    async with factory() as session:
+        _, _, worker, _ = await _seed(session)
+        worker.tools = ["email_search"]
+        worker.allowed_risk_tiers = ["safe", "read"]
+        await session.commit()
+
+        captured_choices: list[object] = []
+        captured_system_prompts: list[str] = []
+        call_count = 0
+
+        async def mock_stream(messages, *args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            captured_choices.append(kwargs.get("tool_choice"))
+            captured_system_prompts.append(messages[0]["content"])
+            if call_count == 1:
+                yield {
+                    "type": "tool_calls",
+                    "tool_calls": [
+                        _tc(
+                            0,
+                            "call-email-search",
+                            "email_search",
+                            '{"query":"newer_than:1d"}',
+                        )
+                    ],
+                }
+            else:
+                yield {"type": "content", "text": "No matching email."}
+            yield {
+                "type": "usage",
+                "usage": {"input_tokens": 1, "output_tokens": 1},
+                "estimated": False,
+            }
+
+        async def fake_execute(spec, args, ctx):
+            return "No matching email"
+
+        with (
+            patch("app.core.llm.LLMClient.stream", side_effect=mock_stream),
+            patch("app.core.agent_loop.execute_tool_call", side_effect=fake_execute),
+        ):
+            result = await run_agent_loop(
+                agent=worker,
+                message="tìm các mail trong hôm nay",
+                db=session,
+                user_id="u-orch",
+            )
+
+        assert result.content == "No matching email."
+        assert captured_choices == [
+            {"type": "function", "function": {"name": "email_search"}},
+            "auto",
+        ]
+        assert "Connected-data tool behavior" in captured_system_prompts[0]
+        assert "Current UTC time:" in captured_system_prompts[0]
+        assert "today's UTC range is after:" in captured_system_prompts[0]
+        assert "Do not fetch every item individually" in captured_system_prompts[0]
     await engine.dispose()
 
 
