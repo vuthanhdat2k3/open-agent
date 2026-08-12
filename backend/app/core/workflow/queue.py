@@ -31,3 +31,7 @@ async def enqueue_chat_run(payload: dict[str, Any]) -> str:
 
 async def enqueue_provider_discovery(provider_id: str, discovery_generation: int) -> str:
     return await _enqueue("run_provider_discovery", provider_id, discovery_generation)
+
+
+async def enqueue_ci_research(org_id: str, case_id: str) -> str:
+    return await _enqueue("run_ci_research", org_id, case_id)
