@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from app.customer_intelligence.ingest import sync_connection
 from app.customer_intelligence.mcp import CustomerIntelligenceMcpError
 from app.customer_intelligence.security import encrypt_credentials
+from app.customer_intelligence.workflow import _unverified_company_candidate
 from app.db.base import Base, utc_now
 from app.models.customer_intelligence import EmailConnection, InboundEmail, ResearchCase
 from app.models.outbox import OutboxEvent
@@ -23,6 +24,17 @@ async def async_session_factory():
     session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     yield session_factory
     await engine.dispose()
+
+
+def test_unverified_company_candidate_keeps_research_available() -> None:
+    case = ResearchCase(company_name="Acme Example Corporation", company_domain="acme.example")
+
+    candidate = _unverified_company_candidate(case)
+
+    assert candidate is not None
+    assert candidate.canonical_name == "Acme Example Corporation"
+    assert candidate.domain == "acme.example"
+    assert candidate.source == "agent-classifier-unverified"
 
 
 async def _seed_connection(async_session_factory, org_id: str) -> str:
@@ -90,12 +102,21 @@ async def test_reconciliation_uses_history_checkpoint_not_messages_cursor(
     async def call(tool: str, args: dict):
         calls.append(tool)
         if tool == "email_history":
-            return {"messages": [_mail("delta-1")], "new_cursor": None, "history_id": "h1", "has_more": False}
+            return {
+                "messages": [_mail("delta-1")],
+                "new_cursor": None,
+                "history_id": "h1",
+                "has_more": False,
+            }
         raise AssertionError(f"unexpected tool {tool}")
 
-    monkeypatch.setattr("app.customer_intelligence.providers.email.call_customer_intelligence_mcp", call)
+    monkeypatch.setattr(
+        "app.customer_intelligence.providers.email.call_customer_intelligence_mcp", call
+    )
     async with async_session_factory() as session:
-        result = await sync_connection(session, org_id=org_id, connection_id=conn_id, trigger="reconciliation")
+        result = await sync_connection(
+            session, org_id=org_id, connection_id=conn_id, trigger="reconciliation"
+        )
         refreshed = await session.get(EmailConnection, conn_id)
 
     assert calls == ["email_history"]
@@ -126,9 +147,13 @@ async def test_expired_history_performs_bounded_recovery_and_reseeds_checkpoint(
             return {"messages": [_mail("recovered-1")], "new_cursor": None, "has_more": False}
         raise AssertionError(f"unexpected tool {tool}")
 
-    monkeypatch.setattr("app.customer_intelligence.providers.email.call_customer_intelligence_mcp", call)
+    monkeypatch.setattr(
+        "app.customer_intelligence.providers.email.call_customer_intelligence_mcp", call
+    )
     async with async_session_factory() as session:
-        result = await sync_connection(session, org_id=org_id, connection_id=conn_id, trigger="reconciliation")
+        result = await sync_connection(
+            session, org_id=org_id, connection_id=conn_id, trigger="reconciliation"
+        )
         refreshed = await session.get(EmailConnection, conn_id)
 
     assert calls == ["email_history", "email_history_checkpoint", "email_list_new"]
@@ -137,9 +162,7 @@ async def test_expired_history_performs_bounded_recovery_and_reseeds_checkpoint(
     assert refreshed.gmail_history_id == "recovery-baseline"
 
 
-async def test_sync_scopes_email_and_event_to_connection_owner(
-    async_session_factory, ci_mcp_stub
-):
+async def test_sync_scopes_email_and_event_to_connection_owner(async_session_factory, ci_mcp_stub):
     org_id = "org-autoresearch-owner"
     owner_id = "user-owner"
     conn_id = await _seed_connection(async_session_factory, org_id)
@@ -168,9 +191,7 @@ async def test_sync_keeps_guard_flags_as_classification_context(
     def fake_scan(_body: str) -> list[str]:
         return ["prompt_injection"]
 
-    monkeypatch.setattr(
-        "app.customer_intelligence.ingest.scan_for_prompt_injection", fake_scan
-    )
+    monkeypatch.setattr("app.customer_intelligence.ingest.scan_for_prompt_injection", fake_scan)
 
     async with async_session_factory() as session:
         result = await sync_connection(
@@ -183,9 +204,7 @@ async def test_sync_keeps_guard_flags_as_classification_context(
         assert (await session.execute(select(OutboxEvent))).scalar_one()
 
 
-async def test_sync_does_not_depend_on_live_redis(
-    async_session_factory, ci_mcp_stub
-):
+async def test_sync_does_not_depend_on_live_redis(async_session_factory, ci_mcp_stub):
     org_id = "org-autoresearch-queue-down"
     conn_id = await _seed_connection(async_session_factory, org_id)
 
@@ -196,9 +215,7 @@ async def test_sync_does_not_depend_on_live_redis(
         assert result["classification_queued"] == 1
 
 
-async def test_run_ci_research_calls_research_for_ingested_case(
-    async_session_factory, monkeypatch
-):
+async def test_run_ci_research_calls_research_for_ingested_case(async_session_factory, monkeypatch):
     from app.customer_intelligence.jobs import run_ci_research
 
     now = utc_now()
@@ -239,21 +256,15 @@ async def test_run_ci_research_calls_research_for_ingested_case(
         called["case_id"] = case_id
         return {"case_id": case_id}
 
-    monkeypatch.setattr(
-        "app.customer_intelligence.workflow.run_research", fake_run_research
-    )
-    monkeypatch.setattr(
-        "app.customer_intelligence.jobs.SessionLocal", async_session_factory
-    )
+    monkeypatch.setattr("app.customer_intelligence.workflow.run_research", fake_run_research)
+    monkeypatch.setattr("app.customer_intelligence.jobs.SessionLocal", async_session_factory)
 
     await run_ci_research({"job_try": 1}, "org-job-ingested", case_id)
 
     assert called == {"org_id": "org-job-ingested", "case_id": case_id}
 
 
-async def test_run_ci_research_skips_case_already_past_ingested(
-    async_session_factory, monkeypatch
-):
+async def test_run_ci_research_skips_case_already_past_ingested(async_session_factory, monkeypatch):
     from app.customer_intelligence.jobs import run_ci_research
 
     now = utc_now()
@@ -294,12 +305,8 @@ async def test_run_ci_research_skips_case_already_past_ingested(
         called["count"] += 1
         return {}
 
-    monkeypatch.setattr(
-        "app.customer_intelligence.workflow.run_research", fake_run_research
-    )
-    monkeypatch.setattr(
-        "app.customer_intelligence.jobs.SessionLocal", async_session_factory
-    )
+    monkeypatch.setattr("app.customer_intelligence.workflow.run_research", fake_run_research)
+    monkeypatch.setattr("app.customer_intelligence.jobs.SessionLocal", async_session_factory)
 
     await run_ci_research({"job_try": 1}, "org-job-skip", case_id)
 
@@ -348,12 +355,8 @@ async def test_run_ci_research_retries_transient_failure(async_session_factory, 
     async def failing_run_research(db, *, org_id, case_id, actor_user_id=None):
         raise RuntimeError("provider timeout")
 
-    monkeypatch.setattr(
-        "app.customer_intelligence.workflow.run_research", failing_run_research
-    )
-    monkeypatch.setattr(
-        "app.customer_intelligence.jobs.SessionLocal", async_session_factory
-    )
+    monkeypatch.setattr("app.customer_intelligence.workflow.run_research", failing_run_research)
+    monkeypatch.setattr("app.customer_intelligence.jobs.SessionLocal", async_session_factory)
 
     await run_ci_research({"job_try": 1}, "org-job-retry", case_id)
 
