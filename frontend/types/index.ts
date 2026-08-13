@@ -525,6 +525,19 @@ export interface CustomerIntelligenceNotification {
   body: string;
   read_at: string | null;
   created_at: string;
+  received_at: string;
+  sender_email: string;
+  sender_name: string | null;
+  subject: string;
+  classification: string;
+}
+
+export interface CustomerIntelligenceNotificationPage {
+  items: CustomerIntelligenceNotification[];
+  next_cursor: string | null;
+  has_more: boolean;
+  total: number;
+  unread: number;
 }
 
 export interface EmailIntelligenceNavigationSummary {
