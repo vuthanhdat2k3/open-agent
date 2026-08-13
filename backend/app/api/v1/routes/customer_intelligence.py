@@ -43,6 +43,32 @@ from app.services.customer_intelligence_service import CustomerIntelligenceServi
 
 router = APIRouter(prefix="/api/customer-intelligence", tags=["customer-intelligence"])
 oauth_router = APIRouter(prefix="/api/customer-intelligence", tags=["customer-intelligence-oauth"])
+
+
+def _owned_active_connection_by_other_user(connection: object | None, user_id: str) -> bool:
+    """Only an active connection with credentials reserves a provider account.
+
+    Disconnect intentionally keeps a tombstone row for audit/history, so a
+    stale disconnected row must not permanently block a later OAuth connect.
+    """
+
+    return bool(
+        connection is not None
+        and getattr(connection, "created_by_user_id", None) not in {None, user_id}
+        and getattr(connection, "status", None) == "connected"
+        and bool(getattr(connection, "credentials_enc", None))
+    )
+
+
+def _reclaim_owner(connection: object, user_id: str) -> str:
+    owner = getattr(connection, "created_by_user_id", None)
+    return (
+        owner
+        if owner
+        and getattr(connection, "status", None) == "connected"
+        and bool(getattr(connection, "credentials_enc", None))
+        else user_id
+    )
 webhook_router = APIRouter(prefix="/api/webhooks/google", tags=["webhooks"])
 
 
@@ -151,7 +177,7 @@ async def ci_oauth_callback(kind: str, provider: str, request: Request, db: Asyn
     if kind == "email":
         connection_provider = "gmail"
         existing = await CustomerIntelligenceService(db).connections.get_by_account(payload["org_id"], email)
-        if existing is not None and existing.created_by_user_id not in {None, payload["user_id"]}:
+        if _owned_active_connection_by_other_user(existing, payload["user_id"]):
             raise HTTPException(409, "This Google account is already connected by another user")
         await CustomerIntelligenceService(db).connect(
             org_id=payload["org_id"],
@@ -166,24 +192,24 @@ async def ci_oauth_callback(kind: str, provider: str, request: Request, db: Asyn
 
         repo = CalendarConnectionRepository(db)
         connection = await repo.get_by_account(payload["org_id"], calendar_provider, email)
-        if connection is not None and connection.created_by_user_id not in {None, payload["user_id"]}:
+        if _owned_active_connection_by_other_user(connection, payload["user_id"]):
             raise HTTPException(409, "This Google account is already connected by another user")
         if connection is None:
             await repo.create(CalendarConnection(org_id=payload["org_id"], provider=calendar_provider, account_email=email, credentials_enc=encrypt_credentials(credentials), status="connected", created_by_user_id=payload["user_id"]))
         else:
-            await repo.update(connection, {"credentials_enc": encrypt_credentials(credentials), "status": "connected", "error": None, "created_by_user_id": connection.created_by_user_id or payload["user_id"]})
+            await repo.update(connection, {"credentials_enc": encrypt_credentials(credentials), "status": "connected", "error": None, "created_by_user_id": _reclaim_owner(connection, payload["user_id"])})
     else:
         from app.models.customer_intelligence import DriveConnection
         from app.repositories.customer_intelligence import DriveConnectionRepository
 
         repo = DriveConnectionRepository(db)
         connection = await repo.get_by_account(payload["org_id"], email)
-        if connection is not None and connection.created_by_user_id not in {None, payload["user_id"]}:
+        if _owned_active_connection_by_other_user(connection, payload["user_id"]):
             raise HTTPException(409, "This Google account is already connected by another user")
         if connection is None:
             await repo.create(DriveConnection(org_id=payload["org_id"], provider="google", account_email=email, credentials_enc=encrypt_credentials(credentials), status="connected", created_by_user_id=payload["user_id"]))
         else:
-            await repo.update(connection, {"credentials_enc": encrypt_credentials(credentials), "status": "connected", "error": None, "created_by_user_id": connection.created_by_user_id or payload["user_id"]})
+            await repo.update(connection, {"credentials_enc": encrypt_credentials(credentials), "status": "connected", "error": None, "created_by_user_id": _reclaim_owner(connection, payload["user_id"])})
     response = RedirectResponse(get_settings().ci_frontend_redirect_url)
     response.delete_cookie("ci_oauth_state")
     return response

@@ -58,6 +58,11 @@ class CustomerIntelligenceService:
             conn.created_by_user_id = created_by_user_id
             await self.connections.create(conn)
         else:
+            owner_id = (
+                conn.created_by_user_id
+                if conn.status == "connected" and conn.credentials_enc
+                else created_by_user_id
+            )
             await self.connections.update(
                 conn,
                 {
@@ -65,7 +70,7 @@ class CustomerIntelligenceService:
                     "status": "connected",
                     "error": None,
                     "credentials_enc": encrypt_credentials(oauth_payload),
-                    "created_by_user_id": conn.created_by_user_id or created_by_user_id,
+                    "created_by_user_id": owner_id,
                 },
             )
         await log_action(
