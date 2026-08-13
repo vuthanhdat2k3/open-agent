@@ -13,10 +13,10 @@ as `trace_id` by `GET /api/debug/tasks/{root_run_id}`; the same response include
    Generate `LANGFUSE_ENCRYPTION_KEY` as 64 random hexadecimal characters.
 2. Keep `LANGFUSE_INIT_PROJECT_PUBLIC_KEY`/`SECRET_KEY` equal to
    `OPENAGENT_LANGFUSE_PUBLIC_KEY`/`SECRET_KEY`.
-3. Start the profile with the main stack:
+3. Start the main stack, including Langfuse:
 
    ```powershell
-   docker compose -f docker-compose.yml -f docker-compose.langfuse.yml --profile langfuse up -d
+   docker compose up -d --build
    ```
 
 4. Open `http://localhost:3002`; then set
@@ -46,7 +46,7 @@ still exported when content capture is disabled.
 Validate configuration without starting services:
 
 ```powershell
-docker compose -f docker-compose.yml -f docker-compose.langfuse.yml --profile langfuse config
+docker compose config
 ```
 
 Langfuse documents `/api/public/health` and `/api/public/ready` for Web, and
@@ -55,8 +55,8 @@ Langfuse documents `/api/public/health` and `/api/public/ready` for Web, and
 Back up Langfuse separately from OpenAgent:
 
 ```powershell
-docker compose -f docker-compose.yml -f docker-compose.langfuse.yml exec -T langfuse-postgres pg_dump -U langfuse langfuse > langfuse-postgres.sql
-docker compose -f docker-compose.yml -f docker-compose.langfuse.yml exec -T langfuse-clickhouse clickhouse-client --query "BACKUP DATABASE default TO Disk('backups', 'langfuse')"
+docker compose exec -T langfuse-postgres pg_dump -U langfuse langfuse > langfuse-postgres.sql
+docker compose exec -T langfuse-clickhouse clickhouse-client --query "BACKUP DATABASE default TO Disk('backups', 'langfuse')"
 ```
 
 Restore Postgres with `psql -U langfuse -d langfuse < langfuse-postgres.sql` and
