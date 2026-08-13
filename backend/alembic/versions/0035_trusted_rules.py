@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision = "0035_trusted_rules"

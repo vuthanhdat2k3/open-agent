@@ -7,7 +7,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.customer_intelligence.automation_budget import reserve_daily_budget
-from app.db.base import Base
 from app.models.customer_intelligence import CiAutomationBudget
 
 

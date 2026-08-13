@@ -7,9 +7,8 @@ from app.api.v1.routes import (
     auth,
     chat,
     customer_intelligence,
-    email_intelligence_admin,
-    trusted_rules,
     debug,
+    email_intelligence_admin,
     evaluations,
     files,
     mcp,
@@ -19,6 +18,7 @@ from app.api.v1.routes import (
     quotas,
     sandbox,
     sessions,
+    trusted_rules,
     workflows,
     workspace,
 )

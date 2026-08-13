@@ -9,7 +9,13 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import gen_id, utc_now
-from app.dependencies import get_current_org_id, get_current_user, get_db, require_any_permission, require_permission
+from app.dependencies import (
+    get_current_org_id,
+    get_current_user,
+    get_db,
+    require_any_permission,
+    require_permission,
+)
 from app.models.customer_intelligence import CalendarConnection, CiPublicEmailDomain, CiTrustedRule
 from app.models.user import User
 
