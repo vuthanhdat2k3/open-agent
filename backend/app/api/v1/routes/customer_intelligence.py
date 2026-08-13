@@ -6,7 +6,7 @@ import json
 import time
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -873,6 +873,7 @@ async def run_schedule(
         synced=result["synced"],
         deduplicated=0,
         new_cases=result["new_cases"],
+        classification_queued=result.get("classification_queued", 0),
         correlation_id=result.get("correlation_id"),
     )
 
@@ -883,6 +884,10 @@ async def run_schedule(
     dependencies=[Depends(require_permission("ci:read"))],
 )
 async def list_cases(
+    category: str = Query(default="briefings", pattern="^(briefings|review)$"),
+    q: str | None = Query(default=None, max_length=200),
+    limit: int = Query(default=25, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
     org_id: str = Depends(get_current_org_id),
     current_user: User = Depends(get_current_user),
     request: Request = None,
@@ -893,8 +898,11 @@ async def list_cases(
 
     cases = await ResearchCaseRepository(db).list_by_status(
         org_id,
-        limit=100,
+        limit=limit,
+        offset=offset,
         created_by_user_id=_connection_owner(request, current_user),
+        category=category,
+        query=q,
     )
     return [
         CaseSummary(
