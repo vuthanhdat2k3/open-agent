@@ -8,6 +8,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -90,6 +91,7 @@ class InboundEmail(Base):
         UniqueConstraint(
             "org_id", "provider", "provider_message_id", name="uq_ci_email_org_provider_msg"
         ),
+        Index("ix_ci_emails_org_received_id", "org_id", "received_at", "id"),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=gen_id)
@@ -126,6 +128,7 @@ class CiNotification(Base):
     __tablename__ = "ci_notifications"
     __table_args__ = (
         UniqueConstraint("org_id", "user_id", "email_id", "notification_type", name="uq_ci_notification_email_type"),
+        Index("ix_ci_notifications_user_created_id", "user_id", "created_at", "id"),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=gen_id)
