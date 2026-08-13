@@ -27,6 +27,7 @@ export const navGroups: NavGroup[] = [
     { href: "/mcp", label: "MCP Servers", icon: Plug, adminOnly: true },
     { href: "/integrations", label: "Integrations", icon: CalendarDays },
     { href: "/email-intelligence", label: "Smart Inbox", icon: Activity },
+    { href: "/email-intelligence/rules", label: "Automation Rules", icon: ShieldCheck },
     { href: "/customer-intelligence", label: "Research Cases", icon: Activity },
     { href: "/models", label: "Models", icon: Cpu, adminOnly: true },
     { href: "/providers", label: "Providers", icon: Server, adminOnly: true },

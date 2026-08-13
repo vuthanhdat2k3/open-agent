@@ -145,6 +145,48 @@ class CiNotification(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
 
 
+class CiTrustedRule(Base):
+    __tablename__ = "ci_trusted_rules"
+    __table_args__ = (UniqueConstraint("org_id", "name", "version", name="uq_ci_trusted_rule_version"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=gen_id)
+    org_id: Mapped[str] = mapped_column(String(36), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_by_user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    status: Mapped[str] = mapped_column(String(24), default="ACTIVE", nullable=False, index=True)
+    match_type: Mapped[str] = mapped_column(String(24), nullable=False)
+    match_value: Mapped[str] = mapped_column(String(320), nullable=False)
+    action_type: Mapped[str] = mapped_column(String(48), default="CALENDAR_AUTO_CREATE", nullable=False)
+    calendar_connection_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("ci_calendar_connections.id", ondelete="SET NULL"), nullable=True)
+    conditions: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    policy_version: Mapped[str] = mapped_column(String(64), default="2026-08-13.1", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
+
+
+class CiPublicEmailDomain(Base):
+    __tablename__ = "ci_public_email_domains"
+
+    domain: Mapped[str] = mapped_column(String(255), primary_key=True)
+    registry_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
+
+
+class CiAutomationBudget(Base):
+    __tablename__ = "ci_automation_budgets"
+    __table_args__ = (UniqueConstraint("scope_type", "scope_id", "budget_date", name="uq_ci_automation_budget_scope_date"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=gen_id)
+    scope_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    scope_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    budget_date: Mapped[str] = mapped_column(String(10), nullable=False)
+    used: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    budget_limit: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
+
+
 class ResearchCase(Base):
     __tablename__ = "ci_cases"
     __table_args__ = (UniqueConstraint("org_id", "email_id", name="uq_ci_case_org_email"),)
