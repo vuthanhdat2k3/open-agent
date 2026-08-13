@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { QueryClient } from "@tanstack/react-query";
-import { useApprovals, useCurrentRole } from "@/hooks";
+import { useCurrentRole, useEmailIntelligenceNavigationSummary } from "@/hooks";
 import { OrgSwitcher } from "@/components/org-switcher";
 import { UserNav } from "@/components/user-nav";
 import {
@@ -26,8 +26,9 @@ export function AppSidebar({ queryClient }: { queryClient: QueryClient }) {
   const pathname = usePathname();
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
-  const approvals = useApprovals(true);
-  const pending = approvals.data?.length ?? 0;
+  const summary = useEmailIntelligenceNavigationSummary();
+  const pending = summary.data?.user_workspace.approvals.pending ?? 0;
+  const urgent = summary.data?.user_workspace.approvals.urgent ?? 0;
   const role = useCurrentRole();
 
   return (
@@ -82,7 +83,9 @@ export function AppSidebar({ queryClient }: { queryClient: QueryClient }) {
                       </Link>
                     </SidebarMenuButton>
                     {item.href === "/approvals" && pending > 0 && (
-                      <SidebarMenuBadge aria-label={`${pending} pending approvals`}>{pending}</SidebarMenuBadge>
+                      <SidebarMenuBadge aria-label={`${pending} pending approvals${urgent ? `, ${urgent} urgent` : ""}`}>
+                        <span>{pending}</span>{urgent > 0 && <span className="ml-1 text-[9px] text-destructive">· {urgent} urgent</span>}
+                      </SidebarMenuBadge>
                     )}
                   </SidebarMenuItem>
                 );
