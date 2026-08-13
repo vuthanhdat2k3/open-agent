@@ -179,6 +179,19 @@ async def process_outbox_event(ctx: dict, event_id: str) -> None:
             await repo.mark_processed(event_id=event.id, consumer_name="worker")
             await db.commit()
             return
+        if event.event_type == "gmail.history_sync.requested":
+            from app.customer_intelligence.ingest import sync_connection
+
+            await sync_connection(
+                db,
+                org_id=event.org_id,
+                connection_id=event.aggregate_id,
+                trigger="webhook",
+                correlation_id=event.correlation_id,
+            )
+            await repo.mark_processed(event_id=event.id, consumer_name="worker")
+            await db.commit()
+            return
         raise RuntimeError(f"unsupported outbox event type: {event.event_type}")
 
 

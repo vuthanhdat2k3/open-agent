@@ -154,6 +154,12 @@ class Settings(BaseSettings):
     # Empty => provider degrades to research_unavailable (no fabricated data).
     ci_company_api_url: str = ""
     ci_company_api_key: str = ""
+    # Google Pub/Sub push authentication. Production must configure the OIDC
+    # audience and allowed service account; a shared token is only for local
+    # emulators/tests and is never accepted when OIDC is configured.
+    gmail_pubsub_audience: str = ""
+    gmail_pubsub_service_account: str = ""
+    gmail_pubsub_shared_token: str = ""
 
     allowed_extensions: list[str] = [
         ".pdf",

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.workflow.queue import enqueue_outbox_event
