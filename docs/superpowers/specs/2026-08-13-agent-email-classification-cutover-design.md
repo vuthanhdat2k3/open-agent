@@ -1,9 +1,9 @@
 # Agent-based Email Classification and Clean Cutover — Production Specification
 
-> Ngày: 2026-08-13  
-> Trạng thái: Spec đã chốt, chờ user review trước khi viết implementation plan  
-> Target: Docker Compose/VPS, dưới 100 user  
-> Phạm vi: Gmail cá nhân và Google Workspace  
+> Ngày: 2026-08-13
+> Trạng thái: Spec đã chốt, chờ user review trước khi viết implementation plan
+> Target: Docker Compose/VPS, dưới 100 user
+> Phạm vi: Gmail cá nhân và Google Workspace
 > Tài liệu nền: `docs/superpowers/specs/2026-08-13-personal-email-intelligence-automation-design.md`
 
 ## 1. Bối cảnh và lỗi hiện tại
