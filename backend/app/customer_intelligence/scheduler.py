@@ -182,7 +182,7 @@ async def run_schedule_now(
     schedule = await CiScheduleRepository(db).get(org_id, schedule_id)
     if schedule is None:
         raise KeyError("schedule not found")
-    synced, cases = await _run_one(
+    synced, cases, classification_queued = await _run_one(
         db,
         schedule,
         now=utc_now(),
@@ -195,6 +195,7 @@ async def run_schedule_now(
         "connection_id": schedule.connection_id,
         "synced": synced,
         "new_cases": cases,
+        "classification_queued": classification_queued,
         "correlation_id": correlation_id,
     }
 
@@ -207,7 +208,7 @@ async def _run_one(
     actor_user_id: str | None,
     trigger: str = "scheduled",
     correlation_id: str | None = None,
-) -> tuple[int, int]:
+) -> tuple[int, int, int]:
     """Sync a single schedule and advance its next run."""
     if not schedule.enabled:
         raise IngestionError("schedule disabled")
@@ -242,6 +243,7 @@ async def _run_one(
 
     synced = result.get("synced", 0)
     cases = result.get("new_cases", 0)
+    classification_queued = result.get("classification_queued", 0)
     await logger.ainfo(
         "ci_scheduled_sync_done",
         schedule_id=schedule.id,
@@ -250,7 +252,7 @@ async def _run_one(
         next_run_at=next_run.isoformat(),
         correlation_id=correlation_id,
     )
-    return synced, cases
+    return synced, cases, classification_queued
 
 
 async def process_due_retries(db: AsyncSession, *, max_cases: int = 50) -> dict[str, Any]:

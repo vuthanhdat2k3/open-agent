@@ -145,7 +145,7 @@ def test_schedule_manual_run_syncs_and_advances(
     run = client.post(f"/api/customer-intelligence/schedules/{schedule_id}/run", headers=header)
     assert run.status_code == 200, run.text
     assert run.json()["synced"] == 1
-    assert run.json()["new_cases"] == 1
+    assert run.json()["new_cases"] == 0
 
     listed = client.get("/api/customer-intelligence/schedules", headers=header)
     schedule = next(s for s in listed.json() if s["id"] == schedule_id)

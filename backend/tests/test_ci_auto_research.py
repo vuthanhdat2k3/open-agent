@@ -1,12 +1,4 @@
-"""Tests for auto-enqueuing CI research right after ingest creates a case.
-
-``sync_connection`` used to leave every new case sitting in ``INGESTED``
-forever unless someone called the research API by hand - these tests pin
-down the fix: a clean new case gets a research job enqueued, a case flagged
-for prompt injection never even gets created (so nothing is enqueued for
-it), and the auto-research job itself only acts on cases still in a
-researchable state and retries transient failures a bounded number of times.
-"""
+"""Tests for durable async classification and downstream research jobs."""
 
 from __future__ import annotations
 
@@ -19,6 +11,7 @@ from app.customer_intelligence.mcp import CustomerIntelligenceMcpError
 from app.customer_intelligence.security import encrypt_credentials
 from app.db.base import Base, utc_now
 from app.models.customer_intelligence import EmailConnection, InboundEmail, ResearchCase
+from app.models.outbox import OutboxEvent
 from app.repositories.customer_intelligence import ResearchCaseRepository
 
 
@@ -46,30 +39,21 @@ async def _seed_connection(async_session_factory, org_id: str) -> str:
         return conn.id
 
 
-async def test_sync_enqueues_research_for_each_new_clean_case(
-    async_session_factory, ci_mcp_stub, monkeypatch
+async def test_sync_persists_classification_outbox_for_each_new_email(
+    async_session_factory, ci_mcp_stub
 ):
     org_id = "org-autoresearch-clean"
     conn_id = await _seed_connection(async_session_factory, org_id)
-
-    enqueued: list[tuple[str, str]] = []
-
-    async def fake_enqueue(org_id_arg: str, case_id_arg: str) -> str:
-        enqueued.append((org_id_arg, case_id_arg))
-        return "job-1"
-
-    monkeypatch.setattr(
-        "app.customer_intelligence.ingest.enqueue_ci_research", fake_enqueue
-    )
 
     async with async_session_factory() as session:
         result = await sync_connection(
             session, org_id=org_id, connection_id=conn_id, trigger="manual"
         )
-        assert result["new_cases"] == 1
-
-    assert len(enqueued) == 1
-    assert enqueued[0][0] == org_id
+        assert result["new_cases"] == 0
+        assert result["classification_queued"] == 1
+        event = (await session.execute(select(OutboxEvent))).scalar_one()
+        assert event.event_type == "email.classification.requested"
+        assert event.org_id == org_id
 
 
 def _mail(message_id: str) -> dict:
@@ -153,8 +137,8 @@ async def test_expired_history_performs_bounded_recovery_and_reseeds_checkpoint(
     assert refreshed.gmail_history_id == "recovery-baseline"
 
 
-async def test_sync_scopes_email_and_case_to_connection_owner(
-    async_session_factory, ci_mcp_stub, monkeypatch
+async def test_sync_scopes_email_and_event_to_connection_owner(
+    async_session_factory, ci_mcp_stub
 ):
     org_id = "org-autoresearch-owner"
     owner_id = "user-owner"
@@ -164,50 +148,28 @@ async def test_sync_scopes_email_and_case_to_connection_owner(
         connection.created_by_user_id = owner_id
         await session.commit()
 
-    monkeypatch.setattr(
-        "app.customer_intelligence.ingest.enqueue_ci_research",
-        lambda *_args: _completed("job-owner"),
-    )
-
     async with async_session_factory() as session:
         await sync_connection(session, org_id=org_id, connection_id=conn_id)
 
     async with async_session_factory() as session:
         email = (await session.execute(select(InboundEmail))).scalar_one()
-        case = (await session.execute(select(ResearchCase))).scalar_one()
+        event = (await session.execute(select(OutboxEvent))).scalar_one()
 
     assert email.created_by_user_id == owner_id
-    assert case.created_by_user_id == owner_id
+    assert event.user_id == owner_id
 
 
-async def _completed(value: str):
-    return value
-
-
-async def test_sync_does_not_enqueue_for_flagged_email(
+async def test_sync_keeps_guard_flags_as_classification_context(
     async_session_factory, ci_mcp_stub, monkeypatch
 ):
     org_id = "org-autoresearch-flagged"
     conn_id = await _seed_connection(async_session_factory, org_id)
 
-    # Force the sole synced email to look like a prompt-injection attempt so
-    # ingest.py's own guard skips case creation - confirms no job is
-    # enqueued when there is no case to research.
     def fake_scan(_body: str) -> list[str]:
         return ["prompt_injection"]
 
     monkeypatch.setattr(
         "app.customer_intelligence.ingest.scan_for_prompt_injection", fake_scan
-    )
-
-    enqueued: list[tuple[str, str]] = []
-
-    async def fake_enqueue(org_id_arg: str, case_id_arg: str) -> str:
-        enqueued.append((org_id_arg, case_id_arg))
-        return "job-1"
-
-    monkeypatch.setattr(
-        "app.customer_intelligence.ingest.enqueue_ci_research", fake_enqueue
     )
 
     async with async_session_factory() as session:
@@ -216,31 +178,22 @@ async def test_sync_does_not_enqueue_for_flagged_email(
         )
         assert result["synced"] == 1
         assert result["new_cases"] == 0
-        assert any("prompt injection" in w for w in result["warnings"])
+        email = (await session.execute(select(InboundEmail))).scalar_one()
+        assert email.injection_flags == ["prompt_injection"]
+        assert (await session.execute(select(OutboxEvent))).scalar_one()
 
-    assert enqueued == []
 
-
-async def test_sync_still_succeeds_when_enqueue_fails(
-    async_session_factory, ci_mcp_stub, monkeypatch
+async def test_sync_does_not_depend_on_live_redis(
+    async_session_factory, ci_mcp_stub
 ):
     org_id = "org-autoresearch-queue-down"
     conn_id = await _seed_connection(async_session_factory, org_id)
 
-    async def failing_enqueue(org_id_arg: str, case_id_arg: str) -> str:
-        raise ConnectionError("redis unavailable")
-
-    monkeypatch.setattr(
-        "app.customer_intelligence.ingest.enqueue_ci_research", failing_enqueue
-    )
-
     async with async_session_factory() as session:
-        # Must not raise: a queue outage is not a sync failure, and the
-        # case remains INGESTED for a manual research call or a later sweep.
         result = await sync_connection(
             session, org_id=org_id, connection_id=conn_id, trigger="manual"
         )
-        assert result["new_cases"] == 1
+        assert result["classification_queued"] == 1
 
 
 async def test_run_ci_research_calls_research_for_ingested_case(

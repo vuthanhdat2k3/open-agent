@@ -13,6 +13,13 @@ class Classification:
     label: str
     confidence: float
     reason: str
+    intents: tuple[str, ...] = ()
+    company_name: str | None = None
+    company_domain: str | None = None
+    company_confidence: float = 0.0
+    meeting_confidence: float = 0.0
+    summary: str = ""
+    calendar_payload: dict[str, Any] | None = None
 
 
 _SPAM_TERMS = re.compile(r"\b(win|winner|prize|casino|viagra|crypto giveaway|unsubscribe)\b", re.I)
@@ -22,17 +29,16 @@ _FREE_MAIL = {"gmail.com", "googlemail.com", "yahoo.com", "outlook.com", "hotmai
 
 
 def classify_email(email: NormalizedEmail) -> Classification:
-    if email.injection_flags:
-        return Classification("security_risk", 1.0, "guard flagged untrusted instruction content")
     text = f"{email.subject}\n{email.body_text}"[:20_000]
     spam_hits = len(_SPAM_TERMS.findall(text))
     if spam_hits >= 2:
         return Classification("spam", min(0.99, 0.7 + spam_hits * 0.05), "spam indicators matched")
     if _CALENDAR_TERMS.search(text) and _DATE_OR_TIME.search(text):
         return Classification("calendar", 0.9, "meeting intent and date/time detected")
-    if email.sender_domain.lower() not in _FREE_MAIL and email.sender_domain:
-        return Classification("customer", 0.75, "sender uses an organizational domain")
-    return Classification("normal", 0.7, "no high-risk or special routing signal")
+    # Domain is evidence only. It is deliberately not enough to create a
+    # research case; the agent classifier supplies semantic intent in
+    # production. This deterministic fallback is safe for local/test installs.
+    return Classification("normal", 0.7, "no agent classification available")
 
 
 def extract_calendar_payload(email: NormalizedEmail) -> dict[str, Any] | None:

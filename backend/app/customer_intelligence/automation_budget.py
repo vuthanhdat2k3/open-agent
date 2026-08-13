@@ -79,3 +79,41 @@ async def reserve_daily_budget(
         reserved.append((scope_type, scope_id))
 
     return AutomationBudgetReservation(reserved=True, scopes=reserved, reason=None)
+
+
+async def reserve_scope_budget(
+    db: AsyncSession,
+    *,
+    scope_type: str,
+    scope_id: str,
+    budget_date: str,
+    budget_limit: int,
+    amount: int = 1,
+) -> bool:
+    """Atomically reserve a single generic daily budget scope."""
+    statement = _insert_for_dialect(db).values(
+        id=gen_id(),
+        scope_type=scope_type,
+        scope_id=scope_id,
+        budget_date=budget_date,
+        used=0,
+        budget_limit=budget_limit,
+        updated_at=utc_now(),
+    )
+    await db.execute(
+        statement.on_conflict_do_nothing(
+            index_elements=["scope_type", "scope_id", "budget_date"]
+        )
+    )
+    result = await db.execute(
+        update(CiAutomationBudget)
+        .where(
+            CiAutomationBudget.scope_type == scope_type,
+            CiAutomationBudget.scope_id == scope_id,
+            CiAutomationBudget.budget_date == budget_date,
+            CiAutomationBudget.used + amount <= CiAutomationBudget.budget_limit,
+        )
+        .values(used=CiAutomationBudget.used + amount, updated_at=utc_now())
+        .returning(CiAutomationBudget.id)
+    )
+    return result.scalar_one_or_none() is not None

@@ -181,6 +181,7 @@ class SyncResult(BaseModel):
     synced: int
     deduplicated: int
     new_cases: int
+    classification_queued: int = 0
     cursor: str | None = None
     warnings: list[str] = Field(default_factory=list)
     correlation_id: str | None = None

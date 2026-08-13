@@ -23,13 +23,15 @@ from app.repositories.base import BaseRepository
 CASE_TRANSITIONS: dict[str, set[str]] = {
     "NEW": {"INGESTED"},
     "INGESTED": {"RESEARCHING"},
-    "RESEARCHING": {"REPORT_READY", "RETRYING", "DEAD_LETTER"},
+    "ACTION_PROPOSED": {"AWAITING_APPROVAL"},
+    "RESEARCHING": {"REPORT_READY", "NEEDS_REVIEW", "RETRYING", "DEAD_LETTER"},
     "REPORT_READY": {"AWAITING_APPROVAL"},
     "AWAITING_APPROVAL": {"APPROVED", "REJECTED", "EXPIRED"},
     "APPROVED": {"EXECUTING"},
     "EXECUTING": {"COMPLETED", "RETRYING"},
     "RETRYING": {"RESEARCHING", "EXECUTING", "DEAD_LETTER"},
     "DEAD_LETTER": {"RETRYING"},
+    "NEEDS_REVIEW": {"RETRYING"},
 }
 
 
@@ -144,13 +146,32 @@ class ResearchCaseRepository(BaseRepository[ResearchCase]):
 
     async def list_by_status(
         self, org_id: str, status: str | None = None, limit: int = 100, offset: int = 0,
-        created_by_user_id: str | None = None,
+        created_by_user_id: str | None = None, category: str = "briefings", query: str | None = None,
     ) -> list[ResearchCase]:
         stmt = select(ResearchCase).where(ResearchCase.org_id == org_id)
         if created_by_user_id is not None:
             stmt = stmt.where(ResearchCase.created_by_user_id == created_by_user_id)
         if status:
             stmt = stmt.where(ResearchCase.status == status)
+        if category == "review":
+            stmt = stmt.where(ResearchCase.status.in_({"NEEDS_REVIEW", "DEAD_LETTER", "RETRYING"}))
+        elif category == "briefings":
+            stmt = stmt.where(
+                ResearchCase.trigger != "calendar",
+                or_(
+                    ResearchCase.trigger == "manual",
+                    ResearchCase.company_name.is_not(None),
+                    ResearchCase.company_domain.is_not(None),
+                )
+            )
+        if query:
+            pattern = f"%{query.strip()}%"
+            stmt = stmt.where(
+                or_(
+                    ResearchCase.company_name.ilike(pattern),
+                    ResearchCase.company_domain.ilike(pattern),
+                )
+            )
         stmt = stmt.order_by(ResearchCase.created_at.desc()).limit(limit).offset(offset)
         res = await self.db.execute(stmt)
         return list(res.scalars().all())
