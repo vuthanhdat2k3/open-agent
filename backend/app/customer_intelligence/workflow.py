@@ -50,6 +50,24 @@ class ResearchError(Exception):
     pass
 
 
+def _calendar_payload_for_email(email: InboundEmail) -> dict[str, Any] | None:
+    """Read the agent's validated calendar payload for any compatible label."""
+    payload = (email.classification_json or {}).get("calendar")
+    if not isinstance(payload, dict) or not payload.get("start") or not payload.get("end"):
+        return None
+    attendees = payload.get("attendees") or []
+    if not isinstance(attendees, list) or any("@" not in str(item) for item in attendees):
+        return None
+    return {
+        "start": str(payload["start"]),
+        "end": str(payload["end"]),
+        "timezone": payload.get("timezone") or "UTC",
+        "attendees": [str(item) for item in attendees],
+        "summary": email.subject[:500] or "Meeting from email",
+        "description": f"Created from email {email.provider_message_id}",
+    }
+
+
 def _unverified_company_candidate(case: ResearchCase) -> CompanyRecord | None:
     """Build a research-only company candidate from the classifier output.
 
@@ -363,7 +381,7 @@ async def run_research(
         case_id=case_id,
         version=version,
         canonical_markdown=render_markdown(report_sections),
-        rendering=None,
+        rendering=report_sections,
         confidence=min(len(sources) / max(len(companies), 1) / 5, 1.0) if companies else 0.0,
         status="ready",
     )
@@ -375,19 +393,20 @@ async def run_research(
     case.finished_at = utc_now()
     await case_repo.transition(case, "REPORT_READY")
 
-    if email.classification == "calendar":
+    calendar_payload = _calendar_payload_for_email(email)
+    if calendar_payload is None and email.classification == "calendar":
         calendar_payload = extract_calendar_payload(email)
-        if calendar_payload:
-            from app.customer_intelligence.delivery import request_case_approval
+    if calendar_payload:
+        from app.customer_intelligence.delivery import request_case_approval
 
-            await request_case_approval(
-                db,
-                org_id=org_id,
-                case_id=case_id,
-                action="calendar_create_event",
-                payload=calendar_payload,
-                requested_by=case.created_by_user_id,
-            )
+        await request_case_approval(
+            db,
+            org_id=org_id,
+            case_id=case_id,
+            action="calendar_create_event",
+            payload=calendar_payload,
+            requested_by=case.created_by_user_id,
+        )
 
     await log_action(
         db,

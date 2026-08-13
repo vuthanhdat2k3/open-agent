@@ -120,3 +120,46 @@ async def test_calendar_classification_creates_approval_without_company(
         assert result["case_id"] == case.id
         assert case.status == "AWAITING_APPROVAL"
         assert approval.tool_name == "calendar_create_event"
+    async with async_session_factory() as fresh_session:
+        persisted = (await fresh_session.execute(select(ApprovalRequest))).scalar_one()
+        assert persisted.tool_name == "calendar_create_event"
+
+
+async def test_customer_calendar_email_fans_out_research_and_calendar_data(
+    async_session_factory, monkeypatch
+):
+    async def classify(*_args):
+        return Classification(
+            "customer",
+            0.97,
+            "CUSTOMER_AND_MEETING",
+            company_name="Acme",
+            company_domain="acme.example",
+            company_confidence=0.93,
+            meeting_confidence=0.95,
+            intents=("request_briefing", "meeting_request"),
+            calendar_payload={
+                "start": "2026-08-15T03:00:00Z",
+                "end": "2026-08-15T04:00:00Z",
+                "timezone": "Asia/Bangkok",
+                "attendees": ["sender@example.com"],
+            },
+        )
+
+    monkeypatch.setattr(
+        "app.customer_intelligence.classification_service.classify_with_agent", classify
+    )
+    async with async_session_factory() as session:
+        email = await _email(session, org_id="org-classify-both", message_id="both-1")
+        result = await classify_and_route_email(session, org_id=email.org_id, email_id=email.id)
+        case = (await session.execute(select(ResearchCase))).scalar_one()
+        event = (
+            await session.execute(
+                select(OutboxEvent).where(OutboxEvent.event_type == "ci.research.requested")
+            )
+        ).scalar_one()
+        approvals = (await session.execute(select(ApprovalRequest))).scalars().all()
+        assert result["case_id"] == case.id
+        assert case.status == "INGESTED"
+        assert event.aggregate_id == case.id
+        assert approvals == []
