@@ -74,6 +74,30 @@ def test_agent_output_rejects_extra_action_fields():
         _parse(payload)
 
 
+def test_agent_output_accepts_provider_code_fence_and_evidence_string():
+    result = _parse(
+        {
+            "schema_version": "email-classification-result.v1",
+            "email_id": "message-1",
+            "mail_type": "business",
+            "primary_label": "customer",
+            "intents": ["partnership"],
+            "summary": "Business inquiry",
+            "company": {
+                "name": "Acme",
+                "domain": "acme.example",
+                "confidence": 0.9,
+                "evidence": "Named explicitly in the body",
+            },
+            "calendar": None,
+            "recommended_routes": ["customer_research_candidate"],
+            "confidence": 0.9,
+            "reason_codes": ["CUSTOMER_INTENT"],
+        }
+    )
+    assert result.company_name == "Acme"
+
+
 async def test_provider_error_escalates_to_strong_model(monkeypatch):
     settings = SimpleNamespace(
         ci_classifier_enabled=True,
@@ -118,12 +142,11 @@ async def test_provider_error_escalates_to_strong_model(monkeypatch):
 
     monkeypatch.setattr("app.customer_intelligence.agent_classifier.get_settings", lambda: settings)
     monkeypatch.setattr("app.customer_intelligence.agent_classifier._model_for", model_for)
+
     async def reserve(*_args, **_kwargs):
         return True
 
-    monkeypatch.setattr(
-        "app.customer_intelligence.agent_classifier.reserve_scope_budget", reserve
-    )
+    monkeypatch.setattr("app.customer_intelligence.agent_classifier.reserve_scope_budget", reserve)
     monkeypatch.setattr(
         "app.customer_intelligence.agent_classifier.build_driver",
         lambda _provider, model, **_kwargs: Driver(model.id),
@@ -143,6 +166,7 @@ async def test_provider_error_escalates_to_strong_model(monkeypatch):
         received_at=datetime(2026, 8, 13),
         injection_flags=["possible_prompt_injection"],
     )
+
     class Nested:
         async def __aenter__(self):
             return self
