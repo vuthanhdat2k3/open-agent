@@ -23,7 +23,7 @@ from app.repositories.base import BaseRepository
 CASE_TRANSITIONS: dict[str, set[str]] = {
     "NEW": {"INGESTED"},
     "INGESTED": {"RESEARCHING"},
-    "RESEARCHING": {"REPORT_READY", "RETRYING", "DEAD_LETTER"},
+    "RESEARCHING": {"REPORT_READY", "NEEDS_REVIEW", "RETRYING", "DEAD_LETTER"},
     "REPORT_READY": {"AWAITING_APPROVAL"},
     "AWAITING_APPROVAL": {"APPROVED", "REJECTED", "EXPIRED"},
     "APPROVED": {"EXECUTING"},

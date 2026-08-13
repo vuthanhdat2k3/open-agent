@@ -118,6 +118,7 @@ class InboundEmail(Base):
     classification: Mapped[str] = mapped_column(String(32), default="pending", nullable=False, index=True)
     classification_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
     classification_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    classification_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     routing_status: Mapped[str] = mapped_column(String(32), default="pending", nullable=False, index=True)
     created_by_user_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
