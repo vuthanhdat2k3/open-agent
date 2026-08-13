@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { Activity, ExternalLink, RefreshCw, Search } from "lucide-react";
@@ -7,7 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/page-header";
-import { useCustomerIntelligenceCase, useCustomerIntelligenceCases, useResearchCustomerIntelligenceCase, useRetryCustomerIntelligenceCase } from "@/hooks";
+import { useCreateManualCustomerIntelligenceCase, useCustomerIntelligenceCase, useCustomerIntelligenceCases, useResearchCustomerIntelligenceCase, useRetryCustomerIntelligenceCase } from "@/hooks";
+import { Input } from "@/components/ui/input";
 
 function statusVariant(status: string) {
   if (["REPORT_READY", "COMPLETED"].includes(status)) return "success" as const;
@@ -22,10 +24,31 @@ export default function CustomerIntelligencePage() {
   const detail = useCustomerIntelligenceCase(selected);
   const research = useResearchCustomerIntelligenceCase();
   const retry = useRetryCustomerIntelligenceCase();
+  const manual = useCreateManualCustomerIntelligenceCase();
+  const [companyName, setCompanyName] = useState("");
+  const [companyDomain, setCompanyDomain] = useState("");
+  const [question, setQuestion] = useState("");
+
+  async function createManualCase(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!companyName.trim()) return;
+    await manual.mutateAsync({
+      company_name: companyName.trim(),
+      ...(companyDomain.trim() ? { company_domain: companyDomain.trim() } : {}),
+      ...(question.trim() ? { question: question.trim() } : {}),
+    });
+    setCompanyName("");
+    setCompanyDomain("");
+    setQuestion("");
+  }
 
   return (
     <div className="space-y-6">
       <PageHeader icon={Activity} title="Research Cases" description="Automated customer and partner briefings with traceable sources and human-controlled delivery." />
+      <Card>
+        <CardHeader><CardTitle>Start a manual research</CardTitle><CardDescription>Research a company without connecting email. The request stays private to your account.</CardDescription></CardHeader>
+        <CardContent><form onSubmit={(event) => void createManualCase(event)} className="grid gap-3 md:grid-cols-[1fr_1fr_2fr_auto]"><Input aria-label="Company name" placeholder="Company name" value={companyName} onChange={(event) => setCompanyName(event.target.value)} required /><Input aria-label="Company domain" placeholder="company.com (optional)" value={companyDomain} onChange={(event) => setCompanyDomain(event.target.value)} /><Input aria-label="Research question" placeholder="Research question (optional)" value={question} onChange={(event) => setQuestion(event.target.value)} /><Button type="submit" loading={manual.isPending} disabled={!companyName.trim()}>Research</Button></form></CardContent>
+      </Card>
       <div className="grid gap-6 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.5fr)]">
         <Card>
           <CardHeader><CardTitle>Cases</CardTitle><CardDescription>{cases.data?.length ?? 0} research cases</CardDescription></CardHeader>

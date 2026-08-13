@@ -251,11 +251,40 @@ def require_permission(permission: str):
     return _checker
 
 
+def require_any_permission(*permissions: str):
+    """Allow a request when the resolved role has at least one permission."""
+
+    async def _checker(
+        request: Request,
+        db: AsyncSession = Depends(get_db),
+        current_user: User = Depends(get_current_user),
+        org_id: str = Depends(get_current_org_id),
+    ) -> None:
+        res = await db.execute(
+            select(Membership).where(
+                Membership.org_id == org_id,
+                Membership.user_id == current_user.id,
+            )
+        )
+        membership = res.scalar_one_or_none()
+        if membership is None or not any(has_permission(membership.role, permission) for permission in permissions):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Permission denied: {' or '.join(permissions)}",
+            )
+        request.state.role = membership.role.value if hasattr(membership.role, "value") else str(membership.role)
+        set_ownership_scope(db, user_id=current_user.id, role=membership.role)
+        mark_chat_phase(request, "rbac_done", permission="|".join(permissions))
+
+    return _checker
+
+
 __all__ = [
     "get_db",
     "get_settings",
     "get_current_user",
     "get_current_org_id",
     "require_permission",
+    "require_any_permission",
     "DEFAULT_ORG_ID",
 ]

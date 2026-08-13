@@ -9,12 +9,15 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
+from app.db.base import gen_id, utc_now
 from app.dependencies import (
     get_current_org_id,
     get_current_user,
     get_db,
+    require_any_permission,
     require_permission,
 )
+from app.models.customer_intelligence import InboundEmail, ResearchCase
 from app.models.user import User
 from app.schemas.customer_intelligence import (
     ApprovalDecisionRequest,
@@ -27,6 +30,7 @@ from app.schemas.customer_intelligence import (
     ConnectionSyncRequest,
     DeliverActionRequest,
     DriveConnectionResponse,
+    ManualResearchRequest,
     MeetingResponse,
     ReportResponse,
     ScheduleCreate,
@@ -57,6 +61,21 @@ def _connection_owner(request: Request, current_user: User) -> str | None:
     return None if getattr(request.state, "role", "user") == "admin" else current_user.id
 
 
+async def _case_for_request(
+    db: AsyncSession, *, org_id: str, case_id: str, request: Request, current_user: User
+):
+    from app.repositories.customer_intelligence import ResearchCaseRepository
+
+    case = await ResearchCaseRepository(db).get(
+        org_id,
+        case_id,
+        created_by_user_id=_connection_owner(request, current_user),
+    )
+    if case is None:
+        raise HTTPException(status_code=404, detail="case not found")
+    return case
+
+
 @oauth_router.get("/oauth/{kind}/{provider}/start")
 async def start_ci_oauth(
     kind: str,
@@ -64,6 +83,7 @@ async def start_ci_oauth(
     request: Request,
     org_id: str = Depends(get_current_org_id),
     current_user: User = Depends(get_current_user),
+    _permission: None = Depends(require_any_permission("ci:manage", "ci:personal:manage")),
 ):
     _guard_enabled()
     if kind not in {"email", "calendar", "drive"} or provider != "google":
@@ -326,16 +346,24 @@ async def disconnect_connection(
 @router.post(
     "/connections/{connection_id}/sync",
     response_model=SyncResult,
-    dependencies=[Depends(require_permission("ci:manage"))],
+    dependencies=[Depends(require_any_permission("ci:manage", "ci:personal:manage"))],
 )
 async def sync_connection(
     connection_id: str,
     body: ConnectionSyncRequest,
     org_id: str = Depends(get_current_org_id),
+    current_user: User = Depends(get_current_user),
+    request: Request = None,
     db: AsyncSession = Depends(get_db),
 ):
     _guard_enabled()
     from app.customer_intelligence.ingest import sync_connection
+
+    owner_id = _connection_owner(request, current_user)
+    if await CustomerIntelligenceService(db).connections.get(
+        org_id, connection_id, created_by_user_id=owner_id
+    ) is None:
+        raise HTTPException(status_code=404, detail="connection not found")
 
     return await sync_connection(
         db,
@@ -343,6 +371,7 @@ async def sync_connection(
         connection_id=connection_id,
         trigger=body.trigger,
         max_messages=body.max_messages,
+        actor_user_id=current_user.id,
     )
 
 
@@ -353,12 +382,17 @@ async def sync_connection(
 )
 async def list_schedules(
     org_id: str = Depends(get_current_org_id),
+    current_user: User = Depends(get_current_user),
+    request: Request = None,
     db: AsyncSession = Depends(get_db),
 ):
     _guard_enabled()
     from app.repositories.customer_intelligence import CiScheduleRepository
 
-    schedules = await CiScheduleRepository(db).list(org_id)
+    schedules = await CiScheduleRepository(db).list(
+        org_id,
+        created_by_user_id=_connection_owner(request, current_user),
+    )
     return [
         ScheduleResponse(
             id=s.id,
@@ -377,12 +411,13 @@ async def list_schedules(
     "/schedules",
     response_model=ScheduleResponse,
     status_code=201,
-    dependencies=[Depends(require_permission("ci:manage"))],
+    dependencies=[Depends(require_any_permission("ci:manage", "ci:personal:manage"))],
 )
 async def create_schedule(
     body: ScheduleCreate,
     org_id: str = Depends(get_current_org_id),
     current_user: User = Depends(get_current_user),
+    request: Request = None,
     db: AsyncSession = Depends(get_db),
 ):
     _guard_enabled()
@@ -393,7 +428,11 @@ async def create_schedule(
         EmailConnectionRepository,
     )
 
-    conn = await EmailConnectionRepository(db).get(org_id, body.connection_id)
+    conn = await EmailConnectionRepository(db).get(
+        org_id,
+        body.connection_id,
+        created_by_user_id=_connection_owner(request, current_user),
+    )
     if conn is None:
         raise HTTPException(status_code=404, detail="connection not found")
 
@@ -434,20 +473,25 @@ async def create_schedule(
 @router.patch(
     "/schedules/{schedule_id}",
     response_model=ScheduleResponse,
-    dependencies=[Depends(require_permission("ci:manage"))],
+    dependencies=[Depends(require_any_permission("ci:manage", "ci:personal:manage"))],
 )
 async def update_schedule(
     schedule_id: str,
     body: ScheduleUpdate,
     org_id: str = Depends(get_current_org_id),
     current_user: User = Depends(get_current_user),
+    request: Request = None,
     db: AsyncSession = Depends(get_db),
 ):
     _guard_enabled()
     from app.customer_intelligence.scheduler import compute_next_run_at
     from app.repositories.customer_intelligence import CiScheduleRepository
 
-    schedule = await CiScheduleRepository(db).get(org_id, schedule_id)
+    schedule = await CiScheduleRepository(db).get(
+        org_id,
+        schedule_id,
+        created_by_user_id=_connection_owner(request, current_user),
+    )
     if schedule is None:
         raise HTTPException(status_code=404, detail="schedule not found")
 
@@ -485,17 +529,25 @@ async def update_schedule(
 @router.delete(
     "/schedules/{schedule_id}",
     status_code=204,
-    dependencies=[Depends(require_permission("ci:manage"))],
+    dependencies=[Depends(require_any_permission("ci:manage", "ci:personal:manage"))],
 )
 async def delete_schedule(
     schedule_id: str,
     org_id: str = Depends(get_current_org_id),
     current_user: User = Depends(get_current_user),
+    request: Request = None,
     db: AsyncSession = Depends(get_db),
 ):
     _guard_enabled()
     from app.repositories.customer_intelligence import CiScheduleRepository
 
+    schedule = await CiScheduleRepository(db).get(
+        org_id,
+        schedule_id,
+        created_by_user_id=_connection_owner(request, current_user),
+    )
+    if schedule is None:
+        raise HTTPException(status_code=404, detail="schedule not found")
     deleted = await CiScheduleRepository(db).delete(org_id, schedule_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="schedule not found")
@@ -511,19 +563,27 @@ async def delete_schedule(
 @router.post(
     "/schedules/{schedule_id}/run",
     response_model=SyncResult,
-    dependencies=[Depends(require_permission("ci:manage"))],
+    dependencies=[Depends(require_any_permission("ci:manage", "ci:personal:manage"))],
 )
 async def run_schedule(
     schedule_id: str,
     org_id: str = Depends(get_current_org_id),
     current_user: User = Depends(get_current_user),
+    request: Request = None,
     db: AsyncSession = Depends(get_db),
 ):
     _guard_enabled()
     from app.customer_intelligence.ingest import IngestionError
     from app.customer_intelligence.scheduler import run_schedule_now
+    from app.repositories.customer_intelligence import CiScheduleRepository
 
     try:
+        if await CiScheduleRepository(db).get(
+            org_id,
+            schedule_id,
+            created_by_user_id=_connection_owner(request, current_user),
+        ) is None:
+            raise KeyError("schedule not found")
         result = await run_schedule_now(
             db, org_id=org_id, schedule_id=schedule_id, actor_user_id=current_user.id
         )
@@ -547,12 +607,18 @@ async def run_schedule(
 )
 async def list_cases(
     org_id: str = Depends(get_current_org_id),
+    current_user: User = Depends(get_current_user),
+    request: Request = None,
     db: AsyncSession = Depends(get_db),
 ):
     _guard_enabled()
     from app.repositories.customer_intelligence import ResearchCaseRepository
 
-    cases = await ResearchCaseRepository(db).list_by_status(org_id, limit=100)
+    cases = await ResearchCaseRepository(db).list_by_status(
+        org_id,
+        limit=100,
+        created_by_user_id=_connection_owner(request, current_user),
+    )
     return [
         CaseSummary(
             id=c.id,
@@ -569,6 +635,75 @@ async def list_cases(
     ]
 
 
+@router.post(
+    "/cases/manual",
+    response_model=CaseSummary,
+    status_code=201,
+    dependencies=[Depends(require_any_permission("ci:manage", "ci:personal:manage"))],
+)
+async def create_manual_case(
+    body: ManualResearchRequest,
+    org_id: str = Depends(get_current_org_id),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a private research request without requiring a Gmail connection."""
+    _guard_enabled()
+    from app.core.workflow.queue import enqueue_ci_research
+
+    domain = (body.company_domain or "").strip().lower() or "manual-research.local"
+    sender_email = f"research@{domain}"
+    email = InboundEmail(
+        org_id=org_id,
+        connection_id=None,
+        provider="manual",
+        provider_message_id=f"manual-{gen_id()}",
+        sender_name=body.company_name,
+        sender_email=sender_email,
+        sender_domain=domain,
+        recipients=[current_user.email],
+        subject=f"Manual research: {body.company_name}",
+        body_text="\n".join(
+            part for part in [
+                f"Company: {body.company_name}",
+                f"Domain: {domain}" if body.company_domain else None,
+                f"Research question: {body.question}" if body.question else None,
+            ] if part
+        ),
+        received_at=utc_now(),
+        content_hash=gen_id(),
+        created_by_user_id=current_user.id,
+    )
+    db.add(email)
+    await db.flush()
+    case = ResearchCase(
+        org_id=org_id,
+        email_id=email.id,
+        connection_id=None,
+        trigger="manual",
+        status="INGESTED",
+        created_by_user_id=current_user.id,
+    )
+    db.add(case)
+    await db.commit()
+    await db.refresh(case)
+    try:
+        await enqueue_ci_research(org_id, case.id)
+    except Exception:  # noqa: BLE001 - dispatcher cron will recover the case.
+        pass
+    return CaseSummary(
+        id=case.id,
+        email_id=case.email_id,
+        company_name=body.company_name,
+        company_domain=body.company_domain,
+        status=case.status,
+        confidence=case.confidence,
+        trigger=case.trigger,
+        created_at=case.created_at,
+        finished_at=case.finished_at,
+    )
+
+
 @router.get(
     "/cases/{case_id}",
     response_model=CaseDetail,
@@ -577,19 +712,24 @@ async def list_cases(
 async def get_case(
     case_id: str,
     org_id: str = Depends(get_current_org_id),
+    current_user: User = Depends(get_current_user),
+    request: Request = None,
     db: AsyncSession = Depends(get_db),
 ):
     _guard_enabled()
     from app.repositories.customer_intelligence import (
         BriefingReportRepository,
         MeetingRepository,
-        ResearchCaseRepository,
         ResearchSourceRepository,
     )
 
-    case = await ResearchCaseRepository(db).get(org_id, case_id)
-    if case is None:
-        raise HTTPException(status_code=404, detail="case not found")
+    case = await _case_for_request(
+        db,
+        org_id=org_id,
+        case_id=case_id,
+        request=request,
+        current_user=current_user,
+    )
     sources = await ResearchSourceRepository(db).list_by_case(org_id, case_id)
     meetings = await MeetingRepository(db).list_by_case(org_id, case_id)
     report = await BriefingReportRepository(db).latest_by_case(org_id, case_id)
@@ -655,19 +795,27 @@ class _ResearchRequest(BaseModel):
 @router.post(
     "/cases/{case_id}/research",
     response_model=SyncResult,
-    dependencies=[Depends(require_permission("ci:manage"))],
+    dependencies=[Depends(require_any_permission("ci:manage", "ci:personal:manage"))],
 )
 async def research_case(
     case_id: str,
     body: _ResearchRequest | None = None,
     org_id: str = Depends(get_current_org_id),
     current_user: User = Depends(get_current_user),
+    request: Request = None,
     db: AsyncSession = Depends(get_db),
 ):
     _guard_enabled()
     from app.customer_intelligence.workflow import ResearchError
 
     try:
+        await _case_for_request(
+            db,
+            org_id=org_id,
+            case_id=case_id,
+            request=request,
+            current_user=current_user,
+        )
         result = await CustomerIntelligenceService(db).research_case(
             org_id=org_id, case_id=case_id, actor_user_id=current_user.id
         )
@@ -685,16 +833,24 @@ async def research_case(
 @router.post(
     "/cases/{case_id}/retry",
     response_model=CaseSummary,
-    dependencies=[Depends(require_permission("ci:manage"))],
+    dependencies=[Depends(require_any_permission("ci:manage", "ci:personal:manage"))],
 )
 async def retry_case(
     case_id: str,
     org_id: str = Depends(get_current_org_id),
     current_user: User = Depends(get_current_user),
+    request: Request = None,
     db: AsyncSession = Depends(get_db),
 ):
     _guard_enabled()
     try:
+        await _case_for_request(
+            db,
+            org_id=org_id,
+            case_id=case_id,
+            request=request,
+            current_user=current_user,
+        )
         case = await CustomerIntelligenceService(db).retry_case(
             org_id=org_id,
             case_id=case_id,
@@ -736,9 +892,18 @@ def _deliver_payload(body: DeliverActionRequest) -> dict:
 async def get_case_approval(
     case_id: str,
     org_id: str = Depends(get_current_org_id),
+    current_user: User = Depends(get_current_user),
+    request: Request = None,
     db: AsyncSession = Depends(get_db),
 ):
     _guard_enabled()
+    await _case_for_request(
+        db,
+        org_id=org_id,
+        case_id=case_id,
+        request=request,
+        current_user=current_user,
+    )
     approval = await CustomerIntelligenceService(db).get_case_approval(
         org_id=org_id, case_id=case_id
     )
@@ -750,17 +915,25 @@ async def get_case_approval(
 @router.post(
     "/cases/{case_id}/deliver",
     response_model=ApprovalOut,
-    dependencies=[Depends(require_permission("ci:manage"))],
+    dependencies=[Depends(require_any_permission("ci:manage", "ci:personal:manage"))],
 )
 async def propose_delivery(
     case_id: str,
     body: DeliverActionRequest,
     org_id: str = Depends(get_current_org_id),
     current_user: User = Depends(get_current_user),
+    request: Request = None,
     db: AsyncSession = Depends(get_db),
 ):
     _guard_enabled()
     try:
+        await _case_for_request(
+            db,
+            org_id=org_id,
+            case_id=case_id,
+            request=request,
+            current_user=current_user,
+        )
         return await CustomerIntelligenceService(db).propose_delivery(
             org_id=org_id,
             case_id=case_id,
@@ -775,7 +948,7 @@ async def propose_delivery(
 @router.post(
     "/cases/{case_id}/approval/{approval_id}/decide",
     response_model=ApprovalOut,
-    dependencies=[Depends(require_permission("ci:manage"))],
+    dependencies=[Depends(require_any_permission("ci:manage", "ci:personal:manage"))],
 )
 async def decide_case_delivery(
     case_id: str,
@@ -783,10 +956,18 @@ async def decide_case_delivery(
     body: ApprovalDecisionRequest,
     org_id: str = Depends(get_current_org_id),
     current_user: User = Depends(get_current_user),
+    request: Request = None,
     db: AsyncSession = Depends(get_db),
 ):
     _guard_enabled()
     try:
+        await _case_for_request(
+            db,
+            org_id=org_id,
+            case_id=case_id,
+            request=request,
+            current_user=current_user,
+        )
         return await CustomerIntelligenceService(db).decide_delivery(
             org_id=org_id,
             approval_id=approval_id,

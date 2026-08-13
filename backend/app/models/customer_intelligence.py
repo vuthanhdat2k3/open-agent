@@ -93,8 +93,8 @@ class InboundEmail(Base):
     org_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    connection_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("ci_connections.id", ondelete="CASCADE"), nullable=False, index=True
+    connection_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("ci_connections.id", ondelete="SET NULL"), nullable=True, index=True
     )
     provider: Mapped[str] = mapped_column(String(16), nullable=False)
     provider_message_id: Mapped[str] = mapped_column(String(256), nullable=False)
@@ -110,6 +110,9 @@ class InboundEmail(Base):
     received_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
     content_hash: Mapped[str] = mapped_column(String(64), default="", index=True)
     injection_flags: Mapped[list] = mapped_column(JSON, default=list)
+    created_by_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
 
 
 class ResearchCase(Base):
@@ -142,6 +145,9 @@ class ResearchCase(Base):
     next_retry_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_retry_triggered_by: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_by_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
