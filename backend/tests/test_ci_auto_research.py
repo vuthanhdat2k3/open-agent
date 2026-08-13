@@ -102,6 +102,7 @@ async def test_reconciliation_uses_history_checkpoint_not_messages_cursor(
     async def call(tool: str, args: dict):
         calls.append(tool)
         if tool == "email_history":
+            assert args.get("page_token") in (None, "")
             return {
                 "messages": [_mail("delta-1")],
                 "new_cursor": None,
@@ -122,6 +123,44 @@ async def test_reconciliation_uses_history_checkpoint_not_messages_cursor(
     assert calls == ["email_history"]
     assert result["mode"] == "history"
     assert refreshed.gmail_history_id == "h1"
+    assert refreshed.sync_cursor is None
+
+
+async def test_bootstrap_baseline_promotes_to_history_before_old_page_cursor(
+    async_session_factory, monkeypatch
+):
+    org_id = "org-history-baseline"
+    conn_id = await _seed_connection(async_session_factory, org_id)
+    async with async_session_factory() as session:
+        conn = await session.get(EmailConnection, conn_id)
+        conn.sync_cursor = {"mode": "bootstrap", "history_id": "baseline", "page_token": "old-page"}
+        await session.commit()
+
+    calls: list[str] = []
+
+    async def call(tool: str, args: dict):
+        calls.append(tool)
+        if tool == "email_history":
+            return {
+                "messages": [_mail("new-after-connect")],
+                "new_cursor": None,
+                "history_id": "h2",
+                "has_more": False,
+            }
+        raise AssertionError(f"unexpected tool {tool}")
+
+    monkeypatch.setattr(
+        "app.customer_intelligence.providers.email.call_customer_intelligence_mcp", call
+    )
+    async with async_session_factory() as session:
+        result = await sync_connection(
+            session, org_id=org_id, connection_id=conn_id, trigger="reconciliation"
+        )
+        refreshed = await session.get(EmailConnection, conn_id)
+
+    assert calls == ["email_history"]
+    assert result["mode"] == "history"
+    assert refreshed.gmail_history_id == "h2"
     assert refreshed.sync_cursor is None
 
 
