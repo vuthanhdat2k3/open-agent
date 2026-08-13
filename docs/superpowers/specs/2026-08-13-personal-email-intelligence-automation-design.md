@@ -735,6 +735,24 @@ Mỗi connection chỉ có một sync lease. Worker gộp target thành `highest
 
 Mọi cron có occurrence key unique `(job_key, scheduled_for_utc)` và PostgreSQL lease. User timezone chỉ dùng tính occurrence; database lưu UTC. IANA timezone là bắt buộc.
 
+#### Global scan và entity fan-out
+
+`job_schedule_executions` chỉ khóa một occurrence của global scanner, ví dụ `gmail_reconciliation_scan` hoặc `daily_digest_scan`. Scanner không xử lý provider/LLM inline. Nó query entity đến hạn rồi tạo child outbox event có dedupe key riêng:
+
+```text
+gmail-reconcile:{connection_id}:{utc_5_minute_bucket}
+gmail-watch-renew:{connection_id}:{watch_generation}
+daily-digest:{user_id}:{local_date}
+case-retry:{case_id}:{retry_generation}
+action-reconcile:{execution_id}:{reconcile_generation}
+```
+
+Unique `(event_type, dedupe_key)` trên outbox ngăn một entity/window được fan-out hai lần dù scanner restart hoặc chạy lại. `notification_id` và global `scheduled_for_utc` không được dùng thay entity dedupe key.
+
+Daily digest scanner chạy mỗi phút, chọn user có local scheduled time nằm trong cửa sổ hiện tại. Dedupe theo `(user_id, local_date)` bảo đảm đổi timezone/schedule sau khi digest trong ngày đã phát không tạo digest thứ hai. Gmail reconciliation child vẫn phải claim per-connection lease trước khi gọi Gmail.
+
+Với dưới 100 user, scanner có thể fan-out toàn bộ due entity trong một transaction. Implementation vẫn dùng insert-on-conflict-do-nothing theo child dedupe key để an toàn khi sau này chuyển sang batch.
+
 ### 10.6 Retry matrix
 
 | Error | Policy |
@@ -757,10 +775,15 @@ Backoff mặc định base 2 giây, full jitter, cap 15 phút. Ingest/read tối
 - PostgreSQL `next_allowed_at` giữ throttling quan trọng qua Redis restart.
 - Một Gmail sync đồng thời mỗi connection.
 - Tối đa hai Gmail API request đồng thời mỗi connection.
+- LLM classifier/report dùng token bucket riêng theo `provider_id/model_id`, giới hạn cả request và estimated input token.
+- Mặc định tối đa hai LLM call đồng thời, 30 request/phút và 60.000 estimated input tokens/phút trên mỗi provider/model; admin phải hạ các giá trị này nếu quota provider thấp hơn.
+- Mỗi user tối đa hai LLM call đồng thời; classification realtime được admission trước batch report generation.
 - Tối đa hai research case chạy đồng thời và 20 pending mỗi user.
 - Tối đa một action write đồng thời mỗi target connection.
 - API user workload trả `429` với `Retry-After` khi vượt quota.
 - Pub/Sub webhook vẫn persist notification khi backlog cao; không trả `429` chỉ vì worker bận.
+
+Worker ước lượng input token trước admission và reserve quota atomically bằng Redis Lua. Sau response, limiter reconcile reservation bằng actual provider usage nếu có. Khi provider trả `429`, worker parse `Retry-After`, cập nhật `provider_throttle_states.next_allowed_at` trong PostgreSQL và defer job; worker không sleep giữ concurrency slot. Nếu Redis restart, worker áp dụng PostgreSQL `next_allowed_at` và conservative local concurrency cho đến khi token bucket được tạo lại.
 
 ### 10.8 Dead-letter và recovery
 
@@ -913,11 +936,12 @@ Rule chứa owner, enabled, version, allowed action types, exact sender hoặc v
 
 ### 11.14 Infrastructure tables
 
-- `outbox_events`: durable publish state và lease.
+- `outbox_events`: durable publish state, lease và `dedupe_key`; unique `(event_type, dedupe_key)` khi dedupe key không null.
 - `processed_events`: unique `(event_id, consumer_name)`.
 - `job_failures`: dead-letter/recovery metadata.
 - `job_schedule_executions`: occurrence unique và lease hiện có.
 - `ci_notifications`: canonical in-app notification, read status và aggregate links.
+- `provider_throttle_states`: `provider_id`, optional `model_id`, scope, `next_allowed_at`, last 429 reason code và row version; unique `(provider_id, model_id, scope_type, scope_id)`.
 
 Mọi tenant-owned table có composite index bắt đầu bằng `org_id`; personal query thêm `created_by_user_id/user_id` trong predicate và index.
 
@@ -1213,6 +1237,10 @@ queue_oldest_age_seconds
 worker_job_duration_seconds
 worker_job_failures_total
 provider_rate_limit_total
+llm_admission_delayed_total
+llm_reserved_input_tokens
+llm_actual_input_tokens
+llm_throttle_next_allowed_seconds
 provider_ambiguous_write_total
 research_duration_seconds
 research_partial_total
@@ -1298,6 +1326,8 @@ Worker ngừng claim job mới khi SIGTERM, có 30 giây hoàn tất/checkpoint.
 - Backoff/full jitter trong bounds.
 - URL/IP/redirect/SSRF validator.
 - DLP redaction không log raw evidence.
+- LLM Redis admission reserve/reconcile request quota và token quota atomically.
+- Entity fan-out dedupe key ổn định cho reconciliation, watch, digest và retry.
 
 ### 20.2 Database integration tests
 
@@ -1305,6 +1335,8 @@ Worker ngừng claim job mới khi SIGTERM, có 30 giây hoàn tất/checkpoint.
 - Hai dispatcher cạnh tranh chỉ claim bằng `SKIP LOCKED`.
 - Duplicate outbox delivery chỉ process một lần mỗi consumer.
 - Hai Gmail sync cùng connection chỉ một lease thắng.
+- Hai global scanner occurrence hoặc scanner retry chỉ tạo một child outbox event cho cùng entity/window.
+- Daily digest chỉ tạo một child event cho cùng user/local date khi timezone hoặc schedule thay đổi.
 - Checkpoint không advance khi một email trong batch chưa persist.
 - User cancel vs research finalize có đúng một CAS winner.
 - Proposal cancel vs executor claim có đúng một CAS winner.
@@ -1361,6 +1393,7 @@ Automated test không gọi production Gmail, production database, LLM thật ho
 - Restart Redis/AOF; outbox rebuild queue không mất aggregate.
 - Redis unavailable trong 5 phút; webhook persist-only và recover sau khi Redis lên.
 - Provider 429 trong 15 phút; backlog không làm nghẽn webhook.
+- LLM provider 429 cập nhật persistent `next_allowed_at`, giải phóng worker slot và không tạo retry storm.
 - PostgreSQL failover không nằm trong single-VPS scope, nhưng process phải fail closed và recover khi DB trở lại.
 
 ## 21. Acceptance criteria
@@ -1381,8 +1414,10 @@ Feature chỉ được coi là production-ready khi:
 12. Cross-user/cross-tenant tests pass.
 13. Secret scan trên logs/traces pass.
 14. Outbox/queue recovery pass khi Redis restart.
-15. Backup artifact được restore thành công trong drill.
-16. Google OAuth production prerequisites hoàn tất trước khi mở cho Gmail cá nhân ngoài test-user list.
+15. LLM classification/report không vượt configured concurrent/RPM/TPM limit trong load test.
+16. Global scheduler retry không tạo duplicate child work cho cùng entity occurrence.
+17. Backup artifact được restore thành công trong drill.
+18. Google OAuth production prerequisites hoàn tất trước khi mở cho Gmail cá nhân ngoài test-user list.
 
 ## 22. Rollout phases
 
@@ -1463,6 +1498,10 @@ OPENAGENT_CI_INGEST_CONCURRENCY=4
 OPENAGENT_CI_CLASSIFY_CONCURRENCY=4
 OPENAGENT_CI_RESEARCH_CONCURRENCY=2
 OPENAGENT_CI_ACTION_CONCURRENCY=2
+OPENAGENT_CI_LLM_MAX_CONCURRENT_PER_PROVIDER_MODEL=2
+OPENAGENT_CI_LLM_MAX_CONCURRENT_PER_USER=2
+OPENAGENT_CI_LLM_REQUESTS_PER_MINUTE=30
+OPENAGENT_CI_LLM_INPUT_TOKENS_PER_MINUTE=60000
 OPENAGENT_CI_MAX_PENDING_RESEARCH_PER_USER=20
 OPENAGENT_CI_MAX_CONCURRENT_RESEARCH_PER_USER=2
 OPENAGENT_CI_EMAIL_RETENTION_DAYS=30
