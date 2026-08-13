@@ -29,13 +29,13 @@ export type ApiRequestOptions = { headers?: HeadersInit };
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getAccessToken();
   const res = await fetch(path, {
+    ...init,
     credentials: "include",
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(init?.headers || {}),
     },
-    ...init,
   });
   if (res.status === 401) {
     const refreshed = await refreshAccessToken();

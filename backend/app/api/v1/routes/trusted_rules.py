@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import gen_id, utc_now
 from app.dependencies import get_current_org_id, get_current_user, get_db, require_any_permission, require_permission
-from app.models.customer_intelligence import CiPublicEmailDomain, CiTrustedRule
+from app.models.customer_intelligence import CalendarConnection, CiPublicEmailDomain, CiTrustedRule
 from app.models.user import User
 
 router = APIRouter(prefix="/api/email-intelligence/trusted-rules", tags=["trusted-rules"])
@@ -62,7 +62,8 @@ def _out(row: CiTrustedRule) -> dict:
 @router.get("", dependencies=[Depends(require_permission("ci:read"))])
 async def list_rules(org_id: str = Depends(get_current_org_id), current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     rows = await db.scalars(select(CiTrustedRule).where(CiTrustedRule.org_id == org_id, CiTrustedRule.created_by_user_id == current_user.id, CiTrustedRule.status != "DELETED").order_by(CiTrustedRule.updated_at.desc()))
-    return {"items": [_out(row) for row in rows], "policy": {"max_active_rules_per_user": 10, "max_active_rules_per_org": 200, "max_auto_events_per_user_per_day": 20, "max_auto_events_per_org_per_day": 500, "public_domain_registry_version": "2026-08-13.1"}, "meta": {"server_time": utc_now().isoformat()}}
+    registry_version = await db.scalar(select(CiPublicEmailDomain.registry_version).where(CiPublicEmailDomain.enabled.is_(True)).order_by(CiPublicEmailDomain.updated_at.desc()).limit(1))
+    return {"items": [_out(row) for row in rows], "policy": {"max_active_rules_per_user": 10, "max_active_rules_per_org": 200, "max_auto_events_per_user_per_day": 20, "max_auto_events_per_org_per_day": 500, "public_domain_registry_version": registry_version or "unknown"}, "meta": {"server_time": utc_now().isoformat()}}
 
 
 @router.post("/preview", dependencies=[Depends(require_any_permission("ci:manage", "ci:personal:manage"))])
@@ -74,9 +75,17 @@ async def preview_rule(body: RuleInput, org_id: str = Depends(get_current_org_id
 @router.post("", status_code=201, dependencies=[Depends(require_any_permission("ci:manage", "ci:personal:manage"))])
 async def create_rule(body: RuleInput, org_id: str = Depends(get_current_org_id), current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     _validate_rule(body, await _public_domains(db))
+    connection = await db.scalar(select(CalendarConnection).where(CalendarConnection.id == body.calendar_connection_id, CalendarConnection.org_id == org_id))
+    if connection is None:
+        raise HTTPException(404, "Calendar connection not found in the active organization")
+    if connection.status != "connected":
+        raise HTTPException(409, "Calendar connection must be connected before creating a trusted rule")
     active_user = await db.scalar(select(func.count(CiTrustedRule.id)).where(CiTrustedRule.org_id == org_id, CiTrustedRule.created_by_user_id == current_user.id, CiTrustedRule.status == "ACTIVE"))
     if int(active_user or 0) >= 10:
         raise HTTPException(409, "Active trusted-rule limit reached")
+    active_org = await db.scalar(select(func.count(CiTrustedRule.id)).where(CiTrustedRule.org_id == org_id, CiTrustedRule.status == "ACTIVE"))
+    if int(active_org or 0) >= 200:
+        raise HTTPException(409, "Organization trusted-rule limit reached")
     row = CiTrustedRule(id=gen_id(), org_id=org_id, created_by_user_id=current_user.id, name=body.name.strip(), match_type=body.match_type, match_value=body.match_value.strip().lower(), calendar_connection_id=body.calendar_connection_id, conditions={"minimum_classification_confidence": body.minimum_classification_confidence, "maximum_events_per_day": body.maximum_events_per_day, "expires_at": body.expires_at.isoformat(), "required_guard_outcome": "PASS", "sender_authentication": "SPF_DKIM_DMARC_ALIGNED"})
     db.add(row)
     await db.commit()
