@@ -25,6 +25,7 @@ from app.models.evaluation import (
 )
 from app.models.external_agent import ExternalAgent
 from app.models.files import UploadedFile
+from app.models.job_schedule import JobScheduleExecution
 from app.models.mcp import McpServer, McpTool
 from app.models.membership import Membership
 from app.models.memory import AgentMemory, SessionMemory
@@ -67,6 +68,7 @@ __all__ = [
     "EvaluationSuite",
     "ExternalAgent",
     "InboundEmail",
+    "JobScheduleExecution",
     "McpServer",
     "McpTool",
     "Meeting",

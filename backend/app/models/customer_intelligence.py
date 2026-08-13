@@ -138,6 +138,11 @@ class ResearchCase(Base):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    retry_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False, server_default="0")
+    next_retry_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_retry_triggered_by: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
 

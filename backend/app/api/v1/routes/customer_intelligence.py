@@ -682,6 +682,41 @@ async def research_case(
     )
 
 
+@router.post(
+    "/cases/{case_id}/retry",
+    response_model=CaseSummary,
+    dependencies=[Depends(require_permission("ci:manage"))],
+)
+async def retry_case(
+    case_id: str,
+    org_id: str = Depends(get_current_org_id),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    _guard_enabled()
+    try:
+        case = await CustomerIntelligenceService(db).retry_case(
+            org_id=org_id,
+            case_id=case_id,
+            actor_user_id=current_user.id,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return CaseSummary(
+        id=case.id,
+        email_id=case.email_id,
+        company_name=case.company_name,
+        company_domain=case.company_domain,
+        status=case.status,
+        confidence=case.confidence,
+        trigger=case.trigger,
+        created_at=case.created_at,
+        finished_at=case.finished_at,
+    )
+
+
 def _deliver_payload(body: DeliverActionRequest) -> dict:
     if body.action != "send_email":
         return {"action": body.action}

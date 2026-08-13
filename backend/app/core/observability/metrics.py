@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from prometheus_client import Counter, Gauge, Histogram
 from prometheus_fastapi_instrumentator import Instrumentator
@@ -91,7 +91,7 @@ quota_active_run_leases = Gauge(
 # --- Chat event bus ---------------------------------------------------------
 # Live chat streaming fans out over Redis pub/sub with the durable event log as
 # the replay/fallback path. When the bus fails the stream degrades to database
-# polling, which is correct but adds latency — so the failure has to be visible
+# polling, which is correct but adds latency â€” so the failure has to be visible
 # in metrics rather than only showing up as a user complaint about lag.
 # `operation` is bounded: publish | subscribe.
 chat_event_bus_failures_total = Counter(
@@ -144,3 +144,19 @@ ci_approval_age_seconds = Histogram(
 
 def mount_metrics(app) -> None:
     Instrumentator().instrument(app).expose(app, endpoint="/metrics")
+
+# --- Durable scheduled jobs and CI retry ------------------------------------
+job_schedule_tick_total = Counter(
+    "job_schedule_tick_total",
+    "Scheduled job ticks by job key and result",
+    ["job_key", "result"],
+)
+ci_case_retry_total = Counter(
+    "ci_case_retry_total",
+    "Customer-intelligence case retries by trigger and outcome",
+    ["trigger", "outcome"],
+)
+ci_dead_letter_gauge = Gauge(
+    "ci_dead_letter_cases",
+    "Current number of Customer Intelligence cases in DEAD_LETTER",
+)
