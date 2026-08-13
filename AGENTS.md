@@ -96,6 +96,7 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 |---|---|---|---|
 | `dev` | `G:\open-agent` | Nhánh tích hợp chính — không code trực tiếp ở đây | — |
 | `feat/runtime-date-time` | `G:\open-agent-worktrees\runtime-date-time` | Runtime date/time context for all agents and workflows | Codex |
+| `fix/gmail-incremental-sync` | `G:\open-agent-worktrees\gmail-incremental-sync` | Gmail incremental sync and Approval Center UI | Codex |
 | `fix/gmail-ingest-timezone` | `G:\open-agent-worktrees\gmail-ingest-timezone` | Normalize Gmail timestamps before inbound email persistence | Codex |
 | `feat/smart-inbox-production` | `G:\open-agent-worktrees\smart-inbox-production` | Production Smart Inbox list, search, filters and pagination | Codex |
 | `feat/delegated-approval-fix` | `G:\open-agent-worktrees\delegated-approval-fix` | Sửa approval propagation/resume cho delegated sub-agents | Agent khác |
