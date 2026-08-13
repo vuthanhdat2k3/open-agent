@@ -11,6 +11,7 @@ researchable state and retries transient failures a bounded number of times.
 from __future__ import annotations
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.customer_intelligence.ingest import sync_connection
@@ -68,6 +69,37 @@ async def test_sync_enqueues_research_for_each_new_clean_case(
 
     assert len(enqueued) == 1
     assert enqueued[0][0] == org_id
+
+
+async def test_sync_scopes_email_and_case_to_connection_owner(
+    async_session_factory, ci_mcp_stub, monkeypatch
+):
+    org_id = "org-autoresearch-owner"
+    owner_id = "user-owner"
+    conn_id = await _seed_connection(async_session_factory, org_id)
+    async with async_session_factory() as session:
+        connection = await session.get(EmailConnection, conn_id)
+        connection.created_by_user_id = owner_id
+        await session.commit()
+
+    monkeypatch.setattr(
+        "app.customer_intelligence.ingest.enqueue_ci_research",
+        lambda *_args: _completed("job-owner"),
+    )
+
+    async with async_session_factory() as session:
+        await sync_connection(session, org_id=org_id, connection_id=conn_id)
+
+    async with async_session_factory() as session:
+        email = (await session.execute(select(InboundEmail))).scalar_one()
+        case = (await session.execute(select(ResearchCase))).scalar_one()
+
+    assert email.created_by_user_id == owner_id
+    assert case.created_by_user_id == owner_id
+
+
+async def _completed(value: str):
+    return value
 
 
 async def test_sync_does_not_enqueue_for_flagged_email(

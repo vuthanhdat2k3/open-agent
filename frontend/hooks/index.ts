@@ -76,6 +76,15 @@ export function useRetryCustomerIntelligenceCase() {
   });
 }
 
+export function useCreateManualCustomerIntelligenceCase() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { company_name: string; company_domain?: string; question?: string }) =>
+      api.post<CustomerIntelligenceCase>("/api/customer-intelligence/cases/manual", body),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["ci-cases"] }),
+  });
+}
+
 export function useProviderTemplates(enabled: boolean = true) {
   return useQuery({
     queryKey: ["provider-templates"],

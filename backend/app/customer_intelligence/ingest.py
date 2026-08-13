@@ -159,6 +159,7 @@ async def _sync_connection_impl(
                 received_at=email.received_at,
                 content_hash=email.content_hash,
                 injection_flags=email.injection_flags,
+                created_by_user_id=conn.created_by_user_id,
             )
             try:
                 await email_repo.create(row)
@@ -187,6 +188,7 @@ async def _sync_connection_impl(
                 connection_id=connection_id,
                 trigger=trigger,
                 status="INGESTED",
+                created_by_user_id=conn.created_by_user_id,
             )
             await case_repo.create(case)
             new_cases += 1

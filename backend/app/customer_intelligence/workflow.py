@@ -179,7 +179,9 @@ async def run_research(
         if not companies and "company lookup failed" not in warnings:
             warnings.append("no company matched for this email")
 
-        calendar_conn: CalendarConnection | None = await calendar_repo.get_connected(org_id)
+        calendar_conn: CalendarConnection | None = await calendar_repo.get_connected(
+            org_id, user_id=case.created_by_user_id
+        )
         if calendar_conn is not None and calendar_conn.credentials_enc:
             case.calendar_connection_id = calendar_conn.id
             creds = await load_fresh_credentials(db, calendar_conn)

@@ -122,18 +122,22 @@ class ResearchCaseRepository(BaseRepository[ResearchCase]):
     def __init__(self, db: AsyncSession):
         super().__init__(ResearchCase, db)
 
-    async def get_by_email(self, org_id: str, email_id: str) -> ResearchCase | None:
+    async def get_by_email(self, org_id: str, email_id: str, created_by_user_id: str | None = None) -> ResearchCase | None:
+        filters = [ResearchCase.org_id == org_id, ResearchCase.email_id == email_id]
+        if created_by_user_id is not None:
+            filters.append(ResearchCase.created_by_user_id == created_by_user_id)
         res = await self.db.execute(
-            select(ResearchCase).where(
-                ResearchCase.org_id == org_id, ResearchCase.email_id == email_id
-            )
+            select(ResearchCase).where(*filters)
         )
         return res.scalar_one_or_none()
 
     async def list_by_status(
-        self, org_id: str, status: str | None = None, limit: int = 100, offset: int = 0
+        self, org_id: str, status: str | None = None, limit: int = 100, offset: int = 0,
+        created_by_user_id: str | None = None,
     ) -> list[ResearchCase]:
         stmt = select(ResearchCase).where(ResearchCase.org_id == org_id)
+        if created_by_user_id is not None:
+            stmt = stmt.where(ResearchCase.created_by_user_id == created_by_user_id)
         if status:
             stmt = stmt.where(ResearchCase.status == status)
         stmt = stmt.order_by(ResearchCase.created_at.desc()).limit(limit).offset(offset)
