@@ -13,33 +13,24 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.alter_column("ci_emails", "connection_id", existing_type=sa.String(length=36), nullable=True)
-    op.add_column(
-        "ci_emails",
-        sa.Column("created_by_user_id", sa.String(length=36), nullable=True),
-    )
-    op.create_index("ix_ci_emails_created_by_user_id", "ci_emails", ["created_by_user_id"])
-    op.create_foreign_key(
-        "fk_ci_emails_created_by_user_id",
-        "ci_emails",
-        "users",
-        ["created_by_user_id"],
-        ["id"],
-        ondelete="SET NULL",
-    )
-    op.add_column(
-        "ci_cases",
-        sa.Column("created_by_user_id", sa.String(length=36), nullable=True),
-    )
-    op.create_index("ix_ci_cases_created_by_user_id", "ci_cases", ["created_by_user_id"])
-    op.create_foreign_key(
-        "fk_ci_cases_created_by_user_id",
-        "ci_cases",
-        "users",
-        ["created_by_user_id"],
-        ["id"],
-        ondelete="SET NULL",
-    )
+    # Batch mode rebuilds the table on SQLite and emits ALTER COLUMN on
+    # PostgreSQL, so the same migration works for local tests and production.
+    with op.batch_alter_table("ci_emails", recreate="auto") as batch_op:
+        batch_op.alter_column(
+            "connection_id", existing_type=sa.String(length=36), nullable=True
+        )
+    with op.batch_alter_table("ci_emails", recreate="auto") as batch_op:
+        batch_op.add_column(sa.Column("created_by_user_id", sa.String(length=36), nullable=True))
+        batch_op.create_index("ix_ci_emails_created_by_user_id", ["created_by_user_id"])
+        batch_op.create_foreign_key(
+            "fk_ci_emails_created_by_user_id", "users", ["created_by_user_id"], ["id"], ondelete="SET NULL"
+        )
+    with op.batch_alter_table("ci_cases", recreate="auto") as batch_op:
+        batch_op.add_column(sa.Column("created_by_user_id", sa.String(length=36), nullable=True))
+        batch_op.create_index("ix_ci_cases_created_by_user_id", ["created_by_user_id"])
+        batch_op.create_foreign_key(
+            "fk_ci_cases_created_by_user_id", "users", ["created_by_user_id"], ["id"], ondelete="SET NULL"
+        )
     op.execute(
         sa.text(
             """
@@ -65,9 +56,11 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_constraint("fk_ci_cases_created_by_user_id", "ci_cases", type_="foreignkey")
-    op.drop_index("ix_ci_cases_created_by_user_id", table_name="ci_cases")
-    op.drop_column("ci_cases", "created_by_user_id")
-    op.drop_constraint("fk_ci_emails_created_by_user_id", "ci_emails", type_="foreignkey")
-    op.drop_index("ix_ci_emails_created_by_user_id", table_name="ci_emails")
-    op.drop_column("ci_emails", "created_by_user_id")
+    with op.batch_alter_table("ci_cases", recreate="auto") as batch_op:
+        batch_op.drop_constraint("fk_ci_cases_created_by_user_id", type_="foreignkey")
+        batch_op.drop_index("ix_ci_cases_created_by_user_id")
+        batch_op.drop_column("created_by_user_id")
+    with op.batch_alter_table("ci_emails", recreate="auto") as batch_op:
+        batch_op.drop_constraint("fk_ci_emails_created_by_user_id", type_="foreignkey")
+        batch_op.drop_index("ix_ci_emails_created_by_user_id")
+        batch_op.drop_column("created_by_user_id")
