@@ -511,6 +511,7 @@ export interface CustomerIntelligenceCaseDetail extends CustomerIntelligenceCase
     case_id: string;
     version: number;
     canonical_markdown: string;
+    rendering: Record<string, any> | null;
     confidence: number | null;
     status: string;
     created_at: string;
