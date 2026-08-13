@@ -92,6 +92,18 @@ export function useRetryCustomerIntelligenceCase() {
   });
 }
 
+export function useDeleteCustomerIntelligenceCase() {
+  const qc = useQueryClient();
+  const orgId = getActiveOrgId();
+  return useMutation({
+    mutationFn: (id: string) => api.delete<void>(`/api/customer-intelligence/cases/${id}`),
+    onSuccess: (_data, id) => {
+      void qc.invalidateQueries({ queryKey: emailIntelligenceQueryKeys(orgId).cases() });
+      void qc.removeQueries({ queryKey: emailIntelligenceQueryKeys(orgId).case(id) });
+    },
+  });
+}
+
 export function useCreateManualCustomerIntelligenceCase() {
   const qc = useQueryClient();
   const orgId = getActiveOrgId();
