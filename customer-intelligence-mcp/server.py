@@ -195,6 +195,84 @@ async def email_list_new(
 
 
 @mcp.tool()
+async def email_history(
+    provider: str,
+    access_token: str,
+    start_history_id: str,
+    page_token: str = "",
+    max_results: int = 100,
+) -> str:
+    """Read Gmail message-added deltas after a durable history checkpoint."""
+    try:
+        if provider != "gmail":
+            return _error(f"unsupported email provider: {provider}; only gmail is enabled")
+        data = await _request(
+            "GET",
+            f"{GMAIL_API}/history",
+            access_token,
+            params={
+                "startHistoryId": start_history_id,
+                "historyTypes": "messageAdded",
+                "maxResults": max(1, min(max_results, 100)),
+                **({"pageToken": page_token} if page_token else {}),
+            },
+        )
+        messages = []
+        seen: set[str] = set()
+        for history in data.get("history", []):
+            for added in history.get("messagesAdded", []):
+                message_id = (added.get("message") or {}).get("id")
+                if not message_id or message_id in seen:
+                    continue
+                seen.add(message_id)
+                raw = await _request(
+                    "GET", f"{GMAIL_API}/messages/{message_id}", access_token, params={"format": "full"}
+                )
+                messages.append(_gmail_message(raw))
+        return _ok(
+            {
+                "messages": messages,
+                "new_cursor": data.get("nextPageToken"),
+                "history_id": data.get("historyId") or start_history_id,
+                "has_more": bool(data.get("nextPageToken")),
+            }
+        )
+    except Exception as exc:  # noqa: BLE001
+        return _error(f"email history failed: {type(exc).__name__}")
+
+
+@mcp.tool()
+async def email_watch(provider: str, access_token: str, topic_name: str) -> str:
+    """Renew a Gmail mailbox watch and return its new checkpoint/expiry."""
+    try:
+        if provider != "gmail":
+            return _error(f"unsupported email provider: {provider}; only gmail is enabled")
+        if not topic_name or len(topic_name) > 512:
+            return _error("topic_name is required")
+        data = await _request(
+            "POST",
+            f"{GMAIL_API}/watch",
+            access_token,
+            body={"topicName": topic_name, "labelIds": ["INBOX"]},
+        )
+        expiration = data.get("expiration")
+        expiration_at = (
+            datetime.fromtimestamp(int(expiration) / 1000, tz=timezone.utc).isoformat()
+            if expiration
+            else None
+        )
+        return _ok(
+            {
+                "history_id": data.get("historyId"),
+                "expiration": expiration_at,
+                "resource_name": topic_name,
+            }
+        )
+    except Exception as exc:  # noqa: BLE001
+        return _error(f"email watch failed: {type(exc).__name__}")
+
+
+@mcp.tool()
 async def email_get(provider: str, access_token: str, provider_message_id: str) -> str:
     try:
         if provider == "gmail":

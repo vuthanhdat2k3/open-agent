@@ -220,6 +220,7 @@ async def process_outbox_event(ctx: dict, event_id: str) -> None:
                 connection_id=event.aggregate_id,
                 trigger="webhook",
                 correlation_id=event.correlation_id,
+                history_id=event.payload.get("history_id"),
             )
             await repo.mark_processed(event_id=event.id, consumer_name="worker")
             await db.commit()
