@@ -21,6 +21,7 @@ class EmailProvider(Protocol):
     async def delivery_status(self, provider_send_id: str) -> str: ...
     async def refresh_access_token(self, credentials: dict[str, Any]) -> dict[str, Any] | None: ...
     async def revoke(self, credentials: dict[str, Any]) -> None: ...
+    async def watch(self, *, topic_name: str) -> dict[str, Any]: ...
 
 
 class McpEmailProvider:
@@ -100,6 +101,9 @@ class McpEmailProvider:
     async def revoke(self, credentials: dict[str, Any]) -> None:
         from app.customer_intelligence.oauth import revoke_provider_token
         await revoke_provider_token(self.provider_name, credentials)
+
+    async def watch(self, *, topic_name: str) -> dict[str, Any]:
+        return await self._call("email_watch", topic_name=topic_name)
 
 
 def get_email_provider(provider: str) -> EmailProvider:
