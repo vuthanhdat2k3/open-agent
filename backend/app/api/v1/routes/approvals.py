@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,6 +35,11 @@ class ApprovalOut(BaseModel):
     decided_at: datetime | None = None
     reason: str = ""
     created_at: datetime
+    expires_at: datetime | None = None
+    risk_level: str = "MEDIUM"
+    approval_mode: str = "EXPLICIT"
+    capabilities: dict[str, Any] = {}
+    server_time: datetime | None = None
 
     model_config = {"from_attributes": True}
 
@@ -51,9 +56,48 @@ class ApprovalDecision(BaseModel):
 )
 async def list_approvals(
     org_id: str = Depends(get_current_org_id),
+    current_user: User = Depends(get_current_user),
+    request: Request = None,
     db: AsyncSession = Depends(get_db),
 ):
-    return await get_pending(db, org_id=org_id)
+    now = datetime.now()
+    is_admin = getattr(request.state, "role", "user") == "admin" if request is not None else False
+    approvals = await get_pending(db, org_id=org_id)
+    result = []
+    for approval in approvals:
+        owner = is_admin or approval.requested_by == current_user.id
+        action = approval.tool_name or approval.node_id or approval.run_type
+        risk_level = "HIGH" if approval.case_id or approval.tool_name else "MEDIUM"
+        result.append(
+            {
+                "id": approval.id,
+                "org_id": approval.org_id,
+                "run_type": approval.run_type,
+                "run_id": approval.run_id,
+                "tool_name": approval.tool_name,
+                "node_id": approval.node_id,
+                "args_snapshot": approval.args_snapshot,
+                "status": approval.status,
+                "requested_by": approval.requested_by,
+                "decided_by": approval.decided_by,
+                "decided_at": approval.decided_at,
+                "reason": approval.reason,
+                "created_at": approval.created_at,
+                "case_id": approval.case_id,
+                "action": action,
+                "expires_at": approval.expires_at,
+                "risk_level": risk_level,
+                "approval_mode": "EXPLICIT",
+                "capabilities": {
+                    "can_view_detail": owner,
+                    "can_approve": owner,
+                    "can_reject": owner,
+                    "blocked_reasons": {} if owner else {"approve": "capability.not_owner"},
+                },
+                "server_time": now,
+            }
+        )
+    return result
 
 
 @router.post(
@@ -68,6 +112,7 @@ async def decide_approval(
     request: Request,
     org_id: str = Depends(get_current_org_id),
     current_user: User = Depends(get_current_user),
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
     db: AsyncSession = Depends(get_db),
 ):
     # Users may decide only approvals they requested (for example, their own
