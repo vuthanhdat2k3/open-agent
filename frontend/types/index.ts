@@ -375,11 +375,18 @@ export interface ApprovalRequest {
   tool_name: string | null;
   node_id: string | null;
   args_snapshot: Record<string, unknown>;
+  case_id?: string | null;
+  action?: string | null;
   status: "pending" | "approved" | "rejected" | "expired";
   requested_by: string | null;
   decided_by: string | null;
   reason: string;
   created_at: string;
+  expires_at?: string | null;
+  risk_level?: string;
+  approval_mode?: string;
+  capabilities?: Record<string, boolean | Record<string, string>>;
+  server_time?: string | null;
 }
 
 export interface TaskTreeNode {

@@ -647,8 +647,9 @@ export function useUpdateOrganizationQuota(orgId?: string) {
 }
 
 export function useApprovals(enabled: boolean = true) {
+  const orgId = getActiveOrgId();
   return useQuery({
-    queryKey: ["approvals"],
+    queryKey: emailIntelligenceQueryKeys(orgId).approvals(),
     queryFn: () => api.get<ApprovalRequest[]>("/api/approvals"),
     refetchInterval: enabled ? 60000 : false,
     refetchIntervalInBackground: false,
@@ -658,10 +659,14 @@ export function useApprovals(enabled: boolean = true) {
 
 export function useDecideApproval() {
   const qc = useQueryClient();
+  const orgId = getActiveOrgId();
   return useMutation({
-    mutationFn: ({ id, decision, reason = "" }: { id: string; decision: "approved" | "rejected"; reason?: string }) =>
-      api.post<ApprovalRequest>(`/api/approvals/${id}/decide`, { decision, reason }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["approvals"] }),
+    mutationFn: ({ id, decision, reason = "", idempotencyKey }: { id: string; decision: "approved" | "rejected"; reason?: string; idempotencyKey: string }) =>
+      api.post<ApprovalRequest>(`/api/approvals/${id}/decide`, { decision, reason }, { headers: { "Idempotency-Key": idempotencyKey } }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: emailIntelligenceQueryKeys(orgId).approvals() });
+      void qc.invalidateQueries({ queryKey: emailIntelligenceQueryKeys(orgId).navigation });
+    },
   });
 }
 
