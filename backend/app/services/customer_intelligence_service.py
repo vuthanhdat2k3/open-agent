@@ -212,10 +212,10 @@ class CustomerIntelligenceService:
         case = await repository.get(org_id, case_id)
         if case is None:
             raise LookupError("case not found")
-        if case.status not in {"RETRYING", "DEAD_LETTER"}:
+        if case.status not in {"RETRYING", "DEAD_LETTER", "NEEDS_REVIEW"}:
             raise ValueError(f"case cannot be retried from status={case.status}")
         previous_status = case.status
-        if previous_status == "DEAD_LETTER":
+        if previous_status in {"DEAD_LETTER", "NEEDS_REVIEW"}:
             await repository.transition(case, "RETRYING")
         case = await repository.schedule_retry(
             case,

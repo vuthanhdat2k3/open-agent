@@ -94,7 +94,7 @@ async def request_case_approval(
 ) -> ApprovalRequest:
     """Open (or return the existing open) approval for a delivery action.
 
-    The case must be in REPORT_READY (a report exists to approve). The request
+    The case must be REPORT_READY or ACTION_PROPOSED. The request
     carries a deterministic ``idempotency_key`` so re-proposing the same action
     never duplicates the gate.
     """
@@ -111,7 +111,7 @@ async def request_case_approval(
     if existing is not None:
         return existing
 
-    if case.status != "REPORT_READY":
+    if case.status not in {"REPORT_READY", "ACTION_PROPOSED"}:
         raise DeliveryError(
             f"case is not ready for approval (status={case.status}); has it been researched?"
         )

@@ -116,6 +116,7 @@ class InboundEmail(Base):
     content_hash: Mapped[str] = mapped_column(String(64), default="", index=True)
     injection_flags: Mapped[list] = mapped_column(JSON, default=list)
     classification: Mapped[str] = mapped_column(String(32), default="pending", nullable=False, index=True)
+    classification_started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     classification_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
     classification_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     classification_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
@@ -367,3 +368,42 @@ class GmailNotification(Base):
     provider_notification_id: Mapped[str | None] = mapped_column(String(256), nullable=True)
     received_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
     status: Mapped[str] = mapped_column(String(24), default="received", nullable=False)
+
+
+class CiConnectionCutover(Base):
+    __tablename__ = "ci_connection_cutovers"
+    __table_args__ = (
+        UniqueConstraint("connection_id", "generation", name="uq_ci_cutover_connection_generation"),
+        UniqueConstraint("org_id", "idempotency_key", name="uq_ci_cutover_org_idempotency"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=gen_id)
+    org_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    connection_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("ci_connections.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    generation: Mapped[int] = mapped_column(Integer, nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    cutover_history_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), default="RUNNING", nullable=False)
+    deleted_counts: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    actor: Mapped[str] = mapped_column(String(128), nullable=False)
+    cutover_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
+
+
+class CiClassificationCache(Base):
+    __tablename__ = "ci_classification_cache"
+    __table_args__ = (
+        UniqueConstraint("org_id", "cache_key", name="uq_ci_classification_cache_key"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=gen_id)
+    org_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    cache_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    model_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    result_json: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)

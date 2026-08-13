@@ -28,7 +28,9 @@ def _fake_agent_classifier_for_ingest_tests(monkeypatch: pytest.MonkeyPatch):
             company_confidence=0.92,
         )
 
-    monkeypatch.setattr("app.customer_intelligence.ingest.classify_with_agent", _classify)
+    monkeypatch.setattr(
+        "app.customer_intelligence.classification_service.classify_with_agent", _classify
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -50,25 +52,6 @@ def _skip_lifespan_db_init(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(main, "init_db", _noop_init_db)
     yield
-
-
-@pytest.fixture(autouse=True)
-def _no_ci_auto_research_enqueue(monkeypatch: pytest.MonkeyPatch):
-    """Do not enqueue real Redis jobs from sync_connection during tests.
-
-    Every test that exercises sync_connection/run_due_schedules otherwise
-    enqueues a real ARQ job against the test Redis DB (index 15) that no
-    worker ever consumes. Tests that specifically want to assert on
-    enqueue behavior (tests/test_ci_auto_research.py) override this with
-    their own monkeypatch, which takes precedence since it runs later.
-    """
-
-    async def _noop_enqueue(org_id: str, case_id: str) -> str:
-        return ""
-
-    monkeypatch.setattr(
-        "app.customer_intelligence.ingest.enqueue_ci_research", _noop_enqueue
-    )
 
 
 @pytest.fixture(autouse=True)

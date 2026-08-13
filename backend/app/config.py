@@ -156,10 +156,12 @@ class Settings(BaseSettings):
     ci_classifier_economy_model_id: str = ""
     ci_classifier_strong_model_id: str = ""
     ci_classifier_timeout_s: float = 8.0
+    ci_classifier_strong_timeout_s: float = 15.0
     ci_classifier_max_body_chars: int = 6000
     ci_classifier_accept_confidence: float = 0.85
     ci_classifier_company_confidence: float = 0.75
     ci_classifier_meeting_confidence: float = 0.85
+    ci_classifier_daily_call_limit_per_org: int = 5000
     # Optional keyed company-identity source for the real company provider.
     # Empty => provider degrades to research_unavailable (no fabricated data).
     ci_company_api_url: str = ""
