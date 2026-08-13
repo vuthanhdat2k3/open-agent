@@ -113,9 +113,36 @@ class InboundEmail(Base):
     received_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
     content_hash: Mapped[str] = mapped_column(String(64), default="", index=True)
     injection_flags: Mapped[list] = mapped_column(JSON, default=list)
+    classification: Mapped[str] = mapped_column(String(32), default="pending", nullable=False, index=True)
+    classification_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    classification_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    routing_status: Mapped[str] = mapped_column(String(32), default="pending", nullable=False, index=True)
     created_by_user_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
+
+
+class CiNotification(Base):
+    __tablename__ = "ci_notifications"
+    __table_args__ = (
+        UniqueConstraint("org_id", "user_id", "email_id", "notification_type", name="uq_ci_notification_email_type"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=gen_id)
+    org_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    email_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("ci_emails.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    notification_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    title: Mapped[str] = mapped_column(String(320), nullable=False)
+    body: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    read_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
 
 
 class ResearchCase(Base):

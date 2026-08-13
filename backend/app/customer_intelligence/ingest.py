@@ -16,12 +16,14 @@ from app.core.observability.metrics import (
     ci_syncs_total,
 )
 from app.core.workflow.queue import enqueue_ci_research
+from app.customer_intelligence.classifier import classify_email
 from app.customer_intelligence.contracts import NormalizedEmail, SyncPage
 from app.customer_intelligence.oauth import load_fresh_credentials
 from app.customer_intelligence.providers.email import bind_email_provider, get_email_provider
 from app.customer_intelligence.security import scan_for_prompt_injection
 from app.db.base import gen_id, utc_now
 from app.models.customer_intelligence import (
+    CiNotification,
     InboundEmail,
     ResearchCase,
 )
@@ -135,6 +137,7 @@ async def _sync_connection_impl(
         last_cursor = page.new_cursor
         for email in page.messages:
             email.injection_flags = scan_for_prompt_injection(email.body_text or "")
+            classification = classify_email(email)
             email.content_hash = email_content_hash(email)
             existing = await email_repo.find_by_provider_message_id(
                 org_id, email.provider, email.provider_message_id
@@ -159,6 +162,10 @@ async def _sync_connection_impl(
                 received_at=email.received_at,
                 content_hash=email.content_hash,
                 injection_flags=email.injection_flags,
+                classification=classification.label,
+                classification_confidence=classification.confidence,
+                classification_reason=classification.reason,
+                routing_status="ignored" if classification.label == "spam" else "quarantined" if classification.label == "security_risk" else "routed",
                 created_by_user_id=conn.created_by_user_id,
             )
             try:
@@ -173,7 +180,10 @@ async def _sync_connection_impl(
                     continue
                 raise
             synced += 1
-            if email.injection_flags:
+            if classification.label == "spam":
+                warnings.append(f"email {email.provider_message_id}: spam ignored")
+                continue
+            if classification.label == "security_risk":
                 warnings.append(
                     f"email {email.provider_message_id}: potential prompt injection flagged"
                 )
@@ -191,6 +201,18 @@ async def _sync_connection_impl(
                 created_by_user_id=conn.created_by_user_id,
             )
             await case_repo.create(case)
+            if conn.created_by_user_id:
+                db.add(
+                    CiNotification(
+                        org_id=org_id,
+                        user_id=conn.created_by_user_id,
+                        email_id=row.id,
+                        notification_type="email_received",
+                        title=f"New email from {email.sender_email}",
+                        body=(email.subject or "(no subject)")[:320],
+                    )
+                )
+                await db.commit()
             new_cases += 1
             new_case_ids.append(case.id)
         if not page.has_more or pages >= 20:
