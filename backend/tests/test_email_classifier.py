@@ -1,8 +1,8 @@
 from datetime import datetime
 
 from app.customer_intelligence.classifier import classify_email, extract_calendar_payload
-from app.customer_intelligence.ingest import notification_preview
 from app.customer_intelligence.contracts import NormalizedEmail
+from app.customer_intelligence.ingest import notification_preview
 
 
 def _email(*, subject: str, body: str = "", domain: str = "example.com", flags=None):
