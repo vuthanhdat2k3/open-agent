@@ -6,10 +6,12 @@ import socket
 import structlog
 from arq import cron
 from arq.connections import RedisSettings
+from sqlalchemy import select
 
 from app.config import get_settings
 from app.core.chat_events import fail_orphaned_chat_runs
 from app.core.observability.llm_trace import NoopSink, set_default_sink
+from app.core.outbox import publish_pending_outbox
 from app.core.providers.jobs import run_provider_discovery
 from app.core.workflow import resume
 from app.core.workflow.jobs import run_chat, run_workflow
@@ -138,8 +140,50 @@ async def _ci_dispatch_ingested_tick(ctx: dict) -> None:
         )
 
 
+async def _outbox_dispatch_tick(ctx: dict) -> None:
+    """Publish durable DB events to ARQ; Postgres remains the retry source."""
+    from app.core.scheduling.job_keys import JobKey
+    from app.core.scheduling.tick import run_leased_tick
+
+    async with SessionLocal() as db:
+        await run_leased_tick(
+            db,
+            job_key=JobKey.CI_OUTBOX_DISPATCH,
+            interval_seconds=1,
+            lease_seconds=30,
+            worker_id=_worker_identity(),
+            run=lambda: publish_pending_outbox(db, owner=_worker_identity()),
+        )
+
+
+async def process_outbox_event(ctx: dict, event_id: str) -> None:
+    """Consume known events exactly once; unknown events fail visibly."""
+    from app.models.outbox import OutboxEvent, ProcessedEvent
+    from app.repositories.outbox import OutboxRepository
+
+    async with SessionLocal() as db:
+        event = await db.get(OutboxEvent, event_id)
+        if event is None:
+            return
+        repo = OutboxRepository(db)
+        already_processed = await db.scalar(
+            select(ProcessedEvent).where(
+                ProcessedEvent.event_id == event.id,
+                ProcessedEvent.consumer_name == "worker",
+            )
+        )
+        if already_processed:
+            return
+        if event.event_type == "ci.research.requested":
+            await run_ci_research(ctx, event.org_id, event.aggregate_id)
+            await repo.mark_processed(event_id=event.id, consumer_name="worker")
+            await db.commit()
+            return
+        raise RuntimeError(f"unsupported outbox event type: {event.event_type}")
+
+
 class WorkerSettings:
-    functions = [run_workflow, run_chat, run_provider_discovery, run_ci_research]
+    functions = [run_workflow, run_chat, run_provider_discovery, run_ci_research, process_outbox_event]
     redis_settings = RedisSettings.from_dsn(get_settings().redis_url)
     on_startup = _startup
     on_shutdown = _shutdown
@@ -149,4 +193,5 @@ class WorkerSettings:
         cron(_ci_scheduler_tick, minute=set(range(0, 60, 5)), run_at_startup=False),
         cron(_ci_retry_due_cases_tick, minute=set(range(0, 60, 1)), run_at_startup=False),
         cron(_ci_dispatch_ingested_tick, minute=set(range(0, 60, 1)), run_at_startup=False),
+        cron(_outbox_dispatch_tick, second=set(range(0, 60, 1)), run_at_startup=False),
     ]
