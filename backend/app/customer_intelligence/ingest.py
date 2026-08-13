@@ -17,7 +17,7 @@ from app.core.observability.metrics import (
 )
 from app.core.workflow.queue import enqueue_ci_research
 from app.customer_intelligence.classifier import classify_email
-from app.customer_intelligence.contracts import NormalizedEmail, SyncPage
+from app.customer_intelligence.contracts import NormalizedEmail
 from app.customer_intelligence.oauth import load_fresh_credentials
 from app.customer_intelligence.providers.email import bind_email_provider, get_email_provider
 from app.customer_intelligence.security import scan_for_prompt_injection
@@ -70,6 +70,7 @@ async def sync_connection(
     max_messages: int = 20,
     actor_user_id: str | None = None,
     correlation_id: str | None = None,
+    history_id: str | None = None,
 ) -> dict[str, Any]:
     """Sync a connection and record bounded CI metrics.
 
@@ -93,6 +94,7 @@ async def sync_connection(
             max_messages=max_messages,
             actor_user_id=actor_user_id,
             correlation_id=correlation_id,
+            history_id=history_id,
         )
     except Exception:
         ci_syncs_total.labels(result="error").inc()
@@ -114,6 +116,7 @@ async def _sync_connection_impl(
     max_messages: int = 20,
     actor_user_id: str | None = None,
     correlation_id: str,
+    history_id: str | None = None,
 ) -> dict[str, Any]:
     settings = get_settings()
     conn_repo = EmailConnectionRepository(db)
@@ -141,7 +144,14 @@ async def _sync_connection_impl(
     pages = 0
 
     while True:
-        page: SyncPage = await provider.list_new(cursor=last_cursor, max_results=max_messages)
+        if history_id:
+            page = await provider.list_history(
+                start_history_id=history_id,
+                page_token=last_cursor,
+                max_results=min(max_messages, 100),
+            )
+        else:
+            page = await provider.list_new(cursor=last_cursor, max_results=max_messages)
         pages += 1
         last_cursor = page.new_cursor
         for email in page.messages:
