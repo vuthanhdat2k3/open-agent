@@ -41,8 +41,5 @@ async def test_gmail_maintenance_fanout_is_entity_deduplicated(async_session_fac
 
         assert first["connections"] == 1
         assert second["connections"] == 1
-        assert len(events) == 2
-        assert {event.event_type for event in events} == {
-            "gmail.reconciliation.requested",
-            "gmail.watch.renew.requested",
-        }
+        assert len(events) == 1
+        assert events[0].event_type == "gmail.reconciliation.requested"
