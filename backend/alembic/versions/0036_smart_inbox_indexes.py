@@ -25,6 +25,8 @@ def upgrade() -> None:
         "CREATE INDEX ix_ci_notifications_user_unread_created ON ci_notifications "
         "(user_id, created_at DESC, id DESC) WHERE read_at IS NULL"
     )
+    if op.get_bind().dialect.name != "postgresql":
+        return
     # PostgreSQL's trigram indexes keep contains-search on inbox text bounded
     # without introducing a separate search service.
     op.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
@@ -43,10 +45,11 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.execute("DROP INDEX IF EXISTS ix_ci_notifications_body_trgm")
-    op.execute("DROP INDEX IF EXISTS ix_ci_notifications_title_trgm")
-    op.execute("DROP INDEX IF EXISTS ix_ci_emails_subject_trgm")
-    op.execute("DROP INDEX IF EXISTS ix_ci_emails_sender_trgm")
+    if op.get_bind().dialect.name == "postgresql":
+        op.execute("DROP INDEX IF EXISTS ix_ci_notifications_body_trgm")
+        op.execute("DROP INDEX IF EXISTS ix_ci_notifications_title_trgm")
+        op.execute("DROP INDEX IF EXISTS ix_ci_emails_subject_trgm")
+        op.execute("DROP INDEX IF EXISTS ix_ci_emails_sender_trgm")
     op.execute("DROP INDEX IF EXISTS ix_ci_notifications_user_unread_created")
     op.drop_index("ix_ci_notifications_user_created_id", table_name="ci_notifications")
     op.drop_index("ix_ci_emails_org_received_id", table_name="ci_emails")
