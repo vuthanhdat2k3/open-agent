@@ -24,9 +24,9 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.core.observability.audit import log_action
 from app.core.workflow.queue import enqueue_ci_research
-from app.config import get_settings
 from app.customer_intelligence.ingest import IngestionError, sync_connection
 from app.db.base import gen_id, utc_now
 from app.models.customer_intelligence import CiSchedule, EmailConnection
