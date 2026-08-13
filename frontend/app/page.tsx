@@ -2,11 +2,13 @@
 
 import Link from "next/link";
 import { Activity, ArrowRight, BarChart3, Bot, Cpu, MessageSquare, Network, Sparkles, Workflow, type LucideIcon } from "lucide-react";
-import { useAgents, useCurrentRole, useMcpServers, useMe, useModels, useProviders, useUsageSummary, useWorkflows } from "@/hooks";
+import { useAgents, useApprovals, useCurrentRole, useMcpServers, useMe, useModels, useProviders, useUsageSummary, useWorkflows } from "@/hooks";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { EmptyState, ErrorState, LoadingSkeleton, SectionHeader } from "@/components/shared";
+import { approvalTitle, expiry } from "@/components/layout/approval-bell";
+import { Badge } from "@/components/ui/badge";
 
 function greeting() {
   const hour = new Date().getHours();
@@ -24,6 +26,7 @@ export default function Dashboard() {
   const models = useModels(isAdmin);
   const agents = useAgents();
   const workflows = useWorkflows();
+  const approvals = useApprovals(true);
   const mcp = useMcpServers(isAdmin);
   const grafanaUrl = process.env.NEXT_PUBLIC_GRAFANA_URL;
   const name = me.data?.display_name || me.data?.email?.split("@")[0] || "";
@@ -59,6 +62,8 @@ export default function Dashboard() {
       </section>
 
       {hasResourceError && <ErrorState title="Không thể tải toàn bộ tài nguyên" description="Một số số liệu hoặc agent chưa tải được. Hãy thử lại." onRetry={() => void retryResources()} />}
+
+      {approvals.data?.length ? <section className="space-y-3" aria-label="Approvals that need attention"><SectionHeader title="Needs your attention" description={`${approvals.data.length} approval${approvals.data.length === 1 ? "" : "s"} need review`} actions={<Button asChild variant="ghost" size="sm" className="gap-1"><Link href="/approvals">View all<ArrowRight className="h-3.5 w-3.5" aria-hidden="true" /></Link></Button>} /><div className="grid gap-3 lg:grid-cols-3">{approvals.data.slice(0, 3).map((approval) => <Link key={approval.id} href={`/approvals?approval_id=${encodeURIComponent(approval.id)}`} className="group rounded-xl border border-border/80 bg-card p-4 transition-colors hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><div className="flex items-center justify-between gap-2"><Badge variant={approval.risk_level === "HIGH" ? "destructive" : "outline"}>{approval.risk_level === "HIGH" ? "HIGH RISK" : "STANDARD"}</Badge><span className="text-xs text-muted-foreground">{expiry(approval.expires_at)}</span></div><p className="mt-3 font-semibold text-foreground">{approvalTitle(approval)}</p><p className="mt-1 truncate text-sm text-muted-foreground">{String(approval.args_snapshot?.summary || approval.args_snapshot?.title || "Review before execution")}</p><span className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-primary">Review <ArrowRight className="h-3 w-3" aria-hidden="true" /></span></Link>)}</div></section> : <section className="rounded-xl border border-dashed border-border bg-card/50 p-5"><p className="text-sm font-medium text-foreground">All caught up</p><p className="mt-1 text-sm text-muted-foreground">No approvals need your attention right now.</p></section>}
 
       <section className="space-y-4">
         <SectionHeader title="Agent của bạn" description="Truy cập nhanh vào những agent đang được cấu hình." actions={isAdmin ? <Button asChild variant="ghost" size="sm" className="gap-1"><Link href="/agents">Quản lý tất cả<ArrowRight className="h-3.5 w-3.5" aria-hidden="true" /></Link></Button> : undefined} />

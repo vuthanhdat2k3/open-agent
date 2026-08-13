@@ -116,6 +116,5 @@ async def ingest_push(db: AsyncSession, request: Request, body: dict[str, Any]) 
         payload={"connection_id": connection.id, "history_id": history_id},
         dedupe_key=f"gmail-history:{connection_id}:{history_id}",
     )
-    connection.gmail_history_id = history_id
     await db.commit()
     return {"status": "accepted"}

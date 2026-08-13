@@ -4,23 +4,9 @@ import "./globals.css";
 import * as React from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "sonner";
-import { Inter, JetBrains_Mono } from "next/font/google";
 import { usePathname } from "next/navigation";
 import { getAccessToken, refreshAccessToken, subscribeAuth } from "@/lib/auth";
 import { AppShell } from "@/components/layout/app-shell";
-
-const sans = Inter({
-  subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700"],
-  variable: "--font-sans",
-  display: "swap",
-});
-const mono = JetBrains_Mono({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-  variable: "--font-mono",
-  display: "swap",
-});
 
 function AuthGate({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -56,7 +42,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   const isPublic = pathname === "/login" || pathname === "/register" || pathname.startsWith("/oauth/");
 
   return (
-    <html lang="en" className={`${sans.variable} ${mono.variable} dark`}>
+    <html lang="en" className="dark">
       <head><link rel="icon" href="/openagent-icon.png" type="image/png" /></head>
       <body className="min-h-dvh bg-background font-sans text-foreground antialiased">
         <QueryClientProvider client={client}>

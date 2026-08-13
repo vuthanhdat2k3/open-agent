@@ -60,6 +60,8 @@ def ci_mcp_stub(monkeypatch: pytest.MonkeyPatch):
     state = {"drafts": {}, "sent": {}, "next": 0}
 
     async def call(tool: str, args: dict):
+        if tool == "email_history_checkpoint":
+            return {"history_id": "checkpoint-1"}
         if tool == "email_list_new":
             state["next"] += 1
             return {

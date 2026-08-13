@@ -15,6 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.customer_intelligence.ingest import sync_connection
+from app.customer_intelligence.mcp import CustomerIntelligenceMcpError
 from app.customer_intelligence.security import encrypt_credentials
 from app.db.base import Base, utc_now
 from app.models.customer_intelligence import EmailConnection, InboundEmail, ResearchCase
@@ -69,6 +70,87 @@ async def test_sync_enqueues_research_for_each_new_clean_case(
 
     assert len(enqueued) == 1
     assert enqueued[0][0] == org_id
+
+
+def _mail(message_id: str) -> dict:
+    return {
+        "provider": "gmail",
+        "provider_message_id": message_id,
+        "thread_id": None,
+        "sender_name": "Sales",
+        "sender_email": "sales@acme.example",
+        "sender_domain": "acme.example",
+        "recipients": ["user@example.com"],
+        "subject": "Customer request",
+        "body_text": "Please send a quote.",
+        "body_html": None,
+        "attachments": [],
+        "received_at": "2026-08-06T00:00:00+00:00",
+        "headers": {},
+    }
+
+
+async def test_reconciliation_uses_history_checkpoint_not_messages_cursor(
+    async_session_factory, monkeypatch
+):
+    org_id = "org-history-incremental"
+    conn_id = await _seed_connection(async_session_factory, org_id)
+    async with async_session_factory() as session:
+        conn = await session.get(EmailConnection, conn_id)
+        conn.gmail_history_id = "h0"
+        conn.sync_cursor = {"cursor": "stale-page-token"}
+        await session.commit()
+
+    calls: list[str] = []
+
+    async def call(tool: str, args: dict):
+        calls.append(tool)
+        if tool == "email_history":
+            return {"messages": [_mail("delta-1")], "new_cursor": None, "history_id": "h1", "has_more": False}
+        raise AssertionError(f"unexpected tool {tool}")
+
+    monkeypatch.setattr("app.customer_intelligence.providers.email.call_customer_intelligence_mcp", call)
+    async with async_session_factory() as session:
+        result = await sync_connection(session, org_id=org_id, connection_id=conn_id, trigger="reconciliation")
+        refreshed = await session.get(EmailConnection, conn_id)
+
+    assert calls == ["email_history"]
+    assert result["mode"] == "history"
+    assert refreshed.gmail_history_id == "h1"
+    assert refreshed.sync_cursor is None
+
+
+async def test_expired_history_performs_bounded_recovery_and_reseeds_checkpoint(
+    async_session_factory, monkeypatch
+):
+    org_id = "org-history-recovery"
+    conn_id = await _seed_connection(async_session_factory, org_id)
+    async with async_session_factory() as session:
+        conn = await session.get(EmailConnection, conn_id)
+        conn.gmail_history_id = "expired"
+        await session.commit()
+
+    calls: list[str] = []
+
+    async def call(tool: str, args: dict):
+        calls.append(tool)
+        if tool == "email_history":
+            raise CustomerIntelligenceMcpError("history_expired: checkpoint unavailable")
+        if tool == "email_history_checkpoint":
+            return {"history_id": "recovery-baseline"}
+        if tool == "email_list_new":
+            return {"messages": [_mail("recovered-1")], "new_cursor": None, "has_more": False}
+        raise AssertionError(f"unexpected tool {tool}")
+
+    monkeypatch.setattr("app.customer_intelligence.providers.email.call_customer_intelligence_mcp", call)
+    async with async_session_factory() as session:
+        result = await sync_connection(session, org_id=org_id, connection_id=conn_id, trigger="reconciliation")
+        refreshed = await session.get(EmailConnection, conn_id)
+
+    assert calls == ["email_history", "email_history_checkpoint", "email_list_new"]
+    assert result["mode"] == "bootstrap"
+    assert any("expired" in warning for warning in result["warnings"])
+    assert refreshed.gmail_history_id == "recovery-baseline"
 
 
 async def test_sync_scopes_email_and_case_to_connection_owner(
