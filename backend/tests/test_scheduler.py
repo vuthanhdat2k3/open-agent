@@ -126,7 +126,8 @@ async def test_run_due_synchronizes_and_advances(async_session_factory, ci_mcp_s
         emails = (await session.execute(select(InboundEmail).where(InboundEmail.connection_id == conn_id))).scalars().all()
         cases = (await session.execute(select(ResearchCase).where(ResearchCase.connection_id == conn_id))).scalars().all()
         assert len(emails) == 1
-        assert len(cases) == 1
+        assert len(cases) == 0
+        assert emails[0].classification == "queued"
 
         schedule = (await session.execute(select(CiSchedule))).scalar_one()
         assert schedule.last_run_at == now
@@ -158,10 +159,11 @@ async def test_manual_sync_observes_metrics(async_session_factory, ci_mcp_stub):
             session, org_id="org-met-0004", connection_id=conn_id, trigger="manual"
         )
         assert result["synced"] == 1
-        assert result["new_cases"] == 1
+        assert result["new_cases"] == 0
+        assert result["classification_queued"] == 1
 
     assert _counter_value(ci_syncs_total, result="success") == before_success + 1
-    assert _counter_value(ci_cases_ingested_total, trigger="manual") == before_cases + 1
+    assert _counter_value(ci_cases_ingested_total, trigger="manual") == before_cases
 
 
 async def test_scheduled_sync_observes_scheduled_trigger_metric(
@@ -177,7 +179,7 @@ async def test_scheduled_sync_observes_scheduled_trigger_metric(
         summary = await run_due_schedules(session, now=now)
         assert summary["processed"]
 
-    assert _counter_value(ci_cases_ingested_total, trigger="scheduled") == before + 1
+    assert _counter_value(ci_cases_ingested_total, trigger="scheduled") == before
 
 
 async def test_ci_metrics_expose_no_identifiers(async_session_factory, ci_mcp_stub):

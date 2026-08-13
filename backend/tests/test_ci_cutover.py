@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
+import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-import pytest
 
 from app.customer_intelligence.cutover import clean_cutover
 from app.db.base import utc_now
@@ -13,6 +11,7 @@ from app.models.customer_intelligence import (
     BriefingReport,
     CiNotification,
     DeliveryAttempt,
+    EmailConnection,
     InboundEmail,
     Meeting,
     ResearchCase,
@@ -34,8 +33,17 @@ async def async_session_factory():
 
 async def test_clean_cutover_preserves_email_and_removes_derived_data(async_session_factory):
     async with async_session_factory() as session:
+        connection = EmailConnection(
+            org_id="org-cutover",
+            provider="gmail",
+            account_email="cutover@example.com",
+            status="connected",
+        )
+        session.add(connection)
+        await session.flush()
         email = InboundEmail(
             org_id="org-cutover",
+            connection_id=connection.id,
             provider="gmail",
             provider_message_id="old-1",
             sender_email="old@sender.example",
@@ -61,13 +69,30 @@ async def test_clean_cutover_preserves_email_and_removes_derived_data(async_sess
         )
         await session.commit()
 
-        result = await clean_cutover(session, org_id="org-cutover", actor="test")
+        result = await clean_cutover(
+            session,
+            org_id="org-cutover",
+            connection_id=connection.id,
+            cutover_history_id="history-now",
+            idempotency_key="cutover-test-1",
+            actor="test",
+        )
         assert result["marked_emails"] == 1
         assert result["deleted_cases"] == 1
 
         saved_email = (await session.execute(select(InboundEmail))).scalar_one()
         assert saved_email.classification == "historical_skipped"
         assert saved_email.routing_status == "historical_skipped"
+        assert connection.gmail_history_id == "history-now"
+        repeated = await clean_cutover(
+            session,
+            org_id="org-cutover",
+            connection_id=connection.id,
+            cutover_history_id="history-now",
+            idempotency_key="cutover-test-1",
+            actor="test",
+        )
+        assert repeated["cutover_id"] == result["cutover_id"]
         assert not (await session.execute(select(ResearchCase))).scalars().all()
         assert not (await session.execute(select(BriefingReport))).scalars().all()
         assert not (await session.execute(select(ApprovalRequest))).scalars().all()

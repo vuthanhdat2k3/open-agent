@@ -4,37 +4,27 @@ import hashlib
 import time
 from typing import Any
 
-import structlog
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import get_settings
 from app.core.observability.audit import log_action
 from app.core.observability.metrics import (
     ci_cases_ingested_total,
     ci_sync_duration_seconds,
     ci_syncs_total,
 )
-from app.core.workflow.queue import enqueue_ci_research
-from app.customer_intelligence.agent_classifier import classify_with_agent
 from app.customer_intelligence.contracts import NormalizedEmail
 from app.customer_intelligence.mcp import CustomerIntelligenceMcpError
 from app.customer_intelligence.oauth import load_fresh_credentials
 from app.customer_intelligence.providers.email import bind_email_provider, get_email_provider
 from app.customer_intelligence.security import scan_for_prompt_injection
 from app.db.base import gen_id, utc_now
-from app.models.customer_intelligence import (
-    CiNotification,
-    InboundEmail,
-    ResearchCase,
-)
+from app.models.customer_intelligence import InboundEmail
 from app.repositories.customer_intelligence import (
     EmailConnectionRepository,
     InboundEmailRepository,
-    ResearchCaseRepository,
 )
-
-logger = structlog.get_logger(__name__)
+from app.repositories.outbox import OutboxRepository
 
 
 class IngestionError(Exception):
@@ -119,10 +109,8 @@ async def _sync_connection_impl(
     correlation_id: str,
     history_id: str | None = None,
 ) -> dict[str, Any]:
-    settings = get_settings()
     conn_repo = EmailConnectionRepository(db)
     email_repo = InboundEmailRepository(db)
-    case_repo = ResearchCaseRepository(db)
 
     conn = await conn_repo.get(org_id, connection_id)
     if conn is None:
@@ -147,7 +135,7 @@ async def _sync_connection_impl(
     synced = 0
     deduplicated = 0
     new_cases = 0
-    new_case_ids: list[str] = []
+    classification_queued = 0
     warnings: list[str] = []
     last_cursor: str | None = str(bootstrap_state.get("page_token") or "").strip() or None
     latest_history_id = start_history_id or bootstrap_checkpoint
@@ -187,10 +175,7 @@ async def _sync_connection_impl(
             if existing is not None:
                 deduplicated += 1
                 continue
-            # Dedupe before any model call: push/reconciliation overlap must
-            # cost one classification, not one call per delivery source.
             email.injection_flags = scan_for_prompt_injection(email.body_text or "")
-            classification = await classify_with_agent(db, org_id, email)
             email.content_hash = email_content_hash(email)
             row = InboundEmail(
                 org_id=org_id,
@@ -209,29 +194,15 @@ async def _sync_connection_impl(
                 received_at=email.received_at,
                 content_hash=email.content_hash,
                 injection_flags=email.injection_flags,
-                classification=classification.label,
-                classification_confidence=classification.confidence,
-                classification_reason=classification.reason,
-                classification_json={
-                    "label": classification.label,
-                    "intents": list(classification.intents),
-                    "company_name": classification.company_name,
-                    "company_domain": classification.company_domain,
-                    "company_confidence": classification.company_confidence,
-                    "meeting_confidence": classification.meeting_confidence,
-                    "summary": classification.summary,
-                },
-                routing_status=(
-                    "ignored" if classification.label in {"spam", "marketing", "newsletter", "system", "transactional"}
-                    else "quarantined" if classification.label in {"security_risk", "uncertain"}
-                    else "routed"
-                ),
+                classification="queued",
+                routing_status="pending",
                 created_by_user_id=conn.created_by_user_id,
             )
             try:
-                await email_repo.create(row)
+                async with db.begin_nested():
+                    db.add(row)
+                    await db.flush()
             except IntegrityError:
-                await db.rollback()
                 existing = await email_repo.find_by_provider_message_id(
                     org_id, email.provider, email.provider_message_id
                 )
@@ -239,86 +210,23 @@ async def _sync_connection_impl(
                     deduplicated += 1
                     continue
                 raise
-            synced += 1
-            if classification.label in {"spam", "marketing", "newsletter", "system", "transactional"}:
-                warnings.append(f"email {email.provider_message_id}: spam ignored")
-                continue
-            if classification.label in {"security_risk", "uncertain"}:
-                reason = (
-                    "potential prompt injection flagged"
-                    if classification.label == "security_risk" and email.injection_flags
-                    else "classification requires review"
-                )
-                warnings.append(
-                    f"email {email.provider_message_id}: {reason}"
-                )
-                if conn.created_by_user_id:
-                    db.add(CiNotification(
-                        org_id=org_id,
-                        user_id=conn.created_by_user_id,
-                        email_id=row.id,
-                        notification_type="email_review_required",
-                        title=f"Email needs review from {email.sender_email}",
-                        body=notification_preview(email.subject, classification.summary or email.body_text),
-                    ))
-                    await db.commit()
-                continue
-            settings = get_settings()
-            is_customer_route = (
-                classification.label in {"customer", "partner"}
-                and classification.confidence >= settings.ci_classifier_accept_confidence
-                and classification.company_confidence >= settings.ci_classifier_company_confidence
-                and bool(classification.company_name or classification.company_domain)
-            )
-            is_calendar_route = (
-                classification.label == "calendar"
-                and classification.confidence >= settings.ci_classifier_accept_confidence
-                and classification.meeting_confidence >= settings.ci_classifier_meeting_confidence
-            )
-            if not is_customer_route and not is_calendar_route:
-                if conn.created_by_user_id:
-                    db.add(
-                        CiNotification(
-                            org_id=org_id,
-                            user_id=conn.created_by_user_id,
-                            email_id=row.id,
-                            notification_type="email_received",
-                            title=f"New email from {email.sender_email}",
-                            body=notification_preview(email.subject, classification.summary or email.body_text),
-                        )
-                    )
-                    await db.commit()
-                continue
-            if len(email.attachments) > 0 and email.attachments[0].size_bytes > settings.ci_max_attachment_bytes:
-                warnings.append(
-                    f"email {email.provider_message_id}: attachment over size limit, content skipped"
-                )
-            case = ResearchCase(
+            await OutboxRepository(db).add_event(
+                event_type="email.classification.requested",
+                aggregate_type="ci_email",
+                aggregate_id=row.id,
                 org_id=org_id,
-                email_id=row.id,
-                connection_id=connection_id,
-                trigger=trigger,
-                status="INGESTED",
-                company_name=classification.company_name,
-                company_domain=classification.company_domain,
-                confidence=classification.confidence,
-                created_by_user_id=conn.created_by_user_id,
+                user_id=conn.created_by_user_id,
+                correlation_id=correlation_id,
+                payload={
+                    "email_id": row.id,
+                    "content_hash": row.content_hash,
+                    "trigger": trigger,
+                },
+                dedupe_key=f"email-classification:{row.id}:{row.content_hash}",
             )
-            await case_repo.create(case)
-            if conn.created_by_user_id:
-                db.add(
-                    CiNotification(
-                        org_id=org_id,
-                        user_id=conn.created_by_user_id,
-                        email_id=row.id,
-                        notification_type="email_received",
-                        title=f"New email from {email.sender_email}",
-                        body=notification_preview(email.subject, email.body_text),
-                    )
-                )
-                await db.commit()
-            new_cases += 1
-            new_case_ids.append(case.id)
+            await db.commit()
+            synced += 1
+            classification_queued += 1
         # Bootstrap is intentionally bounded. History pagination is also
         # bounded per invocation so a mailbox burst cannot monopolize a
         # worker; the next notification/reconciliation resumes from the
@@ -360,29 +268,12 @@ async def _sync_connection_impl(
             "correlation_id": correlation_id,
         },
     )
-    # Enqueue research after every case is durably committed: a case is
-    # created (and thus already persisted) the moment case_repo.create()
-    # returns, so a job for an earlier case in this sync must not be lost if
-    # a later email in the same page raises. Enqueue failures (Redis down)
-    # are logged, not raised - the sync itself already succeeded and must
-    # not be reported as failed just because the follow-up job could not be
-    # queued; the case stays INGESTED and can still be researched manually
-    # or picked up by a future retry sweep.
-    for new_case_id in new_case_ids:
-        try:
-            await enqueue_ci_research(org_id, new_case_id)
-        except Exception as exc:  # noqa: BLE001 - queue outage must not fail the sync.
-            await logger.aerror(
-                "ci_auto_research_enqueue_failed",
-                org_id=org_id,
-                case_id=new_case_id,
-                error=str(exc),
-            )
     return {
         "connection_id": connection_id,
         "synced": synced,
         "deduplicated": deduplicated,
         "new_cases": new_cases,
+        "classification_queued": classification_queued,
         "cursor": last_cursor,
         "history_id": latest_history_id,
         "mode": "history" if history_sync else "bootstrap",

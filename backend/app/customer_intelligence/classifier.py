@@ -19,6 +19,7 @@ class Classification:
     company_confidence: float = 0.0
     meeting_confidence: float = 0.0
     summary: str = ""
+    calendar_payload: dict[str, Any] | None = None
 
 
 _SPAM_TERMS = re.compile(r"\b(win|winner|prize|casino|viagra|crypto giveaway|unsubscribe)\b", re.I)
@@ -28,8 +29,6 @@ _FREE_MAIL = {"gmail.com", "googlemail.com", "yahoo.com", "outlook.com", "hotmai
 
 
 def classify_email(email: NormalizedEmail) -> Classification:
-    if email.injection_flags:
-        return Classification("security_risk", 1.0, "guard flagged untrusted instruction content")
     text = f"{email.subject}\n{email.body_text}"[:20_000]
     spam_hits = len(_SPAM_TERMS.findall(text))
     if spam_hits >= 2:
