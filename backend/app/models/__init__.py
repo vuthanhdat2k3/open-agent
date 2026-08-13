@@ -8,6 +8,7 @@ from app.models.chat_run_event import ChatRunEvent
 from app.models.customer_intelligence import (
     BriefingReport,
     CalendarConnection,
+    CiNotification,
     CiSchedule,
     DeliveryAttempt,
     DriveConnection,
@@ -61,6 +62,7 @@ __all__ = [
     "CalendarConnection",
     "ChatRunEvent",
     "CiSchedule",
+    "CiNotification",
     "DeliveryAttempt",
     "DriveConnection",
     "EmailConnection",

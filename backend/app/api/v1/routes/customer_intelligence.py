@@ -232,6 +232,72 @@ async def list_connections(
     return await CustomerIntelligenceService(db).status(org_id=org_id, created_by_user_id=_connection_owner(request, current_user))
 
 
+@router.get(
+    "/notifications",
+    dependencies=[Depends(require_permission("ci:read"))],
+)
+async def list_ci_notifications(
+    org_id: str = Depends(get_current_org_id),
+    current_user: User = Depends(get_current_user),
+    limit: int = 50,
+    unread_only: bool = False,
+    db: AsyncSession = Depends(get_db),
+):
+    _guard_enabled()
+    from sqlalchemy import select
+
+    from app.models.customer_intelligence import CiNotification
+
+    limit = max(1, min(limit, 100))
+    filters = [CiNotification.org_id == org_id, CiNotification.user_id == current_user.id]
+    if unread_only:
+        filters.append(CiNotification.read_at.is_(None))
+    rows = await db.scalars(
+        select(CiNotification).where(*filters).order_by(CiNotification.created_at.desc()).limit(limit)
+    )
+    return [
+        {
+            "id": row.id,
+            "email_id": row.email_id,
+            "type": row.notification_type,
+            "title": row.title,
+            "body": row.body,
+            "read_at": row.read_at,
+            "created_at": row.created_at,
+        }
+        for row in rows
+    ]
+
+
+@router.post(
+    "/notifications/{notification_id}/read",
+    dependencies=[Depends(require_permission("ci:read"))],
+)
+async def mark_ci_notification_read(
+    notification_id: str,
+    org_id: str = Depends(get_current_org_id),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    _guard_enabled()
+    from sqlalchemy import select
+
+    from app.models.customer_intelligence import CiNotification
+
+    row = await db.scalar(
+        select(CiNotification).where(
+            CiNotification.id == notification_id,
+            CiNotification.org_id == org_id,
+            CiNotification.user_id == current_user.id,
+        )
+    )
+    if row is None:
+        raise HTTPException(404, "notification not found")
+    row.read_at = utc_now()
+    await db.commit()
+    return {"id": row.id, "read_at": row.read_at}
+
+
 @router.get("/drive-connections", response_model=list[DriveConnectionResponse], dependencies=[Depends(require_permission("ci:read"))])
 async def list_drive_connections(
     org_id: str = Depends(get_current_org_id),
