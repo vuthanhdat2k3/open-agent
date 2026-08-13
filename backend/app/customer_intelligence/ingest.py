@@ -4,6 +4,7 @@ import hashlib
 import time
 from typing import Any
 
+import structlog
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,12 +15,15 @@ from app.core.observability.metrics import (
     ci_sync_duration_seconds,
     ci_syncs_total,
 )
-from app.customer_intelligence.contracts import NormalizedEmail, SyncPage
+from app.core.workflow.queue import enqueue_ci_research
+from app.customer_intelligence.classifier import classify_email
+from app.customer_intelligence.contracts import NormalizedEmail
 from app.customer_intelligence.oauth import load_fresh_credentials
 from app.customer_intelligence.providers.email import bind_email_provider, get_email_provider
 from app.customer_intelligence.security import scan_for_prompt_injection
 from app.db.base import gen_id, utc_now
 from app.models.customer_intelligence import (
+    CiNotification,
     InboundEmail,
     ResearchCase,
 )
@@ -29,9 +33,20 @@ from app.repositories.customer_intelligence import (
     ResearchCaseRepository,
 )
 
+logger = structlog.get_logger(__name__)
+
 
 class IngestionError(Exception):
     pass
+
+
+def notification_preview(subject: str, body: str, *, max_chars: int = 600) -> str:
+    """Create a bounded plain-text preview; raw unbounded email never enters UI notification."""
+    compact = " ".join((body or "").split())
+    preview = compact[:max_chars].rstrip()
+    if len(compact) > max_chars:
+        preview += "…"
+    return f"{(subject or '(no subject)')[:320]}\n{preview}" if preview else (subject or "(no subject)")[:320]
 
 
 def email_content_hash(email: NormalizedEmail) -> str:
@@ -55,6 +70,7 @@ async def sync_connection(
     max_messages: int = 20,
     actor_user_id: str | None = None,
     correlation_id: str | None = None,
+    history_id: str | None = None,
 ) -> dict[str, Any]:
     """Sync a connection and record bounded CI metrics.
 
@@ -78,6 +94,7 @@ async def sync_connection(
             max_messages=max_messages,
             actor_user_id=actor_user_id,
             correlation_id=correlation_id,
+            history_id=history_id,
         )
     except Exception:
         ci_syncs_total.labels(result="error").inc()
@@ -99,6 +116,7 @@ async def _sync_connection_impl(
     max_messages: int = 20,
     actor_user_id: str | None = None,
     correlation_id: str,
+    history_id: str | None = None,
 ) -> dict[str, Any]:
     settings = get_settings()
     conn_repo = EmailConnectionRepository(db)
@@ -120,16 +138,25 @@ async def _sync_connection_impl(
     synced = 0
     deduplicated = 0
     new_cases = 0
+    new_case_ids: list[str] = []
     warnings: list[str] = []
     last_cursor = cursor
     pages = 0
 
     while True:
-        page: SyncPage = await provider.list_new(cursor=last_cursor, max_results=max_messages)
+        if history_id:
+            page = await provider.list_history(
+                start_history_id=history_id,
+                page_token=last_cursor,
+                max_results=min(max_messages, 100),
+            )
+        else:
+            page = await provider.list_new(cursor=last_cursor, max_results=max_messages)
         pages += 1
         last_cursor = page.new_cursor
         for email in page.messages:
             email.injection_flags = scan_for_prompt_injection(email.body_text or "")
+            classification = classify_email(email)
             email.content_hash = email_content_hash(email)
             existing = await email_repo.find_by_provider_message_id(
                 org_id, email.provider, email.provider_message_id
@@ -154,6 +181,11 @@ async def _sync_connection_impl(
                 received_at=email.received_at,
                 content_hash=email.content_hash,
                 injection_flags=email.injection_flags,
+                classification=classification.label,
+                classification_confidence=classification.confidence,
+                classification_reason=classification.reason,
+                routing_status="ignored" if classification.label == "spam" else "quarantined" if classification.label == "security_risk" else "routed",
+                created_by_user_id=conn.created_by_user_id,
             )
             try:
                 await email_repo.create(row)
@@ -167,10 +199,27 @@ async def _sync_connection_impl(
                     continue
                 raise
             synced += 1
-            if email.injection_flags:
+            if classification.label == "spam":
+                warnings.append(f"email {email.provider_message_id}: spam ignored")
+                continue
+            if classification.label == "security_risk":
                 warnings.append(
                     f"email {email.provider_message_id}: potential prompt injection flagged"
                 )
+                continue
+            if classification.label == "normal":
+                if conn.created_by_user_id:
+                    db.add(
+                        CiNotification(
+                            org_id=org_id,
+                            user_id=conn.created_by_user_id,
+                            email_id=row.id,
+                            notification_type="email_received",
+                            title=f"New email from {email.sender_email}",
+                            body=notification_preview(email.subject, email.body_text),
+                        )
+                    )
+                    await db.commit()
                 continue
             if len(email.attachments) > 0 and email.attachments[0].size_bytes > settings.ci_max_attachment_bytes:
                 warnings.append(
@@ -182,9 +231,23 @@ async def _sync_connection_impl(
                 connection_id=connection_id,
                 trigger=trigger,
                 status="INGESTED",
+                created_by_user_id=conn.created_by_user_id,
             )
             await case_repo.create(case)
+            if conn.created_by_user_id:
+                db.add(
+                    CiNotification(
+                        org_id=org_id,
+                        user_id=conn.created_by_user_id,
+                        email_id=row.id,
+                        notification_type="email_received",
+                        title=f"New email from {email.sender_email}",
+                        body=notification_preview(email.subject, email.body_text),
+                    )
+                )
+                await db.commit()
             new_cases += 1
+            new_case_ids.append(case.id)
         if not page.has_more or pages >= 20:
             break
         if last_cursor is None:
@@ -213,6 +276,24 @@ async def _sync_connection_impl(
             "correlation_id": correlation_id,
         },
     )
+    # Enqueue research after every case is durably committed: a case is
+    # created (and thus already persisted) the moment case_repo.create()
+    # returns, so a job for an earlier case in this sync must not be lost if
+    # a later email in the same page raises. Enqueue failures (Redis down)
+    # are logged, not raised - the sync itself already succeeded and must
+    # not be reported as failed just because the follow-up job could not be
+    # queued; the case stays INGESTED and can still be researched manually
+    # or picked up by a future retry sweep.
+    for new_case_id in new_case_ids:
+        try:
+            await enqueue_ci_research(org_id, new_case_id)
+        except Exception as exc:  # noqa: BLE001 - queue outage must not fail the sync.
+            await logger.aerror(
+                "ci_auto_research_enqueue_failed",
+                org_id=org_id,
+                case_id=new_case_id,
+                error=str(exc),
+            )
     return {
         "connection_id": connection_id,
         "synced": synced,

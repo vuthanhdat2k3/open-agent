@@ -24,15 +24,69 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.core.observability.audit import log_action
+from app.core.workflow.queue import enqueue_ci_research
 from app.customer_intelligence.ingest import IngestionError, sync_connection
 from app.db.base import gen_id, utc_now
-from app.models.customer_intelligence import CiSchedule
+from app.models.customer_intelligence import CiSchedule, EmailConnection
 from app.repositories.customer_intelligence import CiScheduleRepository
+from app.repositories.outbox import OutboxRepository
 
 logger = structlog.get_logger(__name__)
 
 SCHEDULED_MAX_MESSAGES = 20
+
+
+async def enqueue_gmail_maintenance_events(
+    db: AsyncSession, *, now: datetime | None = None
+) -> dict[str, int]:
+    """Fan out reconciliation/renewal events with per-connection idempotency."""
+    now = now or utc_now()
+    from sqlalchemy import select
+
+    connections = list(
+        (
+            await db.scalars(
+                select(EmailConnection).where(
+                    EmailConnection.provider == "gmail",
+                    EmailConnection.status == "connected",
+                )
+            )
+        ).all()
+    )
+    bucket = now.replace(minute=(now.minute // 5) * 5, second=0, microsecond=0)
+    repo = OutboxRepository(db)
+    reconciliations = 0
+    renewals = 0
+    for connection in connections:
+        await repo.add_event(
+            event_type="gmail.reconciliation.requested",
+            aggregate_type="gmail_connection",
+            aggregate_id=connection.id,
+            org_id=connection.org_id,
+            user_id=connection.created_by_user_id,
+            payload={"connection_id": connection.id, "scheduled_for": bucket.isoformat()},
+            dedupe_key=f"gmail-reconcile:{connection.id}:{bucket.isoformat()}",
+        )
+        reconciliations += 1
+        if get_settings().gmail_pubsub_topic and (
+            connection.watch_expiration_at is None
+            or connection.watch_expiration_at <= now + timedelta(hours=48)
+        ):
+            generation = connection.watch_expiration_at.isoformat() if connection.watch_expiration_at else "initial"
+            await repo.add_event(
+                event_type="gmail.watch.renew.requested",
+                aggregate_type="gmail_connection",
+                aggregate_id=connection.id,
+                org_id=connection.org_id,
+                user_id=connection.created_by_user_id,
+                payload={"connection_id": connection.id, "watch_generation": generation},
+                dedupe_key=f"gmail-watch-renew:{connection.id}:{generation}",
+            )
+            renewals += 1
+    await db.commit()
+    return {"connections": len(connections), "reconciliation_events": reconciliations, "renewal_events": renewals}
 
 
 def _coerce_zone(tz_name: str) -> ZoneInfo:
@@ -341,3 +395,25 @@ async def process_due_retries(db: AsyncSession, *, max_cases: int = 50) -> dict[
         "dead_lettered": dead_lettered,
         "failed": failed,
     }
+
+
+async def dispatch_ingested_cases(db: AsyncSession, *, max_cases: int = 100) -> dict[str, Any]:
+    """Recover cases whose Redis enqueue failed after successful ingest."""
+    from app.repositories.customer_intelligence import ResearchCaseRepository
+
+    cases = await ResearchCaseRepository(db).list_dispatchable(limit=max_cases)
+    queued = 0
+    failed = 0
+    for case in cases:
+        try:
+            await enqueue_ci_research(case.org_id, case.id)
+            queued += 1
+        except Exception as exc:  # noqa: BLE001 - next tick retries dispatch.
+            failed += 1
+            await logger.aerror(
+                "ci_research_dispatch_failed",
+                org_id=case.org_id,
+                case_id=case.id,
+                error=str(exc),
+            )
+    return {"candidates": len(cases), "queued": queued, "failed": failed}

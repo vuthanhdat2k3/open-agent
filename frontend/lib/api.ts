@@ -10,24 +10,32 @@ export interface SseEvent {
 
 export class ApiError extends Error {
   readonly status: number;
+  readonly code: string | null;
+  readonly correlationId: string | null;
+  readonly retryable: boolean;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, options: { code?: string | null; correlationId?: string | null; retryable?: boolean } = {}) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.code = options.code ?? null;
+    this.correlationId = options.correlationId ?? null;
+    this.retryable = options.retryable ?? status >= 500;
   }
 }
+
+export type ApiRequestOptions = { headers?: HeadersInit };
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getAccessToken();
   const res = await fetch(path, {
+    ...init,
     credentials: "include",
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(init?.headers || {}),
     },
-    ...init,
   });
   if (res.status === 401) {
     const refreshed = await refreshAccessToken();
@@ -40,13 +48,21 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
   if (!res.ok) {
     let detail = res.statusText;
+    let errorMeta: { code?: string | null; correlationId?: string | null; retryable?: boolean } = {};
     try {
       const j = await res.json();
-      detail = (j && j.detail) || detail;
+      detail = (j && (j.error?.message || j.detail)) || detail;
+      if (j?.error) {
+        errorMeta = {
+          code: j.error.code,
+          correlationId: j.error.correlation_id,
+          retryable: j.error.retryable,
+        };
+      }
     } catch {
       // ignore parse errors
     }
-    throw new ApiError(res.status, detail);
+    throw new ApiError(res.status, detail, errorMeta);
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
@@ -54,12 +70,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   get: <T>(path: string) => request<T>(path),
-  post: <T>(path: string, body?: unknown) =>
-    request<T>(path, { method: "POST", body: body ? JSON.stringify(body) : undefined }),
+  post: <T>(path: string, body?: unknown, options?: ApiRequestOptions) =>
+    request<T>(path, { method: "POST", body: body ? JSON.stringify(body) : undefined, headers: options?.headers }),
   put: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: "PUT", body: body ? JSON.stringify(body) : undefined }),
-  patch: <T>(path: string, body?: unknown) =>
-    request<T>(path, { method: "PATCH", body: body ? JSON.stringify(body) : undefined }),
+  patch: <T>(path: string, body?: unknown, options?: ApiRequestOptions) =>
+    request<T>(path, { method: "PATCH", body: body ? JSON.stringify(body) : undefined, headers: options?.headers }),
   delete: <T>(path: string) => request<T>(path, { method: "DELETE" }),
 };
 

@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.core.observability.audit import log_action
 from app.core.observability.genai import workflow_node_span
+from app.customer_intelligence.classifier import extract_calendar_payload
 from app.customer_intelligence.contracts import (
     CompanyRecord,
     MeetingMatch,
@@ -147,7 +148,7 @@ async def run_research(
     case = await case_repo.get(org_id, case_id)
     if case is None:
         raise ResearchError("case not found")
-    if case.status not in {"INGESTED", "RETRYING"}:
+    if case.status not in {"INGESTED", "RETRYING", "RESEARCHING"}:
         raise ResearchError(f"case is not researchable (status={case.status})")
 
     email = await email_repo.get(org_id, case.email_id)
@@ -156,7 +157,8 @@ async def run_research(
 
     case.workflow_run_id = case.workflow_run_id or f"ci-{case.id}"
     case.started_at = utc_now()
-    await case_repo.transition(case, "RESEARCHING")
+    if case.status != "RESEARCHING":
+        await case_repo.transition(case, "RESEARCHING")
 
     warnings: list[str] = []
     sources: list[ResearchSource] = []
@@ -178,7 +180,9 @@ async def run_research(
         if not companies and "company lookup failed" not in warnings:
             warnings.append("no company matched for this email")
 
-        calendar_conn: CalendarConnection | None = await calendar_repo.get_connected(org_id)
+        calendar_conn: CalendarConnection | None = await calendar_repo.get_connected(
+            org_id, user_id=case.created_by_user_id
+        )
         if calendar_conn is not None and calendar_conn.credentials_enc:
             case.calendar_connection_id = calendar_conn.id
             creds = await load_fresh_credentials(db, calendar_conn)
@@ -323,6 +327,20 @@ async def run_research(
     case.confidence = report.confidence
     case.finished_at = utc_now()
     await case_repo.transition(case, "REPORT_READY")
+
+    if email.classification == "calendar":
+        calendar_payload = extract_calendar_payload(email)
+        if calendar_payload:
+            from app.customer_intelligence.delivery import request_case_approval
+
+            await request_case_approval(
+                db,
+                org_id=org_id,
+                case_id=case_id,
+                action="calendar_create_event",
+                payload=calendar_payload,
+                requested_by=case.created_by_user_id,
+            )
 
     await log_action(
         db,

@@ -58,6 +58,20 @@ Các bước này tốn thời gian, dễ bỏ sót thông tin và khó duy trì
 - Không ghi access token, refresh token hoặc dữ liệu nhạy cảm vào log.
 - Ghi audit log cho các hành động quan trọng.
 
+### 3.3. Mô hình multi-tenant và quyền cá nhân
+
+Hệ thống là trợ lý cá nhân cho từng user trong một organization, không phải
+một mailbox chung mặc định. Mỗi user có thể tự kết nối Gmail, Calendar và
+Drive của mình qua OAuth. Credential, email, case, report và approval được
+gắn với cả `org_id` và `created_by_user_id`; user chỉ thấy và thao tác trên dữ
+liệu của mình. Admin quản lý OAuth application, policy, quota, audit và các
+shared connection nếu organization có mailbox dùng chung, nhưng không mặc
+nhiên được đọc mailbox cá nhân của user.
+
+Ngoài luồng tự động từ email, user có thể tạo một manual research request
+với tên công ty, domain và câu hỏi. Manual request vẫn tạo `ResearchCase`
+riêng tư, được audit và đi qua cùng pipeline research, security và approval.
+
 ## 4. Các agent trong hệ thống
 
 ### 4.1. Email Agent
@@ -166,7 +180,7 @@ Orchestrator điều phối toàn bộ workflow, quản lý:
 ## 5. Luồng nghiệp vụ chuẩn
 
 ```text
-Email trigger
+Email trigger hoặc manual research request
   → ingest và deduplicate
   → trích xuất sender/company/intent
   → chạy song song:
@@ -203,8 +217,10 @@ Mọi claim từ nguồn bên ngoài phải có provenance. Khi không có ngu�
 Các entity tối thiểu:
 
 - `EmailConnection` — tài khoản email và credential đã mã hóa.
+- `CalendarConnection` / `DriveConnection` — tài khoản cá nhân hoặc shared
+  connection, đều có owner và phạm vi truy cập rõ ràng.
 - `InboundEmail` — email đã chuẩn hóa, provider ID, sender, body và attachment metadata.
-- `ResearchCase` — case nghiên cứu gắn với một email.
+- `ResearchCase` — case nghiên cứu gắn với một email hoặc manual request và owner.
 - `ResearchSource` — nguồn web/news/company/calendar của case.
 - `Meeting` — cuộc họp và thông tin matching.
 - `BriefingReport` — report canonical và các rendering artifact.

@@ -375,11 +375,18 @@ export interface ApprovalRequest {
   tool_name: string | null;
   node_id: string | null;
   args_snapshot: Record<string, unknown>;
+  case_id?: string | null;
+  action?: string | null;
   status: "pending" | "approved" | "rejected" | "expired";
   requested_by: string | null;
   decided_by: string | null;
   reason: string;
   created_at: string;
+  expires_at?: string | null;
+  risk_level?: string;
+  approval_mode?: string;
+  capabilities?: Record<string, boolean | Record<string, string>>;
+  server_time?: string | null;
 }
 
 export interface TaskTreeNode {
@@ -460,3 +467,80 @@ export interface UserProfile {
   memberships: UserMembership[];
 }
 
+export interface CustomerIntelligenceCase {
+  id: string;
+  email_id: string;
+  company_name: string | null;
+  company_domain: string | null;
+  status: string;
+  confidence: number | null;
+  trigger: string | null;
+  created_at: string;
+  finished_at: string | null;
+}
+
+export interface CustomerIntelligenceSource {
+  id: string;
+  url: string;
+  source_type: string;
+  title: string;
+  publisher: string | null;
+  published_date: string | null;
+  retrieved_date: string | null;
+  excerpt: string;
+  confidence: number | null;
+}
+
+export interface CustomerIntelligenceMeeting {
+  id: string;
+  provider_event_id: string;
+  title: string;
+  start_at: string | null;
+  end_at: string | null;
+  attendees: string[];
+  match_type: string;
+  confidence: number | null;
+}
+
+export interface CustomerIntelligenceCaseDetail extends CustomerIntelligenceCase {
+  error: string | null;
+  sources: CustomerIntelligenceSource[];
+  meetings: CustomerIntelligenceMeeting[];
+  report: {
+    id: string;
+    case_id: string;
+    version: number;
+    canonical_markdown: string;
+    confidence: number | null;
+    status: string;
+    created_at: string;
+  } | null;
+}
+
+export interface CustomerIntelligenceNotification {
+  id: string;
+  email_id: string;
+  type: string;
+  title: string;
+  body: string;
+  read_at: string | null;
+  created_at: string;
+}
+
+export interface EmailIntelligenceNavigationSummary {
+  user_workspace: {
+    inbox: { unread: number; urgent: number };
+    research_cases: { active: number; failed: number };
+    approvals: { pending: number; urgent: number };
+  };
+  admin_operations: {
+    manual_reviews: { open: number; urgent: number };
+    dead_letters: { total: number; urgent: number };
+    connections: { unhealthy: number };
+  };
+  capabilities: {
+    can_access_user_workspace: boolean;
+    can_access_admin_operations: boolean;
+  };
+  meta: { server_time: string; reason_registry_version?: string; correlation_id?: string };
+}

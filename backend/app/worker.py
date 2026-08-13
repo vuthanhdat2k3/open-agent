@@ -6,14 +6,17 @@ import socket
 import structlog
 from arq import cron
 from arq.connections import RedisSettings
+from sqlalchemy import select
 
 from app.config import get_settings
 from app.core.chat_events import fail_orphaned_chat_runs
 from app.core.observability.llm_trace import NoopSink, set_default_sink
+from app.core.outbox import publish_pending_outbox
 from app.core.providers.jobs import run_provider_discovery
 from app.core.workflow import resume
 from app.core.workflow.jobs import run_chat, run_workflow
 from app.core.workflow.queue import enqueue_workflow_run
+from app.customer_intelligence.jobs import run_ci_research
 from app.db.session import SessionLocal
 from app.evals.auto_rollback import run_auto_rollback_sweep
 
@@ -121,8 +124,149 @@ async def _ci_retry_due_cases_tick(ctx: dict) -> None:
         )
 
 
+async def _ci_dispatch_ingested_tick(ctx: dict) -> None:
+    from app.core.scheduling.job_keys import JobKey
+    from app.core.scheduling.tick import run_leased_tick
+    from app.customer_intelligence.scheduler import dispatch_ingested_cases
+
+    async with SessionLocal() as db:
+        await run_leased_tick(
+            db,
+            job_key=JobKey.CI_DISPATCH_INGESTED,
+            interval_seconds=60,
+            lease_seconds=50,
+            worker_id=_worker_identity(),
+            run=lambda: dispatch_ingested_cases(db),
+        )
+
+
+async def _outbox_dispatch_tick(ctx: dict) -> None:
+    """Publish durable DB events to ARQ; Postgres remains the retry source."""
+    from app.core.scheduling.job_keys import JobKey
+    from app.core.scheduling.tick import run_leased_tick
+
+    async with SessionLocal() as db:
+        await run_leased_tick(
+            db,
+            job_key=JobKey.CI_OUTBOX_DISPATCH,
+            interval_seconds=1,
+            lease_seconds=30,
+            worker_id=_worker_identity(),
+            run=lambda: publish_pending_outbox(db, owner=_worker_identity()),
+        )
+
+
+async def _gmail_reconciliation_tick(ctx: dict) -> None:
+    from app.core.scheduling.job_keys import JobKey
+    from app.core.scheduling.tick import run_leased_tick
+    from app.customer_intelligence.scheduler import enqueue_gmail_maintenance_events
+
+    async with SessionLocal() as db:
+        await run_leased_tick(
+            db,
+            job_key=JobKey.CI_GMAIL_RECONCILIATION,
+            interval_seconds=300,
+            lease_seconds=240,
+            worker_id=_worker_identity(),
+            run=lambda: enqueue_gmail_maintenance_events(db),
+        )
+
+
+async def _gmail_watch_renewal_tick(ctx: dict) -> None:
+    from app.core.scheduling.job_keys import JobKey
+    from app.core.scheduling.tick import run_leased_tick
+    from app.customer_intelligence.scheduler import enqueue_gmail_maintenance_events
+
+    async with SessionLocal() as db:
+        await run_leased_tick(
+            db,
+            job_key=JobKey.CI_GMAIL_WATCH_RENEWAL,
+            interval_seconds=43200,
+            lease_seconds=3600,
+            worker_id=_worker_identity(),
+            run=lambda: enqueue_gmail_maintenance_events(db),
+        )
+
+
+async def process_outbox_event(ctx: dict, event_id: str) -> None:
+    """Consume known events exactly once; unknown events fail visibly."""
+    from app.models.outbox import OutboxEvent, ProcessedEvent
+    from app.repositories.outbox import OutboxRepository
+
+    async with SessionLocal() as db:
+        event = await db.get(OutboxEvent, event_id)
+        if event is None:
+            return
+        repo = OutboxRepository(db)
+        already_processed = await db.scalar(
+            select(ProcessedEvent).where(
+                ProcessedEvent.event_id == event.id,
+                ProcessedEvent.consumer_name == "worker",
+            )
+        )
+        if already_processed:
+            return
+        if event.event_type == "ci.research.requested":
+            await run_ci_research(ctx, event.org_id, event.aggregate_id)
+            await repo.mark_processed(event_id=event.id, consumer_name="worker")
+            await db.commit()
+            return
+        if event.event_type == "gmail.history_sync.requested":
+            from app.customer_intelligence.ingest import sync_connection
+
+            await sync_connection(
+                db,
+                org_id=event.org_id,
+                connection_id=event.aggregate_id,
+                trigger="webhook",
+                correlation_id=event.correlation_id,
+                history_id=event.payload.get("history_id"),
+            )
+            await repo.mark_processed(event_id=event.id, consumer_name="worker")
+            await db.commit()
+            return
+        if event.event_type == "gmail.reconciliation.requested":
+            from app.customer_intelligence.ingest import sync_connection
+
+            await sync_connection(
+                db,
+                org_id=event.org_id,
+                connection_id=event.aggregate_id,
+                trigger="reconciliation",
+                correlation_id=event.correlation_id,
+            )
+            await repo.mark_processed(event_id=event.id, consumer_name="worker")
+            await db.commit()
+            return
+        if event.event_type == "gmail.watch.renew.requested":
+            from app.customer_intelligence.oauth import load_fresh_credentials
+            from app.customer_intelligence.providers.email import (
+                bind_email_provider,
+                get_email_provider,
+            )
+            from app.models.customer_intelligence import EmailConnection
+
+            connection = await db.get(EmailConnection, event.aggregate_id)
+            if connection is None or connection.org_id != event.org_id:
+                return
+            credentials = await load_fresh_credentials(db, connection)
+            provider = bind_email_provider(get_email_provider("gmail"), credentials)
+            result = await provider.watch(topic_name=get_settings().gmail_pubsub_topic)
+            connection.gmail_history_id = str(result.get("history_id") or result.get("historyId") or "") or connection.gmail_history_id
+            expiration = result.get("expiration") or result.get("expiration_at")
+            if expiration:
+                from datetime import datetime
+
+                connection.watch_expiration_at = datetime.fromisoformat(str(expiration).replace("Z", "+00:00")).replace(tzinfo=None)
+            connection.watch_resource_name = result.get("resource_name") or result.get("resourceName")
+            await repo.mark_processed(event_id=event.id, consumer_name="worker")
+            await db.commit()
+            return
+        raise RuntimeError(f"unsupported outbox event type: {event.event_type}")
+
+
 class WorkerSettings:
-    functions = [run_workflow, run_chat, run_provider_discovery]
+    functions = [run_workflow, run_chat, run_provider_discovery, run_ci_research, process_outbox_event]
     redis_settings = RedisSettings.from_dsn(get_settings().redis_url)
     on_startup = _startup
     on_shutdown = _shutdown
@@ -131,4 +275,8 @@ class WorkerSettings:
         cron(_fail_orphaned_chat_runs, minute=set(range(0, 60, 2)), run_at_startup=False),
         cron(_ci_scheduler_tick, minute=set(range(0, 60, 5)), run_at_startup=False),
         cron(_ci_retry_due_cases_tick, minute=set(range(0, 60, 1)), run_at_startup=False),
+        cron(_ci_dispatch_ingested_tick, minute=set(range(0, 60, 1)), run_at_startup=False),
+        cron(_outbox_dispatch_tick, second=set(range(0, 60, 1)), run_at_startup=False),
+        cron(_gmail_reconciliation_tick, minute=set(range(0, 60, 5)), run_at_startup=False),
+        cron(_gmail_watch_renewal_tick, hour=set(range(0, 24, 12)), minute=0, run_at_startup=False),
     ]

@@ -35,7 +35,96 @@ import type {
   WorkflowRunDetail,
   WorkspaceArtifact,
   UserProfile,
+  CustomerIntelligenceCase,
+  CustomerIntelligenceCaseDetail,
+  CustomerIntelligenceNotification,
+  EmailIntelligenceNavigationSummary,
 } from "@/types";
+
+import { emailIntelligenceQueryKeys } from "@/lib/email-intelligence/query-keys";
+import { createIdempotencyKey } from "@/lib/email-intelligence/idempotency";
+
+export function useCustomerIntelligenceCases() {
+  const orgId = getActiveOrgId();
+  return useQuery({
+    queryKey: emailIntelligenceQueryKeys(orgId).cases(),
+    queryFn: () => api.get<CustomerIntelligenceCase[]>("/api/customer-intelligence/cases"),
+  });
+}
+
+export function useCustomerIntelligenceCase(id: string | null) {
+  const orgId = getActiveOrgId();
+  return useQuery({
+    queryKey: emailIntelligenceQueryKeys(orgId).case(id),
+    queryFn: () => api.get<CustomerIntelligenceCaseDetail>(`/api/customer-intelligence/cases/${id}`),
+    enabled: Boolean(id),
+  });
+}
+
+export function useResearchCustomerIntelligenceCase() {
+  const qc = useQueryClient();
+  const orgId = getActiveOrgId();
+  return useMutation({
+    mutationFn: (id: string) => api.post(`/api/customer-intelligence/cases/${id}/research`, {}, { headers: { "Idempotency-Key": createIdempotencyKey() } }),
+    onSuccess: (_data, id) => {
+      void qc.invalidateQueries({ queryKey: emailIntelligenceQueryKeys(orgId).cases() });
+      void qc.invalidateQueries({ queryKey: emailIntelligenceQueryKeys(orgId).case(id) });
+    },
+  });
+}
+
+export function useRetryCustomerIntelligenceCase() {
+  const qc = useQueryClient();
+  const orgId = getActiveOrgId();
+  return useMutation({
+    mutationFn: (id: string) => api.post(`/api/customer-intelligence/cases/${id}/retry`, {}, { headers: { "Idempotency-Key": createIdempotencyKey() } }),
+    onSuccess: (_data, id) => {
+      void qc.invalidateQueries({ queryKey: emailIntelligenceQueryKeys(orgId).cases() });
+      void qc.invalidateQueries({ queryKey: emailIntelligenceQueryKeys(orgId).case(id) });
+    },
+  });
+}
+
+export function useCreateManualCustomerIntelligenceCase() {
+  const qc = useQueryClient();
+  const orgId = getActiveOrgId();
+  return useMutation({
+    mutationFn: (body: { company_name: string; company_domain?: string; question?: string }) =>
+      api.post<CustomerIntelligenceCase>("/api/customer-intelligence/cases/manual", body, { headers: { "Idempotency-Key": createIdempotencyKey() } }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: emailIntelligenceQueryKeys(orgId).cases() }),
+  });
+}
+
+export function useCustomerIntelligenceNotifications(unreadOnly = false) {
+  const orgId = getActiveOrgId();
+  return useQuery({
+    queryKey: emailIntelligenceQueryKeys(orgId).notifications({ unreadOnly }),
+    queryFn: () => api.get<CustomerIntelligenceNotification[]>(`/api/customer-intelligence/notifications?limit=100&unread_only=${unreadOnly}`),
+    refetchInterval: 30_000,
+  });
+}
+
+export function useMarkCustomerIntelligenceNotificationRead() {
+  const qc = useQueryClient();
+  const orgId = getActiveOrgId();
+  return useMutation({
+    mutationFn: (id: string) => api.post(`/api/customer-intelligence/notifications/${id}/read`, undefined, { headers: { "Idempotency-Key": createIdempotencyKey() } }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: emailIntelligenceQueryKeys(orgId).notifications() });
+      void qc.invalidateQueries({ queryKey: emailIntelligenceQueryKeys(orgId).navigation });
+    },
+  });
+}
+
+export function useEmailIntelligenceNavigationSummary() {
+  const orgId = getActiveOrgId();
+  return useQuery({
+    queryKey: emailIntelligenceQueryKeys(orgId).navigation,
+    queryFn: () => api.get<EmailIntelligenceNavigationSummary>("/api/customer-intelligence/navigation-summary"),
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
+  });
+}
 
 export function useProviderTemplates(enabled: boolean = true) {
   return useQuery({
@@ -558,8 +647,9 @@ export function useUpdateOrganizationQuota(orgId?: string) {
 }
 
 export function useApprovals(enabled: boolean = true) {
+  const orgId = getActiveOrgId();
   return useQuery({
-    queryKey: ["approvals"],
+    queryKey: emailIntelligenceQueryKeys(orgId).approvals(),
     queryFn: () => api.get<ApprovalRequest[]>("/api/approvals"),
     refetchInterval: enabled ? 60000 : false,
     refetchIntervalInBackground: false,
@@ -569,10 +659,14 @@ export function useApprovals(enabled: boolean = true) {
 
 export function useDecideApproval() {
   const qc = useQueryClient();
+  const orgId = getActiveOrgId();
   return useMutation({
-    mutationFn: ({ id, decision, reason = "" }: { id: string; decision: "approved" | "rejected"; reason?: string }) =>
-      api.post<ApprovalRequest>(`/api/approvals/${id}/decide`, { decision, reason }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["approvals"] }),
+    mutationFn: ({ id, decision, reason = "", idempotencyKey }: { id: string; decision: "approved" | "rejected"; reason?: string; idempotencyKey: string }) =>
+      api.post<ApprovalRequest>(`/api/approvals/${id}/decide`, { decision, reason }, { headers: { "Idempotency-Key": idempotencyKey } }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: emailIntelligenceQueryKeys(orgId).approvals() });
+      void qc.invalidateQueries({ queryKey: emailIntelligenceQueryKeys(orgId).navigation });
+    },
   });
 }
 

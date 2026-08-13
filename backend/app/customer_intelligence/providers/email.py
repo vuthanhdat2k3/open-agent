@@ -10,6 +10,7 @@ from app.customer_intelligence.mcp import call_customer_intelligence_mcp
 class EmailProvider(Protocol):
     provider_name: str
     async def list_new(self, cursor: str | None, max_results: int = 20) -> SyncPage: ...
+    async def list_history(self, start_history_id: str, page_token: str | None = None, max_results: int = 100) -> SyncPage: ...
     async def get_message(self, provider_message_id: str) -> NormalizedEmail: ...
     async def search(self, *, query: str, max_results: int = 20) -> list[NormalizedEmail]: ...
     async def modify(self, *, provider_message_id: str, add_label_ids: list[str] | None = None, remove_label_ids: list[str] | None = None) -> str: ...
@@ -21,6 +22,7 @@ class EmailProvider(Protocol):
     async def delivery_status(self, provider_send_id: str) -> str: ...
     async def refresh_access_token(self, credentials: dict[str, Any]) -> dict[str, Any] | None: ...
     async def revoke(self, credentials: dict[str, Any]) -> None: ...
+    async def watch(self, *, topic_name: str) -> dict[str, Any]: ...
 
 
 class McpEmailProvider:
@@ -62,6 +64,19 @@ class McpEmailProvider:
         data = await self._call("email_list_new", cursor=cursor or "", max_results=max_results)
         return SyncPage([self._email(item) for item in data.get("messages", [])], data.get("new_cursor"), bool(data.get("has_more")))
 
+    async def list_history(self, start_history_id: str, page_token: str | None = None, max_results: int = 100) -> SyncPage:
+        data = await self._call(
+            "email_history",
+            start_history_id=start_history_id,
+            page_token=page_token or "",
+            max_results=max_results,
+        )
+        return SyncPage(
+            [self._email(item) for item in data.get("messages", [])],
+            data.get("new_cursor"),
+            bool(data.get("has_more")),
+        )
+
     async def get_message(self, provider_message_id: str) -> NormalizedEmail:
         return self._email(await self._call("email_get", provider_message_id=provider_message_id))
 
@@ -100,6 +115,9 @@ class McpEmailProvider:
     async def revoke(self, credentials: dict[str, Any]) -> None:
         from app.customer_intelligence.oauth import revoke_provider_token
         await revoke_provider_token(self.provider_name, credentials)
+
+    async def watch(self, *, topic_name: str) -> dict[str, Any]:
+        return await self._call("email_watch", topic_name=topic_name)
 
 
 def get_email_provider(provider: str) -> EmailProvider:
