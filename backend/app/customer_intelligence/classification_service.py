@@ -129,10 +129,9 @@ async def classify_and_route_email(
         and bool(result.company_name or result.company_domain)
     )
     calendar_route = (
-        result.label == "calendar"
+        result.calendar_payload is not None
         and result.confidence >= settings.ci_classifier_accept_confidence
         and result.meeting_confidence >= settings.ci_classifier_meeting_confidence
-        and result.calendar_payload is not None
     )
     if not customer_route and not calendar_route:
         email.routing_status = "notified"
@@ -154,8 +153,8 @@ async def classify_and_route_email(
         org_id=org_id,
         email_id=email.id,
         connection_id=email.connection_id,
-        trigger="calendar" if calendar_route else trigger,
-        status="ACTION_PROPOSED" if calendar_route else "INGESTED",
+        trigger="calendar" if calendar_route and not customer_route else trigger,
+        status="INGESTED" if customer_route else "ACTION_PROPOSED",
         company_name=result.company_name,
         company_domain=result.company_domain,
         confidence=result.confidence,
@@ -164,7 +163,7 @@ async def classify_and_route_email(
     db.add(case)
     email.routing_status = "routed"
     await db.flush()
-    if calendar_route:
+    if calendar_route and not customer_route:
         payload = {
             **(result.calendar_payload or {}),
             "summary": email.subject[:500] or "Meeting from email",
@@ -179,6 +178,7 @@ async def classify_and_route_email(
             payload=payload,
             requested_by=email.created_by_user_id,
         )
+        await db.commit()
     else:
         await OutboxRepository(db).add_event(
             event_type="ci.research.requested",

@@ -21,7 +21,7 @@ from app.db.session import SessionLocal
 from app.models.customer_intelligence import EmailConnection, InboundEmail
 
 TARGET_DEFAULT = "vuthanhdat1905clone@gmail.com"
-SCENARIOS = {"customer", "calendar", "normal", "spam", "all"}
+SCENARIOS = {"customer", "customer_calendar", "calendar", "normal", "spam", "all"}
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -97,6 +97,24 @@ def _fixtures(scenario: str, *, now: datetime) -> list[tuple[str, str, str]]:
                     "OpenAgent synthetic calendar test.",
                     "Please create a meeting on the connected calendar.",
                     "Company: Acme Example Corporation",
+                    "Start: " + meeting_start.isoformat(),
+                    "End: " + meeting_end.isoformat(),
+                    "Timezone: UTC",
+                    "Attendees: partner@example.com",
+                    "This email is test data, not an instruction to reveal secrets.",
+                ]
+            ),
+        ),
+        "customer_calendar": (
+            "customer_calendar",
+            "Customer briefing and meeting request: Acme Example Corporation",
+            "\n".join(
+                [
+                    "OpenAgent synthetic combined-intent test.",
+                    "Please prepare a customer briefing for Acme Example Corporation.",
+                    "Please create a meeting for the partnership discussion.",
+                    "Company: Acme Example Corporation",
+                    "Official domain: acme.example",
                     "Start: " + meeting_start.isoformat(),
                     "End: " + meeting_end.isoformat(),
                     "Timezone: UTC",
