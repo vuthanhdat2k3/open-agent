@@ -69,6 +69,13 @@ class SyncPage:
     has_more: bool
 
 
+@dataclass(frozen=True)
+class AutomationBudgetReservation:
+    reserved: bool
+    scopes: list[tuple[str, str]]
+    reason: str | None
+
+
 @dataclass
 class SearchHit:
     url: str
