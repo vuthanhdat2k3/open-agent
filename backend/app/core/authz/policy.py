@@ -46,6 +46,7 @@ PERMISSIONS: dict[Role, set[str]] = {
         "quota:usage",
         "models:read",
         "ci:read",
+        "ci:personal:manage",
     },
 }
 

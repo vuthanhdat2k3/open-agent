@@ -11,7 +11,7 @@ import { allNavItems, isActive } from "./navigation";
 
 export function AppShell({ children, queryClient }: { children: React.ReactNode; queryClient: QueryClient }) {
   const pathname = usePathname();
-  const title = allNavItems.find((item) => isActive(pathname, item.href))?.label ?? "OpenAgent";
+  const title = [...allNavItems].sort((a, b) => b.href.length - a.href.length).find((item) => isActive(pathname, item.href))?.label ?? "OpenAgent";
   // The chat page is a full-bleed, edge-to-edge surface (moon-chat aesthetic)
   // instead of the standard centered max-w-7xl content column other pages use.
   const fullBleed = pathname === "/chat";

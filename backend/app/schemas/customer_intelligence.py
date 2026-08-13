@@ -82,6 +82,14 @@ class CaseSummary(BaseModel):
     finished_at: datetime | None = None
 
 
+class ManualResearchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    company_name: str = Field(min_length=2, max_length=320)
+    company_domain: str | None = Field(default=None, max_length=255)
+    question: str | None = Field(default=None, max_length=4000)
+
+
 class SourceResponse(BaseModel):
     id: str
     url: str

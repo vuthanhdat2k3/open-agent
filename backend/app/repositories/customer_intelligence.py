@@ -1,8 +1,8 @@
 ﻿from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import utc_now
@@ -42,6 +42,17 @@ class EmailConnectionRepository(BaseRepository[EmailConnection]):
             select(EmailConnection).where(
                 EmailConnection.org_id == org_id,
                 EmailConnection.account_email == account_email,
+            )
+        )
+        return res.scalar_one_or_none()
+
+
+    async def get_gmail_by_account(self, account_email: str) -> EmailConnection | None:
+        res = await self.db.execute(
+            select(EmailConnection).where(
+                EmailConnection.provider == "gmail",
+                EmailConnection.account_email == account_email.lower(),
+                EmailConnection.status == "connected",
             )
         )
         return res.scalar_one_or_none()
@@ -122,18 +133,22 @@ class ResearchCaseRepository(BaseRepository[ResearchCase]):
     def __init__(self, db: AsyncSession):
         super().__init__(ResearchCase, db)
 
-    async def get_by_email(self, org_id: str, email_id: str) -> ResearchCase | None:
+    async def get_by_email(self, org_id: str, email_id: str, created_by_user_id: str | None = None) -> ResearchCase | None:
+        filters = [ResearchCase.org_id == org_id, ResearchCase.email_id == email_id]
+        if created_by_user_id is not None:
+            filters.append(ResearchCase.created_by_user_id == created_by_user_id)
         res = await self.db.execute(
-            select(ResearchCase).where(
-                ResearchCase.org_id == org_id, ResearchCase.email_id == email_id
-            )
+            select(ResearchCase).where(*filters)
         )
         return res.scalar_one_or_none()
 
     async def list_by_status(
-        self, org_id: str, status: str | None = None, limit: int = 100, offset: int = 0
+        self, org_id: str, status: str | None = None, limit: int = 100, offset: int = 0,
+        created_by_user_id: str | None = None,
     ) -> list[ResearchCase]:
         stmt = select(ResearchCase).where(ResearchCase.org_id == org_id)
+        if created_by_user_id is not None:
+            stmt = stmt.where(ResearchCase.created_by_user_id == created_by_user_id)
         if status:
             stmt = stmt.where(ResearchCase.status == status)
         stmt = stmt.order_by(ResearchCase.created_at.desc()).limit(limit).offset(offset)
@@ -148,6 +163,55 @@ class ResearchCaseRepository(BaseRepository[ResearchCase]):
         await self.db.commit()
         await self.db.refresh(case)
         return case
+
+    async def claim_for_research(self, org_id: str, case_id: str) -> ResearchCase | None:
+        """Atomically claim an INGESTED or due RETRYING case."""
+        now = utc_now()
+        stale_before = now - timedelta(minutes=30)
+        result = await self.db.execute(
+            update(ResearchCase)
+            .where(
+                ResearchCase.org_id == org_id,
+                ResearchCase.id == case_id,
+                or_(
+                    ResearchCase.status == "INGESTED",
+                    and_(
+                        ResearchCase.status == "RETRYING",
+                        ResearchCase.next_retry_at.is_not(None),
+                        ResearchCase.next_retry_at <= now,
+                    ),
+                    and_(
+                        ResearchCase.status == "RESEARCHING",
+                        ResearchCase.started_at.is_not(None),
+                        ResearchCase.started_at <= stale_before,
+                    ),
+                ),
+            )
+            .values(status="RESEARCHING", started_at=now, error=None)
+        )
+        if result.rowcount != 1:
+            return None
+        await self.db.commit()
+        return await self.get(org_id, case_id)
+
+    async def list_dispatchable(self, *, limit: int = 100) -> list[ResearchCase]:
+        stale_before = utc_now() - timedelta(minutes=30)
+        result = await self.db.execute(
+            select(ResearchCase)
+            .where(
+                or_(
+                    ResearchCase.status == "INGESTED",
+                    and_(
+                        ResearchCase.status == "RESEARCHING",
+                        ResearchCase.started_at.is_not(None),
+                        ResearchCase.started_at <= stale_before,
+                    ),
+                )
+            )
+            .order_by(ResearchCase.created_at)
+            .limit(limit)
+        )
+        return list(result.scalars().all())
 
     async def schedule_retry(
         self,

@@ -12,10 +12,15 @@ def _redis_settings() -> RedisSettings:
     return RedisSettings.from_dsn(get_settings().redis_url)
 
 
-async def _enqueue(function: str, *args: Any) -> str:
+async def _enqueue(
+    function: str,
+    *args: Any,
+    job_id: str | None = None,
+    queue_name: str | None = None,
+) -> str:
     pool = await create_pool(_redis_settings())
     try:
-        job = await pool.enqueue_job(function, *args)
+        job = await pool.enqueue_job(function, *args, _job_id=job_id, _queue_name=queue_name)
         return job.job_id if job else ""
     finally:
         await pool.close()
@@ -31,3 +36,13 @@ async def enqueue_chat_run(payload: dict[str, Any]) -> str:
 
 async def enqueue_provider_discovery(provider_id: str, discovery_generation: int) -> str:
     return await _enqueue("run_provider_discovery", provider_id, discovery_generation)
+
+
+async def enqueue_ci_research(org_id: str, case_id: str) -> str:
+    return await _enqueue("run_ci_research", org_id, case_id)
+
+
+async def enqueue_outbox_event(event_id: str, *, queue_name: str = "arq:queue") -> str:
+    return await _enqueue(
+        "process_outbox_event", event_id, job_id=event_id, queue_name=queue_name
+    )

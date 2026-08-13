@@ -154,6 +154,9 @@ class CustomerIntelligenceService:
         from app.customer_intelligence.workflow import ResearchError, run_research
         from app.repositories.customer_intelligence import ResearchCaseRepository
 
+        repository = ResearchCaseRepository(self.db)
+        if await repository.claim_for_research(org_id, case_id) is None:
+            return {"case_id": case_id, "skipped": True}
         try:
             return await run_research(
                 self.db,
@@ -162,6 +165,10 @@ class CustomerIntelligenceService:
                 actor_user_id=actor_user_id,
             )
         except ResearchError:
+            case = await repository.get(org_id, case_id)
+            if case is not None and case.status == "RESEARCHING":
+                case.error = "research rejected: invalid or incomplete case data"
+                await repository.transition(case, "DEAD_LETTER")
             raise
         except Exception as exc:
             # This is intentionally broad: a network blip, a provider 5xx, or
@@ -176,7 +183,6 @@ class CustomerIntelligenceService:
                 error=str(exc),
                 exc_info=True,
             )
-            repository = ResearchCaseRepository(self.db)
             case = await repository.get(org_id, case_id)
             if case is not None and case.status == "RESEARCHING":
                 next_count = case.retry_count + 1

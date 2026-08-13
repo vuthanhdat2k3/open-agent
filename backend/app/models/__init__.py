@@ -8,10 +8,15 @@ from app.models.chat_run_event import ChatRunEvent
 from app.models.customer_intelligence import (
     BriefingReport,
     CalendarConnection,
+    CiAutomationBudget,
+    CiNotification,
+    CiPublicEmailDomain,
     CiSchedule,
+    CiTrustedRule,
     DeliveryAttempt,
     DriveConnection,
     EmailConnection,
+    GmailNotification,
     InboundEmail,
     Meeting,
     ResearchCase,
@@ -34,6 +39,7 @@ from app.models.model import Model
 from app.models.oauth_account import OAuthAccount
 from app.models.organization import Organization
 from app.models.organization_quota import OrganizationQuota
+from app.models.outbox import OutboxEvent, ProcessedEvent
 from app.models.provider import Provider
 from app.models.refresh_token import RefreshToken
 from app.models.role import Role
@@ -59,9 +65,14 @@ __all__ = [
     "CalendarConnection",
     "ChatRunEvent",
     "CiSchedule",
+    "CiNotification",
+    "CiTrustedRule",
+    "CiPublicEmailDomain",
+    "CiAutomationBudget",
     "DeliveryAttempt",
     "DriveConnection",
     "EmailConnection",
+    "GmailNotification",
     "EvaluationCase",
     "EvaluationResult",
     "EvaluationRun",
@@ -78,6 +89,8 @@ __all__ = [
     "OAuthAccount",
     "Organization",
     "OrganizationQuota",
+    "OutboxEvent",
+    "ProcessedEvent",
     "Provider",
     "RefreshToken",
     "ResearchCase",

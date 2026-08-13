@@ -26,6 +26,9 @@ export const navGroups: NavGroup[] = [
     { href: "/workspace", label: "Workspace", icon: FolderKanban },
     { href: "/mcp", label: "MCP Servers", icon: Plug, adminOnly: true },
     { href: "/integrations", label: "Integrations", icon: CalendarDays },
+    { href: "/email-intelligence", label: "Smart Inbox", icon: Activity },
+    { href: "/email-intelligence/rules", label: "Automation Rules", icon: ShieldCheck },
+    { href: "/customer-intelligence", label: "Research Cases", icon: Activity },
     { href: "/models", label: "Models", icon: Cpu, adminOnly: true },
     { href: "/providers", label: "Providers", icon: Server, adminOnly: true },
     { href: "/files", label: "Files", icon: FileUp },
@@ -36,6 +39,7 @@ export const navGroups: NavGroup[] = [
     { href: "/settings/quotas", label: "Quotas", icon: Gauge },
     { href: "/settings/members", label: "Members", icon: Users, adminOnly: true },
     { href: "/debug", label: "Debug", icon: Bug, adminOnly: true },
+    { href: "/admin/email-intelligence", label: "Email Operations", icon: Gauge, adminOnly: true },
   ] },
 ];
 
@@ -65,6 +69,8 @@ const tabQueries: Record<string, PrefetchSpec[]> = {
     { queryKey: ["sandbox-executions"], queryFn: () => api.get<SandboxExecution[]>("/api/workspace/executions") },
   ],
   "/chat": [{ queryKey: ["sessions"], queryFn: () => api.get<Session[]>("/api/sessions") }],
+  "/customer-intelligence": [{ queryKey: ["customer-intelligence", "cases"], queryFn: () => api.get("/api/customer-intelligence/cases") }],
+  "/email-intelligence": [{ queryKey: ["email-intelligence", "notifications"], queryFn: () => api.get("/api/customer-intelligence/notifications?limit=100") }],
   "/debug": [
     { queryKey: ["debug-sessions"], queryFn: () => api.get<Session[]>("/api/debug/sessions") },
     { queryKey: ["usage"], queryFn: () => api.get<UsageSummary[]>("/api/debug/usage") },
