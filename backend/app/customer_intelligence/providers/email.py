@@ -1,6 +1,6 @@
 ﻿from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Protocol
 
 from app.customer_intelligence.contracts import EmailAttachmentMeta, NormalizedEmail, SyncPage
@@ -44,6 +44,8 @@ class McpEmailProvider:
         received = data.get("received_at")
         if isinstance(received, str):
             received = datetime.fromisoformat(received.replace("Z", "+00:00"))
+        if received is not None and received.tzinfo is not None:
+            received = received.astimezone(timezone.utc).replace(tzinfo=None)
         return NormalizedEmail(
             provider=data.get("provider", ""),
             provider_message_id=data.get("provider_message_id", ""),

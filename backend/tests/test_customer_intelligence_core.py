@@ -5,6 +5,7 @@ import pytest
 from app.core.tools.registry import BUILTIN_TOOLS
 from app.customer_intelligence.contracts import CompanyRecord, NormalizedEmail
 from app.customer_intelligence.matching import match_companies
+from app.customer_intelligence.providers.email import McpEmailProvider
 from app.customer_intelligence.security import decrypt_bytes, encrypt_bytes
 
 
@@ -53,6 +54,40 @@ def test_credential_encryption_uses_a_fresh_nonce() -> None:
     assert first != second
     assert decrypt_bytes(first) == b"same credentials"
     assert decrypt_bytes(second) == b"same credentials"
+
+
+def test_gmail_provider_normalizes_received_at_to_naive_utc() -> None:
+    email = McpEmailProvider._email(
+        {
+            "provider": "gmail",
+            "provider_message_id": "message-1",
+            "sender_email": "sender@example.com",
+            "sender_domain": "example.com",
+            "subject": "Test",
+            "body_text": "Body",
+            "received_at": "2026-08-13T07:47:45+07:00",
+        }
+    )
+
+    assert email.received_at == datetime(2026, 8, 13, 0, 47, 45)
+    assert email.received_at.tzinfo is None
+
+
+def test_gmail_provider_keeps_naive_received_at_as_utc() -> None:
+    email = McpEmailProvider._email(
+        {
+            "provider": "gmail",
+            "provider_message_id": "message-2",
+            "sender_email": "sender@example.com",
+            "sender_domain": "example.com",
+            "subject": "Test",
+            "body_text": "Body",
+            "received_at": datetime(2026, 8, 13, 0, 47, 45, tzinfo=None),
+        }
+    )
+
+    assert email.received_at == datetime(2026, 8, 13, 0, 47, 45)
+    assert email.received_at.tzinfo is None
 
 
 def test_google_tool_contracts_explain_provider_specific_arguments() -> None:
