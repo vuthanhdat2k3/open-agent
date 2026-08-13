@@ -252,7 +252,10 @@ async def process_outbox_event(ctx: dict, event_id: str) -> None:
             credentials = await load_fresh_credentials(db, connection)
             provider = bind_email_provider(get_email_provider("gmail"), credentials)
             result = await provider.watch(topic_name=get_settings().gmail_pubsub_topic)
-            connection.gmail_history_id = str(result.get("history_id") or result.get("historyId") or "") or connection.gmail_history_id
+            # The watch response is not a processing checkpoint. Advancing
+            # gmail_history_id here could skip deltas that are still queued.
+            # The ingest worker advances it only after history/bootstrap data
+            # has been durably processed.
             expiration = result.get("expiration") or result.get("expiration_at")
             if expiration:
                 from datetime import datetime

@@ -67,6 +67,9 @@ class SyncPage:
     messages: list[NormalizedEmail]
     new_cursor: str | None
     has_more: bool
+    # Gmail's durable history checkpoint. ``new_cursor`` is only a transient
+    # page token and must never be persisted as the connection checkpoint.
+    history_id: str | None = None
 
 
 @dataclass(frozen=True)

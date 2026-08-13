@@ -18,6 +18,7 @@ from app.core.observability.metrics import (
 from app.core.workflow.queue import enqueue_ci_research
 from app.customer_intelligence.classifier import classify_email
 from app.customer_intelligence.contracts import NormalizedEmail
+from app.customer_intelligence.mcp import CustomerIntelligenceMcpError
 from app.customer_intelligence.oauth import load_fresh_credentials
 from app.customer_intelligence.providers.email import bind_email_provider, get_email_provider
 from app.customer_intelligence.security import scan_for_prompt_injection
@@ -134,26 +135,51 @@ async def _sync_connection_impl(
     credentials = await load_fresh_credentials(db, conn)
     provider = bind_email_provider(get_email_provider(conn.provider), credentials)
 
-    cursor = (conn.sync_cursor or {}).get("cursor")
+    # ``gmail_history_id`` is the only durable sync checkpoint. A Gmail
+    # messages.list nextPageToken is scoped to one bounded list operation and
+    # must never be resumed by a later reconciliation tick.
+    bootstrap_state = conn.sync_cursor if isinstance(conn.sync_cursor, dict) else {}
+    start_history_id = conn.gmail_history_id
+    history_sync = bool(start_history_id)
+    bootstrap_checkpoint: str | None = None
+    if not history_sync:
+        bootstrap_checkpoint = str(bootstrap_state.get("history_id") or "").strip() or await provider.get_history_checkpoint()
     synced = 0
     deduplicated = 0
     new_cases = 0
     new_case_ids: list[str] = []
     warnings: list[str] = []
-    last_cursor = cursor
+    last_cursor: str | None = str(bootstrap_state.get("page_token") or "").strip() or None
+    latest_history_id = start_history_id or bootstrap_checkpoint
     pages = 0
 
     while True:
-        if history_id:
-            page = await provider.list_history(
-                start_history_id=history_id,
-                page_token=last_cursor,
-                max_results=min(max_messages, 100),
-            )
-        else:
-            page = await provider.list_new(cursor=last_cursor, max_results=max_messages)
+        try:
+            if history_sync:
+                page = await provider.list_history(
+                    start_history_id=start_history_id or "",
+                    page_token=last_cursor,
+                    max_results=min(max_messages, 100),
+                )
+            else:
+                page = await provider.list_new(cursor=last_cursor, max_results=max_messages)
+        except CustomerIntelligenceMcpError as exc:
+            # Gmail history is retained for a limited period. Recovery is a
+            # bounded bootstrap from a fresh checkpoint, never an unbounded
+            # inbox scan and never a retry loop on the expired cursor.
+            if history_sync and "history_expired" in str(exc):
+                history_sync = False
+                start_history_id = None
+                bootstrap_checkpoint = await provider.get_history_checkpoint()
+                latest_history_id = bootstrap_checkpoint
+                last_cursor = None
+                pages = 0
+                warnings.append("Gmail history checkpoint expired; performed bounded recovery sync")
+                continue
+            raise
         pages += 1
         last_cursor = page.new_cursor
+        latest_history_id = page.history_id or latest_history_id
         for email in page.messages:
             email.injection_flags = scan_for_prompt_injection(email.body_text or "")
             classification = classify_email(email)
@@ -248,7 +274,12 @@ async def _sync_connection_impl(
                 await db.commit()
             new_cases += 1
             new_case_ids.append(case.id)
-        if not page.has_more or pages >= 20:
+        # Bootstrap is intentionally bounded. History pagination is also
+        # bounded per invocation so a mailbox burst cannot monopolize a
+        # worker; the next notification/reconciliation resumes from the
+        # durable checkpoint.
+        page_limit = 5 if not history_sync else 20
+        if not page.has_more or pages >= page_limit:
             break
         if last_cursor is None:
             break
@@ -256,7 +287,15 @@ async def _sync_connection_impl(
     await conn_repo.update(
         conn,
         {
-            "sync_cursor": {"cursor": last_cursor} if last_cursor else None,
+            # A page token is allowed only while a bounded bootstrap is still
+            # draining. It is never used for incremental reconciliation after
+            # gmail_history_id has been established.
+            "sync_cursor": (
+                {"mode": "bootstrap", "history_id": bootstrap_checkpoint, "page_token": last_cursor}
+                if not history_sync and page.has_more and last_cursor
+                else None
+            ),
+            "gmail_history_id": latest_history_id if history_sync or not page.has_more else None,
             "last_sync_at": utc_now(),
         },
     )
@@ -300,5 +339,7 @@ async def _sync_connection_impl(
         "deduplicated": deduplicated,
         "new_cases": new_cases,
         "cursor": last_cursor,
+        "history_id": latest_history_id,
+        "mode": "history" if history_sync else "bootstrap",
         "warnings": warnings,
     }

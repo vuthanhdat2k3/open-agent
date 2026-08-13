@@ -237,8 +237,27 @@ async def email_history(
                 "has_more": bool(data.get("nextPageToken")),
             }
         )
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 404:
+            return _error("history_expired: Gmail history checkpoint is no longer available", status="history_expired")
+        return _error(f"email history failed: HTTP {exc.response.status_code}")
     except Exception as exc:  # noqa: BLE001
         return _error(f"email history failed: {type(exc).__name__}")
+
+
+@mcp.tool()
+async def email_history_checkpoint(provider: str, access_token: str) -> str:
+    """Return the current Gmail historyId used to seed a bounded bootstrap."""
+    try:
+        if provider != "gmail":
+            return _error(f"unsupported email provider: {provider}; only gmail is enabled")
+        data = await _request("GET", f"{GMAIL_API}/profile", access_token)
+        history_id = str(data.get("historyId") or "").strip()
+        if not history_id:
+            return _error("gmail profile did not return historyId")
+        return _ok({"history_id": history_id})
+    except Exception as exc:  # noqa: BLE001
+        return _error(f"email history checkpoint failed: {type(exc).__name__}")
 
 
 @mcp.tool()
