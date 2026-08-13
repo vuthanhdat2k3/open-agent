@@ -43,6 +43,21 @@ from app.services.customer_intelligence_service import CustomerIntelligenceServi
 
 router = APIRouter(prefix="/api/customer-intelligence", tags=["customer-intelligence"])
 oauth_router = APIRouter(prefix="/api/customer-intelligence", tags=["customer-intelligence-oauth"])
+webhook_router = APIRouter(prefix="/api/webhooks/google", tags=["webhooks"])
+
+
+@webhook_router.post("/gmail", status_code=204)
+async def gmail_push_webhook(request: Request, db: AsyncSession = Depends(get_db)):
+    """Persist-only Gmail Pub/Sub hot path; workers perform all provider I/O."""
+    if request.headers.get("content-length") and int(request.headers["content-length"]) > 1_000_000:
+        raise HTTPException(413, "webhook payload too large")
+    try:
+        payload = await request.json()
+    except ValueError as exc:
+        raise HTTPException(400, "invalid webhook JSON") from exc
+    from app.customer_intelligence.gmail_webhook import ingest_push
+
+    await ingest_push(db, request, payload)
 
 
 def _guard_enabled() -> None:

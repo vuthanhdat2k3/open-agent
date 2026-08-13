@@ -47,6 +47,17 @@ class EmailConnectionRepository(BaseRepository[EmailConnection]):
         return res.scalar_one_or_none()
 
 
+    async def get_gmail_by_account(self, account_email: str) -> EmailConnection | None:
+        res = await self.db.execute(
+            select(EmailConnection).where(
+                EmailConnection.provider == "gmail",
+                EmailConnection.account_email == account_email.lower(),
+                EmailConnection.status == "connected",
+            )
+        )
+        return res.scalar_one_or_none()
+
+
 class CalendarConnectionRepository(BaseRepository[CalendarConnection]):
     def __init__(self, db: AsyncSession):
         super().__init__(CalendarConnection, db)

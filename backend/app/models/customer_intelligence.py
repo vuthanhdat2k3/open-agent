@@ -32,6 +32,9 @@ class EmailConnection(Base):
     status: Mapped[str] = mapped_column(String(24), default="disconnected")  # connected|disconnected|error
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     sync_cursor: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    gmail_history_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    watch_expiration_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    watch_resource_name: Mapped[str | None] = mapped_column(String(512), nullable=True)
     last_sync_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_by_user_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
@@ -272,3 +275,22 @@ class CiSchedule(Base):
         String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+
+class GmailNotification(Base):
+    __tablename__ = "ci_gmail_notifications"
+    __table_args__ = (
+        UniqueConstraint("connection_id", "history_id", name="uq_ci_gmail_notification_history"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=gen_id)
+    org_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    connection_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("ci_connections.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    history_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    provider_notification_id: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    received_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
+    status: Mapped[str] = mapped_column(String(24), default="received", nullable=False)
