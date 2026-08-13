@@ -6,7 +6,7 @@ import json
 import time
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -1071,6 +1071,34 @@ async def get_case(
             else None
         ),
     )
+
+
+@router.delete(
+    "/cases/{case_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_any_permission("ci:manage", "ci:personal:manage"))],
+)
+async def delete_case(
+    case_id: str,
+    org_id: str = Depends(get_current_org_id),
+    current_user: User = Depends(get_current_user),
+    request: Request = None,
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """Remove a case and its derived research artifacts, keeping the source email."""
+    _guard_enabled()
+    case = await _case_for_request(
+        db,
+        org_id=org_id,
+        case_id=case_id,
+        request=request,
+        current_user=current_user,
+    )
+    if case.status in {"ACTION_PROPOSED", "AWAITING_APPROVAL", "APPROVED", "EXECUTING"}:
+        raise HTTPException(409, "active case cannot be deleted")
+    await db.delete(case)
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 class _ResearchRequest(BaseModel):
