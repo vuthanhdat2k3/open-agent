@@ -8,6 +8,7 @@ from app.api.v1.routes import (
     chat,
     customer_intelligence,
     email_intelligence_admin,
+    trusted_rules,
     debug,
     evaluations,
     files,
@@ -34,6 +35,7 @@ protected_router.include_router(agents.router)
 protected_router.include_router(approvals.router)
 protected_router.include_router(customer_intelligence.router)
 protected_router.include_router(email_intelligence_admin.router)
+protected_router.include_router(trusted_rules.router)
 protected_router.include_router(mcp.router)
 protected_router.include_router(workflows.router)
 protected_router.include_router(chat.router)
