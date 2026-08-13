@@ -3,12 +3,12 @@
 import * as React from "react";
 import { useDeferredValue, useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
-import { Activity, ExternalLink, RefreshCw, Search } from "lucide-react";
+import { Activity, ExternalLink, RefreshCw, Search, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/page-header";
-import { useCreateManualCustomerIntelligenceCase, useCustomerIntelligenceCase, useCustomerIntelligenceCases, useResearchCustomerIntelligenceCase, useRetryCustomerIntelligenceCase } from "@/hooks";
+import { useCreateManualCustomerIntelligenceCase, useCustomerIntelligenceCase, useCustomerIntelligenceCases, useDeleteCustomerIntelligenceCase, useResearchCustomerIntelligenceCase, useRetryCustomerIntelligenceCase } from "@/hooks";
 import { Input } from "@/components/ui/input";
 
 function statusVariant(status: string) {
@@ -34,6 +34,7 @@ export default function CustomerIntelligencePage() {
   const detail = useCustomerIntelligenceCase(selected);
   const research = useResearchCustomerIntelligenceCase();
   const retry = useRetryCustomerIntelligenceCase();
+  const remove = useDeleteCustomerIntelligenceCase();
   const manual = useCreateManualCustomerIntelligenceCase();
   const [companyName, setCompanyName] = useState("");
   const [companyDomain, setCompanyDomain] = useState("");
@@ -51,6 +52,12 @@ export default function CustomerIntelligencePage() {
     setCompanyName("");
     setCompanyDomain("");
     setQuestion("");
+  }
+
+  async function deleteSelectedCase() {
+    if (!selected || !window.confirm("Delete this research case? The source email will be kept.")) return;
+    await remove.mutateAsync(selected);
+    setSelected(null);
   }
 
   return (
@@ -83,7 +90,7 @@ export default function CustomerIntelligencePage() {
           <CardContent className="space-y-5">
             {!selected && <div className="flex min-h-48 items-center justify-center text-sm text-muted-foreground"><Search className="mr-2 h-4 w-4" />Select a case</div>}
               {detail.data && <>
-              <div className="flex flex-wrap items-center gap-2"><Badge variant={statusVariant(detail.data.status)}>{detail.data.status}</Badge>{detail.data.error && <span className="text-sm text-destructive">{detail.data.error}</span>}<div className="ml-auto flex gap-2">{["INGESTED", "RESEARCHING"].includes(detail.data.status) && <Button size="sm" onClick={() => research.mutate(detail.data!.id)} disabled={research.isPending}><Search className="mr-1 h-3.5 w-3.5" />Research</Button>}{["RETRYING", "DEAD_LETTER", "NEEDS_REVIEW"].includes(detail.data.status) && <Button size="sm" variant="outline" onClick={() => retry.mutate(detail.data!.id)} disabled={retry.isPending}><RefreshCw className="mr-1 h-3.5 w-3.5" />Retry</Button>}</div></div>
+              <div className="flex flex-wrap items-center gap-2"><Badge variant={statusVariant(detail.data.status)}>{detail.data.status}</Badge>{detail.data.error && <span className="text-sm text-destructive">{detail.data.error}</span>}<div className="ml-auto flex gap-2">{["INGESTED", "RESEARCHING"].includes(detail.data.status) && <Button size="sm" onClick={() => research.mutate(detail.data!.id)} disabled={research.isPending}><Search className="mr-1 h-3.5 w-3.5" />Research</Button>}{["RETRYING", "DEAD_LETTER", "NEEDS_REVIEW"].includes(detail.data.status) && <Button size="sm" variant="outline" onClick={() => retry.mutate(detail.data!.id)} disabled={retry.isPending}><RefreshCw className="mr-1 h-3.5 w-3.5" />Retry</Button>}{!["ACTION_PROPOSED", "AWAITING_APPROVAL", "APPROVED", "EXECUTING"].includes(detail.data.status) && <Button size="sm" variant="outline" onClick={() => void deleteSelectedCase()} disabled={remove.isPending}><Trash2 className="mr-1 h-3.5 w-3.5" />Delete</Button>}</div></div>
               {detail.data.report ? <article className="prose prose-sm max-w-none dark:prose-invert"><ReactMarkdown>{detail.data.report.canonical_markdown}</ReactMarkdown></article> : <p className="text-sm text-muted-foreground">No briefing report yet.</p>}
               {detail.data.sources.length > 0 && <div><h3 className="mb-2 font-semibold">Sources ({detail.data.sources.length})</h3><div className="space-y-2">{detail.data.sources.map((source) => <a key={source.id} href={source.url} target="_blank" rel="noreferrer" className="block rounded-lg border border-border/60 p-3 hover:bg-muted/40"><div className="flex items-center gap-2 text-sm font-medium"><span className="truncate">{source.title}</span><ExternalLink className="h-3.5 w-3.5 shrink-0" /></div><p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{source.excerpt}</p></a>)}</div></div>}
             </>}
