@@ -50,6 +50,32 @@ class ResearchError(Exception):
     pass
 
 
+def _unverified_company_candidate(case: ResearchCase) -> CompanyRecord | None:
+    """Build a research-only company candidate from the classifier output.
+
+    Company matching remains authoritative for identity and calendar matching,
+    but it must not prevent web research when the classifier extracted a
+    plausible company name/domain and the optional company provider is empty or
+    unavailable. The ``unverified-`` source is rendered as a warning so this
+    candidate can never be mistaken for an authoritative company record.
+    """
+    name = (case.company_name or "").strip()
+    domain = (case.company_domain or "").strip().lower() or None
+    if not name and not domain:
+        return None
+    return CompanyRecord(
+        company_id=f"unverified-{case.id}",
+        canonical_name=name or domain or "Unverified company",
+        aliases=[],
+        industry=None,
+        products=[],
+        contacts=[],
+        source="agent-classifier-unverified",
+        updated_at=None,
+        domain=domain,
+    )
+
+
 async def _research_branch(
     case: ResearchCase,
     company: CompanyRecord,
@@ -82,7 +108,9 @@ async def _research_branch(
     async def _news_branch() -> list[SearchHit]:
         try:
             return await asyncio.wait_for(
-                web.news_search(company.canonical_name, limit=5, lookback_days=settings.ci_news_window_days),
+                web.news_search(
+                    company.canonical_name, limit=5, lookback_days=settings.ci_news_window_days
+                ),
                 timeout=settings.ci_research_timeout_s,
             )
         except TimeoutError:
@@ -178,25 +206,30 @@ async def run_research(
             companies = []
             warnings.append("company lookup failed")
         if not companies and "company lookup failed" not in warnings:
-            warnings.append("no company matched for this email")
+            warnings.append("no authoritative company match for this email")
 
-        # A research case without an identified company is not a briefing.
-        # Keep it visible for review, but never publish an empty report that
-        # turns newsletters or unmatched senders into fake customer research.
+        # The classifier is allowed to provide a research candidate, but never
+        # an authoritative identity. This keeps customer research useful when
+        # the optional company database is unavailable without silently
+        # promoting unverified data into the canonical company record.
         if not companies:
-            case.error = "No company matched; manual review required"
-            case.finished_at = utc_now()
-            await case_repo.transition(case, "NEEDS_REVIEW")
-            await log_action(
-                db,
-                org_id=org_id,
-                actor_user_id=actor_user_id,
-                action="ci.case.needs_review",
-                resource_type="ci_case",
-                resource_id=case_id,
-                metadata={"reason": "company_not_matched", "warnings": warnings},
-            )
-            return {"case_id": case_id, "status": "NEEDS_REVIEW", "warnings": warnings}
+            fallback = _unverified_company_candidate(case)
+            if fallback is None:
+                case.error = "No company identity could be extracted; manual review required"
+                case.finished_at = utc_now()
+                await case_repo.transition(case, "NEEDS_REVIEW")
+                await log_action(
+                    db,
+                    org_id=org_id,
+                    actor_user_id=actor_user_id,
+                    action="ci.case.needs_review",
+                    resource_type="ci_case",
+                    resource_id=case_id,
+                    metadata={"reason": "company_not_matched", "warnings": warnings},
+                )
+                return {"case_id": case_id, "status": "NEEDS_REVIEW", "warnings": warnings}
+            companies = [fallback]
+            warnings.append("company identity is unverified; web research only")
 
         calendar_conn: CalendarConnection | None = await calendar_repo.get_connected(
             org_id, user_id=case.created_by_user_id
@@ -296,11 +329,7 @@ async def run_research(
             for s in sources
             if s.source_type == "news"
         ],
-        "contact_information": [
-            contact
-            for c in companies
-            for contact in c.contacts
-        ],
+        "contact_information": [contact for c in companies for contact in c.contacts],
         "upcoming_meetings": [
             {
                 "provider_event_id": m.event.provider_event_id,
@@ -395,9 +424,13 @@ def _executive_summary(
         return "No company could be matched to this email; research produced no company-level briefing."
     names = ", ".join(c.canonical_name for c in companies[:3])
     meeting_note = (
-        f" {len(meetings)} upcoming meeting(s) matched." if meetings else " No upcoming meetings matched."
+        f" {len(meetings)} upcoming meeting(s) matched."
+        if meetings
+        else " No upcoming meetings matched."
     )
-    warning_note = f" {len(warnings)} research warning(s); see sources/open questions." if warnings else ""
+    warning_note = (
+        f" {len(warnings)} research warning(s); see sources/open questions." if warnings else ""
+    )
     return (
         f"This briefing covers {names} based on the email "
         f"'{email.subject or '(no subject)'}' from {email.sender_email}."
