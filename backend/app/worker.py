@@ -156,6 +156,38 @@ async def _outbox_dispatch_tick(ctx: dict) -> None:
         )
 
 
+async def _gmail_reconciliation_tick(ctx: dict) -> None:
+    from app.core.scheduling.job_keys import JobKey
+    from app.core.scheduling.tick import run_leased_tick
+    from app.customer_intelligence.scheduler import enqueue_gmail_maintenance_events
+
+    async with SessionLocal() as db:
+        await run_leased_tick(
+            db,
+            job_key=JobKey.CI_GMAIL_RECONCILIATION,
+            interval_seconds=300,
+            lease_seconds=240,
+            worker_id=_worker_identity(),
+            run=lambda: enqueue_gmail_maintenance_events(db),
+        )
+
+
+async def _gmail_watch_renewal_tick(ctx: dict) -> None:
+    from app.core.scheduling.job_keys import JobKey
+    from app.core.scheduling.tick import run_leased_tick
+    from app.customer_intelligence.scheduler import enqueue_gmail_maintenance_events
+
+    async with SessionLocal() as db:
+        await run_leased_tick(
+            db,
+            job_key=JobKey.CI_GMAIL_WATCH_RENEWAL,
+            interval_seconds=43200,
+            lease_seconds=3600,
+            worker_id=_worker_identity(),
+            run=lambda: enqueue_gmail_maintenance_events(db),
+        )
+
+
 async def process_outbox_event(ctx: dict, event_id: str) -> None:
     """Consume known events exactly once; unknown events fail visibly."""
     from app.models.outbox import OutboxEvent, ProcessedEvent
@@ -192,6 +224,43 @@ async def process_outbox_event(ctx: dict, event_id: str) -> None:
             await repo.mark_processed(event_id=event.id, consumer_name="worker")
             await db.commit()
             return
+        if event.event_type == "gmail.reconciliation.requested":
+            from app.customer_intelligence.ingest import sync_connection
+
+            await sync_connection(
+                db,
+                org_id=event.org_id,
+                connection_id=event.aggregate_id,
+                trigger="reconciliation",
+                correlation_id=event.correlation_id,
+            )
+            await repo.mark_processed(event_id=event.id, consumer_name="worker")
+            await db.commit()
+            return
+        if event.event_type == "gmail.watch.renew.requested":
+            from app.customer_intelligence.oauth import load_fresh_credentials
+            from app.customer_intelligence.providers.email import (
+                bind_email_provider,
+                get_email_provider,
+            )
+            from app.models.customer_intelligence import EmailConnection
+
+            connection = await db.get(EmailConnection, event.aggregate_id)
+            if connection is None or connection.org_id != event.org_id:
+                return
+            credentials = await load_fresh_credentials(db, connection)
+            provider = bind_email_provider(get_email_provider("gmail"), credentials)
+            result = await provider.watch(topic_name=get_settings().gmail_pubsub_topic)
+            connection.gmail_history_id = str(result.get("history_id") or result.get("historyId") or "") or connection.gmail_history_id
+            expiration = result.get("expiration") or result.get("expiration_at")
+            if expiration:
+                from datetime import datetime
+
+                connection.watch_expiration_at = datetime.fromisoformat(str(expiration).replace("Z", "+00:00")).replace(tzinfo=None)
+            connection.watch_resource_name = result.get("resource_name") or result.get("resourceName")
+            await repo.mark_processed(event_id=event.id, consumer_name="worker")
+            await db.commit()
+            return
         raise RuntimeError(f"unsupported outbox event type: {event.event_type}")
 
 
@@ -207,4 +276,6 @@ class WorkerSettings:
         cron(_ci_retry_due_cases_tick, minute=set(range(0, 60, 1)), run_at_startup=False),
         cron(_ci_dispatch_ingested_tick, minute=set(range(0, 60, 1)), run_at_startup=False),
         cron(_outbox_dispatch_tick, second=set(range(0, 60, 1)), run_at_startup=False),
+        cron(_gmail_reconciliation_tick, minute=set(range(0, 60, 5)), run_at_startup=False),
+        cron(_gmail_watch_renewal_tick, hour=set(range(0, 24, 12)), minute=0, run_at_startup=False),
     ]

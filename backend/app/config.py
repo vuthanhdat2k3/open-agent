@@ -160,6 +160,7 @@ class Settings(BaseSettings):
     gmail_pubsub_audience: str = ""
     gmail_pubsub_service_account: str = ""
     gmail_pubsub_shared_token: str = ""
+    gmail_pubsub_topic: str = ""
 
     allowed_extensions: list[str] = [
         ".pdf",
