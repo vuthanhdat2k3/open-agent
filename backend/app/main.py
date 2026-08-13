@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 
+import structlog
 from dotenv import load_dotenv
 from redis.asyncio import from_url as redis_from_url
 from sqlalchemy import text
@@ -20,6 +21,8 @@ from app.core.security import allowed_origins
 from app.db.session import engine, get_db, init_db
 from app.schemas.common import HealthResponse
 
+logger = structlog.get_logger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -27,11 +30,16 @@ async def lifespan(app: FastAPI):
     sink = None
     settings = get_settings()
     if settings.observability_enabled and settings.langfuse_enabled:
-        from app.core.observability.langfuse_sink import build_langfuse_sink
+        try:
+            from app.core.observability.langfuse_sink import build_langfuse_sink
 
-        sink = build_langfuse_sink(settings)
-        if sink:
-            set_default_sink(sink)
+            sink = build_langfuse_sink(settings)
+            if sink:
+                set_default_sink(sink)
+        except ModuleNotFoundError:
+            # Observability must not take the API down when the optional SDK is
+            # absent; production packaging can install it to enable the sink.
+            await logger.awarning("langfuse_sdk_missing_observability_disabled")
     try:
         yield
     finally:
