@@ -98,6 +98,25 @@ def test_agent_output_accepts_provider_code_fence_and_evidence_string():
     assert result.company_name == "Acme"
 
 
+def test_agent_output_normalizes_customer_mail_type_to_business():
+    result = _parse(
+        {
+            "schema_version": "email-classification-result.v1",
+            "email_id": "message-1",
+            "mail_type": "customer",
+            "primary_label": "customer",
+            "intents": ["partnership"],
+            "summary": "Business inquiry",
+            "company": None,
+            "calendar": None,
+            "recommended_routes": ["customer_research_candidate"],
+            "confidence": 0.9,
+            "reason_codes": ["CUSTOMER_INTENT"],
+        }
+    )
+    assert result.label == "customer"
+
+
 async def test_provider_error_escalates_to_strong_model(monkeypatch):
     settings = SimpleNamespace(
         ci_classifier_enabled=True,
