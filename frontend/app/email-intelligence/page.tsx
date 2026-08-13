@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/page-header";
 import { EmptyState, ErrorState, LoadingSkeleton } from "@/components/shared";
+import { formatVietnamDateTime, vietnamDateRangeStart } from "@/lib/datetime";
 import {
   useCustomerIntelligenceNotifications,
   useMarkCustomerIntelligenceNotificationRead,
@@ -27,12 +28,7 @@ type DateRange = "all" | "today" | "7d" | "30d";
 
 function dateRange(range: DateRange) {
   if (range === "all") return {};
-  const now = new Date();
-  const from = new Date(now);
-  if (range === "today") from.setHours(0, 0, 0, 0);
-  if (range === "7d") from.setDate(from.getDate() - 7);
-  if (range === "30d") from.setDate(from.getDate() - 30);
-  return { receivedAfter: from.toISOString() };
+  return { receivedAfter: vietnamDateRangeStart(range) };
 }
 
 function relativeTime(value: string) {
@@ -178,7 +174,7 @@ export default function EmailIntelligencePage() {
                     </div>
                     <div className="mt-1 flex items-baseline justify-between gap-3">
                       <p className={`truncate text-sm ${unread ? "font-semibold" : "font-medium text-foreground/80"}`}>{item.subject || "(No subject)"}</p>
-                      <time className="shrink-0 text-xs text-muted-foreground" dateTime={item.received_at} title={new Date(item.received_at).toLocaleString()}>{relativeTime(item.received_at)}</time>
+                      <time className="shrink-0 text-xs text-muted-foreground" dateTime={item.received_at} title={`${formatVietnamDateTime(item.received_at)} · Giờ Việt Nam`}>{relativeTime(item.received_at)}</time>
                     </div>
                     <p className="mt-1 line-clamp-2 break-words text-sm leading-5 text-muted-foreground" title={preview(item.body, item.subject)}>{preview(item.body, item.subject) || "No preview available"}</p>
                     <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
