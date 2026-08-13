@@ -45,6 +45,23 @@ def _parser() -> argparse.ArgumentParser:
         help="Run one incremental sync after sending; requires --send",
     )
     parser.add_argument(
+        "--sync-only",
+        action="store_true",
+        help="Run incremental sync without sending a new message",
+    )
+    parser.add_argument(
+        "--sync-attempts",
+        type=int,
+        default=3,
+        help="Number of sync attempts after sending (default: 3)",
+    )
+    parser.add_argument(
+        "--sync-delay-seconds",
+        type=int,
+        default=5,
+        help="Delay between sync attempts (default: 5)",
+    )
+    parser.add_argument(
         "--wait-seconds",
         type=int,
         default=0,
@@ -104,6 +121,12 @@ def _fixtures(scenario: str, *, now: datetime) -> list[tuple[str, str, str]]:
 
 
 async def _run(args: argparse.Namespace) -> int:
+    if args.sync_only and args.send:
+        print("--sync-only cannot be combined with --send")
+        return 2
+    if args.sync and not args.send and not args.sync_only:
+        print("--sync requires --send; use --sync-only to sync without sending")
+        return 2
     async with SessionLocal() as db:
         connections = list(
             (
@@ -140,42 +163,50 @@ async def _run(args: argparse.Namespace) -> int:
 
         print(f"connection_id={connection.id}")
         print(f"from={connection.account_email} to={args.to} scenario={args.scenario}")
-        if not args.send:
+        if not args.send and not args.sync_only:
             for kind, subject, _body in _fixtures(args.scenario, now=datetime.now(timezone.utc)):
                 print(f"DRY RUN scenario={kind} subject={subject}")
             print("DRY RUN: no draft created and no message sent. Add --send to execute.")
             return 0
 
-        credentials = await load_fresh_credentials(db, connection)
-        provider = bind_email_provider(get_email_provider("gmail"), credentials)
-        now = datetime.now(timezone.utc)
         sent = []
-        for kind, subject, body in _fixtures(args.scenario, now=now):
-            idempotency_key = str(
-                uuid.uuid5(
-                    uuid.NAMESPACE_URL, f"openagent-ci-test:{connection.id}:{args.to}:{subject}"
+        if args.send:
+            credentials = await load_fresh_credentials(db, connection)
+            provider = bind_email_provider(get_email_provider("gmail"), credentials)
+            now = datetime.now(timezone.utc)
+            for kind, subject, body in _fixtures(args.scenario, now=now):
+                idempotency_key = str(
+                    uuid.uuid5(
+                        uuid.NAMESPACE_URL,
+                        f"openagent-ci-test:{connection.id}:{args.to}:{subject}",
+                    )
                 )
-            )
-            draft_id = await provider.create_draft(to=args.to, subject=subject, body=body)
-            send_id = await provider.send(draft_id=draft_id, idempotency_key=idempotency_key)
-            sent.append((kind, draft_id, send_id))
-            print(f"sent=true scenario={kind} draft_id={draft_id} send_id={send_id}")
-        if args.sync:
+                draft_id = await provider.create_draft(to=args.to, subject=subject, body=body)
+                send_id = await provider.send(draft_id=draft_id, idempotency_key=idempotency_key)
+                sent.append((kind, draft_id, send_id))
+                print(f"sent=true scenario={kind} draft_id={draft_id} send_id={send_id}")
+        if args.sync or args.sync_only:
             from app.customer_intelligence.ingest import sync_connection
 
-            result = await sync_connection(
-                db,
-                org_id=connection.org_id,
-                connection_id=connection.id,
-                trigger="manual",
-                max_messages=max(20, len(sent) * 5),
-                actor_user_id=connection.created_by_user_id,
-            )
-            print(
-                "sync=true "
-                f"synced={result['synced']} deduplicated={result['deduplicated']} "
-                f"classification_queued={result.get('classification_queued', 0)}"
-            )
+            result = None
+            attempts = max(1, args.sync_attempts)
+            for attempt in range(1, attempts + 1):
+                result = await sync_connection(
+                    db,
+                    org_id=connection.org_id,
+                    connection_id=connection.id,
+                    trigger="manual",
+                    max_messages=max(20, len(sent) * 5),
+                    actor_user_id=connection.created_by_user_id,
+                )
+                print(
+                    f"sync_attempt={attempt} synced={result['synced']} "
+                    f"deduplicated={result['deduplicated']} "
+                    f"classification_queued={result.get('classification_queued', 0)}"
+                )
+                if result["synced"] > 0 or attempt == attempts:
+                    break
+                await asyncio.sleep(max(0, args.sync_delay_seconds))
             if args.wait_seconds > 0 and sent:
                 message_ids = {message_id for _kind, _draft_id, message_id in sent}
                 deadline = time.monotonic() + args.wait_seconds
