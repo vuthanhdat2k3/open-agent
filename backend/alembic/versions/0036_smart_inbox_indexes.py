@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from alembic import op
 
-
 revision = "0036_smart_inbox_indexes"
 down_revision = "0035_trusted_rules"
 branch_labels = None
