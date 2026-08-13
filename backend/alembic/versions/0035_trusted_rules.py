@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 import sqlalchemy as sa
 from alembic import op
 
@@ -52,7 +54,7 @@ def upgrade() -> None:
             sa.column("updated_at", sa.DateTime),
         ),
         [
-            {"domain": domain, "registry_version": "2026-08-13.1", "enabled": True, "updated_at": sa.func.now()}
+            {"domain": domain, "registry_version": "2026-08-13.1", "enabled": True, "updated_at": datetime.utcnow()}
             for domain in ("gmail.com", "outlook.com", "hotmail.com", "yahoo.com", "protonmail.com", "icloud.com", "zoho.com", "mail.ru")
         ],
     )
