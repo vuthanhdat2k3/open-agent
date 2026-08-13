@@ -45,11 +45,17 @@ import type {
 import { emailIntelligenceQueryKeys } from "@/lib/email-intelligence/query-keys";
 import { createIdempotencyKey } from "@/lib/email-intelligence/idempotency";
 
-export function useCustomerIntelligenceCases() {
+export function useCustomerIntelligenceCases(filters: { category?: "briefings" | "review"; query?: string; limit?: number; offset?: number } = {}) {
   const orgId = getActiveOrgId();
+  const params = new URLSearchParams({
+    category: filters.category ?? "briefings",
+    limit: String(filters.limit ?? 25),
+    offset: String(filters.offset ?? 0),
+  });
+  if (filters.query?.trim()) params.set("q", filters.query.trim());
   return useQuery({
-    queryKey: emailIntelligenceQueryKeys(orgId).cases(),
-    queryFn: () => api.get<CustomerIntelligenceCase[]>("/api/customer-intelligence/cases"),
+    queryKey: emailIntelligenceQueryKeys(orgId).cases(filters),
+    queryFn: () => api.get<CustomerIntelligenceCase[]>(`/api/customer-intelligence/cases?${params}`),
   });
 }
 
