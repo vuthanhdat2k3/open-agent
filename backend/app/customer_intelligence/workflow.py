@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.core.observability.audit import log_action
 from app.core.observability.genai import workflow_node_span
+from app.customer_intelligence.classifier import extract_calendar_payload
 from app.customer_intelligence.contracts import (
     CompanyRecord,
     MeetingMatch,
@@ -326,6 +327,20 @@ async def run_research(
     case.confidence = report.confidence
     case.finished_at = utc_now()
     await case_repo.transition(case, "REPORT_READY")
+
+    if email.classification == "calendar":
+        calendar_payload = extract_calendar_payload(email)
+        if calendar_payload:
+            from app.customer_intelligence.delivery import request_case_approval
+
+            await request_case_approval(
+                db,
+                org_id=org_id,
+                case_id=case_id,
+                action="calendar_create_event",
+                payload=calendar_payload,
+                requested_by=case.created_by_user_id,
+            )
 
     await log_action(
         db,

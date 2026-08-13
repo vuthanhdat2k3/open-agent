@@ -343,11 +343,76 @@ async def run_delivery(
             existing=existing,
             actor_user_id=actor_user_id,
         )
+    if action == "calendar_create_event":
+        return await _deliver_calendar_event(
+            db,
+            org_id=org_id,
+            case=case,
+            approval=approval,
+            idempotency_key=idempotency_key,
+            existing=existing,
+        )
     if action == "save_knowledge":
         raise DeliveryError(
             "save_knowledge has no backing sink yet; only send_email is available"
         )
     raise DeliveryError(f"unsupported delivery action: {action}")
+
+
+async def _deliver_calendar_event(
+    db: AsyncSession,
+    *,
+    org_id: str,
+    case: ResearchCase,
+    approval: ApprovalRequest,
+    idempotency_key: str,
+    existing: DeliveryAttempt | None = None,
+) -> DeliveryAttempt:
+    payload: dict[str, Any] = approval.args_snapshot or {}
+    required = {"summary", "start", "end"}
+    if not required.issubset(payload):
+        raise DeliveryError("calendar_create_event requires summary, start and end")
+    from app.customer_intelligence.providers.research import (
+        bind_calendar_provider,
+        get_calendar_provider,
+    )
+    from app.repositories.customer_intelligence import CalendarConnectionRepository
+
+    connection = await CalendarConnectionRepository(db).get_connected(
+        org_id, user_id=case.created_by_user_id
+    )
+    if connection is None or not connection.credentials_enc:
+        raise DeliveryError("no connected calendar account")
+    if existing is not None and existing.status == "pending":
+        raise DeliveryError("calendar creation is pending; reconcile provider before retry")
+    credentials = await load_fresh_credentials(db, connection)
+    provider = bind_calendar_provider(get_calendar_provider(), credentials)
+    attempts = DeliveryAttemptRepository(db)
+    attempt = existing or DeliveryAttempt(
+        org_id=org_id,
+        case_id=case.id,
+        action="calendar_create_event",
+        payload_hash=approval.payload_hash or "",
+        idempotency_key=idempotency_key,
+        status="pending",
+    )
+    if existing is None:
+        await attempts.create(attempt)
+    try:
+        result = await provider.create_event(**payload)
+    except Exception as exc:  # noqa: BLE001 - pending prevents blind replay.
+        if attempt.id:
+            await attempts.touch(attempt, error="calendar provider create failed", status="pending")
+        raise DeliveryError("calendar event creation failed") from exc
+    event_id = str(result.get("event_id") or result.get("id") or "")
+    if not event_id:
+        raise DeliveryError("calendar provider returned no event id")
+    return await attempts.touch(
+        attempt,
+        provider_send_id=event_id,
+        status="delivered",
+        error=None,
+    )
 
 
 async def _deliver_email(
