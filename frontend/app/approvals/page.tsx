@@ -9,6 +9,7 @@ import { createServerClock, formatRemaining, remainingMs } from "@/lib/email-int
 import { createIdempotencyKey } from "@/lib/email-intelligence/idempotency";
 import type { ApprovalRequest } from "@/types";
 import { PageHeader } from "@/components/page-header";
+import { formatVietnamDateTime } from "@/lib/datetime";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -64,7 +65,7 @@ function ApprovalCard({ approval, onOpen, onSubmit }: { approval: ApprovalReques
           </div>
         </div>
         <div className="grid gap-3 rounded-xl border border-border/70 bg-muted/20 p-4 text-sm sm:grid-cols-3">
-          <div><dt className="text-xs font-medium text-muted-foreground">When</dt><dd className="mt-1 text-foreground">{details.start ? new Date(details.start).toLocaleString() : "Not specified"}</dd></div>
+          <div><dt className="text-xs font-medium text-muted-foreground">When</dt><dd className="mt-1 text-foreground">{details.start ? `${formatVietnamDateTime(details.start)} · Giờ Việt Nam` : "Not specified"}</dd></div>
           <div><dt className="text-xs font-medium text-muted-foreground">Attendees</dt><dd className="mt-1 truncate text-foreground">{details.attendees.length ? details.attendees.join(", ") : "Not specified"}</dd></div>
           <div><dt className="text-xs font-medium text-muted-foreground">Source</dt><dd className="mt-1 truncate text-foreground">{approval.run_type === "agent" ? "Agent workflow" : "Workflow run"}</dd></div>
         </div>
@@ -131,7 +132,7 @@ export default function ApprovalsPage() {
               </DialogHeader>
               <div className="space-y-5" tabIndex={-1} autoFocus>
                 <section><h3 className="text-sm font-semibold text-foreground">Why this needs approval</h3><p className="mt-1 text-sm text-muted-foreground">{details.source}</p></section>
-                <section className="space-y-3 rounded-xl border border-border/70 bg-muted/20 p-4"><h3 className="text-sm font-semibold text-foreground">Action details</h3><div className="grid gap-3 text-sm"><div><span className="text-muted-foreground">Summary</span><p className="font-medium text-foreground">{details.summary}</p></div><div><span className="text-muted-foreground">When</span><p className="font-medium text-foreground">{details.start ? new Date(details.start).toLocaleString() : "Not specified"}</p></div><div><span className="text-muted-foreground">Attendees</span><p className="break-words font-medium text-foreground">{details.attendees.length ? details.attendees.join(", ") : "Not specified"}</p></div></div></section>
+                <section className="space-y-3 rounded-xl border border-border/70 bg-muted/20 p-4"><h3 className="text-sm font-semibold text-foreground">Action details</h3><div className="grid gap-3 text-sm"><div><span className="text-muted-foreground">Summary</span><p className="font-medium text-foreground">{details.summary}</p></div><div><span className="text-muted-foreground">When</span><p className="font-medium text-foreground">{details.start ? `${formatVietnamDateTime(details.start)} · Giờ Việt Nam` : "Not specified"}</p></div><div><span className="text-muted-foreground">Attendees</span><p className="break-words font-medium text-foreground">{details.attendees.length ? details.attendees.join(", ") : "Not specified"}</p></div></div></section>
                 <section className="flex flex-wrap gap-2"><Badge variant={selected.risk_level === "HIGH" ? "destructive" : "outline"}>{selected.risk_level || "STANDARD"}</Badge><Badge variant="outline">{selected.approval_mode || "EXPLICIT APPROVAL"}</Badge><Badge variant="outline"><ApprovalExpiry expiresAt={selected.expires_at} serverTime={selected.server_time} /></Badge></section>
               </div>
               <DialogFooter><ConfirmDialog trigger={<Button variant="outline">Reject</Button>} title="Reject this approval?" description="The requested action will not run." confirmLabel="Reject" destructive onConfirm={() => submit(selected.id, "rejected")} /><Button onClick={() => void submit(selected.id, "approved")} disabled={selected.expires_at ? Boolean(selected.server_time && remainingMs(selected.expires_at, createServerClock(selected.server_time)) === 0) : false}>Approve</Button></DialogFooter>

@@ -7,6 +7,7 @@ import { Activity, Building2, CalendarClock, HelpCircle, Link2, RefreshCw, Searc
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { formatVietnamDateTime } from "@/lib/datetime";
 import { PageHeader } from "@/components/page-header";
 import { useCreateManualCustomerIntelligenceCase, useCustomerIntelligenceCase, useCustomerIntelligenceCases, useDeleteCustomerIntelligenceCase, useResearchCustomerIntelligenceCase, useRetryCustomerIntelligenceCase } from "@/hooks";
 import { Input } from "@/components/ui/input";
@@ -58,7 +59,7 @@ function BriefingReport({
           {companies.length ? <div className="space-y-3">{companies.map((company: any, index: number) => <div key={`${company.canonical_name || "company"}-${index}`} className="rounded-lg bg-muted/40 p-3"><p className="font-medium">{company.canonical_name || "Unknown company"}</p>{company.industry && <p className="mt-1 text-sm text-muted-foreground">{company.industry}</p>}{company.domain && <p className="mt-1 text-xs text-muted-foreground">{company.domain}</p>}</div>)}</div> : <p className="text-sm text-muted-foreground">No company matched.</p>}
         </Section>
         <Section icon={CalendarClock} title="Upcoming meetings" count={reportMeetings.length}>
-          {reportMeetings.length ? <div className="space-y-3">{reportMeetings.map((meeting: any, index: number) => <div key={`${meeting.provider_event_id || meeting.title || "meeting"}-${index}`} className="rounded-lg bg-muted/40 p-3"><p className="font-medium">{meeting.title || "Meeting"}</p><p className="mt-1 text-sm text-muted-foreground">{meeting.start_at ? new Date(meeting.start_at).toLocaleString() : "Time not specified"}</p>{meeting.attendees?.length ? <p className="mt-1 text-xs text-muted-foreground">{meeting.attendees.join(", ")}</p> : null}</div>)}</div> : <p className="text-sm text-muted-foreground">No upcoming meetings matched.</p>}
+          {reportMeetings.length ? <div className="space-y-3">{reportMeetings.map((meeting: any, index: number) => <div key={`${meeting.provider_event_id || meeting.title || "meeting"}-${index}`} className="rounded-lg bg-muted/40 p-3"><p className="font-medium">{meeting.title || "Meeting"}</p><p className="mt-1 text-sm text-muted-foreground">{meeting.start_at ? formatVietnamDateTime(meeting.start_at) : "Time not specified"} · Giờ Việt Nam</p>{meeting.attendees?.length ? <p className="mt-1 text-xs text-muted-foreground">{meeting.attendees.join(", ")}</p> : null}</div>)}</div> : <p className="text-sm text-muted-foreground">No upcoming meetings matched.</p>}
         </Section>
       </div>
       <Section icon={Link2} title="Recent news" count={news.length}>
@@ -139,7 +140,7 @@ export default function CustomerIntelligencePage() {
             {cases.data?.map((item) => (
               <button key={item.id} type="button" onClick={() => setSelected(item.id)} className={`w-full rounded-lg border p-3 text-left transition-colors hover:bg-muted/50 ${selected === item.id ? "border-primary bg-primary/5" : "border-border/60"}`}>
                 <div className="flex items-center justify-between gap-2"><span className="truncate font-medium">{item.company_name || item.company_domain || "Unmatched sender"}</span><Badge variant={statusVariant(item.status)}>{item.status}</Badge></div>
-                <p className="mt-1 text-xs text-muted-foreground">{new Date(item.created_at).toLocaleString()} · {item.trigger || "manual"}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{formatVietnamDateTime(item.created_at)} · Giờ Việt Nam · {item.trigger || "manual"}</p>
               </button>
             ))}
             {!cases.isLoading && !cases.data?.length && <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">{showReview ? "No emails need review." : "No company briefings yet. New customer emails will appear here after agent classification."}</p>}
