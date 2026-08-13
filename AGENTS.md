@@ -96,6 +96,8 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 |---|---|---|---|
 | `dev` | `G:\open-agent` | Nhánh tích hợp chính — không code trực tiếp ở đây | — |
 | `feat/runtime-date-time` | `G:\open-agent-worktrees\runtime-date-time` | Runtime date/time context for all agents and workflows | Codex |
+| `feat/delegated-approval-fix` | `G:\open-agent-worktrees\delegated-approval-fix` | Sửa approval propagation/resume cho delegated sub-agents | Agent khác |
+| `feat/ci-job-scheduling-hardening` | `G:\open-agent-worktrees\ci-job-scheduling-hardening` | Hardening scheduler/worker production: generic lease, retry/backoff, dead-letter, worker health | Kiro |
 
 ## 8. Quy tắc chung khác (áp dụng mọi branch/worktree)
 
