@@ -16,6 +16,22 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
+def _fake_agent_classifier_for_ingest_tests(monkeypatch: pytest.MonkeyPatch):
+    """Use a deterministic agent result for sync tests; never call a real LLM."""
+    from app.customer_intelligence.classifier import Classification
+
+    async def _classify(_db, _org_id, email):
+        if email.injection_flags:
+            return Classification("security_risk", 1.0, "guard flagged untrusted instruction content")
+        return Classification(
+            "customer", 0.96, "fixture: customer request", company_name="Acme", company_domain="acme.example",
+            company_confidence=0.92,
+        )
+
+    monkeypatch.setattr("app.customer_intelligence.ingest.classify_with_agent", _classify)
+
+
+@pytest.fixture(autouse=True)
 def _skip_lifespan_db_init(monkeypatch: pytest.MonkeyPatch) -> None:
     """Stop TestClient lifespan from migrating the real database.
 

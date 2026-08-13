@@ -16,7 +16,7 @@ from app.core.observability.metrics import (
     ci_syncs_total,
 )
 from app.core.workflow.queue import enqueue_ci_research
-from app.customer_intelligence.classifier import classify_email
+from app.customer_intelligence.agent_classifier import classify_with_agent
 from app.customer_intelligence.contracts import NormalizedEmail
 from app.customer_intelligence.mcp import CustomerIntelligenceMcpError
 from app.customer_intelligence.oauth import load_fresh_credentials
@@ -181,15 +181,17 @@ async def _sync_connection_impl(
         last_cursor = page.new_cursor
         latest_history_id = page.history_id or latest_history_id
         for email in page.messages:
-            email.injection_flags = scan_for_prompt_injection(email.body_text or "")
-            classification = classify_email(email)
-            email.content_hash = email_content_hash(email)
             existing = await email_repo.find_by_provider_message_id(
                 org_id, email.provider, email.provider_message_id
             )
             if existing is not None:
                 deduplicated += 1
                 continue
+            # Dedupe before any model call: push/reconciliation overlap must
+            # cost one classification, not one call per delivery source.
+            email.injection_flags = scan_for_prompt_injection(email.body_text or "")
+            classification = await classify_with_agent(db, org_id, email)
+            email.content_hash = email_content_hash(email)
             row = InboundEmail(
                 org_id=org_id,
                 connection_id=connection_id,
@@ -210,7 +212,20 @@ async def _sync_connection_impl(
                 classification=classification.label,
                 classification_confidence=classification.confidence,
                 classification_reason=classification.reason,
-                routing_status="ignored" if classification.label == "spam" else "quarantined" if classification.label == "security_risk" else "routed",
+                classification_json={
+                    "label": classification.label,
+                    "intents": list(classification.intents),
+                    "company_name": classification.company_name,
+                    "company_domain": classification.company_domain,
+                    "company_confidence": classification.company_confidence,
+                    "meeting_confidence": classification.meeting_confidence,
+                    "summary": classification.summary,
+                },
+                routing_status=(
+                    "ignored" if classification.label in {"spam", "marketing", "newsletter", "system", "transactional"}
+                    else "quarantined" if classification.label in {"security_risk", "uncertain"}
+                    else "routed"
+                ),
                 created_by_user_id=conn.created_by_user_id,
             )
             try:
@@ -225,15 +240,42 @@ async def _sync_connection_impl(
                     continue
                 raise
             synced += 1
-            if classification.label == "spam":
+            if classification.label in {"spam", "marketing", "newsletter", "system", "transactional"}:
                 warnings.append(f"email {email.provider_message_id}: spam ignored")
                 continue
-            if classification.label == "security_risk":
-                warnings.append(
-                    f"email {email.provider_message_id}: potential prompt injection flagged"
+            if classification.label in {"security_risk", "uncertain"}:
+                reason = (
+                    "potential prompt injection flagged"
+                    if classification.label == "security_risk" and email.injection_flags
+                    else "classification requires review"
                 )
+                warnings.append(
+                    f"email {email.provider_message_id}: {reason}"
+                )
+                if conn.created_by_user_id:
+                    db.add(CiNotification(
+                        org_id=org_id,
+                        user_id=conn.created_by_user_id,
+                        email_id=row.id,
+                        notification_type="email_review_required",
+                        title=f"Email needs review from {email.sender_email}",
+                        body=notification_preview(email.subject, classification.summary or email.body_text),
+                    ))
+                    await db.commit()
                 continue
-            if classification.label == "normal":
+            settings = get_settings()
+            is_customer_route = (
+                classification.label in {"customer", "partner"}
+                and classification.confidence >= settings.ci_classifier_accept_confidence
+                and classification.company_confidence >= settings.ci_classifier_company_confidence
+                and bool(classification.company_name or classification.company_domain)
+            )
+            is_calendar_route = (
+                classification.label == "calendar"
+                and classification.confidence >= settings.ci_classifier_accept_confidence
+                and classification.meeting_confidence >= settings.ci_classifier_meeting_confidence
+            )
+            if not is_customer_route and not is_calendar_route:
                 if conn.created_by_user_id:
                     db.add(
                         CiNotification(
@@ -242,7 +284,7 @@ async def _sync_connection_impl(
                             email_id=row.id,
                             notification_type="email_received",
                             title=f"New email from {email.sender_email}",
-                            body=notification_preview(email.subject, email.body_text),
+                            body=notification_preview(email.subject, classification.summary or email.body_text),
                         )
                     )
                     await db.commit()
@@ -257,6 +299,9 @@ async def _sync_connection_impl(
                 connection_id=connection_id,
                 trigger=trigger,
                 status="INGESTED",
+                company_name=classification.company_name,
+                company_domain=classification.company_domain,
+                confidence=classification.confidence,
                 created_by_user_id=conn.created_by_user_id,
             )
             await case_repo.create(case)

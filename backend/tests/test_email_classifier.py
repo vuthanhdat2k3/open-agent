@@ -26,7 +26,9 @@ def _email(*, subject: str, body: str = "", domain: str = "example.com", flags=N
 def test_classifier_routes_spam_calendar_customer_and_guard_risk():
     assert classify_email(_email(subject="WIN prize casino giveaway")).label == "spam"
     assert classify_email(_email(subject="Meeting", body="Let's meet at 10:30 on 12/08")).label == "calendar"
-    assert classify_email(_email(subject="Partnership inquiry", domain="acme.example")).label == "customer"
+    # A sender domain is only evidence; agent classification is required
+    # before routing a research case.
+    assert classify_email(_email(subject="Partnership inquiry", domain="acme.example")).label == "normal"
     assert classify_email(_email(subject="Hello", flags=["prompt_injection"])).label == "security_risk"
     payload = extract_calendar_payload(_email(subject="Meeting", body="Let's meet at 10:30 on 12/08"))
     assert payload is not None
