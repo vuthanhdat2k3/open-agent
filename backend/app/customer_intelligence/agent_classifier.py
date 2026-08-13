@@ -87,13 +87,15 @@ def _parse(value: dict[str, Any]) -> Classification:
     )
 
 
-async def _model_for(db: AsyncSession, org_id: str) -> tuple[Provider, Model] | None:
+async def _model_for(
+    db: AsyncSession, org_id: str, model_id: str = ""
+) -> tuple[Provider, Model] | None:
     settings = get_settings()
     stmt = select(Model, Provider).join(Provider, Provider.id == Model.provider_id).where(
         Model.org_id == org_id, Model.active.is_(True), Model.enabled.is_(True)
     )
-    if settings.ci_classifier_economy_model_id:
-        stmt = stmt.where(Model.id == settings.ci_classifier_economy_model_id)
+    if model_id:
+        stmt = stmt.where(Model.id == model_id)
     else:
         stmt = stmt.order_by(Model.input_cost_per_1k + Model.output_cost_per_1k).limit(1)
     row = (await db.execute(stmt)).first()
@@ -106,19 +108,39 @@ async def classify_with_agent(db: AsyncSession, org_id: str, email: NormalizedEm
         return Classification("security_risk", 1.0, "guard flagged untrusted instruction content")
     if not settings.ci_classifier_enabled:
         return Classification("uncertain", 0.0, "agent classification is disabled")
-    selected = await _model_for(db, org_id)
+    selected = await _model_for(db, org_id, settings.ci_classifier_economy_model_id)
     if selected is None:
         return Classification("uncertain", 0.0, "classification model is not configured")
-    provider, model = selected
-    try:
+    payload = json.dumps(_payload(email), ensure_ascii=False)
+
+    async def _run(candidate: tuple[Provider, Model]) -> Classification:
+        provider, model = candidate
         driver = build_driver(provider, model, generation_name="ci-email-classification")
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": "<untrusted_email_data>\n" + json.dumps(_payload(email), ensure_ascii=False) + "\n</untrusted_email_data>"},
+            {"role": "user", "content": "<untrusted_email_data>\n" + payload + "\n</untrusted_email_data>"},
         ]
         content, _usage, _tools = await asyncio.wait_for(
             driver.complete(messages, temperature=0), timeout=settings.ci_classifier_timeout_s
         )
         return _parse(_json_object(content))
+
+    try:
+        result = await _run(selected)
+        needs_strong = (
+            result.label in {"uncertain", "customer", "partner", "calendar"}
+            and result.confidence < settings.ci_classifier_accept_confidence
+        ) or (
+            result.label in {"customer", "partner"}
+            and result.company_confidence < settings.ci_classifier_company_confidence
+        ) or (
+            result.label == "calendar"
+            and result.meeting_confidence < settings.ci_classifier_meeting_confidence
+        )
+        if needs_strong and settings.ci_classifier_strong_model_id:
+            strong = await _model_for(db, org_id, settings.ci_classifier_strong_model_id)
+            if strong and strong[1].id != selected[1].id:
+                return await _run(strong)
+        return result
     except Exception as exc:  # fail closed; caller keeps the email visible in inbox
         return Classification("uncertain", 0.0, f"classifier unavailable: {type(exc).__name__}")
