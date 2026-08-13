@@ -11,6 +11,7 @@ class EmailProvider(Protocol):
     provider_name: str
     async def list_new(self, cursor: str | None, max_results: int = 20) -> SyncPage: ...
     async def list_history(self, start_history_id: str, page_token: str | None = None, max_results: int = 100) -> SyncPage: ...
+    async def get_history_checkpoint(self) -> str: ...
     async def get_message(self, provider_message_id: str) -> NormalizedEmail: ...
     async def search(self, *, query: str, max_results: int = 20) -> list[NormalizedEmail]: ...
     async def modify(self, *, provider_message_id: str, add_label_ids: list[str] | None = None, remove_label_ids: list[str] | None = None) -> str: ...
@@ -77,7 +78,15 @@ class McpEmailProvider:
             [self._email(item) for item in data.get("messages", [])],
             data.get("new_cursor"),
             bool(data.get("has_more")),
+            data.get("history_id"),
         )
+
+    async def get_history_checkpoint(self) -> str:
+        data = await self._call("email_history_checkpoint")
+        checkpoint = str(data.get("history_id") or "").strip()
+        if not checkpoint:
+            raise RuntimeError("email provider returned no Gmail history checkpoint")
+        return checkpoint
 
     async def get_message(self, provider_message_id: str) -> NormalizedEmail:
         return self._email(await self._call("email_get", provider_message_id=provider_message_id))
