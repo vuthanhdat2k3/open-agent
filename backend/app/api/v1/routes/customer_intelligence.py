@@ -269,6 +269,71 @@ async def list_ci_notifications(
     ]
 
 
+@router.get(
+    "/navigation-summary",
+    dependencies=[Depends(require_permission("ci:read"))],
+)
+async def customer_intelligence_navigation_summary(
+    org_id: str = Depends(get_current_org_id),
+    current_user: User = Depends(get_current_user),
+    request: Request = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Return organization-scoped navigation counts without inheriting list filters."""
+    _guard_enabled()
+    from sqlalchemy import func, select
+
+    from app.models.customer_intelligence import CiNotification, EmailConnection
+
+    unread = await db.scalar(
+        select(func.count(CiNotification.id)).where(
+            CiNotification.org_id == org_id,
+            CiNotification.user_id == current_user.id,
+            CiNotification.read_at.is_(None),
+        )
+    )
+    active_cases = await db.scalar(
+        select(func.count(ResearchCase.id)).where(
+            ResearchCase.org_id == org_id,
+            ResearchCase.created_by_user_id == current_user.id,
+            ResearchCase.status.not_in(["COMPLETED", "REJECTED", "DEAD_LETTER"]),
+        )
+    )
+    failed_cases = await db.scalar(
+        select(func.count(ResearchCase.id)).where(
+            ResearchCase.org_id == org_id,
+            ResearchCase.created_by_user_id == current_user.id,
+            ResearchCase.status.in_(["FAILED", "DEAD_LETTER"]),
+        )
+    )
+    is_admin = getattr(request.state, "role", "user") == "admin" if request is not None else False
+    unhealthy = 0
+    if is_admin:
+        unhealthy = await db.scalar(
+            select(func.count(EmailConnection.id)).where(
+                EmailConnection.org_id == org_id,
+                EmailConnection.status != "connected",
+            )
+        )
+    return {
+        "user_workspace": {
+            "inbox": {"unread": int(unread or 0), "urgent": 0},
+            "research_cases": {"active": int(active_cases or 0), "failed": int(failed_cases or 0)},
+            "approvals": {"pending": 0, "urgent": 0},
+        },
+        "admin_operations": {
+            "manual_reviews": {"open": 0, "urgent": 0},
+            "dead_letters": {"total": 0, "urgent": 0},
+            "connections": {"unhealthy": int(unhealthy or 0)},
+        },
+        "capabilities": {
+            "can_access_user_workspace": True,
+            "can_access_admin_operations": is_admin,
+        },
+        "meta": {"server_time": utc_now().isoformat(), "reason_registry_version": "2026-08-13.1"},
+    }
+
+
 @router.post(
     "/notifications/{notification_id}/read",
     dependencies=[Depends(require_permission("ci:read"))],

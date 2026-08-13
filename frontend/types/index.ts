@@ -509,3 +509,31 @@ export interface CustomerIntelligenceCaseDetail extends CustomerIntelligenceCase
     created_at: string;
   } | null;
 }
+
+export interface CustomerIntelligenceNotification {
+  id: string;
+  email_id: string;
+  type: string;
+  title: string;
+  body: string;
+  read_at: string | null;
+  created_at: string;
+}
+
+export interface EmailIntelligenceNavigationSummary {
+  user_workspace: {
+    inbox: { unread: number; urgent: number };
+    research_cases: { active: number; failed: number };
+    approvals: { pending: number; urgent: number };
+  };
+  admin_operations: {
+    manual_reviews: { open: number; urgent: number };
+    dead_letters: { total: number; urgent: number };
+    connections: { unhealthy: number };
+  };
+  capabilities: {
+    can_access_user_workspace: boolean;
+    can_access_admin_operations: boolean;
+  };
+  meta: { server_time: string; reason_registry_version?: string; correlation_id?: string };
+}
