@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-DEFAULT_TIMEZONE = "UTC"
+DEFAULT_TIMEZONE = "Asia/Ho_Chi_Minh"
 
 
 def normalize_timezone(value: str | None) -> str:

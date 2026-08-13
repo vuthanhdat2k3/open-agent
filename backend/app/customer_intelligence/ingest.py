@@ -127,7 +127,12 @@ async def _sync_connection_impl(
     # messages.list nextPageToken is scoped to one bounded list operation and
     # must never be resumed by a later reconciliation tick.
     bootstrap_state = conn.sync_cursor if isinstance(conn.sync_cursor, dict) else {}
-    start_history_id = conn.gmail_history_id
+    # A connection may still have a bounded bootstrap page token from an
+    # older deployment. Once that baseline history id exists, promote it to
+    # the durable incremental checkpoint immediately. Continuing the old
+    # mailbox pagination first can starve newly received mail behind a large
+    # inbox and violates the "process mail received after connect" contract.
+    start_history_id = conn.gmail_history_id or str(bootstrap_state.get("history_id") or "").strip() or None
     history_sync = bool(start_history_id)
     bootstrap_checkpoint: str | None = None
     if not history_sync:
@@ -137,7 +142,14 @@ async def _sync_connection_impl(
     new_cases = 0
     classification_queued = 0
     warnings: list[str] = []
-    last_cursor: str | None = str(bootstrap_state.get("page_token") or "").strip() or None
+    # A messages.list page token is never valid for Gmail History API. When
+    # promoting a persisted bootstrap baseline, start history pagination from
+    # the baseline itself and discard the old mailbox cursor.
+    last_cursor: str | None = (
+        None
+        if history_sync
+        else str(bootstrap_state.get("page_token") or "").strip() or None
+    )
     latest_history_id = start_history_id or bootstrap_checkpoint
     pages = 0
 

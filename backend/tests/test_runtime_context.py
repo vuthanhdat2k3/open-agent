@@ -17,9 +17,9 @@ def test_runtime_context_uses_iana_timezone() -> None:
     assert "Current UTC:" in context
 
 
-def test_invalid_timezone_falls_back_to_utc() -> None:
-    assert normalize_timezone("not/a-zone") == "UTC"
-    assert now_in_timezone("not/a-zone").tzinfo.key == "UTC"
+def test_invalid_timezone_falls_back_to_vietnam() -> None:
+    assert normalize_timezone("not/a-zone") == "Asia/Ho_Chi_Minh"
+    assert now_in_timezone("not/a-zone").tzinfo.key == "Asia/Ho_Chi_Minh"
 
 
 @pytest.mark.asyncio
