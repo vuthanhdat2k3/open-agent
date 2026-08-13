@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from app.customer_intelligence.classifier import classify_email, extract_calendar_payload
+from app.customer_intelligence.ingest import notification_preview
 from app.customer_intelligence.contracts import NormalizedEmail
 
 
@@ -30,3 +31,9 @@ def test_classifier_routes_spam_calendar_customer_and_guard_risk():
     payload = extract_calendar_payload(_email(subject="Meeting", body="Let's meet at 10:30 on 12/08"))
     assert payload is not None
     assert payload["start"].endswith("10:30:00+00:00")
+
+
+def test_notification_preview_is_bounded_and_single_line_body():
+    preview = notification_preview("Subject", "hello\n\nworld " * 200, max_chars=20)
+    assert preview.startswith("Subject\nhello world")
+    assert len(preview.split("\n", 1)[1]) <= 21

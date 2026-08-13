@@ -40,6 +40,15 @@ class IngestionError(Exception):
     pass
 
 
+def notification_preview(subject: str, body: str, *, max_chars: int = 600) -> str:
+    """Create a bounded plain-text preview; raw unbounded email never enters UI notification."""
+    compact = " ".join((body or "").split())
+    preview = compact[:max_chars].rstrip()
+    if len(compact) > max_chars:
+        preview += "…"
+    return f"{(subject or '(no subject)')[:320]}\n{preview}" if preview else (subject or "(no subject)")[:320]
+
+
 def email_content_hash(email: NormalizedEmail) -> str:
     canonical = "|".join(
         [
@@ -197,7 +206,7 @@ async def _sync_connection_impl(
                             email_id=row.id,
                             notification_type="email_received",
                             title=f"New email from {email.sender_email}",
-                            body=(email.subject or "(no subject)")[:320],
+                            body=notification_preview(email.subject, email.body_text),
                         )
                     )
                     await db.commit()
@@ -223,7 +232,7 @@ async def _sync_connection_impl(
                         email_id=row.id,
                         notification_type="email_received",
                         title=f"New email from {email.sender_email}",
-                        body=(email.subject or "(no subject)")[:320],
+                        body=notification_preview(email.subject, email.body_text),
                     )
                 )
                 await db.commit()
