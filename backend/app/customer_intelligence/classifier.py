@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from typing import Any
 
 from app.customer_intelligence.contracts import NormalizedEmail
 
@@ -31,3 +33,33 @@ def classify_email(email: NormalizedEmail) -> Classification:
     if email.sender_domain.lower() not in _FREE_MAIL and email.sender_domain:
         return Classification("customer", 0.75, "sender uses an organizational domain")
     return Classification("normal", 0.7, "no high-risk or special routing signal")
+
+
+def extract_calendar_payload(email: NormalizedEmail) -> dict[str, Any] | None:
+    """Extract only explicit bounded date/time signals; never infer a meeting."""
+    text = f"{email.subject}\n{email.body_text}"[:20_000]
+    time_match = re.search(r"\b([01]?\d|2[0-3])[:.]([0-5]\d)\b", text)
+    date_match = re.search(r"\b(20\d{2})[-/](\d{1,2})[-/](\d{1,2})\b", text)
+    if date_match is None:
+        date_match = re.search(r"\b(\d{1,2})[/-](\d{1,2})(?:[/-](20\d{2}))?\b", text)
+        if date_match is None:
+            return None
+        day, month, year = int(date_match.group(1)), int(date_match.group(2)), date_match.group(3)
+        year = int(year) if year else datetime.now(timezone.utc).year
+    else:
+        year, month, day = (int(part) for part in date_match.groups())
+    if time_match is None:
+        return None
+    hour, minute = int(time_match.group(1)), int(time_match.group(2))
+    try:
+        start = datetime(year, month, day, hour, minute, tzinfo=timezone.utc)
+    except ValueError:
+        return None
+    end = start + timedelta(hours=1)
+    return {
+        "summary": email.subject[:500] or "Meeting from email",
+        "start": start.isoformat(),
+        "end": end.isoformat(),
+        "description": f"Created from email {email.provider_message_id}",
+        "attendees": [email.sender_email] if "@" in email.sender_email else [],
+    }

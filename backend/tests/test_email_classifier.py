@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from app.customer_intelligence.classifier import classify_email
+from app.customer_intelligence.classifier import classify_email, extract_calendar_payload
 from app.customer_intelligence.contracts import NormalizedEmail
 
 
@@ -27,3 +27,6 @@ def test_classifier_routes_spam_calendar_customer_and_guard_risk():
     assert classify_email(_email(subject="Meeting", body="Let's meet at 10:30 on 12/08")).label == "calendar"
     assert classify_email(_email(subject="Partnership inquiry", domain="acme.example")).label == "customer"
     assert classify_email(_email(subject="Hello", flags=["prompt_injection"])).label == "security_risk"
+    payload = extract_calendar_payload(_email(subject="Meeting", body="Let's meet at 10:30 on 12/08"))
+    assert payload is not None
+    assert payload["start"].endswith("10:30:00+00:00")

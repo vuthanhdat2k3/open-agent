@@ -188,6 +188,20 @@ async def _sync_connection_impl(
                     f"email {email.provider_message_id}: potential prompt injection flagged"
                 )
                 continue
+            if classification.label == "normal":
+                if conn.created_by_user_id:
+                    db.add(
+                        CiNotification(
+                            org_id=org_id,
+                            user_id=conn.created_by_user_id,
+                            email_id=row.id,
+                            notification_type="email_received",
+                            title=f"New email from {email.sender_email}",
+                            body=(email.subject or "(no subject)")[:320],
+                        )
+                    )
+                    await db.commit()
+                continue
             if len(email.attachments) > 0 and email.attachments[0].size_bytes > settings.ci_max_attachment_bytes:
                 warnings.append(
                     f"email {email.provider_message_id}: attachment over size limit, content skipped"
