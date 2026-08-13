@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.observability.audit import log_action
 from app.core.workflow.queue import enqueue_ci_research
+from app.config import get_settings
 from app.customer_intelligence.ingest import IngestionError, sync_connection
 from app.db.base import gen_id, utc_now
 from app.models.customer_intelligence import CiSchedule, EmailConnection
@@ -69,7 +70,10 @@ async def enqueue_gmail_maintenance_events(
             dedupe_key=f"gmail-reconcile:{connection.id}:{bucket.isoformat()}",
         )
         reconciliations += 1
-        if connection.watch_expiration_at is None or connection.watch_expiration_at <= now + timedelta(hours=48):
+        if get_settings().gmail_pubsub_topic and (
+            connection.watch_expiration_at is None
+            or connection.watch_expiration_at <= now + timedelta(hours=48)
+        ):
             generation = connection.watch_expiration_at.isoformat() if connection.watch_expiration_at else "initial"
             await repo.add_event(
                 event_type="gmail.watch.renew.requested",
