@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useState } from "react";
+import { useDeferredValue, useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { Activity, ExternalLink, RefreshCw, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -20,7 +20,17 @@ function statusVariant(status: string) {
 
 export default function CustomerIntelligencePage() {
   const [selected, setSelected] = useState<string | null>(null);
-  const cases = useCustomerIntelligenceCases();
+  const [query, setQuery] = useState("");
+  const [showReview, setShowReview] = useState(false);
+  const [offset, setOffset] = useState(0);
+  const deferredQuery = useDeferredValue(query);
+  const pageSize = 25;
+  const cases = useCustomerIntelligenceCases({
+    category: showReview ? "review" : "briefings",
+    query: deferredQuery,
+    limit: pageSize,
+    offset,
+  });
   const detail = useCustomerIntelligenceCase(selected);
   const research = useResearchCustomerIntelligenceCase();
   const retry = useRetryCustomerIntelligenceCase();
@@ -28,6 +38,7 @@ export default function CustomerIntelligencePage() {
   const [companyName, setCompanyName] = useState("");
   const [companyDomain, setCompanyDomain] = useState("");
   const [question, setQuestion] = useState("");
+  useEffect(() => setOffset(0), [deferredQuery, showReview]);
 
   async function createManualCase(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -51,7 +62,10 @@ export default function CustomerIntelligencePage() {
       </Card>
       <div className="grid gap-6 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.5fr)]">
         <Card>
-          <CardHeader><CardTitle>Cases</CardTitle><CardDescription>{cases.data?.length ?? 0} research cases</CardDescription></CardHeader>
+          <CardHeader>
+            <div className="flex items-start justify-between gap-3"><div><CardTitle>{showReview ? "Needs review" : "Research cases"}</CardTitle><CardDescription>{cases.data?.length ?? 0} {showReview ? "items on this page" : "company briefings on this page"}</CardDescription></div><Button variant="ghost" size="sm" onClick={() => void cases.refetch()} disabled={cases.isFetching}><RefreshCw className={cases.isFetching ? "h-4 w-4 animate-spin" : "h-4 w-4"} /></Button></div>
+            <div className="flex gap-2 pt-2"><div className="relative flex-1"><Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" /><Input aria-label="Search research cases" placeholder="Search company or domain" value={query} onChange={(event) => setQuery(event.target.value)} className="pl-8" /></div><Button type="button" variant={showReview ? "secondary" : "outline"} onClick={() => { setShowReview((value) => !value); setSelected(null); }}>{showReview ? "Show briefings" : "Needs review"}</Button></div>
+          </CardHeader>
           <CardContent className="space-y-2">
             {cases.isLoading && <p className="text-sm text-muted-foreground">Loading cases…</p>}
             {cases.data?.map((item) => (
@@ -60,15 +74,16 @@ export default function CustomerIntelligencePage() {
                 <p className="mt-1 text-xs text-muted-foreground">{new Date(item.created_at).toLocaleString()} · {item.trigger || "manual"}</p>
               </button>
             ))}
-            {!cases.isLoading && !cases.data?.length && <p className="text-sm text-muted-foreground">No cases yet. Connect email and run a sync to start research.</p>}
+            {!cases.isLoading && !cases.data?.length && <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">{showReview ? "No emails need review." : "No company briefings yet. New customer emails will appear here after agent classification."}</p>}
+            {(offset > 0 || (cases.data?.length ?? 0) === pageSize) && <div className="flex justify-between pt-2"><Button variant="outline" size="sm" disabled={offset === 0} onClick={() => setOffset((value) => Math.max(0, value - pageSize))}>Previous</Button><Button variant="outline" size="sm" disabled={(cases.data?.length ?? 0) < pageSize} onClick={() => setOffset((value) => value + pageSize)}>Next</Button></div>}
           </CardContent>
         </Card>
         <Card>
           <CardHeader><CardTitle>{detail.data?.company_name || "Case details"}</CardTitle><CardDescription>{detail.data?.company_domain || "Select a case to inspect its briefing and provenance."}</CardDescription></CardHeader>
           <CardContent className="space-y-5">
             {!selected && <div className="flex min-h-48 items-center justify-center text-sm text-muted-foreground"><Search className="mr-2 h-4 w-4" />Select a case</div>}
-            {detail.data && <>
-              <div className="flex flex-wrap items-center gap-2"><Badge variant={statusVariant(detail.data.status)}>{detail.data.status}</Badge>{detail.data.error && <span className="text-sm text-destructive">{detail.data.error}</span>}<div className="ml-auto flex gap-2">{["INGESTED", "RESEARCHING"].includes(detail.data.status) && <Button size="sm" onClick={() => research.mutate(detail.data!.id)} disabled={research.isPending}><Search className="mr-1 h-3.5 w-3.5" />Research</Button>}{["RETRYING", "DEAD_LETTER"].includes(detail.data.status) && <Button size="sm" variant="outline" onClick={() => retry.mutate(detail.data!.id)} disabled={retry.isPending}><RefreshCw className="mr-1 h-3.5 w-3.5" />Retry</Button>}</div></div>
+              {detail.data && <>
+              <div className="flex flex-wrap items-center gap-2"><Badge variant={statusVariant(detail.data.status)}>{detail.data.status}</Badge>{detail.data.error && <span className="text-sm text-destructive">{detail.data.error}</span>}<div className="ml-auto flex gap-2">{["INGESTED", "RESEARCHING"].includes(detail.data.status) && <Button size="sm" onClick={() => research.mutate(detail.data!.id)} disabled={research.isPending}><Search className="mr-1 h-3.5 w-3.5" />Research</Button>}{["RETRYING", "DEAD_LETTER", "NEEDS_REVIEW"].includes(detail.data.status) && <Button size="sm" variant="outline" onClick={() => retry.mutate(detail.data!.id)} disabled={retry.isPending}><RefreshCw className="mr-1 h-3.5 w-3.5" />Retry</Button>}</div></div>
               {detail.data.report ? <article className="prose prose-sm max-w-none dark:prose-invert"><ReactMarkdown>{detail.data.report.canonical_markdown}</ReactMarkdown></article> : <p className="text-sm text-muted-foreground">No briefing report yet.</p>}
               {detail.data.sources.length > 0 && <div><h3 className="mb-2 font-semibold">Sources ({detail.data.sources.length})</h3><div className="space-y-2">{detail.data.sources.map((source) => <a key={source.id} href={source.url} target="_blank" rel="noreferrer" className="block rounded-lg border border-border/60 p-3 hover:bg-muted/40"><div className="flex items-center gap-2 text-sm font-medium"><span className="truncate">{source.title}</span><ExternalLink className="h-3.5 w-3.5 shrink-0" /></div><p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{source.excerpt}</p></a>)}</div></div>}
             </>}

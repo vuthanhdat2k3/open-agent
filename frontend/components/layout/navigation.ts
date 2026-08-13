@@ -2,8 +2,8 @@ import type { QueryClient, QueryKey } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import type { Agent, AgentToolInfo, McpServer, Model, Provider, Session, SandboxExecution, UploadedFile, UsageSummary, Workflow as WorkflowT, WorkspaceArtifact } from "@/types";
 import {
-  Activity, Bot, Bug, CalendarDays, Cpu, FileUp, FlaskConical, FolderKanban,
-  Gauge, LayoutDashboard, MessageSquare, PlayCircle, Plug, Server, ShieldCheck, Users, Workflow,
+  Bell, Bot, Bug, CalendarDays, Cpu, FileUp, FlaskConical, FolderKanban,
+  Gauge, LayoutDashboard, MessageSquare, PlayCircle, Plug, Search, Server, SlidersHorizontal, ShieldCheck, Users, Workflow,
   type LucideIcon,
 } from "lucide-react";
 
@@ -26,9 +26,9 @@ export const navGroups: NavGroup[] = [
     { href: "/workspace", label: "Workspace", icon: FolderKanban },
     { href: "/mcp", label: "MCP Servers", icon: Plug, adminOnly: true },
     { href: "/integrations", label: "Integrations", icon: CalendarDays },
-    { href: "/email-intelligence", label: "Smart Inbox", icon: Activity },
-    { href: "/email-intelligence/rules", label: "Automation Rules", icon: ShieldCheck },
-    { href: "/customer-intelligence", label: "Research Cases", icon: Activity },
+    { href: "/email-intelligence", label: "Smart Inbox", icon: Bell },
+    { href: "/email-intelligence/rules", label: "Automation Rules", icon: SlidersHorizontal },
+    { href: "/customer-intelligence", label: "Research Cases", icon: Search },
     { href: "/models", label: "Models", icon: Cpu, adminOnly: true },
     { href: "/providers", label: "Providers", icon: Server, adminOnly: true },
     { href: "/files", label: "Files", icon: FileUp },
@@ -45,7 +45,11 @@ export const navGroups: NavGroup[] = [
 
 export const allNavItems = navGroups.flatMap((group) => group.items);
 export function isActive(pathname: string, href: string) {
-  return href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
+  if (href === "/") return pathname === "/";
+  const active = allNavItems
+    .filter((item) => pathname === item.href || pathname.startsWith(`${item.href}/`))
+    .sort((a, b) => b.href.length - a.href.length)[0];
+  return active?.href === href;
 }
 
 type PrefetchSpec = { queryKey: QueryKey; queryFn: () => Promise<unknown> };

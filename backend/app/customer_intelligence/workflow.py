@@ -180,6 +180,24 @@ async def run_research(
         if not companies and "company lookup failed" not in warnings:
             warnings.append("no company matched for this email")
 
+        # A research case without an identified company is not a briefing.
+        # Keep it visible for review, but never publish an empty report that
+        # turns newsletters or unmatched senders into fake customer research.
+        if not companies:
+            case.error = "No company matched; manual review required"
+            case.finished_at = utc_now()
+            await case_repo.transition(case, "NEEDS_REVIEW")
+            await log_action(
+                db,
+                org_id=org_id,
+                actor_user_id=actor_user_id,
+                action="ci.case.needs_review",
+                resource_type="ci_case",
+                resource_id=case_id,
+                metadata={"reason": "company_not_matched", "warnings": warnings},
+            )
+            return {"case_id": case_id, "status": "NEEDS_REVIEW", "warnings": warnings}
+
         calendar_conn: CalendarConnection | None = await calendar_repo.get_connected(
             org_id, user_id=case.created_by_user_id
         )

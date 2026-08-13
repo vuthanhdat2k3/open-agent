@@ -285,6 +285,13 @@ services:
       customer-intelligence-mcp:
         condition: service_started
 
+  classification-worker:
+    extends:
+      service: worker
+    command: ["arq", "app.worker.ClassificationWorkerSettings"]
+    healthcheck:
+      test: ["CMD", "arq", "app.worker.ClassificationWorkerSettings", "--check"]
+
   frontend:
     build:
       context: ./frontend

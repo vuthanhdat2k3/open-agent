@@ -7,8 +7,10 @@ from typing import Any, Literal, TypedDict
 CaseStatus = Literal[
     "NEW",
     "INGESTED",
+    "ACTION_PROPOSED",
     "RESEARCHING",
     "REPORT_READY",
+    "NEEDS_REVIEW",
     "AWAITING_APPROVAL",
     "APPROVED",
     "EXECUTING",

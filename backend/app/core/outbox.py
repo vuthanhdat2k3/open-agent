@@ -19,7 +19,12 @@ async def publish_pending_outbox(
     failed = 0
     for event in events:
         try:
-            await enqueue_outbox_event(event.id)
+            queue_name = (
+                "arq:ci:classify"
+                if event.event_type == "email.classification.requested"
+                else "arq:queue"
+            )
+            await enqueue_outbox_event(event.id, queue_name=queue_name)
             await repo.mark_published(event.id)
             published += 1
         except Exception as exc:  # noqa: BLE001 - retry is persisted below.

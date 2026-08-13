@@ -198,10 +198,15 @@ async def process_outbox_event(ctx: dict, event_id: str) -> None:
         if event is None:
             return
         repo = OutboxRepository(db)
+        consumer_name = (
+            "classification-worker"
+            if event.event_type == "email.classification.requested"
+            else "worker"
+        )
         already_processed = await db.scalar(
             select(ProcessedEvent).where(
                 ProcessedEvent.event_id == event.id,
-                ProcessedEvent.consumer_name == "worker",
+                ProcessedEvent.consumer_name == consumer_name,
             )
         )
         if already_processed:
@@ -209,6 +214,22 @@ async def process_outbox_event(ctx: dict, event_id: str) -> None:
         if event.event_type == "ci.research.requested":
             await run_ci_research(ctx, event.org_id, event.aggregate_id)
             await repo.mark_processed(event_id=event.id, consumer_name="worker")
+            await db.commit()
+            return
+        if event.event_type == "email.classification.requested":
+            from app.customer_intelligence.classification_service import (
+                classify_and_route_email,
+            )
+
+            await classify_and_route_email(
+                db,
+                org_id=event.org_id,
+                email_id=event.aggregate_id,
+                expected_content_hash=event.payload.get("content_hash"),
+                correlation_id=event.correlation_id,
+                trigger=event.payload.get("trigger", "webhook"),
+            )
+            await repo.mark_processed(event_id=event.id, consumer_name=consumer_name)
             await db.commit()
             return
         if event.event_type == "gmail.history_sync.requested":
@@ -283,3 +304,11 @@ class WorkerSettings:
         cron(_gmail_reconciliation_tick, minute=set(range(0, 60, 5)), run_at_startup=False),
         cron(_gmail_watch_renewal_tick, hour=set(range(0, 24, 12)), minute=0, run_at_startup=False),
     ]
+
+
+class ClassificationWorkerSettings:
+    functions = [process_outbox_event]
+    redis_settings = RedisSettings.from_dsn(get_settings().redis_url)
+    queue_name = "arq:ci:classify"
+    max_jobs = 4
+    job_timeout = 60
