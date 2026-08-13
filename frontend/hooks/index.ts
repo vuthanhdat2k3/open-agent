@@ -38,6 +38,7 @@ import type {
   CustomerIntelligenceCase,
   CustomerIntelligenceCaseDetail,
   CustomerIntelligenceNotification,
+  CustomerIntelligenceNotificationPage,
   EmailIntelligenceNavigationSummary,
 } from "@/types";
 
@@ -95,11 +96,27 @@ export function useCreateManualCustomerIntelligenceCase() {
   });
 }
 
-export function useCustomerIntelligenceNotifications(unreadOnly = false) {
+export interface CustomerIntelligenceNotificationFilters {
+  unreadOnly?: boolean;
+  cursor?: string | null;
+  query?: string;
+  receivedAfter?: string;
+  receivedBefore?: string;
+  notificationType?: string;
+}
+
+export function useCustomerIntelligenceNotifications(filters: CustomerIntelligenceNotificationFilters = {}) {
   const orgId = getActiveOrgId();
+  const params = new URLSearchParams({ limit: "25" });
+  if (filters.unreadOnly) params.set("unread_only", "true");
+  if (filters.cursor) params.set("cursor", filters.cursor);
+  if (filters.query) params.set("q", filters.query);
+  if (filters.receivedAfter) params.set("received_after", filters.receivedAfter);
+  if (filters.receivedBefore) params.set("received_before", filters.receivedBefore);
+  if (filters.notificationType) params.set("notification_type", filters.notificationType);
   return useQuery({
-    queryKey: emailIntelligenceQueryKeys(orgId).notifications({ unreadOnly }),
-    queryFn: () => api.get<CustomerIntelligenceNotification[]>(`/api/customer-intelligence/notifications?limit=100&unread_only=${unreadOnly}`),
+    queryKey: emailIntelligenceQueryKeys(orgId).notifications(filters),
+    queryFn: () => api.get<CustomerIntelligenceNotificationPage>(`/api/customer-intelligence/notifications?${params.toString()}`),
     refetchInterval: 30_000,
   });
 }

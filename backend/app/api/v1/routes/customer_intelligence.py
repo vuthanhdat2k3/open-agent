@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import hmac
+import base64
+import json
 import time
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -69,6 +72,37 @@ def _reclaim_owner(connection: object, user_id: str) -> str:
         and bool(getattr(connection, "credentials_enc", None))
         else user_id
     )
+
+
+def _encode_notification_cursor(received_at: datetime, email_id: str) -> str:
+    payload = json.dumps(
+        {"received_at": received_at.isoformat(), "email_id": email_id},
+        separators=(",", ":"),
+    ).encode()
+    return base64.urlsafe_b64encode(payload).decode().rstrip("=")
+
+
+def _decode_notification_cursor(value: str) -> tuple[datetime, str]:
+    try:
+        payload = json.loads(
+            base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
+        )
+        received_at = datetime.fromisoformat(payload["received_at"])
+        email_id = payload["email_id"]
+        if not isinstance(email_id, str) or not email_id:
+            raise ValueError
+        return received_at, email_id
+    except (ValueError, KeyError, TypeError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise HTTPException(status_code=400, detail="invalid notification cursor") from exc
+
+
+def _parse_notification_datetime(value: str | None, parameter: str) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).replace(tzinfo=None)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"invalid {parameter}") from exc
 webhook_router = APIRouter(prefix="/api/webhooks/google", tags=["webhooks"])
 
 
@@ -265,34 +299,105 @@ async def list_connections(
 async def list_ci_notifications(
     org_id: str = Depends(get_current_org_id),
     current_user: User = Depends(get_current_user),
-    limit: int = 50,
+    limit: int = 25,
     unread_only: bool = False,
+    cursor: str | None = None,
+    q: str | None = None,
+    received_after: str | None = None,
+    received_before: str | None = None,
+    notification_type: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
     _guard_enabled()
-    from sqlalchemy import select
+    from sqlalchemy import and_, func, or_, select
 
     from app.models.customer_intelligence import CiNotification
 
-    limit = max(1, min(limit, 100))
+    limit = max(1, min(limit, 50))
+    from_date = _parse_notification_datetime(received_after, "received_after")
+    to_date = _parse_notification_datetime(received_before, "received_before")
     filters = [CiNotification.org_id == org_id, CiNotification.user_id == current_user.id]
     if unread_only:
         filters.append(CiNotification.read_at.is_(None))
-    rows = await db.scalars(
-        select(CiNotification).where(*filters).order_by(CiNotification.created_at.desc()).limit(limit)
+    if notification_type:
+        filters.append(CiNotification.notification_type == notification_type[:32])
+    if q:
+        pattern = f"%{q.strip()[:200]}%"
+        filters.append(
+            or_(
+                CiNotification.title.ilike(pattern),
+                CiNotification.body.ilike(pattern),
+                InboundEmail.sender_email.ilike(pattern),
+                InboundEmail.subject.ilike(pattern),
+            )
+        )
+    if from_date:
+        filters.append(InboundEmail.received_at >= from_date)
+    if to_date:
+        filters.append(InboundEmail.received_at < to_date)
+    count_filters = list(filters)
+    if cursor:
+        cursor_received_at, cursor_email_id = _decode_notification_cursor(cursor)
+        filters.append(
+            or_(
+                InboundEmail.received_at < cursor_received_at,
+                and_(
+                    InboundEmail.received_at == cursor_received_at,
+                    InboundEmail.id < cursor_email_id,
+                ),
+            )
+        )
+
+    count_base = (
+        select(CiNotification, InboundEmail)
+        .join(InboundEmail, InboundEmail.id == CiNotification.email_id)
+        .where(*count_filters)
     )
-    return [
-        {
-            "id": row.id,
-            "email_id": row.email_id,
-            "type": row.notification_type,
-            "title": row.title,
-            "body": row.body,
-            "read_at": row.read_at,
-            "created_at": row.created_at,
-        }
-        for row in rows
-    ]
+    base = (
+        select(CiNotification, InboundEmail)
+        .join(InboundEmail, InboundEmail.id == CiNotification.email_id)
+        .where(*filters)
+    )
+    total = await db.scalar(select(func.count()).select_from(count_base.subquery())) or 0
+    unread = await db.scalar(
+        select(func.count())
+        .select_from(count_base.where(CiNotification.read_at.is_(None)).subquery())
+    ) or 0
+    rows = (
+        await db.execute(
+            base.order_by(InboundEmail.received_at.desc(), InboundEmail.id.desc()).limit(limit + 1)
+        )
+    ).all()
+    has_more = len(rows) > limit
+    rows = rows[:limit]
+    next_cursor = (
+        _encode_notification_cursor(rows[-1][1].received_at, rows[-1][1].id)
+        if has_more and rows
+        else None
+    )
+    return {
+        "items": [
+            {
+                "id": notification.id,
+                "email_id": notification.email_id,
+                "type": notification.notification_type,
+                "title": notification.title,
+                "body": notification.body,
+                "read_at": notification.read_at,
+                "created_at": notification.created_at,
+                "received_at": email.received_at,
+                "sender_email": email.sender_email,
+                "sender_name": email.sender_name,
+                "subject": email.subject,
+                "classification": email.classification,
+            }
+            for notification, email in rows
+        ],
+        "next_cursor": next_cursor,
+        "has_more": has_more,
+        "total": total,
+        "unread": unread,
+    }
 
 
 @router.get(
