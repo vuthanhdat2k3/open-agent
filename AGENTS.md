@@ -105,6 +105,7 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 | `feat/ci-job-scheduling-hardening` | `G:\open-agent-worktrees\ci-job-scheduling-hardening` | Hardening scheduler/worker production: generic lease, retry/backoff, dead-letter, worker health | Kiro |
 | `feat/langfuse-compose` | `G:\open-agent-worktrees\langfuse-compose` | Integrate Langfuse services into the main Docker Compose stack | Codex |
 | `fix/calendar-event-id-fix` | `G:\open-agent-worktrees\calendar-event-id-fix` | Normalize Calendar provider event IDs and reconcile successful deliveries | Codex |
+| `fix/ci-meeting-datetime-fix` | `G:\open-agent-worktrees\ci-meeting-datetime-fix` | Normalize Calendar meeting datetimes before persistence | Codex |
 | `feat/workflow-runtime-production` | `G:\open-agent-worktrees\workflow-runtime-production` | Production runtime executors and lifecycle hardening for workflow catalog | Codex |
 | `feat/workflow-template-catalog` | `G:\open-agent-worktrees\workflow-template-catalog` | Production workflow template catalog and recurring automation design | Codex |
 
