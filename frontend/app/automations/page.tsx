@@ -225,7 +225,11 @@ function SetupDialog({
           ? "event"
           : item.default_schedule_label.toLowerCase().includes("hour")
           ? "hourly"
-          : item.default_schedule_label.toLowerCase().includes("week")
+          : item.default_schedule_label.toLowerCase().includes("weekly") ||
+              item.default_schedule_label.toLowerCase().includes("friday")
+            ? "weekly"
+            : item.default_schedule_label.toLowerCase().includes("weekday") ||
+                item.default_schedule_label.toLowerCase().includes("week")
             ? "weekdays"
             : "daily",
       );
