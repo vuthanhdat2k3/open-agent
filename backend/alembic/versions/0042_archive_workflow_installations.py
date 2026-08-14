@@ -4,7 +4,7 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision = "0042_archive_workflow_installations"
+revision = "0042_archive_workflow"
 down_revision = "0041_gmail_monitor_template"
 branch_labels = None
 depends_on = None
