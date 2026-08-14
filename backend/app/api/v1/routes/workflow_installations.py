@@ -4,12 +4,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.base import gen_id
+from app.db.base import gen_id, utc_now
 from app.db.session import get_db
 from app.dependencies import get_current_org_id, get_current_user, require_permission
 from app.models.user import User
 from app.models.workflow import Workflow
 from app.models.workflow_installation import WorkflowInstallation
+from app.models.workflow_occurrence import WorkflowOccurrence
+from app.models.workflow_run import WorkflowRun
 from app.models.workflow_template import WorkflowTemplate, WorkflowTemplateVersion
 from app.workflows.scheduler import next_run_at
 from app.schemas.workflow_installation import (
@@ -38,6 +40,41 @@ def _out(item: WorkflowInstallation) -> InstallationOut:
         capabilities=InstallationCapabilities(can_resume=paused, can_pause=not paused),
         blocked_reasons={},
     )
+
+
+@router.get("/activity", dependencies=[Depends(require_permission("workflows:read"))])
+async def list_workflow_activity(
+    org_id: str = Depends(get_current_org_id),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    limit: int = 25,
+):
+    limit = max(1, min(limit, 50))
+    rows = await db.execute(
+        select(WorkflowOccurrence, WorkflowInstallation, WorkflowRun)
+        .join(WorkflowInstallation, WorkflowInstallation.id == WorkflowOccurrence.installation_id)
+        .join(WorkflowRun, WorkflowRun.id == WorkflowOccurrence.workflow_run_id)
+        .where(WorkflowInstallation.org_id == org_id, WorkflowInstallation.owner_user_id == current_user.id)
+        .order_by(WorkflowOccurrence.scheduled_for.desc(), WorkflowOccurrence.id.desc())
+        .limit(limit)
+    )
+    return {
+        "items": [
+            {
+                "id": occurrence.id,
+                "installation_id": installation.id,
+                "template_key": installation.template_key,
+                "name": installation.name,
+                "scheduled_for": occurrence.scheduled_for,
+                "status": run.status,
+                "output": run.output or {},
+                "error": run.error,
+                "created_at": occurrence.created_at,
+            }
+            for occurrence, installation, run in rows.all()
+        ],
+        "meta": {"server_time": utc_now().isoformat()},
+    }
 
 
 @router.get("/installations", response_model=list[InstallationOut], dependencies=[Depends(require_permission("workflows:read"))])
