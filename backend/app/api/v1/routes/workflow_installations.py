@@ -10,6 +10,7 @@ from app.dependencies import get_current_org_id, get_current_user, require_permi
 from app.models.user import User
 from app.models.workflow import Workflow
 from app.models.outbox import OutboxEvent
+from app.models.customer_intelligence import EmailConnection
 from app.models.workflow_installation import WorkflowInstallation
 from app.models.workflow_occurrence import WorkflowOccurrence
 from app.models.workflow_run import WorkflowRun
@@ -120,6 +121,20 @@ async def install_template(
         raise HTTPException(404, "workflow template not found")
     _template, version = template_pair
 
+    settings = dict(body.settings)
+    if body.template_key == "gmail_monitor_and_triage":
+        connection = await db.scalar(
+            select(EmailConnection).where(
+                EmailConnection.org_id == org_id,
+                EmailConnection.created_by_user_id == current_user.id,
+                EmailConnection.provider == "gmail",
+                EmailConnection.status == "connected",
+            ).order_by(EmailConnection.created_at.desc())
+        )
+        if connection is None:
+            raise HTTPException(409, "connect Gmail before enabling this workflow")
+        settings["connection_id"] = connection.id
+
     existing = await db.scalar(
         select(WorkflowInstallation).where(
             WorkflowInstallation.org_id == org_id,
@@ -150,7 +165,7 @@ async def install_template(
         status="enabled",
         timezone=body.timezone,
         schedule=body.schedule.model_dump(),
-        settings=body.settings,
+        settings=settings,
         next_run_at=next_run_at(body.schedule.model_dump(), body.timezone),
     )
     db.add(workflow)
