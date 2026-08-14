@@ -108,6 +108,12 @@ async def run_workflow(ctx, workflow_run_id: str) -> None:  # noqa: ARG001
                 user_id=workflow_run.triggered_by_user_id,
                 timezone_name=(workflow_run.input or {}).get("timezone"),
             )
+            occurrence_id = (workflow_run.input or {}).get("occurrence_id")
+            if occurrence_id:
+                occurrence = await session.get(WorkflowOccurrence, occurrence_id)
+                if occurrence is not None:
+                    occurrence.status = "succeeded" if workflow_run.status == "succeeded" else workflow_run.status
+            await session.commit()
         except Exception as exc:  # noqa: BLE001
             workflow_run.status = "failed"
             workflow_run.error = str(exc)
