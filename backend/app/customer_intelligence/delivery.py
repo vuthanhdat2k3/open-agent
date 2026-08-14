@@ -66,6 +66,22 @@ def _payload_hash(payload: dict[str, Any]) -> str:
     return hashlib.sha256(_canonical_json(payload).encode("utf-8")).hexdigest()
 
 
+def _calendar_provider_event_id(result: dict[str, Any]) -> str:
+    """Return the provider-neutral event id from a calendar response.
+
+    ``provider_event_id`` is the canonical contract used by the research
+    providers. ``id`` and ``event_id`` remain compatibility fallbacks for
+    older adapters, but a provider response without an id is never considered
+    a successful delivery.
+    """
+
+    for key in ("provider_event_id", "id", "event_id"):
+        value = result.get(key)
+        if value is not None and str(value).strip():
+            return str(value).strip()
+    return ""
+
+
 async def _pending_for_case(
     db: AsyncSession, *, org_id: str, case_id: str, action: str
 ) -> ApprovalRequest | None:
@@ -396,7 +412,7 @@ async def _deliver_calendar_event(
         if attempt.id:
             await attempts.touch(attempt, error="calendar provider create failed", status="pending")
         raise DeliveryError("calendar event creation failed") from exc
-    event_id = str(result.get("event_id") or result.get("id") or "")
+    event_id = _calendar_provider_event_id(result)
     if not event_id:
         raise DeliveryError("calendar provider returned no event id")
     return await attempts.touch(
