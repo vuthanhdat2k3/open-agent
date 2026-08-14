@@ -3,6 +3,7 @@
 Date: 2026-08-14
 Status: Approved design, ready for implementation planning
 Target: Docker Compose/VPS, fewer than 100 users, Google Workspace and personal Gmail
+Frontend design: `docs/superpowers/specs/2026-08-14-workflow-template-catalog-frontend-design.md`
 
 ## 1. Product decision
 
