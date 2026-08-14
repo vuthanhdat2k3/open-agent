@@ -89,6 +89,7 @@ async def list_workflow_templates(
                 reason_code=version.recommendation_reason_code,
             ),
             capabilities=WorkflowCatalogCapabilities(can_view=True, can_install=False),
+            blocked_reasons={"install": ["INSTALLATION_PHASE_NOT_ENABLED"]},
         )
         for template, version in rows
     ]
