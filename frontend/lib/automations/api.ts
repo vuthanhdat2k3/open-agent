@@ -42,6 +42,18 @@ export type WorkflowInstallation = {
   blocked_reasons: Record<string, string[]>;
 };
 
+export type WorkflowActivityItem = {
+  id: string;
+  installation_id: string;
+  template_key: string;
+  name: string;
+  scheduled_for: string;
+  status: string;
+  output: Record<string, unknown>;
+  error: string | null;
+  created_at: string;
+};
+
 export function getWorkflowCatalog(params: { query?: string; category?: string } = {}) {
   const search = new URLSearchParams();
   if (params.query?.trim()) search.set("query", params.query.trim());
@@ -52,6 +64,10 @@ export function getWorkflowCatalog(params: { query?: string; category?: string }
 
 export function getWorkflowInstallations() {
   return api.get<WorkflowInstallation[]>("/api/workflow-catalog/installations");
+}
+
+export function getWorkflowActivity() {
+  return api.get<{ items: WorkflowActivityItem[]; meta: { server_time: string } }>("/api/workflow-catalog/activity");
 }
 
 export function installWorkflowTemplate(body: { template_key: string; name?: string; timezone: string; schedule: WorkflowInstallation["schedule"]; settings?: Record<string, unknown> }) {
