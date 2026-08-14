@@ -14,7 +14,7 @@ from app.db.session import get_db
 from app.main import app
 from app.models.approval_request import ApprovalRequest
 from app.models.customer_intelligence import EmailConnection, InboundEmail, ResearchCase
-from app.repositories.customer_intelligence import DeliveryAttemptRepository
+from app.models.outbox import OutboxEvent
 
 
 @pytest.fixture
@@ -218,23 +218,23 @@ def test_approve_delivers_once_and_replay_is_rejected(
     assert decided.json()["status"] == "approved"
 
     case = client.get(f"/api/customer-intelligence/cases/{case_id}", headers=header)
-    assert case.json()["status"] == "COMPLETED"
+    assert case.json()["status"] == "APPROVED"
 
-    assert len(ci_mcp_stub["drafts"]) == 1
-    assert len(ci_mcp_stub["sent"]) == 1
+    async def _check_delivery_event() -> None:
+        async with async_session_factory() as session:
+            event = await session.scalar(
+                select(OutboxEvent).where(
+                    OutboxEvent.event_type == "ci.delivery.requested",
+                    OutboxEvent.aggregate_id == case_id,
+                )
+            )
+            assert event is not None
+            assert event.payload["approval_id"] == approval_id
 
     import anyio
-
-    async def _check_attempt() -> None:
-        async with async_session_factory() as session:
-            attempt = await DeliveryAttemptRepository(session).get_by_idempotency_key(
-                org_id, f"ci:{case_id}:send_email"
-            )
-            assert attempt is not None
-            assert attempt.status == "delivered"
-            assert attempt.provider_send_id is not None
-
-    anyio.run(_check_attempt)
+    anyio.run(_check_delivery_event)
+    assert ci_mcp_stub["drafts"] == {}
+    assert ci_mcp_stub["sent"] == {}
 
     replay = client.post(
         f"/api/customer-intelligence/cases/{case_id}/approval/{approval_id}/decide",
