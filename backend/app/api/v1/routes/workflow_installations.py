@@ -29,6 +29,7 @@ router = APIRouter(prefix="/api/workflow-catalog", tags=["workflow-installations
 def _out(item: WorkflowInstallation) -> InstallationOut:
     paused = item.status == "paused"
     archived = item.status == "archived"
+    event_trigger = (item.schedule or {}).get("kind") == "event"
     return InstallationOut(
         id=item.id,
         template_key=item.template_key,
@@ -45,9 +46,9 @@ def _out(item: WorkflowInstallation) -> InstallationOut:
             can_resume=paused,
             can_pause=not paused and not archived,
             can_delete=not archived,
-            can_run_now=not archived,
+            can_run_now=not archived and not event_trigger,
         ),
-        blocked_reasons={},
+        blocked_reasons={"run_now": ["EVENT_TRIGGER_ONLY"]} if event_trigger else {},
     )
 
 
@@ -233,6 +234,8 @@ async def run_installation_now(
     item = await db.scalar(select(WorkflowInstallation).where(WorkflowInstallation.id == installation_id, WorkflowInstallation.org_id == org_id, WorkflowInstallation.owner_user_id == current_user.id))
     if item is None:
         raise HTTPException(404, "workflow installation not found")
+    if (item.schedule or {}).get("kind") == "event":
+        raise HTTPException(409, "event-triggered workflow runs when its provider event arrives")
     now = utc_now()
     occurrence_id = gen_id()
     run_id = gen_id()

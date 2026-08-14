@@ -232,6 +232,53 @@ async def process_outbox_event(ctx: dict, event_id: str) -> None:
             await repo.mark_processed(event_id=event.id, consumer_name="worker")
             await db.commit()
             return
+        if event.event_type == "ci.delivery.requested":
+            from app.customer_intelligence.delivery import DeliveryError, run_delivery
+            from app.db.base import utc_now
+            from app.models.approval_request import ApprovalRequest
+            from app.models.customer_intelligence import ResearchCase
+
+            approval = await db.get(ApprovalRequest, event.payload.get("approval_id"))
+            case = await db.get(ResearchCase, event.payload.get("case_id"))
+            if (
+                approval is None
+                or case is None
+                or approval.org_id != event.org_id
+                or case.org_id != event.org_id
+            ):
+                raise RuntimeError("delivery event references invalid ownership")
+            if approval.status != "approved" or case.status == "COMPLETED":
+                await repo.mark_processed(event_id=event.id, consumer_name="worker")
+                await db.commit()
+                return
+            if case.status != "APPROVED":
+                raise RuntimeError(f"delivery case is not approved (status={case.status})")
+            case.status = "EXECUTING"
+            await db.commit()
+            try:
+                attempt = await run_delivery(
+                    db,
+                    org_id=event.org_id,
+                    case=case,
+                    approval=approval,
+                    actor_user_id=approval.decided_by,
+                )
+            except DeliveryError as exc:
+                case = await db.get(ResearchCase, case.id)
+                if case is not None and case.status == "EXECUTING":
+                    case.status = "RETRYING"
+                    case.error = str(exc)[:4000]
+                    case.next_retry_at = utc_now()
+                    case.retry_count += 1
+                await repo.mark_processed(event_id=event.id, consumer_name="worker")
+                await db.commit()
+                return
+            case = await db.get(ResearchCase, case.id)
+            if case is not None:
+                case.status = "COMPLETED"
+            await repo.mark_processed(event_id=event.id, consumer_name="worker")
+            await db.commit()
+            return
         if event.event_type == "email.classification.requested":
             from app.customer_intelligence.classification_service import (
                 classify_and_route_email,
