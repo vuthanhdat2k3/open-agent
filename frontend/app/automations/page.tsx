@@ -80,7 +80,7 @@ function TemplateCard({ item, onOpen }: { item: WorkflowCatalogItem; onOpen: (it
         </div>
         <div className="flex items-center justify-end gap-2">
           <Button type="button" variant="outline" size="sm" onClick={() => onOpen(item)}>View details</Button>
-          <Button type="button" size="sm" disabled={!item.capabilities.can_install}>Set up <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" /></Button>
+          <Button type="button" size="sm" variant={item.capabilities.can_install ? "default" : "outline"} disabled={!item.capabilities.can_install} aria-label={item.capabilities.can_install ? `Set up ${item.name}` : `${item.name} preview only`}>{item.capabilities.can_install ? <>Set up <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" /></> : "Preview only"}</Button>
         </div>
       </CardContent>
     </Card>
