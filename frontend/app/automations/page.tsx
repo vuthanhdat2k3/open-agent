@@ -220,7 +220,10 @@ function SetupDialog({
     if (item) {
       setStep(1);
       setScheduleKind(
-        item.default_schedule_label.toLowerCase().includes("hour")
+        item.default_schedule_label.toLowerCase().includes("relevant") ||
+          item.default_schedule_label.toLowerCase().includes("arrives")
+          ? "event"
+          : item.default_schedule_label.toLowerCase().includes("hour")
           ? "hourly"
           : item.default_schedule_label.toLowerCase().includes("week")
             ? "weekdays"

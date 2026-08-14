@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import gen_id, utc_now
@@ -170,7 +171,13 @@ async def install_template(
     )
     db.add(workflow)
     db.add(installation)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        if "uq_workflows_org_name" in str(exc.orig):
+            raise HTTPException(409, "workflow name is already in use") from exc
+        raise
     await db.refresh(installation)
     return _out(installation)
 
@@ -204,7 +211,12 @@ async def run_installation_now(
     db.add(WorkflowRun(id=run_id, org_id=org_id, workflow_id=item.workflow_id, status="queued", input={"text": "", "timezone": item.timezone, "trigger": "manual", "installation_id": item.id}, triggered_by_user_id=current_user.id))
     db.add(WorkflowOccurrence(id=occurrence_id, installation_id=item.id, workflow_run_id=run_id, occurrence_key=f"manual:{occurrence_id}", scheduled_for=now, status="queued", payload={"template_key": item.template_key, "trigger": "manual"}))
     db.add(OutboxEvent(event_type="workflow.run.requested", aggregate_type="workflow_occurrence", aggregate_id=occurrence_id, org_id=org_id, user_id=current_user.id, correlation_id=occurrence_id, payload={"run_id": run_id, "installation_id": item.id}, dedupe_key=f"manual:{occurrence_id}"))
-    await db.commit()
+    try:
+        await db.flush()
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(409, "workflow run could not be queued") from exc
     await db.refresh(item)
     return _out(item)
 
@@ -253,5 +265,8 @@ async def delete_installation(
     item = await db.scalar(select(WorkflowInstallation).where(WorkflowInstallation.id == installation_id, WorkflowInstallation.org_id == org_id, WorkflowInstallation.owner_user_id == current_user.id))
     if item is None:
         raise HTTPException(404, "workflow installation not found")
+    workflow = await db.scalar(select(Workflow).where(Workflow.id == item.workflow_id, Workflow.org_id == org_id))
     await db.delete(item)
+    if workflow is not None:
+        await db.delete(workflow)
     await db.commit()
