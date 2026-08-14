@@ -19,6 +19,8 @@ from app.models.customer_intelligence import (
     InboundEmail,
     ResearchCase,
 )
+from app.models.workflow import Workflow
+from app.models.workflow_installation import WorkflowInstallation
 
 
 @pytest.fixture
@@ -51,9 +53,14 @@ async def _seed_scheduled_connection(
             account_email="fake@example.com",
             status="connected",
             credentials_enc=encrypt_credentials({"access_token": "test"}),
+            created_by_user_id="test-user",
         )
         session.add(conn)
         await session.flush()
+        workflow = Workflow(org_id=org_id, created_by_user_id="test-user", name="Gmail monitor", graph={"nodes": [], "edges": []})
+        session.add(workflow)
+        await session.flush()
+        session.add(WorkflowInstallation(org_id=org_id, owner_user_id="test-user", template_key="gmail_monitor_and_triage", template_version=1, workflow_id=workflow.id, name="Gmail monitor", status="enabled", settings={"connection_id": conn.id}))
         schedule = CiSchedule(
             org_id=org_id,
             connection_id=conn.id,

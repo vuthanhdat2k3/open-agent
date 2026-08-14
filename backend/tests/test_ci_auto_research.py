@@ -13,6 +13,8 @@ from app.customer_intelligence.workflow import _unverified_company_candidate
 from app.db.base import Base, utc_now
 from app.models.customer_intelligence import EmailConnection, InboundEmail, ResearchCase
 from app.models.outbox import OutboxEvent
+from app.models.workflow import Workflow
+from app.models.workflow_installation import WorkflowInstallation
 from app.repositories.customer_intelligence import ResearchCaseRepository
 
 
@@ -37,7 +39,7 @@ def test_unverified_company_candidate_keeps_research_available() -> None:
     assert candidate.source == "agent-classifier-unverified"
 
 
-async def _seed_connection(async_session_factory, org_id: str) -> str:
+async def _seed_connection(async_session_factory, org_id: str, *, monitor_status: str = "enabled") -> str:
     async with async_session_factory() as session:
         conn = EmailConnection(
             org_id=org_id,
@@ -45,10 +47,26 @@ async def _seed_connection(async_session_factory, org_id: str) -> str:
             account_email="fake@example.com",
             status="connected",
             credentials_enc=encrypt_credentials({"access_token": "test"}),
+            created_by_user_id="test-user",
         )
         session.add(conn)
+        workflow = Workflow(org_id=org_id, created_by_user_id="test-user", name="Gmail monitor", graph={"nodes": [], "edges": []})
+        session.add(workflow)
+        await session.flush()
+        session.add(WorkflowInstallation(org_id=org_id, owner_user_id="test-user", template_key="gmail_monitor_and_triage", template_version=1, workflow_id=workflow.id, name="Gmail monitor", status=monitor_status, settings={"connection_id": conn.id}))
         await session.commit()
         return conn.id
+
+
+async def test_paused_gmail_monitor_ingests_without_classification(async_session_factory, ci_mcp_stub):
+    conn_id = await _seed_connection(async_session_factory, "org-monitor-paused", monitor_status="paused")
+    async with async_session_factory() as session:
+        result = await sync_connection(session, org_id="org-monitor-paused", connection_id=conn_id)
+        assert result["synced"] == 1
+        assert result["classification_queued"] == 0
+        assert not (await session.execute(select(OutboxEvent))).first()
+        email = (await session.execute(select(InboundEmail))).scalar_one()
+        assert email.classification == "monitoring_paused"
 
 
 async def test_sync_persists_classification_outbox_for_each_new_email(
@@ -208,6 +226,8 @@ async def test_sync_scopes_email_and_event_to_connection_owner(async_session_fac
     async with async_session_factory() as session:
         connection = await session.get(EmailConnection, conn_id)
         connection.created_by_user_id = owner_id
+        installation = (await session.execute(select(WorkflowInstallation))).scalar_one()
+        installation.owner_user_id = owner_id
         await session.commit()
 
     async with async_session_factory() as session:
