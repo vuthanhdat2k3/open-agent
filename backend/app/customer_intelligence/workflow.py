@@ -50,6 +50,22 @@ class ResearchError(Exception):
     pass
 
 
+def _persistable_utc_datetime(value: datetime | None) -> datetime | None:
+    """Normalize provider timestamps for TIMESTAMP WITHOUT TIME ZONE columns.
+
+    Calendar providers return timezone-aware values. The application models
+    intentionally persist naive UTC, so convert aware values to UTC and remove
+    the tzinfo at this persistence boundary. Naive values are already treated
+    as UTC for compatibility with older provider adapters.
+    """
+
+    if value is None:
+        return None
+    if value.tzinfo is not None:
+        return value.astimezone(timezone.utc).replace(tzinfo=None)
+    return value
+
+
 def _calendar_payload_for_email(email: InboundEmail) -> dict[str, Any] | None:
     """Read the agent's validated calendar payload for any compatible label."""
     payload = (email.classification_json or {}).get("calendar")
@@ -308,8 +324,8 @@ async def run_research(
                 case_id=case_id,
                 provider_event_id=m.event.provider_event_id,
                 title=m.event.title,
-                start_at=m.event.start_at,
-                end_at=m.event.end_at,
+                start_at=_persistable_utc_datetime(m.event.start_at),
+                end_at=_persistable_utc_datetime(m.event.end_at),
                 attendees=m.event.attendees,
                 organizer=m.event.organizer,
                 description=m.event.description,
