@@ -42,7 +42,7 @@ def authorization_url(provider: str, kind: str, state: str, redirect_uri: str) -
         endpoint = "https://accounts.google.com/o/oauth2/v2/auth"
         scopes = {
             "email": "https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.compose https://www.googleapis.com/auth/gmail.send",
-            "calendar": "https://www.googleapis.com/auth/calendar.readonly",
+            "calendar": "https://www.googleapis.com/auth/calendar.events",
             "drive": "https://www.googleapis.com/auth/drive",
         }[kind]
         params = {"client_id": _client_credentials("google")[0], "redirect_uri": redirect_uri, "response_type": "code", "scope": f"openid email {scopes}", "access_type": "offline", "prompt": "consent", "state": state}
