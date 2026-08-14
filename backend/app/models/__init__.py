@@ -54,6 +54,7 @@ from app.models.user import User
 from app.models.workflow import Workflow
 from app.models.workflow_node_run import WorkflowNodeRun
 from app.models.workflow_run import WorkflowRun
+from app.models.workflow_template import WorkflowTemplate, WorkflowTemplateVersion
 from app.models.workspace import SandboxExecution, WorkspaceArtifact
 
 __all__ = [
@@ -110,6 +111,8 @@ __all__ = [
     "Workflow",
     "WorkflowNodeRun",
     "WorkflowRun",
+    "WorkflowTemplate",
+    "WorkflowTemplateVersion",
     "AgentMemory",
     "SessionMemory",
     "SandboxExecution",
