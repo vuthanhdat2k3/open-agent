@@ -25,7 +25,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { getActiveOrgId } from "@/lib/auth";
-import { getWorkflowActivity, getWorkflowCatalog, getWorkflowInstallations, installWorkflowTemplate, pauseWorkflowInstallation, resumeWorkflowInstallation, deleteWorkflowInstallation, type WorkflowCatalogItem, type WorkflowInstallation } from "@/lib/automations/api";
+import { getWorkflowActivity, getWorkflowCatalog, getWorkflowInstallations, installWorkflowTemplate, pauseWorkflowInstallation, resumeWorkflowInstallation, runWorkflowInstallation, deleteWorkflowInstallation, type WorkflowCatalogItem, type WorkflowInstallation } from "@/lib/automations/api";
 import { workflowIcon } from "@/lib/automations/icons";
 
 const categories = [
@@ -182,6 +182,7 @@ export default function AutomationsPage() {
   const activity = useQuery({ queryKey: ["workflow-activity", orgId], queryFn: getWorkflowActivity, enabled: view === "active" });
   const pause = useMutation({ mutationFn: pauseWorkflowInstallation, onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["workflow-installations", orgId] }) });
   const resume = useMutation({ mutationFn: resumeWorkflowInstallation, onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["workflow-installations", orgId] }) });
+  const runNow = useMutation({ mutationFn: runWorkflowInstallation, onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["workflow-activity", orgId] }) });
   const remove = useMutation({ mutationFn: deleteWorkflowInstallation, onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["workflow-installations", orgId] }) });
   const items = useMemo(() => catalog.data?.data ?? [], [catalog.data?.data]);
   const recommended = useMemo(() => items.filter((item) => item.recommendation.recommended), [items]);
