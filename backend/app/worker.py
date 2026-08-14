@@ -107,6 +107,22 @@ async def _ci_scheduler_tick(ctx: dict) -> None:
         )
 
 
+async def _workflow_scheduler_tick(ctx: dict) -> None:
+    """Materialize due personal workflow occurrences through the durable outbox."""
+    from app.core.scheduling.tick import run_leased_tick
+    from app.workflows.scheduler import run_due_workflows
+
+    async with SessionLocal() as db:
+        await run_leased_tick(
+            db,
+            job_key="workflow_scheduler_tick",
+            interval_seconds=60,
+            lease_seconds=50,
+            worker_id=_worker_identity(),
+            run=lambda: run_due_workflows(db),
+        )
+
+
 async def _ci_retry_due_cases_tick(ctx: dict) -> None:
     """Retry due CI cases and record failures without stopping ARQ."""
     from app.core.scheduling.job_keys import JobKey
@@ -286,6 +302,21 @@ async def process_outbox_event(ctx: dict, event_id: str) -> None:
             await repo.mark_processed(event_id=event.id, consumer_name="worker")
             await db.commit()
             return
+        if event.event_type == "workflow.run.requested":
+            from app.db.base import utc_now
+            from app.models.workflow_occurrence import WorkflowOccurrence
+
+            run_id = event.payload.get("run_id")
+            if not run_id:
+                raise RuntimeError("workflow.run.requested missing run_id")
+            await enqueue_workflow_run(run_id)
+            occurrence = await db.get(WorkflowOccurrence, event.aggregate_id)
+            if occurrence is not None:
+                occurrence.status = "dispatched"
+                occurrence.dispatched_at = utc_now()
+            await repo.mark_processed(event_id=event.id, consumer_name="worker")
+            await db.commit()
+            return
         raise RuntimeError(f"unsupported outbox event type: {event.event_type}")
 
 
@@ -298,6 +329,7 @@ class WorkerSettings:
         cron(_auto_rollback_sweep, minute=set(range(0, 60, 5))),
         cron(_fail_orphaned_chat_runs, minute=set(range(0, 60, 2)), run_at_startup=False),
         cron(_ci_scheduler_tick, minute=set(range(0, 60, 5)), run_at_startup=False),
+        cron(_workflow_scheduler_tick, minute=set(range(0, 60, 1)), run_at_startup=False),
         cron(_ci_retry_due_cases_tick, minute=set(range(0, 60, 1)), run_at_startup=False),
         cron(_ci_dispatch_ingested_tick, minute=set(range(0, 60, 1)), run_at_startup=False),
         cron(_outbox_dispatch_tick, second=set(range(0, 60, 1)), run_at_startup=False),

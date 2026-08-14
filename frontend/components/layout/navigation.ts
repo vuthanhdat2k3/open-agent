@@ -3,7 +3,7 @@ import { api } from "@/lib/api";
 import type { Agent, AgentToolInfo, McpServer, Model, Provider, Session, SandboxExecution, UploadedFile, UsageSummary, Workflow as WorkflowT, WorkspaceArtifact } from "@/types";
 import {
   Bell, Bot, Bug, CalendarDays, Cpu, FileUp, FlaskConical, FolderKanban,
-  Gauge, LayoutDashboard, MessageSquare, PlayCircle, Plug, Search, Server, SlidersHorizontal, ShieldCheck, Users, Workflow,
+  Gauge, LayoutDashboard, MessageSquare, PlayCircle, Plug, Search, Server, SlidersHorizontal, ShieldCheck, Users, Workflow, Zap,
   type LucideIcon,
 } from "lucide-react";
 
@@ -27,6 +27,7 @@ export const navGroups: NavGroup[] = [
     { href: "/mcp", label: "MCP Servers", icon: Plug, adminOnly: true },
     { href: "/integrations", label: "Integrations", icon: CalendarDays },
     { href: "/email-intelligence", label: "Smart Inbox", icon: Bell },
+    { href: "/automations", label: "Automations", icon: Zap },
     { href: "/email-intelligence/rules", label: "Automation Rules", icon: SlidersHorizontal },
     { href: "/customer-intelligence", label: "Research Cases", icon: Search },
     { href: "/models", label: "Models", icon: Cpu, adminOnly: true },
@@ -75,6 +76,7 @@ const tabQueries: Record<string, PrefetchSpec[]> = {
   "/chat": [{ queryKey: ["sessions"], queryFn: () => api.get<Session[]>("/api/sessions") }],
   "/customer-intelligence": [{ queryKey: ["customer-intelligence", "cases"], queryFn: () => api.get("/api/customer-intelligence/cases") }],
   "/email-intelligence": [{ queryKey: ["email-intelligence", "notifications"], queryFn: () => api.get("/api/customer-intelligence/notifications?limit=100") }],
+  "/automations": [{ queryKey: ["workflow-catalog"], queryFn: () => api.get("/api/workflow-catalog/templates") }],
   "/debug": [
     { queryKey: ["debug-sessions"], queryFn: () => api.get<Session[]>("/api/debug/sessions") },
     { queryKey: ["usage"], queryFn: () => api.get<UsageSummary[]>("/api/debug/usage") },

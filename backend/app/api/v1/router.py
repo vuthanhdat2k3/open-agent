@@ -19,6 +19,8 @@ from app.api.v1.routes import (
     sandbox,
     sessions,
     trusted_rules,
+    workflow_catalog,
+    workflow_installations,
     workflows,
     workspace,
 )
@@ -38,6 +40,8 @@ protected_router.include_router(email_intelligence_admin.router)
 protected_router.include_router(trusted_rules.router)
 protected_router.include_router(mcp.router)
 protected_router.include_router(workflows.router)
+protected_router.include_router(workflow_catalog.router)
+protected_router.include_router(workflow_installations.router)
 protected_router.include_router(chat.router)
 protected_router.include_router(debug.router)
 protected_router.include_router(evaluations.router)

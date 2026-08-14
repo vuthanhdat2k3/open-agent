@@ -4,6 +4,7 @@ import hashlib
 import time
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,6 +21,7 @@ from app.customer_intelligence.providers.email import bind_email_provider, get_e
 from app.customer_intelligence.security import scan_for_prompt_injection
 from app.db.base import gen_id, utc_now
 from app.models.customer_intelligence import InboundEmail
+from app.models.workflow_installation import WorkflowInstallation
 from app.repositories.customer_intelligence import (
     EmailConnectionRepository,
     InboundEmailRepository,
@@ -120,6 +122,19 @@ async def _sync_connection_impl(
     if not conn.credentials_enc:
         raise IngestionError("connection has no credentials")
 
+    # Gmail sync remains durable while analysis is controlled by the user's
+    # Automation Hub installation. This prevents an accidental mailbox-wide
+    # LLM scan when the monitor is paused or has not been enabled yet.
+    monitor_enabled = await db.scalar(
+        select(WorkflowInstallation.id).where(
+            WorkflowInstallation.org_id == org_id,
+            WorkflowInstallation.owner_user_id == conn.created_by_user_id,
+            WorkflowInstallation.template_key == "gmail_monitor_and_triage",
+            WorkflowInstallation.status == "enabled",
+            WorkflowInstallation.settings["connection_id"].as_string() == connection_id,
+        )
+    ) is not None
+
     credentials = await load_fresh_credentials(db, conn)
     provider = bind_email_provider(get_email_provider(conn.provider), credentials)
 
@@ -206,8 +221,8 @@ async def _sync_connection_impl(
                 received_at=email.received_at,
                 content_hash=email.content_hash,
                 injection_flags=email.injection_flags,
-                classification="queued",
-                routing_status="pending",
+                classification="queued" if monitor_enabled else "monitoring_paused",
+                routing_status="pending" if monitor_enabled else "monitoring_paused",
                 created_by_user_id=conn.created_by_user_id,
             )
             try:
@@ -222,23 +237,25 @@ async def _sync_connection_impl(
                     deduplicated += 1
                     continue
                 raise
-            await OutboxRepository(db).add_event(
-                event_type="email.classification.requested",
-                aggregate_type="ci_email",
-                aggregate_id=row.id,
-                org_id=org_id,
-                user_id=conn.created_by_user_id,
-                correlation_id=correlation_id,
-                payload={
-                    "email_id": row.id,
-                    "content_hash": row.content_hash,
-                    "trigger": trigger,
-                },
-                dedupe_key=f"email-classification:{row.id}:{row.content_hash}",
-            )
+            if monitor_enabled:
+                await OutboxRepository(db).add_event(
+                    event_type="email.classification.requested",
+                    aggregate_type="ci_email",
+                    aggregate_id=row.id,
+                    org_id=org_id,
+                    user_id=conn.created_by_user_id,
+                    correlation_id=correlation_id,
+                    payload={
+                        "email_id": row.id,
+                        "content_hash": row.content_hash,
+                        "trigger": trigger,
+                    },
+                    dedupe_key=f"email-classification:{row.id}:{row.content_hash}",
+                )
             await db.commit()
             synced += 1
-            classification_queued += 1
+            if monitor_enabled:
+                classification_queued += 1
         # Bootstrap is intentionally bounded. History pagination is also
         # bounded per invocation so a mailbox burst cannot monopolize a
         # worker; the next notification/reconciliation resumes from the
