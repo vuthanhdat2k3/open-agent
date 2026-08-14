@@ -73,6 +73,30 @@ async def run_workflow(ctx, workflow_run_id: str) -> None:  # noqa: ARG001
                             occurrence.status = "succeeded"
                     await session.commit()
                     return
+                if template_key in {
+                    "morning-command-center",
+                    "follow-up-radar",
+                    "meeting-preparation",
+                    "end-of-day-client-digest",
+                    "weekly-account-review",
+                }:
+                    from app.workflows.catalog_executors import execute_catalog_report
+
+                    result = await execute_catalog_report(
+                        session,
+                        installation=installation,
+                        trigger=str((workflow_run.input or {}).get("trigger") or "scheduled"),
+                    )
+                    workflow_run.output = result
+                    workflow_run.status = "succeeded"
+                    workflow_run.finished_at = utc_now()
+                    occurrence_id = (workflow_run.input or {}).get("occurrence_id")
+                    if occurrence_id:
+                        occurrence = await session.get(WorkflowOccurrence, occurrence_id)
+                        if occurrence is not None:
+                            occurrence.status = "succeeded"
+                    await session.commit()
+                    return
                 raise RuntimeError(f"template executor is not implemented: {template_key}")
             await run_workflow_engine(
                 workflow,

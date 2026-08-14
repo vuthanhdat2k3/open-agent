@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.base import gen_id, utc_now
 from app.db.session import get_db
 from app.dependencies import get_current_org_id, get_current_user, require_permission
-from app.models.customer_intelligence import EmailConnection
+from app.models.customer_intelligence import CalendarConnection, EmailConnection
 from app.models.outbox import OutboxEvent
 from app.models.user import User
 from app.models.workflow import Workflow
@@ -129,7 +129,8 @@ async def install_template(
     _template, version = template_pair
 
     settings = dict(body.settings)
-    if body.template_key == "gmail_monitor_and_triage":
+    required_integrations = set(version.required_integrations or [])
+    if "gmail" in required_integrations:
         connection = await db.scalar(
             select(EmailConnection).where(
                 EmailConnection.org_id == org_id,
@@ -141,6 +142,18 @@ async def install_template(
         if connection is None:
             raise HTTPException(409, "connect Gmail before enabling this workflow")
         settings["connection_id"] = connection.id
+    if "google_calendar" in required_integrations:
+        calendar_connection = await db.scalar(
+            select(CalendarConnection).where(
+                CalendarConnection.org_id == org_id,
+                CalendarConnection.created_by_user_id == current_user.id,
+                CalendarConnection.provider == "google",
+                CalendarConnection.status == "connected",
+            ).order_by(CalendarConnection.created_at.desc())
+        )
+        if calendar_connection is None:
+            raise HTTPException(409, "connect Google Calendar before enabling this workflow")
+        settings["calendar_connection_id"] = calendar_connection.id
 
     existing = await db.scalar(
         select(WorkflowInstallation).where(
@@ -166,6 +179,10 @@ async def install_template(
             "template_version": version.version,
         },
     )
+    schedule = body.schedule.model_dump()
+    if body.template_key in {"gmail_monitor_and_triage", "new-customer-intelligence"}:
+        schedule = {"kind": "event", "time": None, "interval_hours": None, "weekday": None}
+
     installation = WorkflowInstallation(
         id=installation_id,
         org_id=org_id,
@@ -176,9 +193,9 @@ async def install_template(
         name=body.name or version.name,
         status="enabled",
         timezone=body.timezone,
-        schedule=body.schedule.model_dump(),
+        schedule=schedule,
         settings=settings,
-        next_run_at=next_run_at(body.schedule.model_dump(), body.timezone),
+        next_run_at=next_run_at(schedule, body.timezone),
     )
     db.add(workflow)
     db.add(installation)
