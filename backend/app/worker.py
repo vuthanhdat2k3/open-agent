@@ -266,10 +266,14 @@ async def process_outbox_event(ctx: dict, event_id: str) -> None:
             except DeliveryError as exc:
                 case = await db.get(ResearchCase, case.id)
                 if case is not None and case.status == "EXECUTING":
-                    case.status = "RETRYING"
+                    if "pending" in str(exc).lower() or "reconcile" in str(exc).lower():
+                        case.status = "MANUAL_REVIEW"
+                    else:
+                        case.status = "RETRYING"
                     case.error = str(exc)[:4000]
-                    case.next_retry_at = utc_now()
-                    case.retry_count += 1
+                    if case.status == "RETRYING":
+                        case.next_retry_at = utc_now()
+                        case.retry_count += 1
                 await repo.mark_processed(event_id=event.id, consumer_name="worker")
                 await db.commit()
                 return
