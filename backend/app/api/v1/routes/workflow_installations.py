@@ -11,6 +11,7 @@ from app.models.user import User
 from app.models.workflow import Workflow
 from app.models.workflow_installation import WorkflowInstallation
 from app.models.workflow_template import WorkflowTemplate, WorkflowTemplateVersion
+from app.workflows.scheduler import next_run_at
 from app.schemas.workflow_installation import (
     InstallationCapabilities,
     InstallationCreate,
@@ -112,6 +113,7 @@ async def install_template(
         timezone=body.timezone,
         schedule=body.schedule.model_dump(),
         settings=body.settings,
+        next_run_at=next_run_at(body.schedule.model_dump(), body.timezone),
     )
     db.add(workflow)
     db.add(installation)
@@ -144,6 +146,7 @@ async def pause_installation(
     if item is None:
         raise HTTPException(404, "workflow installation not found")
     item.status = "paused"
+    item.next_run_at = None
     await db.commit()
     await db.refresh(item)
     return _out(item)
@@ -160,6 +163,7 @@ async def resume_installation(
     if item is None:
         raise HTTPException(404, "workflow installation not found")
     item.status = "enabled"
+    item.next_run_at = next_run_at(item.schedule, item.timezone)
     await db.commit()
     await db.refresh(item)
     return _out(item)
