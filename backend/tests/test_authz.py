@@ -32,6 +32,7 @@ class TestPermissionMatrix:
         assert has_permission(Role.user, "agents:run")
         assert has_permission(Role.user, "workflows:read")
         assert has_permission(Role.user, "workflows:run")
+        assert has_permission(Role.user, "workflows:install")
         assert has_permission(Role.user, "tools:use:safe")
         assert has_permission(Role.user, "tools:use:network")
         assert has_permission(Role.user, "files:read")
