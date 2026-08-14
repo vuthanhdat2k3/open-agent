@@ -9,6 +9,7 @@ from app.db.session import get_db
 from app.dependencies import get_current_org_id, get_current_user, require_permission
 from app.models.user import User
 from app.models.workflow import Workflow
+from app.models.outbox import OutboxEvent
 from app.models.workflow_installation import WorkflowInstallation
 from app.models.workflow_occurrence import WorkflowOccurrence
 from app.models.workflow_run import WorkflowRun
@@ -37,7 +38,7 @@ def _out(item: WorkflowInstallation) -> InstallationOut:
         settings=item.settings,
         created_at=item.created_at,
         updated_at=item.updated_at,
-        capabilities=InstallationCapabilities(can_resume=paused, can_pause=not paused),
+        capabilities=InstallationCapabilities(can_resume=paused, can_pause=not paused, can_run_now=True),
         blocked_reasons={},
     )
 
@@ -169,6 +170,27 @@ async def get_installation(
     item = await db.scalar(select(WorkflowInstallation).where(WorkflowInstallation.id == installation_id, WorkflowInstallation.org_id == org_id, WorkflowInstallation.owner_user_id == current_user.id))
     if item is None:
         raise HTTPException(404, "workflow installation not found")
+    return _out(item)
+
+
+@router.post("/installations/{installation_id}/run", response_model=InstallationOut, dependencies=[Depends(require_permission("workflows:run"))])
+async def run_installation_now(
+    installation_id: str,
+    org_id: str = Depends(get_current_org_id),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    item = await db.scalar(select(WorkflowInstallation).where(WorkflowInstallation.id == installation_id, WorkflowInstallation.org_id == org_id, WorkflowInstallation.owner_user_id == current_user.id))
+    if item is None:
+        raise HTTPException(404, "workflow installation not found")
+    now = utc_now()
+    occurrence_id = gen_id()
+    run_id = gen_id()
+    db.add(WorkflowRun(id=run_id, org_id=org_id, workflow_id=item.workflow_id, status="queued", input={"text": "", "timezone": item.timezone, "trigger": "manual", "installation_id": item.id}, triggered_by_user_id=current_user.id))
+    db.add(WorkflowOccurrence(id=occurrence_id, installation_id=item.id, workflow_run_id=run_id, occurrence_key=f"manual:{occurrence_id}", scheduled_for=now, status="queued", payload={"template_key": item.template_key, "trigger": "manual"}))
+    db.add(OutboxEvent(event_type="workflow.run.requested", aggregate_type="workflow_occurrence", aggregate_id=occurrence_id, org_id=org_id, user_id=current_user.id, correlation_id=occurrence_id, payload={"run_id": run_id, "installation_id": item.id}, dedupe_key=f"manual:{occurrence_id}"))
+    await db.commit()
+    await db.refresh(item)
     return _out(item)
 
 

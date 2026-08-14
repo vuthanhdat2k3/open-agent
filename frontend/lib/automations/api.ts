@@ -82,6 +82,10 @@ export function resumeWorkflowInstallation(id: string) {
   return api.post<WorkflowInstallation>(`/api/workflow-catalog/installations/${id}/resume`);
 }
 
+export function runWorkflowInstallation(id: string) {
+  return api.post<WorkflowInstallation>(`/api/workflow-catalog/installations/${id}/run`);
+}
+
 export function deleteWorkflowInstallation(id: string) {
   return api.delete<void>(`/api/workflow-catalog/installations/${id}`);
 }
