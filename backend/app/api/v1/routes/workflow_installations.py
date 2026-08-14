@@ -28,6 +28,7 @@ router = APIRouter(prefix="/api/workflow-catalog", tags=["workflow-installations
 
 def _out(item: WorkflowInstallation) -> InstallationOut:
     paused = item.status == "paused"
+    archived = item.status == "archived"
     return InstallationOut(
         id=item.id,
         template_key=item.template_key,
@@ -40,7 +41,12 @@ def _out(item: WorkflowInstallation) -> InstallationOut:
         settings=item.settings,
         created_at=item.created_at,
         updated_at=item.updated_at,
-        capabilities=InstallationCapabilities(can_resume=paused, can_pause=not paused, can_run_now=True),
+        capabilities=InstallationCapabilities(
+            can_resume=paused,
+            can_pause=not paused and not archived,
+            can_delete=not archived,
+            can_run_now=not archived,
+        ),
         blocked_reasons={},
     )
 
@@ -141,6 +147,7 @@ async def install_template(
             WorkflowInstallation.org_id == org_id,
             WorkflowInstallation.owner_user_id == current_user.id,
             WorkflowInstallation.template_key == body.template_key,
+            WorkflowInstallation.status != "archived",
         )
     )
     if existing is not None:
@@ -153,7 +160,11 @@ async def install_template(
         created_by_user_id=current_user.id,
         name=body.name or version.name,
         description=f"Managed installation of {version.name}",
-        graph={"nodes": [{"id": "input", "kind": "input", "label": "Trigger"}, {"id": "output", "kind": "output", "label": "Result"}], "edges": [{"from_": "input", "to": "output"}]},
+        graph={
+            "kind": "catalog_template",
+            "template_key": body.template_key,
+            "template_version": version.version,
+        },
     )
     installation = WorkflowInstallation(
         id=installation_id,
@@ -208,7 +219,7 @@ async def run_installation_now(
     now = utc_now()
     occurrence_id = gen_id()
     run_id = gen_id()
-    db.add(WorkflowRun(id=run_id, org_id=org_id, workflow_id=item.workflow_id, status="queued", input={"text": "", "timezone": item.timezone, "trigger": "manual", "installation_id": item.id}, triggered_by_user_id=current_user.id))
+    db.add(WorkflowRun(id=run_id, org_id=org_id, workflow_id=item.workflow_id, status="queued", input={"text": "", "timezone": item.timezone, "trigger": "manual", "installation_id": item.id, "template_key": item.template_key, "template_version": item.template_version, "occurrence_id": occurrence_id}, triggered_by_user_id=current_user.id))
     await db.flush()
     db.add(WorkflowOccurrence(id=occurrence_id, installation_id=item.id, workflow_run_id=run_id, occurrence_key=f"manual:{occurrence_id}", scheduled_for=now, status="queued", payload={"template_key": item.template_key, "trigger": "manual"}))
     db.add(OutboxEvent(event_type="workflow.run.requested", aggregate_type="workflow_occurrence", aggregate_id=occurrence_id, org_id=org_id, user_id=current_user.id, correlation_id=occurrence_id, payload={"run_id": run_id, "installation_id": item.id}, dedupe_key=f"manual:{occurrence_id}"))
@@ -266,8 +277,6 @@ async def delete_installation(
     item = await db.scalar(select(WorkflowInstallation).where(WorkflowInstallation.id == installation_id, WorkflowInstallation.org_id == org_id, WorkflowInstallation.owner_user_id == current_user.id))
     if item is None:
         raise HTTPException(404, "workflow installation not found")
-    workflow = await db.scalar(select(Workflow).where(Workflow.id == item.workflow_id, Workflow.org_id == org_id))
-    await db.delete(item)
-    if workflow is not None:
-        await db.delete(workflow)
+    item.status = "archived"
+    item.next_run_at = None
     await db.commit()
