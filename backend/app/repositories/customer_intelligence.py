@@ -28,10 +28,11 @@ CASE_TRANSITIONS: dict[str, set[str]] = {
     "REPORT_READY": {"AWAITING_APPROVAL"},
     "AWAITING_APPROVAL": {"APPROVED", "REJECTED", "EXPIRED"},
     "APPROVED": {"EXECUTING"},
-    "EXECUTING": {"COMPLETED", "RETRYING"},
+    "EXECUTING": {"COMPLETED", "RETRYING", "MANUAL_REVIEW"},
     "RETRYING": {"RESEARCHING", "EXECUTING", "DEAD_LETTER"},
     "DEAD_LETTER": {"RETRYING"},
     "NEEDS_REVIEW": {"RETRYING"},
+    "MANUAL_REVIEW": {"COMPLETED", "DEAD_LETTER"},
 }
 
 
@@ -154,7 +155,7 @@ class ResearchCaseRepository(BaseRepository[ResearchCase]):
         if status:
             stmt = stmt.where(ResearchCase.status == status)
         if category == "review":
-            stmt = stmt.where(ResearchCase.status.in_({"NEEDS_REVIEW", "DEAD_LETTER", "RETRYING"}))
+            stmt = stmt.where(ResearchCase.status.in_({"NEEDS_REVIEW", "MANUAL_REVIEW", "DEAD_LETTER", "RETRYING"}))
         elif category == "briefings":
             stmt = stmt.where(
                 ResearchCase.trigger != "calendar",

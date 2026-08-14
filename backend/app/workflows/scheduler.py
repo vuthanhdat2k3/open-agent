@@ -64,18 +64,36 @@ async def run_due_workflows(db: AsyncSession, *, now: datetime | None = None) ->
                 WorkflowOccurrence.occurrence_key == occurrence_key,
             )
         )
+        active_occurrence = await db.scalar(
+            select(WorkflowOccurrence.id).where(
+                WorkflowOccurrence.installation_id == installation.id,
+                WorkflowOccurrence.status.in_({"queued", "dispatched", "running"}),
+            )
+        )
+        if active_occurrence is not None:
+            installation.next_run_at = next_run_at(installation.schedule, installation.timezone, now=current)
+            continue
         if existing is None:
+            occurrence_id = gen_id()
             run = WorkflowRun(
                 org_id=installation.org_id,
                 workflow_id=installation.workflow_id,
                 status="queued",
-                input={"text": "", "timezone": installation.timezone, "trigger": "scheduled", "installation_id": installation.id},
+                input={
+                    "text": "",
+                    "timezone": installation.timezone,
+                    "trigger": "scheduled",
+                    "installation_id": installation.id,
+                    "template_key": installation.template_key,
+                    "template_version": installation.template_version,
+                    "occurrence_id": occurrence_id,
+                },
                 triggered_by_user_id=installation.owner_user_id,
             )
             db.add(run)
             await db.flush()
             occurrence = WorkflowOccurrence(
-                id=gen_id(),
+                id=occurrence_id,
                 installation_id=installation.id,
                 workflow_run_id=run.id,
                 occurrence_key=occurrence_key,

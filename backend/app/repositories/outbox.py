@@ -34,7 +34,9 @@ class OutboxRepository:
                 await self.db.flush()
         except IntegrityError:
             # The unique constraint is the final race-safe dedupe guard.
-            await self.db.rollback()
+            # begin_nested() already rolled back only its savepoint. Never
+            # roll back the caller's business transaction here: an outbox
+            # dedupe race must not erase the aggregate change that surrounds it.
             existing = await self.db.scalar(
                 select(OutboxEvent).where(
                     OutboxEvent.event_type == values["event_type"],
@@ -111,6 +113,7 @@ class OutboxRepository:
             async with self.db.begin_nested():
                 await self.db.flush()
         except IntegrityError:
-            await self.db.rollback()
+            # Keep the caller's transaction alive; the savepoint handled the
+            # duplicate receipt race.
             return False
         return True

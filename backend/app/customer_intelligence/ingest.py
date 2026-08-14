@@ -129,7 +129,7 @@ async def _sync_connection_impl(
         select(WorkflowInstallation.id).where(
             WorkflowInstallation.org_id == org_id,
             WorkflowInstallation.owner_user_id == conn.created_by_user_id,
-            WorkflowInstallation.template_key == "gmail_monitor_and_triage",
+            WorkflowInstallation.template_key.in_(["gmail_monitor_and_triage", "new-customer-intelligence"]),
             WorkflowInstallation.status == "enabled",
             WorkflowInstallation.settings["connection_id"].as_string() == connection_id,
         )

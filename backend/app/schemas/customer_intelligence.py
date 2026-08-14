@@ -139,6 +139,13 @@ class ApprovalDecisionRequest(BaseModel):
     reason: str = Field(default="", max_length=2000)
 
 
+class ManualReviewResolutionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    outcome: Literal["confirm_delivered", "not_delivered", "create_new_proposal", "dismiss"]
+    reason: str = Field(default="", max_length=2000)
+
+
 class ScheduleCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
