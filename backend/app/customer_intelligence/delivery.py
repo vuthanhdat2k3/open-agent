@@ -46,6 +46,7 @@ from app.models.customer_intelligence import (
     DeliveryAttempt,
     ResearchCase,
 )
+from app.models.outbox import OutboxEvent
 from app.repositories.customer_intelligence import (
     DeliveryAttemptRepository,
     EmailConnectionRepository,
@@ -200,6 +201,8 @@ async def decide_case_approval(
     case = await ResearchCaseRepository(db).get(org_id, approval.case_id or "")
     if case is None:
         raise DeliveryError("case not found")
+    if case.status != "AWAITING_APPROVAL":
+        raise DeliveryError(f"case is not awaiting approval (status={case.status})")
 
     if approval.payload_hash and _payload_hash(approval.args_snapshot or {}) != approval.payload_hash:
         raise DeliveryError("approval payload has changed")
@@ -234,7 +237,6 @@ async def decide_case_approval(
     approval.decided_by = decided_by
     approval.decided_at = now
     approval.reason = reason
-    await db.commit()
 
     if decision == "rejected":
         cases = ResearchCaseRepository(db)
@@ -255,32 +257,23 @@ async def decide_case_approval(
         )
         return approval
 
-    # approved -> run the side effect
-    cases = ResearchCaseRepository(db)
-    await cases.transition(case, "APPROVED")
-    await cases.transition(case, "EXECUTING")
-    try:
-        attempt = await run_delivery(
-            db,
+    # Approval is the only synchronous mutation. Provider I/O is dispatched
+    # through the durable outbox so an HTTP timeout cannot hide an ambiguous
+    # side-effect result from the canonical state machine.
+    case.status = "APPROVED"
+    db.add(
+        OutboxEvent(
+            event_type="ci.delivery.requested",
+            aggregate_type="ci_case",
+            aggregate_id=case.id,
             org_id=org_id,
-            case=case,
-            approval=approval,
-            actor_user_id=decided_by,
+            user_id=decided_by,
+            correlation_id=approval.id,
+            payload={"approval_id": approval.id, "case_id": case.id},
+            dedupe_key=f"ci-delivery:{approval.id}",
         )
-    except Exception as exc:  # noqa: BLE001 - provider errors must enter retry state.
-        error = exc if isinstance(exc, DeliveryError) else DeliveryError("delivery provider failed")
-        await cases.transition(case, "RETRYING")
-        await log_action(
-            db,
-            org_id=org_id,
-            actor_user_id=decided_by,
-            action="ci.approval.approved_execution_failed",
-            resource_type="ci_case",
-            resource_id=case.id,
-            metadata={"approval_id": approval.id, "error": str(error)},
-        )
-        raise error from exc
-    await cases.transition(case, "COMPLETED")
+    )
+    await db.commit()
     ci_approval_age_seconds.labels(decision="approved").observe(age_seconds)
     await log_action(
         db,
@@ -292,8 +285,7 @@ async def decide_case_approval(
         metadata={
             "approval_id": approval.id,
             "action": approval.tool_name,
-            "attempt_id": attempt.id,
-            "provider_send_id": attempt.provider_send_id,
+            "delivery_status": "queued",
             "approval_age_seconds": age_seconds,
         },
     )

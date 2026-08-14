@@ -85,3 +85,37 @@ async def test_outbox_publish_failure_is_retryable(async_session_factory, monkey
         event = await db.scalar(select(OutboxEvent).where(OutboxEvent.aggregate_id == "case-publish"))
         assert event.status == "failed"
         assert event.available_at >= utc_now() + timedelta(seconds=29)
+
+
+@pytest.mark.asyncio
+async def test_outbox_dedupe_race_does_not_rollback_business_transaction(async_session_factory):
+    async with async_session_factory() as db:
+        organization = Organization(id="org-atomic", name="Before", slug="atomic")
+        db.add(organization)
+        await db.commit()
+        repo = OutboxRepository(db)
+        await repo.add_event(
+            event_type="workflow.run.requested",
+            aggregate_type="workflow",
+            aggregate_id="workflow-1",
+            org_id=organization.id,
+            payload={},
+            dedupe_key="workflow-1:1",
+        )
+        await db.commit()
+
+        organization.name = "After"
+        duplicate = await repo.add_event(
+            event_type="workflow.run.requested",
+            aggregate_type="workflow",
+            aggregate_id="workflow-1",
+            org_id=organization.id,
+            payload={"duplicate": True},
+            dedupe_key="workflow-1:1",
+        )
+        assert duplicate is not None
+        await db.commit()
+
+        refreshed = await db.get(Organization, organization.id)
+        assert refreshed is not None
+        assert refreshed.name == "After"

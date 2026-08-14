@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import JSON, DateTime, ForeignKey, String, UniqueConstraint
+from sqlalchemy import JSON, DateTime, ForeignKey, Index, String, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, gen_id, utc_now
@@ -11,7 +11,15 @@ from app.db.base import Base, gen_id, utc_now
 class WorkflowInstallation(Base):
     __tablename__ = "workflow_installations"
     __table_args__ = (
-        UniqueConstraint("org_id", "owner_user_id", "template_key", name="uq_workflow_installation_owner_template"),
+        Index(
+            "uq_active_workflow_installation_owner_template",
+            "org_id",
+            "owner_user_id",
+            "template_key",
+            unique=True,
+            postgresql_where=text("status <> 'archived'"),
+            sqlite_where=text("status <> 'archived'"),
+        ),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=gen_id)

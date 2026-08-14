@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.base import gen_id, utc_now
 from app.db.session import get_db
 from app.dependencies import get_current_org_id, get_current_user, require_permission
-from app.models.customer_intelligence import EmailConnection
+from app.models.customer_intelligence import CalendarConnection, EmailConnection
 from app.models.outbox import OutboxEvent
 from app.models.user import User
 from app.models.workflow import Workflow
@@ -28,6 +28,8 @@ router = APIRouter(prefix="/api/workflow-catalog", tags=["workflow-installations
 
 def _out(item: WorkflowInstallation) -> InstallationOut:
     paused = item.status == "paused"
+    archived = item.status == "archived"
+    event_trigger = (item.schedule or {}).get("kind") == "event"
     return InstallationOut(
         id=item.id,
         template_key=item.template_key,
@@ -40,8 +42,13 @@ def _out(item: WorkflowInstallation) -> InstallationOut:
         settings=item.settings,
         created_at=item.created_at,
         updated_at=item.updated_at,
-        capabilities=InstallationCapabilities(can_resume=paused, can_pause=not paused, can_run_now=True),
-        blocked_reasons={},
+        capabilities=InstallationCapabilities(
+            can_resume=paused,
+            can_pause=not paused and not archived,
+            can_delete=not archived,
+            can_run_now=not archived and not event_trigger,
+        ),
+        blocked_reasons={"run_now": ["EVENT_TRIGGER_ONLY"]} if event_trigger else {},
     )
 
 
@@ -123,7 +130,8 @@ async def install_template(
     _template, version = template_pair
 
     settings = dict(body.settings)
-    if body.template_key == "gmail_monitor_and_triage":
+    required_integrations = set(version.required_integrations or [])
+    if "gmail" in required_integrations:
         connection = await db.scalar(
             select(EmailConnection).where(
                 EmailConnection.org_id == org_id,
@@ -135,12 +143,25 @@ async def install_template(
         if connection is None:
             raise HTTPException(409, "connect Gmail before enabling this workflow")
         settings["connection_id"] = connection.id
+    if "google_calendar" in required_integrations:
+        calendar_connection = await db.scalar(
+            select(CalendarConnection).where(
+                CalendarConnection.org_id == org_id,
+                CalendarConnection.created_by_user_id == current_user.id,
+                CalendarConnection.provider == "google",
+                CalendarConnection.status == "connected",
+            ).order_by(CalendarConnection.created_at.desc())
+        )
+        if calendar_connection is None:
+            raise HTTPException(409, "connect Google Calendar before enabling this workflow")
+        settings["calendar_connection_id"] = calendar_connection.id
 
     existing = await db.scalar(
         select(WorkflowInstallation).where(
             WorkflowInstallation.org_id == org_id,
             WorkflowInstallation.owner_user_id == current_user.id,
             WorkflowInstallation.template_key == body.template_key,
+            WorkflowInstallation.status != "archived",
         )
     )
     if existing is not None:
@@ -153,8 +174,16 @@ async def install_template(
         created_by_user_id=current_user.id,
         name=body.name or version.name,
         description=f"Managed installation of {version.name}",
-        graph={"nodes": [{"id": "input", "kind": "input", "label": "Trigger"}, {"id": "output", "kind": "output", "label": "Result"}], "edges": [{"from_": "input", "to": "output"}]},
+        graph={
+            "kind": "catalog_template",
+            "template_key": body.template_key,
+            "template_version": version.version,
+        },
     )
+    schedule = body.schedule.model_dump()
+    if body.template_key in {"gmail_monitor_and_triage", "new-customer-intelligence"}:
+        schedule = {"kind": "event", "time": None, "interval_hours": None, "weekday": None}
+
     installation = WorkflowInstallation(
         id=installation_id,
         org_id=org_id,
@@ -165,9 +194,9 @@ async def install_template(
         name=body.name or version.name,
         status="enabled",
         timezone=body.timezone,
-        schedule=body.schedule.model_dump(),
+        schedule=schedule,
         settings=settings,
-        next_run_at=next_run_at(body.schedule.model_dump(), body.timezone),
+        next_run_at=next_run_at(schedule, body.timezone),
     )
     db.add(workflow)
     db.add(installation)
@@ -175,8 +204,11 @@ async def install_template(
         await db.commit()
     except IntegrityError as exc:
         await db.rollback()
-        if "uq_workflows_org_name" in str(exc.orig):
+        error_text = str(exc.orig)
+        if "uq_workflows_org_name" in error_text:
             raise HTTPException(409, "workflow name is already in use") from exc
+        if "uq_active_workflow_installation_owner_template" in error_text or "uq_workflow_installation_owner_template" in error_text:
+            raise HTTPException(409, "workflow template is already installed") from exc
         raise
     await db.refresh(installation)
     return _out(installation)
@@ -205,10 +237,12 @@ async def run_installation_now(
     item = await db.scalar(select(WorkflowInstallation).where(WorkflowInstallation.id == installation_id, WorkflowInstallation.org_id == org_id, WorkflowInstallation.owner_user_id == current_user.id))
     if item is None:
         raise HTTPException(404, "workflow installation not found")
+    if (item.schedule or {}).get("kind") == "event":
+        raise HTTPException(409, "event-triggered workflow runs when its provider event arrives")
     now = utc_now()
     occurrence_id = gen_id()
     run_id = gen_id()
-    db.add(WorkflowRun(id=run_id, org_id=org_id, workflow_id=item.workflow_id, status="queued", input={"text": "", "timezone": item.timezone, "trigger": "manual", "installation_id": item.id}, triggered_by_user_id=current_user.id))
+    db.add(WorkflowRun(id=run_id, org_id=org_id, workflow_id=item.workflow_id, status="queued", input={"text": "", "timezone": item.timezone, "trigger": "manual", "installation_id": item.id, "template_key": item.template_key, "template_version": item.template_version, "occurrence_id": occurrence_id}, triggered_by_user_id=current_user.id))
     await db.flush()
     db.add(WorkflowOccurrence(id=occurrence_id, installation_id=item.id, workflow_run_id=run_id, occurrence_key=f"manual:{occurrence_id}", scheduled_for=now, status="queued", payload={"template_key": item.template_key, "trigger": "manual"}))
     db.add(OutboxEvent(event_type="workflow.run.requested", aggregate_type="workflow_occurrence", aggregate_id=occurrence_id, org_id=org_id, user_id=current_user.id, correlation_id=occurrence_id, payload={"run_id": run_id, "installation_id": item.id}, dedupe_key=f"manual:{occurrence_id}"))
@@ -266,8 +300,6 @@ async def delete_installation(
     item = await db.scalar(select(WorkflowInstallation).where(WorkflowInstallation.id == installation_id, WorkflowInstallation.org_id == org_id, WorkflowInstallation.owner_user_id == current_user.id))
     if item is None:
         raise HTTPException(404, "workflow installation not found")
-    workflow = await db.scalar(select(Workflow).where(Workflow.id == item.workflow_id, Workflow.org_id == org_id))
-    await db.delete(item)
-    if workflow is not None:
-        await db.delete(workflow)
+    item.status = "archived"
+    item.next_run_at = None
     await db.commit()

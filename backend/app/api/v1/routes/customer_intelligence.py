@@ -34,6 +34,7 @@ from app.schemas.customer_intelligence import (
     DeliverActionRequest,
     DriveConnectionResponse,
     ManualResearchRequest,
+    ManualReviewResolutionRequest,
     MeetingResponse,
     ReportResponse,
     ScheduleCreate,
@@ -1291,3 +1292,55 @@ async def decide_case_delivery(
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post(
+    "/cases/{case_id}/manual-review/resolve",
+    response_model=CaseSummary,
+    dependencies=[Depends(require_any_permission("ci:manage", "ci:personal:manage"))],
+)
+async def resolve_manual_review(
+    case_id: str,
+    body: ManualReviewResolutionRequest,
+    org_id: str = Depends(get_current_org_id),
+    current_user: User = Depends(get_current_user),
+    request: Request = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Resolve an ambiguous provider result without replaying a side effect."""
+    _guard_enabled()
+    case = await _case_for_request(
+        db,
+        org_id=org_id,
+        case_id=case_id,
+        request=request,
+        current_user=current_user,
+    )
+    if case.status != "MANUAL_REVIEW":
+        raise HTTPException(409, "case is not waiting for manual review")
+    case.status = "COMPLETED" if body.outcome == "confirm_delivered" else "DEAD_LETTER"
+    case.error = body.reason or f"manual review resolved: {body.outcome}"
+    case.finished_at = utc_now()
+    from app.core.observability.audit import log_action
+
+    await log_action(
+        db,
+        org_id=org_id,
+        actor_user_id=current_user.id,
+        action="ci.manual_review.resolved",
+        resource_type="ci_case",
+        resource_id=case.id,
+        metadata={"outcome": body.outcome, "reason": body.reason},
+    )
+    await db.commit()
+    return CaseSummary(
+        id=case.id,
+        email_id=case.email_id,
+        company_name=case.company_name,
+        company_domain=case.company_domain,
+        status=case.status,
+        confidence=case.confidence,
+        trigger=case.trigger,
+        created_at=case.created_at,
+        finished_at=case.finished_at,
+    )
