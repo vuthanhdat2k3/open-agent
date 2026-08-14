@@ -4,9 +4,9 @@ import hashlib
 import time
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 
 from app.core.observability.audit import log_action
 from app.core.observability.metrics import (

@@ -7,20 +7,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.base import gen_id, utc_now
 from app.db.session import get_db
 from app.dependencies import get_current_org_id, get_current_user, require_permission
+from app.models.customer_intelligence import EmailConnection
+from app.models.outbox import OutboxEvent
 from app.models.user import User
 from app.models.workflow import Workflow
-from app.models.outbox import OutboxEvent
-from app.models.customer_intelligence import EmailConnection
 from app.models.workflow_installation import WorkflowInstallation
 from app.models.workflow_occurrence import WorkflowOccurrence
 from app.models.workflow_run import WorkflowRun
 from app.models.workflow_template import WorkflowTemplate, WorkflowTemplateVersion
-from app.workflows.scheduler import next_run_at
 from app.schemas.workflow_installation import (
     InstallationCapabilities,
     InstallationCreate,
     InstallationOut,
 )
+from app.workflows.scheduler import next_run_at
 
 router = APIRouter(prefix="/api/workflow-catalog", tags=["workflow-installations"])
 

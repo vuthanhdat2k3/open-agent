@@ -1,7 +1,8 @@
 """Add user-owned workflow installations for the guided catalog setup."""
 
-from alembic import op
 import sqlalchemy as sa
+
+from alembic import op
 
 revision = "0039_workflow_installations"
 down_revision = "0038_workflow_template_catalog"
