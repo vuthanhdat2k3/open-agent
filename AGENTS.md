@@ -104,6 +104,7 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 | `feat/delegated-approval-fix` | `G:\open-agent-worktrees\delegated-approval-fix` | Sửa approval propagation/resume cho delegated sub-agents | Agent khác |
 | `feat/ci-job-scheduling-hardening` | `G:\open-agent-worktrees\ci-job-scheduling-hardening` | Hardening scheduler/worker production: generic lease, retry/backoff, dead-letter, worker health | Kiro |
 | `feat/langfuse-compose` | `G:\open-agent-worktrees\langfuse-compose` | Integrate Langfuse services into the main Docker Compose stack | Codex |
+| `feat/workflow-template-catalog` | `G:\open-agent-worktrees\workflow-template-catalog` | Production workflow template catalog and recurring automation design | Codex |
 
 ## 8. Quy tắc chung khác (áp dụng mọi branch/worktree)
 
