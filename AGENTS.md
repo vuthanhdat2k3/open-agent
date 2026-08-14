@@ -96,7 +96,6 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 |---|---|---|---|
 | `dev` | `G:\open-agent` | Nhánh tích hợp chính — không code trực tiếp ở đây | — |
 | `feat/runtime-date-time` | `G:\open-agent-worktrees\runtime-date-time` | Runtime date/time context for all agents and workflows | Codex |
-| `feat/agent-email-classification` | `G:\open-agent-worktrees\agent-email-classification` | Agent email classification, clean cutover, and no-empty-report routing | Codex |
 | `fix/gmail-incremental-sync` | `G:\open-agent-worktrees\gmail-incremental-sync` | Gmail incremental sync and Approval Center UI | Codex |
 | `docs/agent-email-classification-spec` | `G:\open-agent-worktrees\agent-email-classification-spec` | Agent-based email classification, cutover, latency and cost specification | Codex |
 | `fix/gmail-ingest-timezone` | `G:\open-agent-worktrees\gmail-ingest-timezone` | Normalize Gmail timestamps before inbound email persistence | Codex |
