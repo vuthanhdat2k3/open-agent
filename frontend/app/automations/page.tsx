@@ -1,10 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { useDeferredValue, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowRight,
+  Check,
   CalendarClock,
   CheckCircle2,
   Clock3,
@@ -24,7 +25,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { getActiveOrgId } from "@/lib/auth";
-import { getWorkflowCatalog, type WorkflowCatalogItem } from "@/lib/automations/api";
+import { getWorkflowCatalog, getWorkflowInstallations, installWorkflowTemplate, pauseWorkflowInstallation, resumeWorkflowInstallation, deleteWorkflowInstallation, type WorkflowCatalogItem, type WorkflowInstallation } from "@/lib/automations/api";
 import { workflowIcon } from "@/lib/automations/icons";
 
 const categories = [
@@ -50,7 +51,7 @@ function approvalLabel(value: string) {
   return "Approval required";
 }
 
-function TemplateCard({ item, onOpen }: { item: WorkflowCatalogItem; onOpen: (item: WorkflowCatalogItem) => void }) {
+function TemplateCard({ item, onOpen, onSetup }: { item: WorkflowCatalogItem; onOpen: (item: WorkflowCatalogItem) => void; onSetup: (item: WorkflowCatalogItem) => void }) {
   const Icon = workflowIcon(item.icon);
   return (
     <Card className="group flex h-full flex-col border-border/80 bg-card/80 transition-[transform,box-shadow,border-color] duration-200 hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-3d-elevated" glass>
@@ -80,11 +81,51 @@ function TemplateCard({ item, onOpen }: { item: WorkflowCatalogItem; onOpen: (it
         </div>
         <div className="flex items-center justify-end gap-2">
           <Button type="button" variant="outline" size="sm" onClick={() => onOpen(item)}>View details</Button>
-          <Button type="button" size="sm" variant={item.capabilities.can_install ? "default" : "outline"} disabled={!item.capabilities.can_install} aria-label={item.capabilities.can_install ? `Set up ${item.name}` : `${item.name} preview only`}>{item.capabilities.can_install ? <>Set up <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" /></> : "Preview only"}</Button>
+          <Button type="button" size="sm" variant={item.capabilities.can_install ? "default" : "outline"} disabled={!item.capabilities.can_install} onClick={() => onSetup(item)} aria-label={item.capabilities.can_install ? `Set up ${item.name}` : `${item.name} preview only`}>{item.capabilities.can_install ? <>Set up <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" /></> : "Preview only"}</Button>
         </div>
       </CardContent>
     </Card>
   );
+}
+
+function SetupDialog({ item, onClose, onInstalled }: { item: WorkflowCatalogItem | null; onClose: () => void; onInstalled: (installation: WorkflowInstallation) => void }) {
+  const queryClient = useQueryClient();
+  const [step, setStep] = useState(1);
+  const [scheduleKind, setScheduleKind] = useState<WorkflowInstallation["schedule"]["kind"]>("daily");
+  const [time, setTime] = useState("07:30");
+  const [name, setName] = useState("");
+  const install = useMutation({
+    mutationFn: () => installWorkflowTemplate({ template_key: item!.key, name: name.trim() || undefined, timezone: "Asia/Ho_Chi_Minh", schedule: { kind: scheduleKind, time } }),
+    onSuccess: (installation) => {
+      void queryClient.invalidateQueries({ queryKey: ["workflow-installations"] });
+      onInstalled(installation);
+    },
+  });
+  useEffect(() => {
+    if (item) {
+      setStep(1);
+      setScheduleKind(item.default_schedule_label.toLowerCase().includes("hour") ? "hourly" : item.default_schedule_label.toLowerCase().includes("week") ? "weekdays" : "daily");
+      setTime(item.default_schedule_label.match(/\d{2}:\d{2}/)?.[0] ?? "07:30");
+      setName(item.name);
+    }
+  }, [item]);
+  return <Dialog open={Boolean(item)} onOpenChange={(open) => { if (!open) onClose(); }}>
+    {item && <DialogContent className="max-w-xl">
+      <DialogHeader><DialogTitle>Set up {item.name}</DialogTitle><DialogDescription>Choose a safe schedule. You can change it later.</DialogDescription></DialogHeader>
+      <div className="flex items-center gap-2 border-b border-border/70 pb-4 text-xs font-medium text-muted-foreground" aria-label="Setup progress">
+        {["Schedule", "Review", "Enable"].map((label, index) => { const current = index + 1 === step; const done = index + 1 < step; return <div key={label} className="flex items-center gap-2"><span className={`grid h-6 w-6 place-items-center rounded-full border ${current ? "border-primary bg-primary text-primary-foreground" : done ? "border-success bg-success/15 text-success" : "border-border"}`}>{done ? <Check className="h-3.5 w-3.5" aria-hidden="true" /> : index + 1}</span><span className={current ? "text-foreground" : undefined}>{label}</span>{index < 2 && <span className="h-px w-6 bg-border" aria-hidden="true" />}</div>; })}
+      </div>
+      {step === 1 && <div className="space-y-4">
+        <div className="rounded-lg border border-primary/20 bg-primary/[0.04] p-4 text-sm"><p className="font-semibold">What will happen</p><p className="mt-1 leading-6 text-muted-foreground">{item.outcome}</p></div>
+        <div className="space-y-2"><label htmlFor="automation-name" className="text-sm font-medium">Automation name</label><Input id="automation-name" value={name} onChange={(event) => setName(event.target.value)} maxLength={160} /></div>
+        <div className="grid gap-3 sm:grid-cols-2"><div className="space-y-2"><label htmlFor="automation-frequency" className="text-sm font-medium">Run frequency</label><select id="automation-frequency" value={scheduleKind} onChange={(event) => setScheduleKind(event.target.value as WorkflowInstallation["schedule"]["kind"])} className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><option value="hourly">Every hour</option><option value="daily">Every day</option><option value="weekdays">Weekdays</option><option value="weekly">Weekly</option><option value="event">When a relevant event arrives</option></select></div><div className="space-y-2"><label htmlFor="automation-time" className="text-sm font-medium">Time · Vietnam</label><Input id="automation-time" type="time" value={time} onChange={(event) => setTime(event.target.value)} disabled={scheduleKind === "hourly" || scheduleKind === "event"} /></div></div>
+        <p className="text-xs text-muted-foreground">Timezone: Asia/Ho_Chi_Minh. The server calculates the next run.</p>
+      </div>}
+      {step === 2 && <div className="space-y-4 text-sm"><div className="rounded-lg border border-border/70 p-4"><p className="font-semibold">Data and safety</p><ul className="mt-3 space-y-3 text-muted-foreground"><li className="flex gap-2"><Plug className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />Uses {item.required_integrations.map(integrationLabel).join(" and ")} when connected.</li><li className="flex gap-2"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />{approvalLabel(item.side_effect_policy)}. External actions are never silently executed.</li><li className="flex gap-2"><Gauge className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />Estimated cost: {costLabel(item.cost_tier)} · up to ${item.estimated_cost_usd.per_run_max ?? "—"}/run.</li></ul></div><p className="text-xs text-muted-foreground">Connection binding and permission checks are enforced by the server before a run is dispatched.</p></div>}
+      {step === 3 && <div className="space-y-4 text-sm"><div className="rounded-lg border border-border/70 p-4"><p className="font-semibold">Ready to enable</p><dl className="mt-3 grid gap-3 sm:grid-cols-2"><div><dt className="text-xs text-muted-foreground">Automation</dt><dd className="mt-1 font-medium">{name || item.name}</dd></div><div><dt className="text-xs text-muted-foreground">Schedule</dt><dd className="mt-1 font-medium">{scheduleKind === "hourly" ? "Every hour" : scheduleKind === "event" ? "When a relevant event arrives" : `${scheduleKind === "weekdays" ? "Weekdays" : scheduleKind === "weekly" ? "Weekly" : "Daily"} at ${time}`}</dd></div><div><dt className="text-xs text-muted-foreground">Timezone</dt><dd className="mt-1 font-medium">Asia/Ho_Chi_Minh</dd></div><div><dt className="text-xs text-muted-foreground">Safety</dt><dd className="mt-1 font-medium">{approvalLabel(item.side_effect_policy)}</dd></div></dl></div>{install.isError && <p className="text-sm text-destructive" role="alert">Could not enable this automation. It may already be installed or a connection may need attention.</p>}</div>}
+      <DialogFooter><Button type="button" variant="outline" onClick={() => step === 1 ? onClose() : setStep((value) => value - 1)}>{step === 1 ? "Cancel" : "Back"}</Button>{step < 3 ? <Button type="button" onClick={() => setStep((value) => value + 1)} disabled={!name.trim()}>Continue</Button> : <Button type="button" loading={install.isPending} onClick={() => install.mutate()}>Enable automation</Button>}</DialogFooter>
+    </DialogContent>}
+  </Dialog>;
 }
 
 function TemplateDetails({ item, onClose }: { item: WorkflowCatalogItem | null; onClose: () => void }) {
@@ -124,9 +165,12 @@ function TemplateDetails({ item, onClose }: { item: WorkflowCatalogItem | null; 
 }
 
 export default function AutomationsPage() {
+  const queryClient = useQueryClient();
+  const [view, setView] = useState<"discover" | "active">("discover");
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("");
   const [selected, setSelected] = useState<WorkflowCatalogItem | null>(null);
+  const [setupItem, setSetupItem] = useState<WorkflowCatalogItem | null>(null);
   const deferredSearch = useDeferredValue(search);
   const orgId = getActiveOrgId();
   const catalog = useQuery({
@@ -134,6 +178,10 @@ export default function AutomationsPage() {
     queryFn: () => getWorkflowCatalog({ query: deferredSearch, category }),
     staleTime: 60_000,
   });
+  const installations = useQuery({ queryKey: ["workflow-installations", orgId], queryFn: getWorkflowInstallations, enabled: view === "active" });
+  const pause = useMutation({ mutationFn: pauseWorkflowInstallation, onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["workflow-installations", orgId] }) });
+  const resume = useMutation({ mutationFn: resumeWorkflowInstallation, onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["workflow-installations", orgId] }) });
+  const remove = useMutation({ mutationFn: deleteWorkflowInstallation, onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["workflow-installations", orgId] }) });
   const items = useMemo(() => catalog.data?.data ?? [], [catalog.data?.data]);
   const recommended = useMemo(() => items.filter((item) => item.recommendation.recommended), [items]);
 
@@ -147,17 +195,18 @@ export default function AutomationsPage() {
       </div>
       <div className="flex flex-col gap-3 border-b border-border/70 pb-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="flex items-center gap-2 text-lg font-semibold"><LibraryBig className="h-4 w-4" aria-hidden="true" />Discover workflows</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Choose a routine by the result you want, not by technical configuration.</p>
+          <div className="flex items-center gap-1 rounded-lg bg-muted/60 p-1" role="tablist" aria-label="Automation views"><button type="button" role="tab" aria-selected={view === "discover"} onClick={() => setView("discover")} className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${view === "discover" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}><LibraryBig className="mr-1.5 inline h-3.5 w-3.5" aria-hidden="true" />Discover</button><button type="button" role="tab" aria-selected={view === "active"} onClick={() => setView("active")} className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${view === "active" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}><Zap className="mr-1.5 inline h-3.5 w-3.5" aria-hidden="true" />Active</button></div>
+          <p className="mt-3 text-sm text-muted-foreground">{view === "discover" ? "Choose a routine by the result you want, not by technical configuration." : "See the routines you have enabled and pause them when needed."}</p>
         </div>
-        <div className="flex flex-col gap-2 sm:flex-row">
+        {view === "discover" && <div className="flex flex-col gap-2 sm:flex-row">
           <div className="relative"><Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" aria-hidden="true" /><Input aria-label="Search workflows" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search workflows" className="w-full pl-9 sm:w-56" /></div>
           <select aria-label="Filter workflows by category" value={category} onChange={(event) => setCategory(event.target.value)} className="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground shadow-inner-edge focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
             {categories.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
-        </div>
+        </div>}
       </div>
-      {catalog.isLoading ? <LoadingSkeleton variant="grid" /> : catalog.isError ? <ErrorState title="Unable to load workflows" description="The workflow catalog could not be loaded." onRetry={() => void catalog.refetch()} /> : items.length === 0 ? <EmptyState icon={LibraryBig} title="No workflows found" description="Try clearing your search or category filter." action={<Button type="button" variant="outline" onClick={() => { setSearch(""); setCategory(""); }}>Clear filters</Button>} /> : <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 stagger">{items.map((item) => <TemplateCard key={`${item.key}-${item.version}`} item={item} onOpen={setSelected} />)}</div>}
+      {view === "discover" ? (catalog.isLoading ? <LoadingSkeleton variant="grid" /> : catalog.isError ? <ErrorState title="Unable to load workflows" description="The workflow catalog could not be loaded." onRetry={() => void catalog.refetch()} /> : items.length === 0 ? <EmptyState icon={LibraryBig} title="No workflows found" description="Try clearing your search or category filter." action={<Button type="button" variant="outline" onClick={() => { setSearch(""); setCategory(""); }}>Clear filters</Button>} /> : <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 stagger">{items.map((item) => <TemplateCard key={`${item.key}-${item.version}`} item={item} onOpen={setSelected} onSetup={setSetupItem} />)}</div>) : (installations.isLoading ? <LoadingSkeleton variant="table" /> : installations.isError ? <ErrorState title="Unable to load active automations" description="Your enabled workflows could not be loaded." onRetry={() => void installations.refetch()} /> : installations.data?.length ? <div className="space-y-3">{installations.data.map((installation) => <Card key={installation.id} glass><CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h3 className="truncate font-semibold">{installation.name}</h3><Badge variant={installation.status === "paused" ? "warning" : "success"}>{installation.status === "paused" ? "Paused" : "Enabled"}</Badge></div><p className="mt-1 text-sm text-muted-foreground">{installation.schedule.kind === "hourly" ? "Every hour" : installation.schedule.kind === "event" ? "When a relevant event arrives" : `${installation.schedule.kind === "weekdays" ? "Weekdays" : installation.schedule.kind === "weekly" ? "Weekly" : "Daily"} at ${installation.schedule.time ?? "—"}`} · {installation.timezone}</p><p className="mt-1 text-xs text-muted-foreground">Template: {installation.template_key}</p></div><div className="flex flex-wrap items-center gap-2"><Button type="button" size="sm" variant="outline" disabled={pause.isPending || resume.isPending} onClick={() => (installation.status === "paused" ? resume.mutate(installation.id) : pause.mutate(installation.id))}>{installation.status === "paused" ? "Resume" : "Pause"}</Button><Button type="button" size="sm" variant="destructive" disabled={remove.isPending} onClick={() => { if (window.confirm(`Remove ${installation.name}?`)) remove.mutate(installation.id); }}>Remove</Button></div></CardContent></Card>)}</div> : <EmptyState icon={Zap} title="No active automations" description="Discover a workflow and enable it to start building your personal command center." action={<Button type="button" onClick={() => setView("discover")}>Discover workflows</Button>} />)}
+      <SetupDialog item={setupItem} onClose={() => setSetupItem(null)} onInstalled={(installation) => { setSetupItem(null); setView("active"); void queryClient.invalidateQueries({ queryKey: ["workflow-installations", orgId] }); }} />
       <TemplateDetails item={selected} onClose={() => setSelected(null)} />
     </div>
   );

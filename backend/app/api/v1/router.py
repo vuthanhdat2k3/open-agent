@@ -21,6 +21,7 @@ from app.api.v1.routes import (
     trusted_rules,
     workflows,
     workflow_catalog,
+    workflow_installations,
     workspace,
 )
 from app.core.quota.dependencies import enforce_request_quota
@@ -40,6 +41,7 @@ protected_router.include_router(trusted_rules.router)
 protected_router.include_router(mcp.router)
 protected_router.include_router(workflows.router)
 protected_router.include_router(workflow_catalog.router)
+protected_router.include_router(workflow_installations.router)
 protected_router.include_router(chat.router)
 protected_router.include_router(debug.router)
 protected_router.include_router(evaluations.router)

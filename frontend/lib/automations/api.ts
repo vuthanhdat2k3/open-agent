@@ -1,4 +1,5 @@
 import { api } from "@/lib/api";
+import { createIdempotencyKey } from "@/lib/email-intelligence/idempotency";
 
 export type WorkflowCatalogItem = {
   key: string;
@@ -25,10 +26,46 @@ export type WorkflowCatalogResponse = {
   meta: { server_time: string; next_cursor: string | null };
 };
 
+export type WorkflowInstallation = {
+  id: string;
+  template_key: string;
+  template_version: number;
+  workflow_id: string;
+  name: string;
+  status: "enabled" | "paused" | string;
+  timezone: string;
+  schedule: { kind: string; time?: string | null; interval_hours?: number | null; weekday?: number | null };
+  settings: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  capabilities: { can_view: boolean; can_pause: boolean; can_resume: boolean; can_delete: boolean; can_run_now: boolean };
+  blocked_reasons: Record<string, string[]>;
+};
+
 export function getWorkflowCatalog(params: { query?: string; category?: string } = {}) {
   const search = new URLSearchParams();
   if (params.query?.trim()) search.set("query", params.query.trim());
   if (params.category) search.set("category", params.category);
   const suffix = search.toString() ? `?${search.toString()}` : "";
   return api.get<WorkflowCatalogResponse>(`/api/workflow-catalog/templates${suffix}`);
+}
+
+export function getWorkflowInstallations() {
+  return api.get<WorkflowInstallation[]>("/api/workflow-catalog/installations");
+}
+
+export function installWorkflowTemplate(body: { template_key: string; name?: string; timezone: string; schedule: WorkflowInstallation["schedule"]; settings?: Record<string, unknown> }) {
+  return api.post<WorkflowInstallation>("/api/workflow-catalog/installations", body, { headers: { "Idempotency-Key": createIdempotencyKey() } });
+}
+
+export function pauseWorkflowInstallation(id: string) {
+  return api.post<WorkflowInstallation>(`/api/workflow-catalog/installations/${id}/pause`);
+}
+
+export function resumeWorkflowInstallation(id: string) {
+  return api.post<WorkflowInstallation>(`/api/workflow-catalog/installations/${id}/resume`);
+}
+
+export function deleteWorkflowInstallation(id: string) {
+  return api.delete<void>(`/api/workflow-catalog/installations/${id}`);
 }
