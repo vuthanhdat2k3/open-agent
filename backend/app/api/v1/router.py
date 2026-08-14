@@ -19,9 +19,9 @@ from app.api.v1.routes import (
     sandbox,
     sessions,
     trusted_rules,
-    workflows,
     workflow_catalog,
     workflow_installations,
+    workflows,
     workspace,
 )
 from app.core.quota.dependencies import enforce_request_quota
