@@ -188,6 +188,7 @@ class Settings(BaseSettings):
         ".csv",
         ".json",
         ".docx",
+        ".pptx",
         ".html",
         ".htm",
         ".py",
