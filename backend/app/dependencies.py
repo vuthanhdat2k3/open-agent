@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.core.auth.api_key import hash_api_key
 from app.core.auth.jwt import verify_access_token
-from app.core.authz.policy import has_permission
+from app.core.authz.policy import PrincipalContext, has_permission
 from app.core.authz.scope import set_ownership_scope
 from app.core.observability.chat_timing import mark_chat_phase
 from app.db.session import get_db
@@ -226,7 +226,7 @@ def require_permission(permission: str):
         db: AsyncSession = Depends(get_db),
         current_user: User = Depends(get_current_user),
         org_id: str = Depends(get_current_org_id),
-    ) -> None:
+    ) -> PrincipalContext:
         res = await db.execute(
             select(Membership).where(
                 Membership.org_id == org_id,
@@ -244,9 +244,11 @@ def require_permission(permission: str):
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Permission denied: {permission}",
             )
-        request.state.role = membership.role.value if hasattr(membership.role, "value") else str(membership.role)
-        set_ownership_scope(db, user_id=current_user.id, role=membership.role)
+        principal = PrincipalContext(user_id=current_user.id, role=membership.role)
+        request.state.principal = principal
+        set_ownership_scope(db, principal=principal)
         mark_chat_phase(request, "rbac_done", permission=permission)
+        return principal
 
     return _checker
 
@@ -259,7 +261,7 @@ def require_any_permission(*permissions: str):
         db: AsyncSession = Depends(get_db),
         current_user: User = Depends(get_current_user),
         org_id: str = Depends(get_current_org_id),
-    ) -> None:
+    ) -> PrincipalContext:
         res = await db.execute(
             select(Membership).where(
                 Membership.org_id == org_id,
@@ -272,9 +274,11 @@ def require_any_permission(*permissions: str):
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Permission denied: {' or '.join(permissions)}",
             )
-        request.state.role = membership.role.value if hasattr(membership.role, "value") else str(membership.role)
-        set_ownership_scope(db, user_id=current_user.id, role=membership.role)
+        principal = PrincipalContext(user_id=current_user.id, role=membership.role)
+        request.state.principal = principal
+        set_ownership_scope(db, principal=principal)
         mark_chat_phase(request, "rbac_done", permission="|".join(permissions))
+        return principal
 
     return _checker
 

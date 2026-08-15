@@ -3,13 +3,14 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.routes.chat import run_chat_detached
 from app.config import get_settings
+from app.core.authz.policy import PrincipalContext
 from app.core.guardrails.approval import get_pending, resolve_approval
 from app.core.observability.audit import log_action
 from app.core.workflow.queue import enqueue_chat_run
@@ -52,16 +53,15 @@ class ApprovalDecision(BaseModel):
 @router.get(
     "",
     response_model=list[ApprovalOut],
-    dependencies=[Depends(require_permission("approvals:read"))],
 )
 async def list_approvals(
     org_id: str = Depends(get_current_org_id),
     current_user: User = Depends(get_current_user),
-    request: Request = None,
+    authz: PrincipalContext = Depends(require_permission("approvals:read")),
     db: AsyncSession = Depends(get_db),
 ):
     now = datetime.now()
-    is_admin = getattr(request.state, "role", "user") == "admin" if request is not None else False
+    is_admin = authz.allows("approvals:manage")
     approvals = await get_pending(db, org_id=org_id)
     result = []
     for approval in approvals:
@@ -103,21 +103,20 @@ async def list_approvals(
 @router.post(
     "/{approval_id}/decide",
     response_model=ApprovalOut,
-    dependencies=[Depends(require_permission("approvals:read"))],
 )
 async def decide_approval(
     approval_id: str,
     body: ApprovalDecision,
     background_tasks: BackgroundTasks,
-    request: Request,
     org_id: str = Depends(get_current_org_id),
     current_user: User = Depends(get_current_user),
+    authz: PrincipalContext = Depends(require_permission("approvals:read")),
     idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
     db: AsyncSession = Depends(get_db),
 ):
     # Users may decide only approvals they requested (for example, their own
     # Gmail draft); admins retain organization-wide decision authority.
-    if getattr(request.state, "role", "user") != "admin":
+    if not authz.allows("approvals:manage"):
         owner_res = await db.execute(
             select(ApprovalRequest).where(
                 ApprovalRequest.id == approval_id,
