@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from app.models.role import Role
 
 # ---------------------------------------------------------------------------
@@ -51,6 +53,31 @@ PERMISSIONS: dict[Role, set[str]] = {
     },
 }
 
+# Permissions used by route-level decisions must be declared here even when
+# they are currently reachable only through the admin wildcard. This keeps the
+# policy auditable before additional org roles are introduced.
+PERMISSIONS[Role.admin].update({
+    "agents:manage",
+    "agents:publish:force",
+    "approvals:manage",
+    "ci:organization:read",
+})
+
+
+@dataclass(frozen=True)
+class PrincipalContext:
+    """The authorization result for one authenticated org request."""
+
+    user_id: str
+    role: Role
+
+    def allows(self, permission: str) -> bool:
+        return has_permission(self.role, permission)
+
+    @property
+    def owner_user_id(self) -> str | None:
+        return self.user_id if self.role == Role.user else None
+
 
 def has_permission(role: Role, permission: str) -> bool:
     """Check whether *role* has a specific *permission* string.
@@ -74,13 +101,6 @@ def has_permission(role: Role, permission: str) -> bool:
             if permission.startswith(prefix):
                 return True
     return False
-
-
-def request_has_permission(request: object, permission: str) -> bool:
-    """Read the permission resolved by the shared request dependency chain."""
-    state = getattr(request, "state", None)
-    role = getattr(state, "role", None)
-    return has_permission(role, permission) if role is not None else False
 
 
 def evaluate_permission_intersection(
