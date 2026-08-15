@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.v1.sse import format_sse
 from app.config import get_settings
 from app.core.agent_loop import await_deferred_user_write, fail_chat_run
+from app.core.authz.policy import PrincipalContext
 from app.core.authz.scope import scope_to_owner
 from app.core.chat_events import (
     TERMINAL_EVENTS,
@@ -89,12 +90,13 @@ async def run_chat_detached(payload: dict) -> None:
 
 @router.post(
     "",
-    dependencies=[Depends(require_permission("agents:run")), Depends(agent_run_admission)],
+    dependencies=[Depends(agent_run_admission)],
 )
 async def chat(
     body: ChatRequest,
     background_tasks: BackgroundTasks,
     http_request: Request,
+    authz: PrincipalContext = Depends(require_permission("agents:run")),
     org_id: str = Depends(get_current_org_id),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -107,7 +109,7 @@ async def chat(
                 org_id,
                 body,
                 user_id=current_user.id,
-                user_role=getattr(http_request.state, "role", None),
+                user_role=authz.role.value,
                 root_run_id=body.run_id,
             )
         except ValueError as exc:
@@ -123,7 +125,7 @@ async def chat(
             chat_request,
             run_id,
             user_id=current_user.id,
-            user_role=getattr(http_request.state, "role", None),
+            user_role=authz.role.value,
         )
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
@@ -133,7 +135,7 @@ async def chat(
         **chat_request.model_dump(),
         "org_id": org_id,
         "user_id": current_user.id,
-        "user_role": getattr(http_request.state, "role", None),
+        "user_role": authz.role.value,
         "prepared": True,
         "prepared_agent_release_id": getattr(_agent, "active_release_id", None),
     }
@@ -236,13 +238,13 @@ async def cancel_chat_run(
     return {"id": run_id, "status": task.status}
 
 
-@router.get("/runs/{run_id}/events", dependencies=[Depends(require_permission("agents:run"))])
+@router.get("/runs/{run_id}/events")
 async def stream_chat_run_events(
-    request: Request,
     run_id: str,
     follow: bool = Query(True),
     after_seq: int = Query(0, ge=0),
     org_id: str = Depends(get_current_org_id),
+    authz: PrincipalContext = Depends(require_permission("agents:run")),
 ):
     """Drain the durable event log of a chat run, optionally following live.
 
@@ -256,11 +258,7 @@ async def stream_chat_run_events(
     its transaction ``idle in transaction`` and exhaust the API pool for
     unrelated requests such as login.
     """
-    owner_user_id = (
-        getattr(request.state, "user_id", None)
-        if getattr(request.state, "role", "user") == "user"
-        else None
-    )
+    owner_user_id = authz.owner_user_id
     async with SessionLocal() as session:
         stmt = select(Task).where(
             Task.root_run_id == run_id,
