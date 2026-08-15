@@ -76,6 +76,13 @@ def has_permission(role: Role, permission: str) -> bool:
     return False
 
 
+def request_has_permission(request: object, permission: str) -> bool:
+    """Read the permission resolved by the shared request dependency chain."""
+    state = getattr(request, "state", None)
+    role = getattr(state, "role", None)
+    return has_permission(role, permission) if role is not None else False
+
+
 def evaluate_permission_intersection(
     user_role: Role,
     permission: str,

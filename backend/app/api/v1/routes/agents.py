@@ -1,13 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.core.observability.audit import log_action
 from app.core.quota.dependencies import enforce_resource_quota
+from app.core.authz.policy import request_has_permission
 from app.dependencies import get_current_org_id, get_current_user, get_db, require_permission
-from app.models.membership import Membership
-from app.models.role import Role
 from app.models.user import User
 from app.schemas.agent import (
     AgentCreate,
@@ -35,18 +32,6 @@ def _release_error(exc: ValueError) -> HTTPException:
     return HTTPException(404 if "not found" in detail else 400, detail)
 
 
-async def _is_admin(db: AsyncSession, org_id: str, user_id: str | None) -> bool:
-    if not user_id:
-        return False
-    result = await db.execute(
-        select(Membership).where(
-            Membership.org_id == org_id, Membership.user_id == user_id
-        )
-    )
-    membership = result.scalar_one_or_none()
-    return membership is not None and membership.role == Role.admin
-
-
 @router.get("", response_model=list[AgentOut], dependencies=[Depends(require_permission("agents:read"))])
 async def list_agents(
     request: Request,
@@ -59,7 +44,7 @@ async def list_agents(
     # agent(s) - worker agents are implementation detail the orchestrator
     # delegates to internally via call_agent, not something a user picks
     # directly. Admin sees everything (needed to build/test each agent).
-    if not await _is_admin(db, org_id, user_id):
+    if not request_has_permission(request, "agents:manage"):
         agents = [a for a in agents if a.kind == "orchestrator"]
     return agents
 
@@ -233,7 +218,7 @@ async def publish_agent_release(
     user_id = getattr(request.state, "user_id", None)
     force = bool(body and body.force)
 
-    if force and not await _is_admin(db, org_id, user_id):
+    if force and not request_has_permission(request, "agents:publish:force"):
         # Shipping over a red gate is an owner-level decision, not something
         # anyone holding publish rights may do.
         raise HTTPException(403, "only an organization admin may force publish")
