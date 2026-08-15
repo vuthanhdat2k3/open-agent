@@ -6,6 +6,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.core.observability.metrics import job_schedule_tick_total
 from app.core.scheduling.backoff import compute_backoff_seconds
 from app.core.scheduling.tick import run_leased_tick
 from app.db.base import Base, utc_now
@@ -94,6 +95,43 @@ async def test_leased_tick_skips_second_runner(async_session_factory):
         )
 
     assert calls == 1
+
+
+def _counter_value(counter, **labels: str) -> float:
+    return counter.labels(**labels).collect()[0].samples[0].value
+
+
+@pytest.mark.asyncio
+async def test_leased_tick_skips_second_runner_and_records_contention(async_session_factory):
+    calls = 0
+    before = _counter_value(job_schedule_tick_total, job_key="test_tick_contention", result="skipped_lease_held")
+
+    async def run() -> dict:
+        nonlocal calls
+        calls += 1
+        return {"processed": 1}
+
+    async with async_session_factory() as first_session:
+        await run_leased_tick(
+            first_session,
+            job_key="test_tick_contention",
+            interval_seconds=60,
+            lease_seconds=30,
+            worker_id="worker-a",
+            run=run,
+        )
+    async with async_session_factory() as second_session:
+        await run_leased_tick(
+            second_session,
+            job_key="test_tick_contention",
+            interval_seconds=60,
+            lease_seconds=30,
+            worker_id="worker-b",
+            run=run,
+        )
+
+    assert calls == 1
+    assert _counter_value(job_schedule_tick_total, job_key="test_tick_contention", result="skipped_lease_held") - before == 1
 
 
 @pytest.mark.asyncio

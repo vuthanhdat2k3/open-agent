@@ -8,6 +8,34 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.tools.types import ToolContext, ToolSpec
 from app.models.mcp import McpServer, McpTool
 
+_CI_KNOWLEDGE_COLLECTION_PREFIX = "ci-knowledge-"
+
+
+def _rag_collection_scope_error(
+    tool_name: str,
+    collection: Any,
+    org_id: str | None,
+) -> str | None:
+    """Reject cross-organization Customer Intelligence retrieval.
+
+    The standalone RAG service authenticates the shared MCP connection, not
+    the OpenAgent organization. The backend is therefore the trusted tenant
+    boundary for agent/workflow calls. Generic RAG collections retain their
+    existing behavior; only the org-scoped CI namespace is protected here.
+    """
+    if tool_name != "rag_search" or not isinstance(collection, str):
+        return None
+    if not collection.startswith(_CI_KNOWLEDGE_COLLECTION_PREFIX):
+        return None
+    expected = (
+        f"{_CI_KNOWLEDGE_COLLECTION_PREFIX}{org_id}"
+        if org_id
+        else None
+    )
+    if collection != expected:
+        return "error: rag_search collection is not accessible for this organization"
+    return None
+
 
 class McpClient:
     """Wraps a single MCP server. Connections are ephemeral — opened and torn
@@ -122,6 +150,13 @@ def get_mcp_manager() -> McpManager:
 
 def _make_mcp_run(server_id: str, tool_name: str):
     async def _run(args: dict[str, Any], ctx: ToolContext) -> str:
+        scope_error = _rag_collection_scope_error(
+            tool_name,
+            args.get("collection", "default"),
+            ctx.org_id,
+        )
+        if scope_error:
+            return scope_error
         stmt = select(McpServer).where(McpServer.id == server_id)
         if ctx.org_id:
             stmt = stmt.where(McpServer.org_id == ctx.org_id)

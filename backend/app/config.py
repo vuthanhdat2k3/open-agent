@@ -1,6 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -166,6 +167,12 @@ class Settings(BaseSettings):
     # Empty => provider degrades to research_unavailable (no fabricated data).
     ci_company_api_url: str = ""
     ci_company_api_key: str = ""
+    # Offline six-company provider for the capstone demo/evaluation harness.
+    # Defaults to the network-backed MCP adapter for existing deployments.
+    ci_company_provider: Literal["mcp", "fixture"] = Field(
+        default="mcp",
+        validation_alias=AliasChoices("OPENAGENT_CI_COMPANY_PROVIDER", "CI_COMPANY_PROVIDER"),
+    )
     # Google Pub/Sub push authentication. Production must configure the OIDC
     # audience and allowed service account; a shared token is only for local
     # emulators/tests and is never accepted when OIDC is configured.

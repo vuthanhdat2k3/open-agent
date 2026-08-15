@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 import base64
+import hashlib
 import hmac
 import json
 import time
 from datetime import datetime
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -22,6 +25,7 @@ from app.dependencies import (
 )
 from app.models.customer_intelligence import InboundEmail, ResearchCase
 from app.models.user import User
+from app.repositories.customer_intelligence import BriefingReportRepository
 from app.schemas.customer_intelligence import (
     ApprovalDecisionRequest,
     ApprovalOut,
@@ -44,6 +48,7 @@ from app.schemas.customer_intelligence import (
     SyncResult,
 )
 from app.services.customer_intelligence_service import CustomerIntelligenceService
+from app.services.file_service import FileService
 
 router = APIRouter(prefix="/api/customer-intelligence", tags=["customer-intelligence"])
 oauth_router = APIRouter(prefix="/api/customer-intelligence", tags=["customer-intelligence-oauth"])
@@ -1075,6 +1080,90 @@ async def get_case(
         ),
     )
 
+
+@router.get(
+    "/cases/{case_id}/report/{format}",
+    dependencies=[Depends(require_permission("ci:read"))],
+)
+async def download_report_artifact(
+    case_id: str,
+    format: Literal["html", "pdf", "docx"],
+    org_id: str = Depends(get_current_org_id),
+    current_user: User = Depends(get_current_user),
+    request: Request = None,
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """Render, cache, and stream one briefing artifact on demand."""
+    _guard_enabled()
+    case = await _case_for_request(
+        db,
+        org_id=org_id,
+        case_id=case_id,
+        request=request,
+        current_user=current_user,
+    )
+    report = await BriefingReportRepository(db).latest_by_case(org_id, case.id)
+    if report is None:
+        raise HTTPException(404, "briefing report not found")
+
+    from app.customer_intelligence.renderer import render_docx, render_html, render_pdf
+
+    canonical_hash = hashlib.sha256(report.canonical_markdown.encode("utf-8")).hexdigest()
+    media_types = {
+        "html": "text/html; charset=utf-8",
+        "pdf": "application/pdf",
+        "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    }
+    key = f"ci-reports/{org_id}/{case.id}/{report.version}/{format}"
+    raw_rendering = report.rendering or {}
+    legacy_sections = (
+        raw_rendering
+        if "executive_summary" in raw_rendering
+        else raw_rendering.get("_sections", {})
+    )
+    artifacts = {
+        name: value
+        for name, value in raw_rendering.items()
+        if name in media_types and isinstance(value, dict) and value.get("key") and value.get("content_hash")
+    }
+    cached = artifacts.get(format)
+    file_service = FileService(db)
+    client = file_service._s3_client()
+
+    if cached and cached["content_hash"] == canonical_hash and cached["key"] == key:
+        try:
+            body = await asyncio.to_thread(
+                lambda: client.get_object(Bucket=file_service.settings.s3_bucket, Key=key)["Body"].read()
+            )
+            return Response(
+                content=body,
+                media_type=media_types[format],
+                headers={"Content-Disposition": f'attachment; filename="briefing-{case.id}.{format}"'},
+            )
+        except Exception:  # noqa: BLE001 - a missing cache is rendered again.
+            pass
+
+    if format == "html":
+        body = render_html(legacy_sections).encode("utf-8")
+    elif format == "pdf":
+        body = render_pdf(render_html(legacy_sections))
+    else:
+        body = render_docx(legacy_sections)
+
+    def _store() -> None:
+        file_service._ensure_bucket(client)
+        client.put_object(Bucket=file_service.settings.s3_bucket, Key=key, Body=body, ContentType=media_types[format].split(";")[0])
+
+    try:
+        await asyncio.to_thread(_store)
+    except Exception as exc:  # noqa: BLE001 - surface storage failures explicitly.
+        raise HTTPException(503, "report artifact storage unavailable") from exc
+
+    artifacts[format] = {"key": key, "content_hash": canonical_hash}
+    artifacts["_sections"] = legacy_sections
+    report.rendering = artifacts
+    await db.commit()
+    return Response(content=body, media_type=media_types[format], headers={"Content-Disposition": f'attachment; filename="briefing-{case.id}.{format}"'})
 
 @router.delete(
     "/cases/{case_id}",

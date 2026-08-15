@@ -31,6 +31,7 @@ class IngestTextRequest(BaseModel):
     title: str
     collection: str = "default"
     tags: list[str] | None = None
+    metadata: dict[str, Any] | None = None
     chunk_size: int = settings.default_chunk_size
     chunk_overlap: int = settings.default_chunk_overlap
     chunker: str | None = None
@@ -118,6 +119,7 @@ async def ingest_text(
         payload.title,
         payload.collection,
         tags=payload.tags,
+        custom_metadata=payload.metadata,
         chunk_size=payload.chunk_size,
         chunk_overlap=payload.chunk_overlap,
         chunker=payload.chunker,

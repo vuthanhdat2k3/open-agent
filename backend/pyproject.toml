@@ -48,6 +48,8 @@ dependencies = [
     "rich>=13.7",
     "tenacity>=9.0",            # retry/backoff for LLM calls
     "langfuse==4.14.3",
+    "python-docx==1.1.2",
+    "xhtml2pdf==0.2.16",
 ]
 
 [project.optional-dependencies]
