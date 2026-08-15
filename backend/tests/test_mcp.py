@@ -92,3 +92,14 @@ async def test_mcp_service_crud_and_connect(async_session_factory, monkeypatch):
         del_res = await service.delete(org_id, server.id)
         assert del_res is True
         assert await service.get(org_id, server.id) is None
+
+
+
+def test_ci_rag_search_collection_is_scoped_to_current_org() -> None:
+    from app.mcp.client import _rag_collection_scope_error
+
+    assert _rag_collection_scope_error("rag_search", "ci-knowledge-org-a", "org-a") is None
+    assert _rag_collection_scope_error("rag_search", "ci-knowledge-org-a", "org-b")
+    assert _rag_collection_scope_error("rag_search", "ci-knowledge-org-a", None)
+    assert _rag_collection_scope_error("rag_search", "default", "org-b") is None
+    assert _rag_collection_scope_error("rag_ingest_text", "ci-knowledge-org-a", "org-b") is None
