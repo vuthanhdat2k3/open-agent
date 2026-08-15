@@ -742,6 +742,7 @@ async def _agent_stream(
             root_run_id=resolved_root_run_id,
             agent_id=agent.id,
             agent_release_id=getattr(agent, "active_release_id", None),
+            triggered_by_user_id=user_id or agent.created_by_user_id,
             goal=message,
             status="running",
             depth=depth,

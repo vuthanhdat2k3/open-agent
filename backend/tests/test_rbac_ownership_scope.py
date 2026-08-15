@@ -11,8 +11,12 @@ from app.main import app
 from app.models.agent import Agent
 from app.models.approval_request import ApprovalRequest
 from app.models.files import UploadedFile
+from app.models.message import Message
+from app.models.session import Session
+from app.models.task import Task
 from app.models.usage import UsageEvent
 from app.models.workflow import Workflow
+from app.models.workflow_run import WorkflowRun
 from app.models.workspace import SandboxExecution, WorkspaceArtifact
 
 PASSWORD = "Secret123!"
@@ -201,3 +205,124 @@ def test_user_reads_only_owned_workspace_approvals_and_quota_usage(
     assert admin_usage.json()["agents"] == 2
     assert admin_usage.json()["workflows"] == 2
     assert admin_usage.json()["storage_bytes"] == 30
+
+
+def test_user_cannot_read_other_users_sessions_or_runs(
+    client: TestClient, async_session_factory
+) -> None:
+    admin_token, org_id, admin_id = _register(
+        client, "scope-runs-admin@example.com", "Scoped Runs"
+    )
+    user_token, _home_org, user_id = _register(
+        client, "scope-runs-user@example.com", "User Runs Home"
+    )
+    invited = client.post(
+        f"/api/orgs/{org_id}/members",
+        headers=_headers(admin_token, org_id),
+        json={"email": "scope-runs-user@example.com", "role": "user"},
+    )
+    assert invited.status_code == 201, invited.text
+
+    async def _seed() -> tuple[str, str, str, str]:
+        async with async_session_factory() as db:
+            admin_agent = Agent(org_id=org_id, created_by_user_id=admin_id, name="Run agent")
+            workflow = Workflow(
+                org_id=org_id, created_by_user_id=admin_id, name="Run workflow"
+            )
+            db.add_all([admin_agent, workflow])
+            await db.flush()
+            admin_session = Session(
+                org_id=org_id,
+                created_by_user_id=admin_id,
+                agent_id=admin_agent.id,
+                title="Admin session",
+            )
+            user_session = Session(
+                org_id=org_id,
+                created_by_user_id=user_id,
+                agent_id=admin_agent.id,
+                title="User session",
+            )
+            db.add_all([admin_session, user_session])
+            await db.flush()
+            db.add_all(
+                [
+                    Message(
+                        org_id=org_id,
+                        session_id=admin_session.id,
+                        created_by_user_id=admin_id,
+                        role="user",
+                        content="admin secret",
+                        position=1,
+                    ),
+                    Message(
+                        org_id=org_id,
+                        session_id=user_session.id,
+                        created_by_user_id=user_id,
+                        role="user",
+                        content="user message",
+                        position=1,
+                    ),
+                    Task(
+                        org_id=org_id,
+                        root_run_id="admin-chat-run",
+                        agent_id=admin_agent.id,
+                        goal="admin run",
+                        status="succeeded",
+                        triggered_by_user_id=admin_id,
+                    ),
+                    Task(
+                        org_id=org_id,
+                        root_run_id="user-chat-run",
+                        agent_id=admin_agent.id,
+                        goal="user run",
+                        status="succeeded",
+                        triggered_by_user_id=user_id,
+                    ),
+                    WorkflowRun(
+                        id="admin-workflow-run",
+                        org_id=org_id,
+                        workflow_id=workflow.id,
+                        triggered_by_user_id=admin_id,
+                        status="succeeded",
+                    ),
+                    WorkflowRun(
+                        id="user-workflow-run",
+                        org_id=org_id,
+                        workflow_id=workflow.id,
+                        triggered_by_user_id=user_id,
+                        status="succeeded",
+                    ),
+                ]
+            )
+            await db.commit()
+            return admin_session.id, user_session.id, workflow.id, admin_agent.id
+
+    import anyio
+
+    admin_session_id, user_session_id, _workflow_id, _agent_id = anyio.run(_seed)
+    user_headers = _headers(user_token, org_id)
+
+    sessions = client.get("/api/sessions", headers=user_headers)
+    assert sessions.status_code == 200, sessions.text
+    assert [row["id"] for row in sessions.json()] == [user_session_id]
+
+    own_messages = client.get(
+        f"/api/sessions/{user_session_id}/messages", headers=user_headers
+    )
+    assert own_messages.status_code == 200, own_messages.text
+    assert own_messages.json()[0]["content"] == "user message"
+
+    other_messages = client.get(
+        f"/api/sessions/{admin_session_id}/messages", headers=user_headers
+    )
+    assert other_messages.status_code == 404, other_messages.text
+
+    assert client.get("/api/chat/runs/user-chat-run", headers=user_headers).status_code == 200
+    assert client.get("/api/chat/runs/admin-chat-run", headers=user_headers).status_code == 404
+    assert client.get(
+        "/api/workflows/runs/user-workflow-run", headers=user_headers
+    ).status_code == 200
+    assert client.get(
+        "/api/workflows/runs/admin-workflow-run", headers=user_headers
+    ).status_code == 404

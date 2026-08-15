@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.a2a.server import get_exposed_agent_card, validate_a2a_agent_access
 from app.core.agent_loop import run_agent_loop
+from app.core.authz.scope import scope_to_owner
 from app.db.base import gen_id, utc_now
 from app.db.session import get_db
 from app.dependencies import get_current_org_id, get_current_user, require_permission
@@ -30,7 +31,7 @@ class A2ATaskResponse(BaseModel):
     output: str | None = None
 
 
-@router.get("/agent-card")
+@router.get("/agent-card", dependencies=[Depends(require_permission("agents:read"))])
 async def get_agent_card_endpoint(
     request: Request,
     db: AsyncSession = Depends(get_db),
@@ -62,6 +63,7 @@ async def create_a2a_task(
         root_run_id=task_id,
         agent_id=agent.id,
         agent_release_id=getattr(agent, "active_release_id", None),
+        triggered_by_user_id=current_user.id,
         goal=payload.input,
         status="running",
         started_at=utc_now(),
@@ -114,14 +116,22 @@ async def create_a2a_task(
         ) from e
 
 
-@router.get("/tasks/{task_id}", response_model=A2ATaskResponse)
+@router.get(
+    "/tasks/{task_id}",
+    response_model=A2ATaskResponse,
+    dependencies=[Depends(require_permission("agents:run"))],
+)
 async def get_a2a_task(
     task_id: str,
     db: AsyncSession = Depends(get_db),
     org_id: str = Depends(get_current_org_id),
 ) -> A2ATaskResponse:
     """Retrieves the status and result of an A2A task."""
-    stmt = select(Task).where(Task.id == task_id, Task.org_id == org_id)
+    stmt = scope_to_owner(
+        select(Task).where(Task.id == task_id, Task.org_id == org_id),
+        db,
+        Task.triggered_by_user_id,
+    )
     res = await db.execute(stmt)
     task = res.scalar_one_or_none()
     if not task:
