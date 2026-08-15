@@ -32,7 +32,7 @@ function BriefingReport({
   meetings: import("@/types").CustomerIntelligenceMeeting[];
 }) {
   const data = report.rendering;
-  if (!data) {
+  if (!data || !("executive_summary" in data)) {
     return <article className="prose prose-sm max-w-none dark:prose-invert"><ReactMarkdown>{report.canonical_markdown}</ReactMarkdown></article>;
   }
   const companies = Array.isArray(data.company_overview) ? data.company_overview : [];
