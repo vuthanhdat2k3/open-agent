@@ -103,9 +103,8 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 | `feat/delegated-approval-fix` | `G:\open-agent-worktrees\delegated-approval-fix` | Sửa approval propagation/resume cho delegated sub-agents | Agent khác |
 | `feat/ci-job-scheduling-hardening` | `G:\open-agent-worktrees\ci-job-scheduling-hardening` | Hardening scheduler/worker production: generic lease, retry/backoff, dead-letter, worker health | Kiro |
 | `feat/langfuse-compose` | `G:\open-agent-worktrees\langfuse-compose` | Integrate Langfuse services into the main Docker Compose stack | Codex |
-| `feat/enterprise-rbac-authz` | `G:\open-agent-worktrees\enterprise-rbac-authz` | Enterprise RBAC authorization and ownership hardening | Codex |
+| `feat/enterprise-rbac-authz` | `G:\open-agent-worktrees\enterprise-rbac-authz` | Enterprise RBAC authorization and ownership hardening — merged (PR #70), worktree/branch not yet cleaned up | Codex |
 | `docs/enterprise-rbac-zitadel-design` | `G:\open-agent-worktrees\enterprise-rbac-zitadel-design` | Enterprise RBAC, invite-only provisioning, and ZITADEL SSO design | Codex |
-| `feat/enterprise-rbac-authz` | `G:\open-agent-worktrees\enterprise-rbac-authz` | Enterprise RBAC authorization and ownership hardening | Codex |
 | `feat/ci-capstone-completion` | `G:\open-agent-worktrees\ci-capstone-completion` | Hoàn thiện đồ án cuối khóa: Schedules UI, scheduler lease, PDF/DOCX/XLSX renderer, Knowledge Base sink, fixture company provider, 7-node trace, evaluation harness 6 công ty | Claude |
 | `feat/pdf-docling-extraction` | `G:\open-agent-worktrees\pdf-docling-extraction` | Tích hợp fork pdf-inspector + Docling cho PDF/PPTX extraction và OCR trong rag-service | Claude |
 
