@@ -126,6 +126,7 @@ async def _rag_ingest_text(
     title: str = "text-ingest",
     collection: str = "default",
     tags: list[str] | None = None,
+    metadata: dict[str, Any] | None = None,
     chunk_size: int = 800,
     chunk_overlap: int = 150,
     enable_graph: bool = False,
@@ -145,6 +146,7 @@ async def _rag_ingest_text(
                 title,
                 collection,
                 tags=tags,
+                custom_metadata=metadata or {},
                 chunk_size=chunk_size,
                 chunk_overlap=chunk_overlap,
                 chunker=None,
@@ -315,12 +317,13 @@ def _create_fastmcp_server() -> FastMCP:
         title: str = "text-ingest",
         collection: str = "default",
         tags: list[str] | None = None,
+        metadata: dict[str, Any] | None = None,
         chunk_size: int = 800,
         chunk_overlap: int = 150,
         enable_graph: bool = False,
     ) -> str:
         return await _rag_ingest_text(
-            text, title, collection, tags, chunk_size, chunk_overlap, enable_graph
+            text, title, collection, tags, metadata, chunk_size, chunk_overlap, enable_graph
         )
 
     @mcp.tool()
@@ -402,6 +405,7 @@ def _create_low_level_server() -> Any:  # pragma: no cover - fallback path
                     "title": {"type": "string", "default": "text-ingest"},
                     "collection": {"type": "string", "default": "default"},
                     "tags": {"type": "array", "items": {"type": "string"}},
+                    "metadata": {"type": "object"},
                     "chunk_size": {"type": "integer", "default": 800},
                     "chunk_overlap": {"type": "integer", "default": 150},
                     "enable_graph": {"type": "boolean", "default": False},
