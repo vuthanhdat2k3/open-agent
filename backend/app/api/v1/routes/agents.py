@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.authz.policy import PrincipalContext
 from app.core.observability.audit import log_action
 from app.core.quota.dependencies import enforce_resource_quota
-from app.core.authz.policy import PrincipalContext
 from app.dependencies import get_current_org_id, get_current_user, get_db, require_permission
 from app.models.user import User
 from app.schemas.agent import (

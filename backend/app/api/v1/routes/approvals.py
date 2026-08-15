@@ -10,8 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.routes.chat import run_chat_detached
 from app.config import get_settings
-from app.core.guardrails.approval import get_pending, resolve_approval
 from app.core.authz.policy import PrincipalContext
+from app.core.guardrails.approval import get_pending, resolve_approval
 from app.core.observability.audit import log_action
 from app.core.workflow.queue import enqueue_chat_run
 from app.dependencies import get_current_org_id, get_current_user, get_db, require_permission
