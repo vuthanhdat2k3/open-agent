@@ -3,6 +3,7 @@
 from datetime import datetime
 from typing import Any, Protocol
 
+from app.config import get_settings
 from app.customer_intelligence.contracts import CalendarEvent, CompanyRecord, SearchHit
 from app.customer_intelligence.mcp import call_customer_intelligence_mcp
 
@@ -137,6 +138,10 @@ def get_web_provider() -> WebSearchProvider:
 
 
 def get_company_provider() -> CompanyProvider:
+    if get_settings().ci_company_provider == "fixture":
+        from app.customer_intelligence.providers.fixture_company import FixtureCompanyProvider
+
+        return FixtureCompanyProvider()
     return McpCompanyProvider()
 
 
