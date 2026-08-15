@@ -10,6 +10,7 @@ from __future__ import annotations
 import datetime
 import hashlib
 import os
+from typing import Any
 
 from rag_service.config import settings
 from rag_service.core.factory import resolve_chunker, resolve_parser
@@ -145,6 +146,7 @@ class IngestService:
         chunker: str | None = None,
         enable_graph: bool = False,
         force: bool = False,
+        custom_metadata: dict[str, Any] | None = None,
     ) -> dict:
         source_name = title or "text-ingest"
         content_hash = "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
@@ -160,6 +162,7 @@ class IngestService:
             chunker=chunker,
             enable_graph=enable_graph,
             force=force,
+            custom_metadata=custom_metadata,
         )
         return {
             "document_id": result["document_id"],
@@ -223,7 +226,7 @@ class IngestService:
                 chunk_overlap=settings.default_chunk_overlap,
                 enable_graph=False,
                 tags=doc.tags,
-                custom_metadata={},
+                custom_metadata=doc.doc_metadata or {},
             )
             count = await self._run(doc, collection_name, source, source_type, options)
         except Exception as exc:  # noqa: BLE001
@@ -265,6 +268,7 @@ class IngestService:
         enable_graph: bool,
         force: bool,
         source_url: str | None = None,
+        custom_metadata: dict[str, Any] | None = None,
     ) -> dict:
         collection_name = await self.collection_service.resolve_name(collection_name)
         collection = await self.collection_repo.get_by_name(collection_name)
@@ -292,7 +296,7 @@ class IngestService:
             content_hash=content_hash,
             status="pending",
             tags=tags or [],
-            doc_metadata={},
+            doc_metadata=custom_metadata or {},
         )
         job = await self.job_repo.create(
             document_id=doc.id,
@@ -314,7 +318,7 @@ class IngestService:
                     chunk_overlap=chunk_overlap,
                     enable_graph=enable_graph,
                     tags=tags or [],
-                    custom_metadata={},
+                    custom_metadata=custom_metadata or {},
                 ),
             )
         except Exception as exc:  # noqa: BLE001

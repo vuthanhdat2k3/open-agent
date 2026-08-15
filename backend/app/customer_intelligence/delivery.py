@@ -15,15 +15,16 @@ human approval. This module owns that gate:
 * ``run_delivery`` performs the side effect once and only once
   (``DeliveryAttempt`` is unique per ``org_id``+``idempotency_key``).
 
-Only ``send_email`` is currently supported. ``save_knowledge`` has no backing
-sink yet, so it is rejected with an explicit error rather than a fabricated
-success — consistent with the "never invent data" rule.
+The supported actions include ``send_email`` and ``save_knowledge``. Both use
+an approval gate, durable delivery attempt, and idempotency key so a replay
+cannot duplicate the side effect.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import re
 from datetime import timedelta
 from email.utils import parseaddr
 from typing import Any
@@ -41,16 +42,20 @@ from app.customer_intelligence.providers.email import (
     get_email_provider,
 )
 from app.db.base import utc_now
+from app.mcp.client import get_mcp_manager
 from app.models.approval_request import ApprovalRequest
 from app.models.customer_intelligence import (
     DeliveryAttempt,
     ResearchCase,
 )
+from app.models.mcp import McpServer
 from app.models.outbox import OutboxEvent
 from app.repositories.customer_intelligence import (
+    BriefingReportRepository,
     DeliveryAttemptRepository,
     EmailConnectionRepository,
     ResearchCaseRepository,
+    ResearchSourceRepository,
 )
 
 
@@ -361,10 +366,109 @@ async def run_delivery(
             existing=existing,
         )
     if action == "save_knowledge":
-        raise DeliveryError(
-            "save_knowledge has no backing sink yet; only send_email is available"
+        return await _deliver_knowledge(
+            db,
+            org_id=org_id,
+            case=case,
+            approval=approval,
+            idempotency_key=idempotency_key,
+            existing=existing,
+            actor_user_id=actor_user_id,
         )
     raise DeliveryError(f"unsupported delivery action: {action}")
+
+
+def _extract_document_id(raw: Any) -> str:
+    if isinstance(raw, dict):
+        for key in ("document_id", "id"):
+            value = raw.get(key)
+            if value:
+                return str(value)
+    match = re.search(r"Document ID:\s*(\S+)", str(raw or ""))
+    if match:
+        return match.group(1)
+    raise DeliveryError("RAG ingest returned no document id")
+
+
+async def _deliver_knowledge(
+    db: AsyncSession,
+    *,
+    org_id: str,
+    case: ResearchCase,
+    approval: ApprovalRequest,
+    idempotency_key: str,
+    existing: DeliveryAttempt | None = None,
+    actor_user_id: str | None = None,
+) -> DeliveryAttempt:
+    """Persist an approved briefing in the org-scoped RAG knowledge base."""
+    report = await BriefingReportRepository(db).latest_by_case(org_id, case.id)
+    if report is None:
+        raise DeliveryError("no report to save")
+
+    settings = get_settings()
+    server_result = await db.execute(
+        select(McpServer).where(
+            McpServer.org_id == org_id,
+            McpServer.name == settings.rag_mcp_server_name,
+        )
+    )
+    server = server_result.scalar_one_or_none()
+    if server is None:
+        raise DeliveryError("RAG MCP server not configured for this organization")
+
+    source_rows = await ResearchSourceRepository(db).list_by_case(org_id, case.id)
+    sources = [source.url for source in source_rows if source.url]
+    attempts = DeliveryAttemptRepository(db)
+    attempt = existing or DeliveryAttempt(
+        org_id=org_id,
+        case_id=case.id,
+        action="save_knowledge",
+        payload_hash=approval.payload_hash or "",
+        idempotency_key=idempotency_key,
+        status="pending",
+    )
+    if existing is None:
+        await attempts.create(attempt)
+
+    try:
+        raw = await get_mcp_manager().call_tool(
+            server,
+            "rag_ingest_text",
+            {
+                "text": report.canonical_markdown,
+                "title": f"{case.company_name or 'Unknown company'} — briefing {report.version}",
+                "collection": f"ci-knowledge-{org_id}",
+                "tags": ["customer-intelligence", org_id, case.id],
+                "metadata": {
+                    "org_id": org_id,
+                    "case_id": case.id,
+                    "company_name": case.company_name,
+                    "report_version": report.version,
+                    "source_urls": sources,
+                },
+            },
+        )
+    except Exception as exc:  # noqa: BLE001 - pending prevents blind replay.
+        await attempts.touch(attempt, error="rag ingest failed", status="pending")
+        raise DeliveryError("knowledge base ingest failed") from exc
+
+    document_id = _extract_document_id(raw)
+    delivered = await attempts.touch(
+        attempt,
+        provider_send_id=document_id,
+        status="delivered",
+        error=None,
+    )
+    await log_action(
+        db,
+        org_id=org_id,
+        actor_user_id=actor_user_id,
+        action="ci.delivery.knowledge_saved",
+        resource_type="ci_delivery",
+        resource_id=delivered.id,
+        metadata={"idempotency_key": idempotency_key, "document_id": document_id},
+    )
+    return delivered
 
 
 async def _deliver_calendar_event(

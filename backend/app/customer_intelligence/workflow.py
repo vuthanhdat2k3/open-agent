@@ -16,6 +16,7 @@ from app.customer_intelligence.contracts import (
     MeetingMatch,
     ReportSections,
     SearchHit,
+    ToolResult,
 )
 from app.customer_intelligence.matching import match_companies, match_meetings
 from app.customer_intelligence.oauth import load_fresh_credentials
@@ -183,57 +184,58 @@ async def _research_branch(
     return sources, warnings
 
 
-async def run_research(
-    db: AsyncSession,
+async def _email_extraction_node(
     *,
     org_id: str,
     case_id: str,
-    actor_user_id: str | None = None,
-) -> dict[str, Any]:
-    """Run the full research DAG for an INGESTED case.
-
-    Steps: load case+email -> match companies -> parallel web/news/company
-    branches -> calendar matching -> persist sources/meetings -> render and
-    persist the 7-section report (versioned) -> transition to REPORT_READY.
-
-    Returns a summary dict. Raises ResearchError on hard failures; soft
-    failures (empty search, timeout) become warnings — never fabricated data.
-    """
-    settings = get_settings()
-    case_repo = ResearchCaseRepository(db)
-    email_repo = InboundEmailRepository(db)
-    calendar_repo = CalendarConnectionRepository(db)
-    source_repo = ResearchSourceRepository(db)
-    meeting_repo = MeetingRepository(db)
-    report_repo = BriefingReportRepository(db)
-
-    case = await case_repo.get(org_id, case_id)
-    if case is None:
-        raise ResearchError("case not found")
-    if case.status not in {"INGESTED", "RETRYING", "RESEARCHING"}:
-        raise ResearchError(f"case is not researchable (status={case.status})")
-
-    email = await email_repo.get(org_id, case.email_id)
-    if email is None:
-        raise ResearchError("case email not found")
-
-    case.workflow_run_id = case.workflow_run_id or f"ci-{case.id}"
-    case.started_at = utc_now()
-    if case.status != "RESEARCHING":
-        await case_repo.transition(case, "RESEARCHING")
-
-    warnings: list[str] = []
-    sources: list[ResearchSource] = []
-    companies: list[CompanyRecord] = []
-    meetings: list[MeetingMatch] = []
-
+    case_repo: ResearchCaseRepository,
+    email_repo: InboundEmailRepository,
+) -> ToolResult:
     with workflow_node_span(
         org_id=org_id,
-        workflow_run_id=case.workflow_run_id,
-        node_id="match",
+        workflow_run_id=f"ci-{case_id}",
+        node_id="EmailExtraction",
         node_type="input",
         workflow_name="customer-intelligence",
     ):
+        case = await case_repo.get(org_id, case_id)
+        if case is None:
+            raise ResearchError("case not found")
+        if case.status not in {"INGESTED", "RETRYING", "RESEARCHING"}:
+            raise ResearchError(f"case is not researchable (status={case.status})")
+
+        email = await email_repo.get(org_id, case.email_id)
+        if email is None:
+            raise ResearchError("case email not found")
+
+        case.workflow_run_id = case.workflow_run_id or f"ci-{case.id}"
+        case.started_at = utc_now()
+        if case.status != "RESEARCHING":
+            await case_repo.transition(case, "RESEARCHING")
+        return {
+            "status": "ok",
+            "data": {"case": case, "email": email},
+            "confidence": 1.0,
+        }
+
+
+async def _company_lookup_node(
+    db: AsyncSession,
+    *,
+    org_id: str,
+    case: ResearchCase,
+    email: InboundEmail,
+    actor_user_id: str | None,
+    case_repo: ResearchCaseRepository,
+) -> ToolResult:
+    with workflow_node_span(
+        org_id=org_id,
+        workflow_run_id=case.workflow_run_id or f"ci-{case.id}",
+        node_id="CompanyLookup",
+        node_type="tool",
+        workflow_name="customer-intelligence",
+    ):
+        warnings: list[str] = []
         try:
             companies = await match_companies(email, get_company_provider())
         except Exception:  # noqa: BLE001 - company branch is optional.
@@ -242,10 +244,6 @@ async def run_research(
         if not companies and "company lookup failed" not in warnings:
             warnings.append("no authoritative company match for this email")
 
-        # The classifier is allowed to provide a research candidate, but never
-        # an authoritative identity. This keeps customer research useful when
-        # the optional company database is unavailable without silently
-        # promoting unverified data into the canonical company record.
         if not companies:
             fallback = _unverified_company_candidate(case)
             if fallback is None:
@@ -258,13 +256,70 @@ async def run_research(
                     actor_user_id=actor_user_id,
                     action="ci.case.needs_review",
                     resource_type="ci_case",
-                    resource_id=case_id,
+                    resource_id=case.id,
                     metadata={"reason": "company_not_matched", "warnings": warnings},
                 )
-                return {"case_id": case_id, "status": "NEEDS_REVIEW", "warnings": warnings}
+                return {
+                    "status": "error",
+                    "data": {"companies": [], "needs_review": True},
+                    "warnings": warnings,
+                    "confidence": 0.0,
+                }
             companies = [fallback]
             warnings.append("company identity is unverified; web research only")
+        return {
+            "status": "ok",
+            "data": {"companies": companies, "needs_review": False},
+            "warnings": warnings,
+            "confidence": 1.0 if companies else 0.0,
+        }
 
+
+async def _web_research_node(
+    *,
+    org_id: str,
+    case: ResearchCase,
+    companies: list[CompanyRecord],
+) -> ToolResult:
+    with workflow_node_span(
+        org_id=org_id,
+        workflow_run_id=case.workflow_run_id or f"ci-{case.id}",
+        node_id="WebResearch",
+        node_type="tool",
+        workflow_name="customer-intelligence",
+    ):
+        sources: list[ResearchSource] = []
+        warnings: list[str] = []
+        for company in companies:
+            branch_sources, branch_warnings = await _research_branch(case, company, org_id=org_id)
+            sources.extend(branch_sources)
+            warnings.extend(branch_warnings)
+        return {
+            "status": "ok" if sources else "research_unavailable",
+            "data": sources,
+            "warnings": warnings,
+            "confidence": 1.0 if sources else 0.0,
+        }
+
+
+async def _calendar_match_node(
+    db: AsyncSession,
+    *,
+    org_id: str,
+    case: ResearchCase,
+    companies: list[CompanyRecord],
+    settings: Any,
+    calendar_repo: CalendarConnectionRepository,
+) -> ToolResult:
+    with workflow_node_span(
+        org_id=org_id,
+        workflow_run_id=case.workflow_run_id or f"ci-{case.id}",
+        node_id="CalendarMatch",
+        node_type="tool",
+        workflow_name="customer-intelligence",
+    ):
+        warnings: list[str] = []
+        meetings: list[MeetingMatch] = []
         calendar_conn: CalendarConnection | None = await calendar_repo.get_connected(
             org_id, user_id=case.created_by_user_id
         )
@@ -288,18 +343,195 @@ async def run_research(
                 warnings.append(f"calendar lookup failed: {type(e).__name__}")
         else:
             warnings.append("no calendar credentials, meeting matching skipped")
+        return {
+            "status": "ok",
+            "data": meetings,
+            "warnings": warnings,
+            "confidence": 1.0 if meetings else 0.0,
+        }
 
+
+async def _memory_recall_node(*, org_id: str, case: ResearchCase) -> ToolResult:
     with workflow_node_span(
         org_id=org_id,
-        workflow_run_id=case.workflow_run_id,
-        node_id="research",
-        node_type="tool",
+        workflow_run_id=case.workflow_run_id or f"ci-{case.id}",
+        node_id="MemoryRecall",
+        node_type="retrieval",
         workflow_name="customer-intelligence",
     ):
-        for company in companies:
-            branch_sources, branch_warnings = await _research_branch(case, company, org_id=org_id)
-            sources.extend(branch_sources)
-            warnings.extend(branch_warnings)
+        return {
+            "status": "empty",
+            "warnings": ["memory recall not implemented"],
+            "confidence": 0.0,
+        }
+
+
+async def _report_generation_node(
+    *,
+    org_id: str,
+    case: ResearchCase,
+    email: InboundEmail,
+    companies: list[CompanyRecord],
+    meetings: list[MeetingMatch],
+    sources: list[ResearchSource],
+    warnings: list[str],
+) -> ToolResult:
+    with workflow_node_span(
+        org_id=org_id,
+        workflow_run_id=case.workflow_run_id or f"ci-{case.id}",
+        node_id="ReportGeneration",
+        node_type="transform",
+        workflow_name="customer-intelligence",
+    ):
+        report_sections: ReportSections = {
+            "executive_summary": _executive_summary(email, companies, meetings, warnings),
+            "company_overview": [
+                {
+                    "company_id": c.company_id,
+                    "canonical_name": c.canonical_name,
+                    "aliases": c.aliases,
+                    "industry": c.industry,
+                    "products": c.products,
+                    "domain": c.domain,
+                }
+                for c in companies
+            ],
+            "recent_news": [
+                {
+                    "url": s.url,
+                    "title": s.title,
+                    "publisher": s.publisher,
+                    "published_date": s.published_date,
+                    "excerpt": s.excerpt,
+                    "domain": s.domain,
+                }
+                for s in sources
+                if s.source_type == "news"
+            ],
+            "contact_information": [contact for c in companies for contact in c.contacts],
+            "upcoming_meetings": [
+                {
+                    "provider_event_id": m.event.provider_event_id,
+                    "title": m.event.title,
+                    "start_at": m.event.start_at.isoformat(),
+                    "attendees": m.event.attendees,
+                    "match_type": m.match_type,
+                    "confidence": m.confidence,
+                }
+                for m in meetings
+            ],
+            "open_questions": _open_questions(warnings),
+            "sources": [
+                {
+                    "url": s.url,
+                    "title": s.title,
+                    "source_type": s.source_type,
+                    "publisher": s.publisher,
+                    "published_date": s.published_date,
+                    "retrieved_date": s.retrieved_date,
+                    "excerpt": s.excerpt,
+                    "domain": s.domain,
+                    "confidence": s.confidence,
+                }
+                for s in sources
+            ],
+        }
+        confidence = min(len(sources) / max(len(companies), 1) / 5, 1.0) if companies else 0.0
+        return {
+            "status": "ok",
+            "data": report_sections,
+            "confidence": confidence,
+        }
+
+
+async def _approval_and_delivery_node(
+    db: AsyncSession,
+    *,
+    org_id: str,
+    case: ResearchCase,
+    email: InboundEmail,
+) -> ToolResult:
+    with workflow_node_span(
+        org_id=org_id,
+        workflow_run_id=case.workflow_run_id or f"ci-{case.id}",
+        node_id="ApprovalAndDelivery",
+        node_type="side_effect",
+        workflow_name="customer-intelligence",
+    ):
+        calendar_payload = _calendar_payload_for_email(email)
+        if calendar_payload is None and email.classification == "calendar":
+            calendar_payload = extract_calendar_payload(email)
+        if calendar_payload:
+            from app.customer_intelligence.delivery import request_case_approval
+
+            await request_case_approval(
+                db,
+                org_id=org_id,
+                case_id=case.id,
+                action="calendar_create_event",
+                payload=calendar_payload,
+                requested_by=case.created_by_user_id,
+            )
+        return {"status": "ok", "confidence": 1.0}
+
+
+async def run_research(
+    db: AsyncSession,
+    *,
+    org_id: str,
+    case_id: str,
+    actor_user_id: str | None = None,
+) -> dict[str, Any]:
+    """Run the behavior-preserving seven-node Customer Intelligence DAG."""
+    settings = get_settings()
+    case_repo = ResearchCaseRepository(db)
+    email_repo = InboundEmailRepository(db)
+    calendar_repo = CalendarConnectionRepository(db)
+    source_repo = ResearchSourceRepository(db)
+    meeting_repo = MeetingRepository(db)
+    report_repo = BriefingReportRepository(db)
+
+    extraction = await _email_extraction_node(
+        org_id=org_id,
+        case_id=case_id,
+        case_repo=case_repo,
+        email_repo=email_repo,
+    )
+    extraction_data = extraction["data"]
+    case = extraction_data["case"]
+    email = extraction_data["email"]
+    company_result = await _company_lookup_node(
+        db,
+        org_id=org_id,
+        case=case,
+        email=email,
+        actor_user_id=actor_user_id,
+        case_repo=case_repo,
+    )
+    company_data = company_result["data"]
+    companies = company_data["companies"]
+    warnings = list(company_result.get("warnings", []))
+    if company_data["needs_review"]:
+        return {"case_id": case_id, "status": "NEEDS_REVIEW", "warnings": warnings}
+
+    calendar_result = await _calendar_match_node(
+        db,
+        org_id=org_id,
+        case=case,
+        companies=companies,
+        settings=settings,
+        calendar_repo=calendar_repo,
+    )
+    meetings = calendar_result["data"]
+    warnings.extend(calendar_result.get("warnings", []))
+    await _memory_recall_node(org_id=org_id, case=case)
+    web_result = await _web_research_node(
+        org_id=org_id,
+        case=case,
+        companies=companies,
+    )
+    sources = web_result["data"]
+    warnings.extend(web_result.get("warnings", []))
 
     unique_sources: list[ResearchSource] = []
     seen_urls: set[str] = set()
@@ -316,81 +548,39 @@ async def run_research(
     sources = unique_sources[: settings.ci_max_sources_per_case]
     if sources:
         await source_repo.bulk_create(sources)
-    meeting_rows: list[Meeting] = []
-    for m in meetings:
-        meeting_rows.append(
-            Meeting(
-                org_id=org_id,
-                case_id=case_id,
-                provider_event_id=m.event.provider_event_id,
-                title=m.event.title,
-                start_at=_persistable_utc_datetime(m.event.start_at),
-                end_at=_persistable_utc_datetime(m.event.end_at),
-                attendees=m.event.attendees,
-                organizer=m.event.organizer,
-                description=m.event.description,
-                location=m.event.location,
-                match_type=m.match_type,
-                confidence=m.confidence,
-                matched_on=m.matched_on,
-            )
+
+    meeting_rows = [
+        Meeting(
+            org_id=org_id,
+            case_id=case_id,
+            provider_event_id=m.event.provider_event_id,
+            title=m.event.title,
+            start_at=_persistable_utc_datetime(m.event.start_at),
+            end_at=_persistable_utc_datetime(m.event.end_at),
+            attendees=m.event.attendees,
+            organizer=m.event.organizer,
+            description=m.event.description,
+            location=m.event.location,
+            match_type=m.match_type,
+            confidence=m.confidence,
+            matched_on=m.matched_on,
         )
+        for m in meetings
+    ]
     if meeting_rows:
         await meeting_repo.bulk_upsert(meeting_rows)
 
-    report_sections: ReportSections = {
-        "executive_summary": _executive_summary(email, companies, meetings, warnings),
-        "company_overview": [
-            {
-                "company_id": c.company_id,
-                "canonical_name": c.canonical_name,
-                "aliases": c.aliases,
-                "industry": c.industry,
-                "products": c.products,
-                "domain": c.domain,
-            }
-            for c in companies
-        ],
-        "recent_news": [
-            {
-                "url": s.url,
-                "title": s.title,
-                "publisher": s.publisher,
-                "published_date": s.published_date,
-                "excerpt": s.excerpt,
-                "domain": s.domain,
-            }
-            for s in sources
-            if s.source_type == "news"
-        ],
-        "contact_information": [contact for c in companies for contact in c.contacts],
-        "upcoming_meetings": [
-            {
-                "provider_event_id": m.event.provider_event_id,
-                "title": m.event.title,
-                "start_at": m.event.start_at.isoformat(),
-                "attendees": m.event.attendees,
-                "match_type": m.match_type,
-                "confidence": m.confidence,
-            }
-            for m in meetings
-        ],
-        "open_questions": _open_questions(warnings),
-        "sources": [
-            {
-                "url": s.url,
-                "title": s.title,
-                "source_type": s.source_type,
-                "publisher": s.publisher,
-                "published_date": s.published_date,
-                "retrieved_date": s.retrieved_date,
-                "excerpt": s.excerpt,
-                "domain": s.domain,
-                "confidence": s.confidence,
-            }
-            for s in sources
-        ],
-    }
+    report_result = await _report_generation_node(
+        org_id=org_id,
+        case=case,
+        email=email,
+        companies=companies,
+        meetings=meetings,
+        sources=sources,
+        warnings=warnings,
+    )
+    report_sections = report_result["data"]
+    confidence = report_result["confidence"]
     version = await report_repo.next_version(org_id, case_id)
     report = BriefingReport(
         org_id=org_id,
@@ -398,7 +588,7 @@ async def run_research(
         version=version,
         canonical_markdown=render_markdown(report_sections),
         rendering=report_sections,
-        confidence=min(len(sources) / max(len(companies), 1) / 5, 1.0) if companies else 0.0,
+        confidence=confidence,
         status="ready",
     )
     await report_repo.create(report)
@@ -408,21 +598,7 @@ async def run_research(
     case.confidence = report.confidence
     case.finished_at = utc_now()
     await case_repo.transition(case, "REPORT_READY")
-
-    calendar_payload = _calendar_payload_for_email(email)
-    if calendar_payload is None and email.classification == "calendar":
-        calendar_payload = extract_calendar_payload(email)
-    if calendar_payload:
-        from app.customer_intelligence.delivery import request_case_approval
-
-        await request_case_approval(
-            db,
-            org_id=org_id,
-            case_id=case_id,
-            action="calendar_create_event",
-            payload=calendar_payload,
-            requested_by=case.created_by_user_id,
-        )
+    await _approval_and_delivery_node(db, org_id=org_id, case=case, email=email)
 
     await log_action(
         db,

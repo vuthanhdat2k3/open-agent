@@ -3,14 +3,17 @@
 import * as React from "react";
 import { useDeferredValue, useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
-import { Activity, Building2, CalendarClock, HelpCircle, Link2, RefreshCw, Search, Trash2, Users } from "lucide-react";
+import { Activity, Building2, CalendarClock, Clock3, HelpCircle, Link2, Pencil, Play, Plus, RefreshCw, Search, Trash2, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatVietnamDateTime } from "@/lib/datetime";
 import { PageHeader } from "@/components/page-header";
-import { useCreateManualCustomerIntelligenceCase, useCustomerIntelligenceCase, useCustomerIntelligenceCases, useDeleteCustomerIntelligenceCase, useResearchCustomerIntelligenceCase, useRetryCustomerIntelligenceCase } from "@/hooks";
-import { Input } from "@/components/ui/input";
+import { useCiConnections, useCiSchedules, useCreateCiSchedule, useCreateManualCustomerIntelligenceCase, useCustomerIntelligenceCase, useCustomerIntelligenceCases, useDeleteCiSchedule, useDeleteCustomerIntelligenceCase, useResearchCustomerIntelligenceCase, useRetryCustomerIntelligenceCase, useRunCiScheduleNow, useUpdateCiSchedule } from "@/hooks";
+import { Input, Label } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
+import { toast } from "sonner";
+import type { CustomerIntelligenceSchedule } from "@/types";
 
 function statusVariant(status: string) {
   if (["REPORT_READY", "COMPLETED"].includes(status)) return "success" as const;
@@ -29,7 +32,7 @@ function BriefingReport({
   meetings: import("@/types").CustomerIntelligenceMeeting[];
 }) {
   const data = report.rendering;
-  if (!data) {
+  if (!data || !("executive_summary" in data)) {
     return <article className="prose prose-sm max-w-none dark:prose-invert"><ReactMarkdown>{report.canonical_markdown}</ReactMarkdown></article>;
   }
   const companies = Array.isArray(data.company_overview) ? data.company_overview : [];
@@ -80,6 +83,170 @@ function BriefingReport({
   );
 }
 
+const SCHEDULE_TIMEZONES = [
+  "UTC",
+  "Asia/Ho_Chi_Minh",
+  "Asia/Bangkok",
+  "Asia/Singapore",
+  "Asia/Tokyo",
+  "Australia/Sydney",
+  "Europe/London",
+  "Europe/Berlin",
+  "America/New_York",
+  "America/Los_Angeles",
+];
+
+function scheduleDate(value: string | null) {
+  return value ? formatVietnamDateTime(value) : "Not run yet";
+}
+
+function SchedulesPanel() {
+  const connections = useCiConnections();
+  const schedules = useCiSchedules();
+  const create = useCreateCiSchedule();
+  const update = useUpdateCiSchedule();
+  const runNow = useRunCiScheduleNow();
+  const remove = useDeleteCiSchedule();
+  const [editing, setEditing] = useState<CustomerIntelligenceSchedule | null>(null);
+  const [connectionId, setConnectionId] = useState("");
+  const [runTime, setRunTime] = useState("06:00");
+  const [timezone, setTimezone] = useState("Asia/Ho_Chi_Minh");
+  const [enabled, setEnabled] = useState(true);
+
+  useEffect(() => {
+    if (!editing) {
+      setConnectionId((current) => current || connections.data?.find((item) => item.status === "connected" && item.has_credentials)?.id || "");
+      return;
+    }
+    setConnectionId(editing.connection_id);
+    setRunTime(editing.run_time);
+    setTimezone(editing.timezone);
+    setEnabled(editing.enabled);
+  }, [connections.data, editing]);
+
+  function resetForm() {
+    setEditing(null);
+    setRunTime("06:00");
+    setTimezone("Asia/Ho_Chi_Minh");
+    setEnabled(true);
+    setConnectionId(connections.data?.find((item) => item.status === "connected" && item.has_credentials)?.id || "");
+  }
+
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    try {
+      if (editing) {
+        await update.mutateAsync({ id: editing.id, body: { run_time: runTime, timezone, enabled } });
+        toast.success("Schedule updated");
+      } else {
+        if (!connectionId) {
+          toast.error("Connect a Gmail account before creating a schedule");
+          return;
+        }
+        await create.mutateAsync({ connection_id: connectionId, run_time: runTime, timezone, enabled });
+        toast.success("Schedule created");
+      }
+      resetForm();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not save schedule");
+    }
+  }
+
+  async function runSchedule(id: string) {
+    try {
+      const result = await runNow.mutateAsync(id) as { new_cases?: number };
+      toast.success(`Schedule ran${result.new_cases ? ` and found ${result.new_cases} new case${result.new_cases === 1 ? "" : "s"}` : ""}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not run schedule");
+    }
+  }
+
+  async function deleteSchedule(id: string) {
+    if (!window.confirm("Delete this schedule?")) return;
+    try {
+      await remove.mutateAsync(id);
+      if (editing?.id === id) resetForm();
+      toast.success("Schedule deleted");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not delete schedule");
+    }
+  }
+
+  const connected = (connections.data || []).filter((item) => item.status === "connected" && item.has_credentials);
+  const connectionLabel = (id: string) => connections.data?.find((item) => item.id === id)?.account_email || "Unknown Gmail account";
+  const saving = create.isPending || update.isPending;
+
+  return (
+    <div className="space-y-6">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.4fr)]">
+        <Card>
+          <CardHeader>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <CardTitle>{editing ? "Edit schedule" : "Create a schedule"}</CardTitle>
+                <CardDescription>Run Gmail sync automatically in the timezone you choose.</CardDescription>
+              </div>
+              {editing && <Button variant="ghost" size="sm" onClick={resetForm}>Cancel</Button>}
+            </div>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={(event) => void submit(event)} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="ci-schedule-connection">Connected Gmail account</Label>
+                <Select id="ci-schedule-connection" value={connectionId} onChange={(event) => setConnectionId(event.target.value)} disabled={Boolean(editing) || !connected.length} required>
+                  <option value="">Select an account</option>
+                  {connected.map((item) => <option key={item.id} value={item.id}>{item.account_email}</option>)}
+                </Select>
+                {!connected.length && <p className="text-xs text-muted-foreground">Connect a Gmail account in Integrations first.</p>}
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="ci-schedule-time">Run time</Label>
+                  <Input id="ci-schedule-time" type="time" value={runTime} onChange={(event) => setRunTime(event.target.value)} required />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="ci-schedule-timezone">Timezone</Label>
+                  <Select id="ci-schedule-timezone" value={timezone} onChange={(event) => setTimezone(event.target.value)}>
+                    {SCHEDULE_TIMEZONES.map((item) => <option key={item} value={item}>{item}</option>)}
+                  </Select>
+                </div>
+              </div>
+              <label className="flex items-center gap-2 text-sm text-foreground">
+                <input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} className="h-4 w-4 rounded border-border text-primary focus:ring-primary" />
+                Enabled
+              </label>
+              <Button type="submit" loading={saving} disabled={!editing && !connected.length}><Plus className="h-4 w-4" />{editing ? "Save changes" : "Create schedule"}</Button>
+            </form>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <div className="flex items-start justify-between gap-3"><div><CardTitle>Schedules</CardTitle><CardDescription>{schedules.data?.length ?? 0} configured daily syncs</CardDescription></div><Button variant="ghost" size="sm" onClick={() => void schedules.refetch()} disabled={schedules.isFetching}><RefreshCw className={schedules.isFetching ? "h-4 w-4 animate-spin" : "h-4 w-4"} /></Button></div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {schedules.isLoading && <p className="text-sm text-muted-foreground">Loading schedules…</p>}
+            {schedules.data?.map((schedule) => (
+              <div key={schedule.id} className="rounded-xl border border-border/70 bg-background/30 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2"><Clock3 className="h-4 w-4 text-primary" /><span className="font-semibold">Daily at {schedule.run_time}</span><Badge variant={schedule.enabled ? "success" : "outline"}>{schedule.enabled ? "Enabled" : "Disabled"}</Badge></div>
+                    <p className="mt-1 truncate text-sm text-muted-foreground">{connectionLabel(schedule.connection_id)} · {schedule.timezone}</p>
+                  </div>
+                  <div className="flex shrink-0 gap-1"><Button variant="ghost" size="sm" onClick={() => setEditing(schedule)} aria-label={`Edit schedule at ${schedule.run_time}`}><Pencil className="h-4 w-4" /></Button><Button variant="ghost" size="sm" onClick={() => void deleteSchedule(schedule.id)} disabled={remove.isPending} aria-label={`Delete schedule at ${schedule.run_time}`}><Trash2 className="h-4 w-4 text-destructive" /></Button></div>
+                </div>
+                <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2"><span>Last run: {scheduleDate(schedule.last_run_at)}</span><span>Next run: {scheduleDate(schedule.next_run_at)}</span></div>
+                <Button variant="outline" size="sm" className="mt-3" onClick={() => void runSchedule(schedule.id)} loading={runNow.isPending}><Play className="h-3.5 w-3.5" />Run now</Button>
+              </div>
+            ))}
+            {!schedules.isLoading && !schedules.data?.length && <div className="rounded-xl border border-dashed p-8 text-center"><Clock3 className="mx-auto h-8 w-8 text-muted-foreground" /><p className="mt-2 text-sm font-medium">No schedules yet</p><p className="mt-1 text-xs text-muted-foreground">Create one to sync new customer email automatically.</p></div>}
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+
 export default function CustomerIntelligencePage() {
   const [selected, setSelected] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -98,6 +265,7 @@ export default function CustomerIntelligencePage() {
   const retry = useRetryCustomerIntelligenceCase();
   const remove = useDeleteCustomerIntelligenceCase();
   const manual = useCreateManualCustomerIntelligenceCase();
+  const [activeTab, setActiveTab] = useState<"cases" | "schedules">("cases");
   const [companyName, setCompanyName] = useState("");
   const [companyDomain, setCompanyDomain] = useState("");
   const [question, setQuestion] = useState("");
@@ -125,6 +293,11 @@ export default function CustomerIntelligencePage() {
   return (
     <div className="space-y-6">
       <PageHeader icon={Activity} title="Research Cases" description="Automated customer and partner briefings with traceable sources and human-controlled delivery." />
+      <div className="flex gap-2 border-b border-border/70 pb-2" role="tablist" aria-label="Customer Intelligence workspace">
+        <Button type="button" variant={activeTab === "cases" ? "secondary" : "ghost"} role="tab" aria-selected={activeTab === "cases"} onClick={() => setActiveTab("cases")}><Search className="h-4 w-4" />Cases</Button>
+        <Button type="button" variant={activeTab === "schedules" ? "secondary" : "ghost"} role="tab" aria-selected={activeTab === "schedules"} onClick={() => setActiveTab("schedules")}><Clock3 className="h-4 w-4" />Schedules</Button>
+      </div>
+      {activeTab === "cases" ? <>
       <Card>
         <CardHeader><CardTitle>Start a manual research</CardTitle><CardDescription>Research a company without connecting email. The request stays private to your account.</CardDescription></CardHeader>
         <CardContent><form onSubmit={(event) => void createManualCase(event)} className="grid gap-3 md:grid-cols-[1fr_1fr_2fr_auto]"><Input aria-label="Company name" placeholder="Company name" value={companyName} onChange={(event) => setCompanyName(event.target.value)} required /><Input aria-label="Company domain" placeholder="company.com (optional)" value={companyDomain} onChange={(event) => setCompanyDomain(event.target.value)} /><Input aria-label="Research question" placeholder="Research question (optional)" value={question} onChange={(event) => setQuestion(event.target.value)} /><Button type="submit" loading={manual.isPending} disabled={!companyName.trim()}>Research</Button></form></CardContent>
@@ -158,6 +331,7 @@ export default function CustomerIntelligencePage() {
           </CardContent>
         </Card>
       </div>
+      </> : <SchedulesPanel />}
     </div>
   );
 }

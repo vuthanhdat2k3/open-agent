@@ -37,7 +37,9 @@ import type {
   UserProfile,
   CustomerIntelligenceCase,
   CustomerIntelligenceCaseDetail,
+  CustomerIntelligenceConnection,
   CustomerIntelligenceNotification,
+  CustomerIntelligenceSchedule,
   CustomerIntelligenceNotificationPage,
   EmailIntelligenceNavigationSummary,
 } from "@/types";
@@ -56,6 +58,65 @@ export function useCustomerIntelligenceCases(filters: { category?: "briefings" |
   return useQuery({
     queryKey: emailIntelligenceQueryKeys(orgId).cases(filters),
     queryFn: () => api.get<CustomerIntelligenceCase[]>(`/api/customer-intelligence/cases?${params}`),
+    refetchInterval: 10_000,
+  });
+}
+
+export function useCiConnections() {
+  const orgId = getActiveOrgId();
+  return useQuery({
+    queryKey: ["customer-intelligence", orgId, "connections"],
+    queryFn: () => api.get<CustomerIntelligenceConnection[]>("/api/customer-intelligence/connections"),
+  });
+}
+
+export function useCiSchedules() {
+  const orgId = getActiveOrgId();
+  return useQuery({
+    queryKey: ["customer-intelligence", orgId, "schedules"],
+    queryFn: () => api.get<CustomerIntelligenceSchedule[]>("/api/customer-intelligence/schedules"),
+    refetchInterval: 30_000,
+  });
+}
+
+export function useCreateCiSchedule() {
+  const qc = useQueryClient();
+  const orgId = getActiveOrgId();
+  return useMutation({
+    mutationFn: (body: { connection_id: string; run_time: string; timezone: string; enabled: boolean }) =>
+      api.post<CustomerIntelligenceSchedule>("/api/customer-intelligence/schedules", body),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["customer-intelligence", orgId, "schedules"] }),
+  });
+}
+
+export function useUpdateCiSchedule() {
+  const qc = useQueryClient();
+  const orgId = getActiveOrgId();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: { run_time?: string; timezone?: string; enabled?: boolean } }) =>
+      api.patch<CustomerIntelligenceSchedule>(`/api/customer-intelligence/schedules/${id}`, body),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["customer-intelligence", orgId, "schedules"] }),
+  });
+}
+
+export function useRunCiScheduleNow() {
+  const qc = useQueryClient();
+  const orgId = getActiveOrgId();
+  return useMutation({
+    mutationFn: (id: string) => api.post(`/api/customer-intelligence/schedules/${id}/run`),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["customer-intelligence", orgId, "schedules"] });
+      void qc.invalidateQueries({ queryKey: emailIntelligenceQueryKeys(orgId).cases() });
+    },
+  });
+}
+
+export function useDeleteCiSchedule() {
+  const qc = useQueryClient();
+  const orgId = getActiveOrgId();
+  return useMutation({
+    mutationFn: (id: string) => api.delete<void>(`/api/customer-intelligence/schedules/${id}`),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["customer-intelligence", orgId, "schedules"] }),
   });
 }
 
