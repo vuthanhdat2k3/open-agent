@@ -18,11 +18,13 @@ def _load_registry() -> dict[str, type[Parser]]:
     from rag_service.pipeline.parser.html import HTMLParser
     from rag_service.pipeline.parser.markdown import MarkdownParser
     from rag_service.pipeline.parser.pdf import PDFParser
+    from rag_service.pipeline.parser.pptx import PPTXParser
     from rag_service.pipeline.parser.text import PlainTextParser
     from rag_service.pipeline.parser.url import URLParser
 
     return {
         "pdf": PDFParser,
+        "pptx": PPTXParser,
         "docx": DOCXParser,
         "md": MarkdownParser,
         "markdown": MarkdownParser,
