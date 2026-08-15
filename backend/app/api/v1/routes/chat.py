@@ -240,6 +240,7 @@ async def cancel_chat_run(
 
 @router.get("/runs/{run_id}/events")
 async def stream_chat_run_events(
+    request: Request,
     run_id: str,
     follow: bool = Query(True),
     after_seq: int = Query(0, ge=0),
