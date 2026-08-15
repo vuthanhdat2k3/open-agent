@@ -5,17 +5,19 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
 
-_OWNERSHIP_USER_ID = "ownership_user_id"
+from app.core.authz.policy import PrincipalContext
+
+_AUTHORIZATION_CONTEXT = "authorization_context"
 
 
-def set_ownership_scope(db: AsyncSession, *, user_id: str, role: Any) -> None:
-    """Scope subsequent reads on this request session for plain users."""
-    role_value = getattr(role, "value", role)
-    db.info[_OWNERSHIP_USER_ID] = user_id if role_value == "user" else None
+def set_ownership_scope(db: AsyncSession, *, principal: PrincipalContext) -> None:
+    """Attach the resolved authorization context to this request's DB session."""
+    db.info[_AUTHORIZATION_CONTEXT] = principal
 
 
 def ownership_user_id(db: AsyncSession) -> str | None:
-    return db.info.get(_OWNERSHIP_USER_ID)
+    principal = db.info.get(_AUTHORIZATION_CONTEXT)
+    return principal.owner_user_id if principal else None
 
 
 def scope_to_owner(stmt: Select, db: AsyncSession, owner_column: Any) -> Select:

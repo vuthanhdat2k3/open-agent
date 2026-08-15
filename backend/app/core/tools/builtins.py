@@ -234,6 +234,7 @@ async def _call_agent(args: dict[str, Any], ctx: ToolContext) -> str:
         root_run_id=ctx.root_run_id or ctx.session_id or ctx.current_task_id or agent.id,
         agent_id=agent.id,
         agent_release_id=agent.active_release_id,
+        triggered_by_user_id=ctx.user_id,
         goal=instruction,
         status="running",
         progress={"model_id": ctx.model_id},
