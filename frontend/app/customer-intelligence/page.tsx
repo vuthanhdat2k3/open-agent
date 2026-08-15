@@ -8,12 +8,31 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatVietnamDateTime } from "@/lib/datetime";
+import { getAccessToken } from "@/lib/auth";
 import { PageHeader } from "@/components/page-header";
 import { useCiConnections, useCiSchedules, useCreateCiSchedule, useCreateManualCustomerIntelligenceCase, useCustomerIntelligenceCase, useCustomerIntelligenceCases, useDeleteCiSchedule, useDeleteCustomerIntelligenceCase, useResearchCustomerIntelligenceCase, useRetryCustomerIntelligenceCase, useRunCiScheduleNow, useUpdateCiSchedule } from "@/hooks";
 import { Input, Label } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { toast } from "sonner";
 import type { CustomerIntelligenceSchedule } from "@/types";
+
+async function downloadCiReport(caseId: string, format: "html" | "pdf" | "docx") {
+  const token = getAccessToken();
+  const res = await fetch(`/api/customer-intelligence/cases/${caseId}/report/${format}`, {
+    credentials: "include",
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+  if (!res.ok) throw new Error(`download failed: ${res.status}`);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `briefing-${caseId}.${format}`;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
 
 function statusVariant(status: string) {
   if (["REPORT_READY", "COMPLETED"].includes(status)) return "success" as const;
@@ -326,7 +345,25 @@ export default function CustomerIntelligencePage() {
             {!selected && <div className="flex min-h-48 items-center justify-center text-sm text-muted-foreground"><Search className="mr-2 h-4 w-4" />Select a case</div>}
               {detail.data && <>
               <div className="flex flex-wrap items-center gap-2"><Badge variant={statusVariant(detail.data.status)}>{detail.data.status}</Badge>{detail.data.error && <span className="text-sm text-destructive">{detail.data.error}</span>}<div className="ml-auto flex gap-2">{["INGESTED", "RESEARCHING"].includes(detail.data.status) && <Button size="sm" onClick={() => research.mutate(detail.data!.id)} disabled={research.isPending}><Search className="mr-1 h-3.5 w-3.5" />Research</Button>}{["RETRYING", "DEAD_LETTER", "NEEDS_REVIEW"].includes(detail.data.status) && <Button size="sm" variant="outline" onClick={() => retry.mutate(detail.data!.id)} disabled={retry.isPending}><RefreshCw className="mr-1 h-3.5 w-3.5" />Retry</Button>}{!["ACTION_PROPOSED", "AWAITING_APPROVAL", "APPROVED", "EXECUTING"].includes(detail.data.status) && <Button size="sm" variant="outline" onClick={() => void deleteSelectedCase()} disabled={remove.isPending}><Trash2 className="mr-1 h-3.5 w-3.5" />Delete</Button>}</div></div>
-              {detail.data.report ? <BriefingReport report={detail.data.report} sources={detail.data.sources} meetings={detail.data.meetings} /> : <p className="text-sm text-muted-foreground">No briefing report yet.</p>}
+              {detail.data.report ? <>
+                <div className="flex flex-wrap gap-2">
+                  {(["html", "pdf", "docx"] as const).map((format) => (
+                    <Button
+                      key={format}
+                      size="sm"
+                      variant="outline"
+                      onClick={() =>
+                        void downloadCiReport(detail.data!.id, format).catch(() =>
+                          toast.error(`Failed to download ${format.toUpperCase()} report`),
+                        )
+                      }
+                    >
+                      Download {format.toUpperCase()}
+                    </Button>
+                  ))}
+                </div>
+                <BriefingReport report={detail.data.report} sources={detail.data.sources} meetings={detail.data.meetings} />
+              </> : <p className="text-sm text-muted-foreground">No briefing report yet.</p>}
             </>}
           </CardContent>
         </Card>
