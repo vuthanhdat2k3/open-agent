@@ -101,7 +101,7 @@ async def _ci_scheduler_tick(ctx: dict) -> None:
             db,
             job_key=JobKey.CI_SCHEDULER_TICK,
             interval_seconds=300,
-            lease_seconds=240,
+            lease_seconds=120,
             worker_id=_worker_identity(),
             run=lambda: run_due_schedules(db),
         )
