@@ -139,7 +139,8 @@ def _ci_oauth_redirect_uri(kind: str, provider: str) -> str:
 
 def _connection_owner(request: Request, current_user: User) -> str | None:
     """Admins see/manage the organization; users are limited to own OAuth data."""
-    return None if getattr(request.state, "role", "user") == "admin" else current_user.id
+    principal = getattr(request.state, "principal", None)
+    return None if principal and principal.allows("ci:organization:read") else current_user.id
 
 
 async def _case_for_request(
@@ -443,7 +444,8 @@ async def customer_intelligence_navigation_summary(
             ResearchCase.status.in_(["FAILED", "DEAD_LETTER"]),
         )
     )
-    is_admin = getattr(request.state, "role", "user") == "admin" if request is not None else False
+    principal = getattr(request.state, "principal", None)
+    is_admin = bool(principal and principal.allows("ci:organization:read"))
     unhealthy = 0
     if is_admin:
         unhealthy = await db.scalar(
