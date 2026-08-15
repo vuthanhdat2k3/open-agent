@@ -88,7 +88,7 @@ async def parse(self, source: bytes | str, **kwargs: object) -> ParseResult:
 
 ### 6.2 `pipeline/parser/docling_client.py` (mới)
 
-Gọi `docling-service` qua HTTP (REST của `docling-serve`), timeout ngắn, không giữ connection lâu — theo đúng pattern gọi `crawl4ai` đã có.
+Gọi `docling-service` qua HTTP (REST của `docling-serve`), dùng `httpx.AsyncClient` với timeout rộng rãi có cấu hình (mặc định 60-90s — OCR/layout không phải việc mili-giây, không phải "timeout ngắn"), theo đúng tiền lệ `_crawler_fetch()` gọi crawl4ai với `timeout=45.0` (`backend/app/core/tools/builtins.py:76`). Xác nhận đúng field/endpoint multipart của `docling-serve` bằng cách đọc OpenAPI/docs trong fork trước khi code — không đoán tên field.
 
 ### 6.3 `pipeline/parser/pptx.py` (mới)
 
@@ -129,7 +129,7 @@ Không bật OCR mặc định cho mọi deployment hiện có — giữ nguyên
 | `docling-service` kéo theo dependency nặng (layout model, OCR model) → image lớn, thời gian cold-start lâu | Chạy container riêng (mục 4), không ảnh hưởng `rag-service`; đặt resource limit + healthcheck riêng |
 | Chọn OCR engine (RapidOCR vs EasyOCR vs Tesseract) ảnh hưởng độ chính xác và kích thước image | RapidOCR đề xuất làm mặc định (ONNX, không cần torch) nhưng cần benchmark thực tế trên vài PDF tiếng Việt/tiếng Anh trước khi chốt — đồ án capstone không yêu cầu OCR nên đây không phải việc gấp |
 | Fork lệch dần khỏi upstream nếu không sync đều | Quy trình sync định kỳ ở mục 7, không tự động — cần người phụ trách |
-| Docling xử lý PDF scan có thể chậm (giây, không phải mili-giây) | Không nằm trên đường HTTP request đồng bộ — nếu dùng cho CI/RAG ingest, chạy qua job queue (arq) đã có sẵn trong hệ thống, không gọi trực tiếp trong request handler |
+| Docling xử lý PDF scan có thể chậm (giây, không phải mili-giây) | **Đã verify (2026-08-15): sai giả định ban đầu.** `IngestService._create_and_run()` (`ingest_service.py:253-...`) gọi `await parser.parse(source)` (dòng 361) đồng bộ ngay trong request handler của `POST /ingest/file`\|`/ingest/text`\|`/ingest/url` — `rag-service` **không có** job queue/arq nào (khác `backend/`, nơi có arq worker). `job_id`/`status="queued"` chỉ là bookkeeping, không phải dispatch async thật. Quyết định cho PR này: chấp nhận block đồng bộ, dùng timeout rộng rãi có cấu hình (mặc định 60-90s, theo đúng tiền lệ `_crawler_fetch()` ở `backend/app/core/tools/builtins.py:76` dùng `timeout=45.0` cho crawl4ai) thay vì "timeout ngắn". Việc thêm job queue cho toàn bộ `rag-service` ingest pipeline là gap kiến trúc có sẵn từ trước, **ngoài phạm vi PR này** — không tự ý xây thêm. |
 
 ## 10. Ngoài phạm vi (chưa làm ở bước này)
 
