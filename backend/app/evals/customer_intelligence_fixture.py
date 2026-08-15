@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from app.customer_intelligence.contracts import CompanyRecord
 
-
 FIXTURE_COMPANIES: dict[str, CompanyRecord] = {
     "fpt software": CompanyRecord(
         company_id="fixture-fpt-software",
