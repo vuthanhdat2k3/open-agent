@@ -21,6 +21,12 @@ RUN pip wheel --no-cache-dir --no-deps \
 
 FROM python:3.11-slim
 
+# The application metadata pins pdf-inspector to a Git commit. pip resolves
+# that VCS requirement again while installing the project, so git is required
+# in the runtime image as well as the Rust build stage.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git && rm -rf /var/lib/apt/lists/*
+
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1
