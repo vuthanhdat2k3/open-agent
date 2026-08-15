@@ -1,13 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.authz.policy import PrincipalContext
 from app.core.observability.audit import log_action
 from app.core.quota.dependencies import enforce_resource_quota
 from app.dependencies import get_current_org_id, get_current_user, get_db, require_permission
-from app.models.membership import Membership
-from app.models.role import Role
 from app.models.user import User
 from app.schemas.agent import (
     AgentCreate,
@@ -35,31 +33,18 @@ def _release_error(exc: ValueError) -> HTTPException:
     return HTTPException(404 if "not found" in detail else 400, detail)
 
 
-async def _is_admin(db: AsyncSession, org_id: str, user_id: str | None) -> bool:
-    if not user_id:
-        return False
-    result = await db.execute(
-        select(Membership).where(
-            Membership.org_id == org_id, Membership.user_id == user_id
-        )
-    )
-    membership = result.scalar_one_or_none()
-    return membership is not None and membership.role == Role.admin
-
-
-@router.get("", response_model=list[AgentOut], dependencies=[Depends(require_permission("agents:read"))])
+@router.get("", response_model=list[AgentOut])
 async def list_agents(
-    request: Request,
+    authz: PrincipalContext = Depends(require_permission("agents:read")),
     org_id: str = Depends(get_current_org_id),
     db: AsyncSession = Depends(get_db),
 ):
     agents = await AgentService(db).list(org_id)
-    user_id = getattr(request.state, "user_id", None)
     # A plain "user" role only ever sees the org's primary (orchestrator-kind)
     # agent(s) - worker agents are implementation detail the orchestrator
     # delegates to internally via call_agent, not something a user picks
     # directly. Admin sees everything (needed to build/test each agent).
-    if not await _is_admin(db, org_id, user_id):
+    if not authz.allows("agents:manage"):
         agents = [a for a in agents if a.kind == "orchestrator"]
     return agents
 
@@ -77,18 +62,15 @@ async def list_tools(
     "",
     response_model=AgentOut,
     status_code=201,
-    dependencies=[
-        Depends(require_permission("agents:create")),
-        Depends(enforce_resource_quota("agents")),
-    ],
+    dependencies=[Depends(enforce_resource_quota("agents"))],
 )
 async def create_agent(
     body: AgentCreate,
-    request: Request,
+    authz: PrincipalContext = Depends(require_permission("agents:create")),
     org_id: str = Depends(get_current_org_id),
     db: AsyncSession = Depends(get_db),
 ):
-    user_id = getattr(request.state, "user_id", None)
+    user_id = authz.user_id
     try:
         agent = await AgentService(db).create(org_id, body.model_dump(), user_id)
     except ValueError as e:
@@ -217,23 +199,19 @@ async def get_agent_release(
     return release
 
 
-@router.post(
-    "/{id}/releases/{version}/publish",
-    response_model=AgentReleaseOut,
-    dependencies=[Depends(require_permission("agents:publish"))],
-)
+@router.post("/{id}/releases/{version}/publish", response_model=AgentReleaseOut)
 async def publish_agent_release(
     id: str,
     version: int,
-    request: Request,
     body: PublishReleaseRequest | None = None,
+    authz: PrincipalContext = Depends(require_permission("agents:publish")),
     org_id: str = Depends(get_current_org_id),
     db: AsyncSession = Depends(get_db),
 ):
-    user_id = getattr(request.state, "user_id", None)
+    user_id = authz.user_id
     force = bool(body and body.force)
 
-    if force and not await _is_admin(db, org_id, user_id):
+    if force and not authz.allows("agents:publish:force"):
         # Shipping over a red gate is an owner-level decision, not something
         # anyone holding publish rights may do.
         raise HTTPException(403, "only an organization admin may force publish")

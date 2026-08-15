@@ -143,6 +143,7 @@ class ChatService:
             root_run_id=run_id,
             agent_id=agent.id,
             agent_release_id=getattr(agent, "active_release_id", None),
+            triggered_by_user_id=user_id,
             goal=request.message,
             status="queued",
             progress={

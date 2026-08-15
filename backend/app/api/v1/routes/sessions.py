@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.authz.scope import scope_to_owner
 from app.dependencies import get_current_org_id, get_db, require_permission
 from app.models.memory import SessionMemory
 from app.models.message import Message
@@ -18,9 +19,10 @@ router = APIRouter(
 async def list_sessions(
     org_id: str = Depends(get_current_org_id), db: AsyncSession = Depends(get_db)
 ):
-    res = await db.execute(
-        select(Session).where(Session.org_id == org_id).order_by(Session.updated_at.desc())
-    )
+    stmt = scope_to_owner(
+        select(Session).where(Session.org_id == org_id), db, Session.created_by_user_id
+    ).order_by(Session.updated_at.desc())
+    res = await db.execute(stmt)
     return list(res.scalars().all())
 
 
@@ -28,11 +30,21 @@ async def list_sessions(
 async def list_messages(
     session_id: str, org_id: str = Depends(get_current_org_id), db: AsyncSession = Depends(get_db)
 ):
-    res = await db.execute(
-        select(Message)
-        .where(Message.session_id == session_id, Message.org_id == org_id)
-        .order_by(Message.position)
+    session_stmt = scope_to_owner(
+        select(Session).where(Session.id == session_id, Session.org_id == org_id),
+        db,
+        Session.created_by_user_id,
     )
+    if await db.scalar(session_stmt) is None:
+        raise HTTPException(404, "session not found")
+    stmt = scope_to_owner(
+        select(Message)
+        .join(Session, Session.id == Message.session_id)
+        .where(Message.session_id == session_id, Message.org_id == org_id),
+        db,
+        Session.created_by_user_id,
+    ).order_by(Message.position)
+    res = await db.execute(stmt)
     return list(res.scalars().all())
 
 
@@ -41,7 +53,11 @@ async def delete_session(
     session_id: str, org_id: str = Depends(get_current_org_id), db: AsyncSession = Depends(get_db)
 ):
     res = await db.execute(
-        select(Session).where(Session.id == session_id, Session.org_id == org_id)
+        scope_to_owner(
+            select(Session).where(Session.id == session_id, Session.org_id == org_id),
+            db,
+            Session.created_by_user_id,
+        )
     )
     s = res.scalar_one_or_none()
     if s is None:
