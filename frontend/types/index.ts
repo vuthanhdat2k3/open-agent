@@ -467,6 +467,28 @@ export interface UserProfile {
   memberships: UserMembership[];
 }
 
+export interface CustomerIntelligenceConnection {
+  id: string;
+  provider: string;
+  account_email: string;
+  status: string;
+  error: string | null;
+  has_credentials: boolean;
+  last_sync_at: string | null;
+  created_at: string;
+}
+
+export interface CustomerIntelligenceSchedule {
+  id: string;
+  connection_id: string;
+  enabled: boolean;
+  run_time: string;
+  timezone: string;
+  last_run_at: string | null;
+  next_run_at: string | null;
+}
+
+
 export interface CustomerIntelligenceCase {
   id: string;
   email_id: string;
