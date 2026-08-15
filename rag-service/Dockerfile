@@ -5,6 +5,20 @@
 # embedder, in-memory BM25) so it serves real traffic with NO external services.
 # Override via env to use Qdrant / Redis / OpenAI.
 
+FROM python:3.11-slim AS pdf-inspector-builder
+
+# PyPI publishes a compatible manylinux cp38-abi3 wheel, but the application
+# must install the fork at a commit SHA. VCS installs build from source, so
+# keep Rust only in this build stage and copy the resulting wheel below.
+ARG PDF_INSPECTOR_COMMIT=2543abe3715848589903754f30b5dca54f6b33a6
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential curl git pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+ENV PATH=/root/.cargo/bin:$PATH
+RUN pip wheel --no-cache-dir --no-deps \
+    "pdf-inspector @ git+https://github.com/vuthanhdat2k3/pdf-inspector.git@${PDF_INSPECTOR_COMMIT}" \
+    --wheel-dir /wheels
+
 FROM python:3.11-slim
 
 ENV PYTHONUNBUFFERED=1 \
@@ -19,9 +33,11 @@ COPY rag_service ./rag_service
 COPY scripts ./scripts
 COPY alembic ./alembic
 COPY alembic.ini ./alembic.ini
+COPY --from=pdf-inspector-builder /wheels/pdf_inspector*.whl /tmp/
 
 # Install runtime + optional backends with CPU-only PyTorch (prevents 3.5GB CUDA layer bloat).
 RUN pip install --upgrade pip && \
+    pip install /tmp/pdf_inspector*.whl && \
     pip install torch --index-url https://download.pytorch.org/whl/cpu && \
     pip install ".[parsers,openai,bm25-redis,graph-networkx,sentence-transformers]"
 

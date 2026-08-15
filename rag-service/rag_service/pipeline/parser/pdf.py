@@ -11,6 +11,7 @@ from __future__ import annotations
 from rag_service.core.logging import logger
 from rag_service.exceptions import ParseError
 from rag_service.pipeline.base import Parser, ParseResult
+from rag_service.pipeline.parser.docling_client import DoclingServiceError, parse_with_docling, service_url
 
 __all__ = ["PDFParser"]
 
@@ -26,6 +27,35 @@ class PDFParser(Parser):
 
         if not source:
             raise ParseError("PDF source is empty")
+
+        metadata_prefix: dict[str, object] = {}
+        try:
+            import pdf_inspector  # type: ignore
+
+            classification = pdf_inspector.classify_pdf_bytes(source)
+            pdf_type = str(getattr(classification, "pdf_type", "")).lower()
+            confidence = float(getattr(classification, "confidence", 1.0))
+            metadata_prefix["pdf_classification"] = pdf_type
+            metadata_prefix["pdf_classification_confidence"] = confidence
+            needs_docling = pdf_type in {"scanned", "image_based", "mixed"} or confidence < 0.75
+            if needs_docling:
+                if service_url():
+                    try:
+                        text, docling_metadata = await parse_with_docling(source, "document.pdf")
+                        docling_metadata.setdefault("parser", "docling")
+                        docling_metadata.update(metadata_prefix)
+                        return ParseResult(text=text, metadata=docling_metadata)
+                    except DoclingServiceError as exc:
+                        metadata_prefix["warnings"] = [
+                            "scanned PDF, OCR service unavailable; text may be incomplete"
+                        ]
+                        logger.warning("docling_unavailable_falling_back", error=str(exc))
+                else:
+                    metadata_prefix["warnings"] = [
+                        "scanned PDF, OCR not configured; text may be incomplete"
+                    ]
+        except (ImportError, OSError, ValueError, TypeError) as exc:
+            logger.warning("pdf_inspector_unavailable", error=str(exc))
 
         try:
             import io
@@ -71,6 +101,7 @@ class PDFParser(Parser):
             body += page_text
 
         metadata["page_count"] = metadata.get("page_count") or len(pages)
+        metadata.update(metadata_prefix)
         return ParseResult(text=body, metadata=metadata)
 
 
