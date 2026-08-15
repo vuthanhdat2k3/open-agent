@@ -1,0 +1,18 @@
+# Docling service pinned to the reviewed fork commit, not a floating branch.
+FROM python:3.11-slim-bookworm
+
+# RapidOCR/ONNX is the default: CPU-friendly and avoids EasyOCR's torch/image
+# stack. Full accuracy benchmarking is deferred because no OCR model runtime
+# or representative scan corpus is available in this checkout.
+ARG DOCLING_COMMIT=61d76f1ff3f8428065465889f7b4577da7df704c
+ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl libgl1 libglib2.0-0 git && rm -rf /var/lib/apt/lists/*
+RUN pip install --no-cache-dir \
+    "docling-slim[standard] @ git+https://github.com/vuthanhdat2k3/docling.git@${DOCLING_COMMIT}"
+
+COPY server.py /app/server.py
+WORKDIR /app
+EXPOSE 8080
+CMD ["python", "-m", "uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8080"]

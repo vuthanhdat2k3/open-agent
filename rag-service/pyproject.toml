@@ -27,6 +27,7 @@ dependencies = [
 [project.optional-dependencies]
 openai = ["openai>=1.14"]
 parsers = [
+    "pdf-inspector @ git+https://github.com/vuthanhdat2k3/pdf-inspector.git@2543abe3715848589903754f30b5dca54f6b33a6",
     "pypdf>=4.0",
     "pdfminer.six>=20221105",
     "python-docx>=1.1",

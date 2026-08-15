@@ -338,6 +338,9 @@ services:
       RAG_API_KEY: ${RAG_API_KEY:-}
       RAG_VECTOR_STORE: qdrant
       RAG_QDRANT_URL: http://qdrant:6333
+      DOCLING_SERVICE_URL: ${DOCLING_SERVICE_URL:-}
+      DOCLING_OCR_ENGINE: ${DOCLING_OCR_ENGINE:-rapidocr}
+      DOCLING_SERVICE_TIMEOUT_SECONDS: ${DOCLING_SERVICE_TIMEOUT_SECONDS:-90}
     volumes:
       - ./rag-service/rag_service:/app/rag_service
     ports:
@@ -345,6 +348,21 @@ services:
       - "8101:8101"
     depends_on:
       - qdrant
+
+  docling-service:
+    build:
+      context: ./docling-service
+      args:
+        DOCLING_COMMIT: 61d76f1ff3f8428065465889f7b4577da7df704c
+    environment:
+      DOCLING_OCR_ENGINE: ${DOCLING_OCR_ENGINE:-rapidocr}
+    expose:
+      - "8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
 
   customer-intelligence-mcp:
     build:
