@@ -105,8 +105,6 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 | `feat/langfuse-compose` | `G:\open-agent-worktrees\langfuse-compose` | Integrate Langfuse services into the main Docker Compose stack | Codex |
 | `feat/enterprise-rbac-authz` | `G:\open-agent-worktrees\enterprise-rbac-authz` | Enterprise RBAC authorization and ownership hardening — merged (PR #70), worktree/branch not yet cleaned up | Codex |
 | `docs/enterprise-rbac-zitadel-design` | `G:\open-agent-worktrees\enterprise-rbac-zitadel-design` | Enterprise RBAC, invite-only provisioning, and ZITADEL SSO design | Codex |
-| `feat/ci-capstone-completion` | `G:\open-agent-worktrees\ci-capstone-completion` | Hoàn thiện đồ án cuối khóa: Schedules UI, scheduler lease, PDF/DOCX/XLSX renderer, Knowledge Base sink, fixture company provider, 7-node trace, evaluation harness 6 công ty | Claude |
-| `feat/pdf-docling-extraction` | `G:\open-agent-worktrees\pdf-docling-extraction` | Tích hợp fork pdf-inspector + Docling cho PDF/PPTX extraction và OCR trong rag-service | Claude |
 
 ## 8. Quy tắc chung khác (áp dụng mọi branch/worktree)
 
