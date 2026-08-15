@@ -33,6 +33,7 @@ from rag_service.services.collection_service import CollectionService
 # Filename extension -> source type.
 _EXT_TO_SOURCE_TYPE = {
     "pdf": "pdf",
+    "pptx": "pptx",
     "docx": "docx",
     "md": "md",
     "markdown": "markdown",
