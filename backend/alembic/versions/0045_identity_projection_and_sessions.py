@@ -6,7 +6,10 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision: str = "0045_identity_projection_and_sessions"
+# PostgreSQL's default alembic_version.version_num is VARCHAR(32).
+# Keep this revision identifier within that limit so startup migrations work
+# against existing databases as well as fresh installations.
+revision: str = "0045_identity_sessions"
 down_revision: str | None = "0044_durable_file_ingestion"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
