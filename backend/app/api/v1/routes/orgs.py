@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.core.auth.api_key import generate_api_key
 from app.core.observability.audit import log_action
 from app.db.base import utc_now
@@ -73,6 +74,11 @@ async def create_org(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    if get_settings().auth_provider == "zitadel":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the platform provisioning authority may create organizations",
+        )
     slug = f"{body.name.lower().replace(' ', '-')}-{str(uuid.uuid4())[:8]}"
     org = Organization(name=body.name, slug=slug)
     db.add(org)
@@ -201,6 +207,11 @@ async def create_api_key_endpoint(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    if get_settings().auth_provider == "zitadel":
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail="Product API keys require a provisioned service principal",
+        )
     await _ensure_user_belongs_to_org(db, current_user.id, id)
     full_key, key_prefix, key_hash = generate_api_key()
     expires_at = None

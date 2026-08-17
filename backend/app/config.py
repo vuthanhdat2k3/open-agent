@@ -44,9 +44,6 @@ class Settings(BaseSettings):
     # error under load.
     db_pool_recycle_seconds: int = 1800
 
-    # API key; empty => localhost-only mode.
-    api_key: str = ""
-
     # Auth / JWT / OAuth configuration
     jwt_secret_key: str = "dev-secret-key-change-in-production"
     jwt_private_key_path: str = ""

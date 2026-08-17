@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
 class RegisterRequest(BaseModel):
@@ -59,6 +59,8 @@ class ApiKeyOut(BaseModel):
     key_prefix: str
     expires_at: datetime | None = None
     revoked_at: datetime | None = None
+    service_principal_id: str | None = None
+    scopes: list[str] = Field(default_factory=list)
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

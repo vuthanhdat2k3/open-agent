@@ -11,6 +11,7 @@ class UploadedFileOut(BaseModel):
     content_type: str
     size: int
     status: str
+    visibility: str = "personal"
     collection: str | None = None
     error: str | None = None
     created_at: datetime
