@@ -61,7 +61,7 @@ async def _save_memory(args: dict[str, Any], ctx: ToolContext) -> str:
             res_agent = await db.execute(select(Agent.org_id).where(Agent.id == ctx.agent_id))
             org_id = res_agent.scalar_one_or_none()
         if not org_id:
-            org_id = "default-org-id"
+            return "error: organization context is required"
 
         db.add(
             AgentMemory(
