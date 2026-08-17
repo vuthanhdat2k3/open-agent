@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.authz.policy import PrincipalContext
 from app.dependencies import get_current_org_id, get_current_user, get_db, require_permission
 from app.models.user import User
 from app.schemas.files import IngestJobOut, IngestJobRecord, IngestRequest, UploadedFileOut
@@ -14,10 +15,12 @@ router = APIRouter(
 )
 
 
-@router.post("/upload", response_model=UploadedFileOut, status_code=201, dependencies=[Depends(require_permission("files:manage"))])
+@router.post("/upload", response_model=UploadedFileOut, status_code=201)
 async def upload_file(
     file: UploadFile = File(...),
     org_id: str = Depends(get_current_org_id),
+    current_user: User = Depends(get_current_user),
+    authz: PrincipalContext = Depends(require_permission("files:write")),
     db: AsyncSession = Depends(get_db),
 ):
     quota = await QuotaService(db).get_for_update(org_id)
@@ -31,21 +34,33 @@ async def upload_file(
     ):
         raise HTTPException(429, "storage quota reached")
     try:
-        return await FileService(db).save_upload(org_id, file)
+        visibility = "organization" if authz.role.value in {"org_admin", "operator"} else "personal"
+        return await FileService(db).save_upload(org_id, file, current_user.id, visibility)
     except ValueError as e:
         raise HTTPException(400, str(e))
 
 
-@router.get("", response_model=list[UploadedFileOut], dependencies=[Depends(require_permission("files:read"))])
-async def list_files(org_id: str = Depends(get_current_org_id), db: AsyncSession = Depends(get_db)):
-    return await FileService(db).list(org_id)
-
-
-@router.delete("/{id}", dependencies=[Depends(require_permission("files:manage"))])
-async def delete_file(
-    id: str, org_id: str = Depends(get_current_org_id), db: AsyncSession = Depends(get_db)
+@router.get("", response_model=list[UploadedFileOut])
+async def list_files(
+    org_id: str = Depends(get_current_org_id),
+    current_user: User = Depends(get_current_user),
+    authz: PrincipalContext = Depends(require_permission("files:read")),
+    db: AsyncSession = Depends(get_db),
 ):
-    if not await FileService(db).delete(org_id, id):
+    owner = current_user.id if authz.role.value == "user" else None
+    return await FileService(db).list(org_id, owner_user_id=owner)
+
+
+@router.delete("/{id}")
+async def delete_file(
+    id: str,
+    org_id: str = Depends(get_current_org_id),
+    current_user: User = Depends(get_current_user),
+    authz: PrincipalContext = Depends(require_permission("files:write")),
+    db: AsyncSession = Depends(get_db),
+):
+    owner = current_user.id if authz.role.value == "user" else None
+    if not await FileService(db).delete(org_id, id, owner_user_id=owner):
         raise HTTPException(404, "file not found")
     return {"ok": True}
 

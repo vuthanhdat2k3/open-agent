@@ -49,6 +49,7 @@ PERMISSIONS: dict[Role, set[str]] = {
         "tools:use:execute",
         "tools:use:network",
         "files:read",
+        "files:write",
         "sessions:*",
         "usage:read",
         "approvals:read",

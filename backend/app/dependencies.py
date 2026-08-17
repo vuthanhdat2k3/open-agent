@@ -147,23 +147,6 @@ async def get_current_user(
                     mark_chat_phase(request, "auth_done", auth_method="api_key")
                     return user
 
-    # 3. Global OPENAGENT_API_KEY machine fallback (only if settings.api_key is set and matches)
-    settings = get_settings()
-    # Accept X-API-Key header or Authorization: Bearer <api_key>
-    api_key_match = x_api_key == settings.api_key
-    if not api_key_match:
-        auth_header = request.headers.get("Authorization", "")
-        if auth_header.startswith("Bearer "):
-            api_key_match = auth_header.removeprefix("Bearer ") == settings.api_key
-    if settings.api_key and api_key_match:
-        res_admin = await db.execute(select(User).limit(1))
-        admin_user = res_admin.scalar_one_or_none()
-        if admin_user:
-            request.state.org_id = getattr(request.state, "org_id", DEFAULT_ORG_ID)
-            request.state.user_id = admin_user.id
-            mark_chat_phase(request, "auth_done", auth_method="global_api_key")
-            return admin_user
-
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
