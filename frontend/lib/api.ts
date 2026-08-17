@@ -1,6 +1,6 @@
 // API client — calls are relative (/api/...) because next.config.mjs proxies
 // /api/* to the FastAPI backend on :8000.
-import { getAccessToken, refreshAccessToken } from "@/lib/auth";
+import { getAccessToken, getCsrfToken, refreshAccessToken } from "@/lib/auth";
 import { apiBaseUrl } from "@/lib/utils";
 
 export interface SseEvent {
@@ -26,21 +26,23 @@ export class ApiError extends Error {
 
 export type ApiRequestOptions = { headers?: HeadersInit };
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(path: string, init?: RequestInit, retried = false): Promise<T> {
   const token = getAccessToken();
+  const csrf = getCsrfToken();
   const res = await fetch(path, {
     ...init,
     credentials: "include",
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(csrf && init?.method && !["GET", "HEAD", "OPTIONS"].includes(init.method) ? { "X-CSRF-Token": csrf } : {}),
       ...(init?.headers || {}),
     },
   });
-  if (res.status === 401) {
+  if (res.status === 401 && !retried) {
     const refreshed = await refreshAccessToken();
     if (refreshed) {
-      return request<T>(path, init);
+      return request<T>(path, init, true);
     }
     if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
       window.location.href = "/login";
@@ -96,6 +98,7 @@ export async function streamSSE(
     headers: {
       "Content-Type": "application/json",
       ...(getAccessToken() ? { Authorization: `Bearer ${getAccessToken()}` } : {}),
+      ...(getCsrfToken() ? { "X-CSRF-Token": getCsrfToken()! } : {}),
     },
     body: JSON.stringify(body),
     signal,
@@ -146,7 +149,10 @@ export async function streamSSEGet(
 ): Promise<void> {
   const res = await fetch(`${apiBaseUrl}${url}`, {
     credentials: "include",
-    headers: getAccessToken() ? { Authorization: `Bearer ${getAccessToken()}` } : {},
+    headers: {
+      ...(getAccessToken() ? { Authorization: `Bearer ${getAccessToken()}` } : {}),
+      ...(getCsrfToken() ? { "X-CSRF-Token": getCsrfToken()! } : {}),
+    },
     signal,
   });
   if (!res.ok || !res.body) {

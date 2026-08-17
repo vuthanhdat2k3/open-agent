@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import AliasChoices, Field
+from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -12,6 +12,21 @@ class Settings(BaseSettings):
     port: int = 8000
     cors_origins: str = "http://localhost:3000"
     runtime: str = "local"
+
+    # Human identity authority. Local auth is retained only for disposable
+    # development/test fixtures; production must use the ZITADEL provider.
+    auth_provider: Literal["local", "zitadel"] = "local"
+    zitadel_issuer_url: str = ""
+    zitadel_project_id: str = ""
+    zitadel_client_id: str = ""
+    zitadel_client_secret: str = ""
+    zitadel_redirect_uri: str = "http://localhost:8000/api/auth/callback"
+    zitadel_post_logout_redirect_uri: str = "http://localhost:3000/"
+    zitadel_required_org_claim: str = "urn:zitadel:iam:org:id"
+    application_session_idle_minutes: int = 60
+    application_session_absolute_hours: int = 12
+    application_session_cookie_name: str = "openagent_session"
+    application_session_csrf_cookie_name: str = "openagent_csrf"
 
     # Database (async). SQLite for dev; postgres+asyncpg later.
     db_url: str = "sqlite+aiosqlite:///./openagent.db"
@@ -211,6 +226,23 @@ class Settings(BaseSettings):
     ]
 
     log_level: str = "INFO"
+
+    @model_validator(mode="after")
+    def validate_identity_authority(self) -> "Settings":
+        if self.runtime.lower() in {"production", "prod"} and self.auth_provider != "zitadel":
+            raise ValueError("Production requires OPENAGENT_AUTH_PROVIDER=zitadel")
+        if self.auth_provider == "zitadel":
+            required = {
+                "OPENAGENT_ZITADEL_ISSUER_URL": self.zitadel_issuer_url,
+                "OPENAGENT_ZITADEL_CLIENT_ID": self.zitadel_client_id,
+                "OPENAGENT_ZITADEL_REDIRECT_URI": self.zitadel_redirect_uri,
+            }
+            missing = [name for name, value in required.items() if not value]
+            if missing:
+                raise ValueError(
+                    "ZITADEL auth is enabled but configuration is missing: " + ", ".join(missing)
+                )
+        return self
 
 
 @lru_cache
