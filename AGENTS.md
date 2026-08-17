@@ -105,7 +105,7 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 | `feat/langfuse-compose` | `G:\open-agent-worktrees\langfuse-compose` | Integrate Langfuse services into the main Docker Compose stack | Codex |
 | `feat/enterprise-rbac-authz` | `G:\open-agent-worktrees\enterprise-rbac-authz` | Enterprise RBAC authorization and ownership hardening — merged (PR #70), worktree/branch not yet cleaned up | Codex |
 | `docs/enterprise-rbac-zitadel-design` | `G:\open-agent-worktrees\enterprise-rbac-zitadel-design` | Enterprise RBAC, invite-only provisioning, and ZITADEL SSO design | Codex |
-| `docs/enterprise-authz-hardening-spec` | `G:\open-agent-worktrees\enterprise-authz-hardening-spec` | Production authorization hardening specification | Codex |
+| `feat/enterprise-authz-hardening` | `G:\open-agent-worktrees\enterprise-authz-hardening-spec` | Production enterprise identity and authorization hardening | Codex |
 | `feat/enterprise-rag-ingestion` | `G:\open-agent-worktrees\enterprise-rag-ingestion` | Durable enterprise file ingestion through backend worker and internal RAG REST | Codex |
 
 ## 8. Quy tắc chung khác (áp dụng mọi branch/worktree)
