@@ -59,6 +59,10 @@ export async function refreshAccessToken() {
       markSessionAuthenticated(true);
       return "__application_session__";
     }
+    if (process.env.NEXT_PUBLIC_AUTH_PROVIDER === "zitadel") {
+      markSessionAuthenticated(false);
+      return null;
+    }
     const res = await fetch("/api/auth/refresh", { method: "POST", credentials: "include" });
     if (!res.ok) {
       setAccessToken(null);
