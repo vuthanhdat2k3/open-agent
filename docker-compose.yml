@@ -399,6 +399,7 @@ services:
       context: ./frontend
       args:
         API_INTERNAL_URL: ${API_INTERNAL_URL:-http://api:8000}
+        NEXT_PUBLIC_AUTH_PROVIDER: ${OPENAGENT_AUTH_PROVIDER:-local}
         NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-https://your-project-ref.supabase.co}
         NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:-your-supabase-publishable-key}
         NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-your-supabase-anon-key}
