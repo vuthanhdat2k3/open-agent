@@ -16,6 +16,77 @@ services:
       timeout: 3s
       retries: 20
 
+  # ZITADEL owns a separate database. The identity profile is explicit so a
+  # disposable local stack can still run with local test fixtures; production
+  # enables it and sets OPENAGENT_AUTH_PROVIDER=zitadel.
+  zitadel-postgres:
+    profiles: ["identity"]
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${ZITADEL_POSTGRES_USER:-zitadel}
+      POSTGRES_PASSWORD: ${ZITADEL_POSTGRES_PASSWORD:?Set ZITADEL_POSTGRES_PASSWORD when using the identity profile}
+      POSTGRES_DB: ${ZITADEL_POSTGRES_DB:-zitadel}
+    volumes:
+      - zitadel_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  zitadel-init:
+    profiles: ["identity"]
+    image: ghcr.io/zitadel/zitadel:v4.9.1@sha256:2a7317d98b933cde3586c40b8dfc0a5f472174f78816095bded5107e646dfb25
+    command: ["init"]
+    environment:
+      ZITADEL_DATABASE_POSTGRES_DSN: postgres://${ZITADEL_POSTGRES_USER:-zitadel}:${ZITADEL_POSTGRES_PASSWORD}@zitadel-postgres:5432/${ZITADEL_POSTGRES_DB:-zitadel}?sslmode=disable
+    depends_on:
+      zitadel-postgres:
+        condition: service_healthy
+
+  zitadel-setup:
+    profiles: ["identity"]
+    image: ghcr.io/zitadel/zitadel:v4.9.1@sha256:2a7317d98b933cde3586c40b8dfc0a5f472174f78816095bded5107e646dfb25
+    command: ["setup", "--masterkey", "${ZITADEL_MASTERKEY:?Set an exactly 32-character ZITADEL_MASTERKEY when using the identity profile}"]
+    environment:
+      ZITADEL_MASTERKEY: ${ZITADEL_MASTERKEY:?Set an exactly 32-character ZITADEL_MASTERKEY when using the identity profile}
+      ZITADEL_DATABASE_POSTGRES_DSN: postgres://${ZITADEL_POSTGRES_USER:-zitadel}:${ZITADEL_POSTGRES_PASSWORD}@zitadel-postgres:5432/${ZITADEL_POSTGRES_DB:-zitadel}?sslmode=disable
+      ZITADEL_EXTERNALDOMAIN: ${ZITADEL_DOMAIN:-localhost}
+      ZITADEL_EXTERNALPORT: ${ZITADEL_EXTERNALPORT:-8080}
+      ZITADEL_EXTERNALSECURE: ${ZITADEL_EXTERNALSECURE:-false}
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORDCHANGEREQUIRED: "false"
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORD: ${ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORD:?Set ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORD when using the identity profile}
+    depends_on:
+      zitadel-postgres:
+        condition: service_healthy
+      zitadel-init:
+        condition: service_completed_successfully
+
+  zitadel-api:
+    profiles: ["identity"]
+    image: ghcr.io/zitadel/zitadel:v4.9.1@sha256:2a7317d98b933cde3586c40b8dfc0a5f472174f78816095bded5107e646dfb25
+    command: ["start", "--masterkey", "${ZITADEL_MASTERKEY:?Set an exactly 32-character ZITADEL_MASTERKEY when using the identity profile}"]
+    environment:
+      ZITADEL_MASTERKEY: ${ZITADEL_MASTERKEY:?Set an exactly 32-character ZITADEL_MASTERKEY when using the identity profile}
+      ZITADEL_DATABASE_POSTGRES_DSN: postgres://${ZITADEL_POSTGRES_USER:-zitadel}:${ZITADEL_POSTGRES_PASSWORD}@zitadel-postgres:5432/${ZITADEL_POSTGRES_DB:-zitadel}?sslmode=disable
+      ZITADEL_EXTERNALDOMAIN: ${ZITADEL_DOMAIN:-localhost}
+      ZITADEL_EXTERNALPORT: ${ZITADEL_EXTERNALPORT:-8080}
+      ZITADEL_EXTERNALSECURE: ${ZITADEL_EXTERNALSECURE:-false}
+    ports:
+      - "${ZITADEL_BIND_PORT:-8080}:8080"
+    depends_on:
+      zitadel-postgres:
+        condition: service_healthy
+      zitadel-init:
+        condition: service_completed_successfully
+      zitadel-setup:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/debug/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
   redis:
     image: redis:7
     ports:
@@ -194,6 +265,14 @@ services:
       RAG_API_KEY: ${RAG_API_KEY:-}
       OPENAGENT_RAG_SERVICE_URL: ${RAG_SERVICE_URL:-http://rag-service:8100}
       OPENAGENT_HOST: 0.0.0.0
+      OPENAGENT_RUNTIME: ${OPENAGENT_RUNTIME:-local}
+      OPENAGENT_AUTH_PROVIDER: ${OPENAGENT_AUTH_PROVIDER:-local}
+      OPENAGENT_ZITADEL_ISSUER_URL: ${OPENAGENT_ZITADEL_ISSUER_URL:-http://zitadel:8080}
+      OPENAGENT_ZITADEL_PROJECT_ID: ${OPENAGENT_ZITADEL_PROJECT_ID:-}
+      OPENAGENT_ZITADEL_CLIENT_ID: ${OPENAGENT_ZITADEL_CLIENT_ID:-}
+      OPENAGENT_ZITADEL_CLIENT_SECRET: ${OPENAGENT_ZITADEL_CLIENT_SECRET:-}
+      OPENAGENT_ZITADEL_REDIRECT_URI: ${OPENAGENT_ZITADEL_REDIRECT_URI:-http://localhost:8000/api/auth/callback}
+      OPENAGENT_ZITADEL_POST_LOGOUT_REDIRECT_URI: ${OPENAGENT_ZITADEL_POST_LOGOUT_REDIRECT_URI:-http://localhost:3000/}
       OPENAGENT_DB_URL: ${OPENAGENT_DB_URL:?Set OPENAGENT_DB_URL in .env (see .env.example)}
       OPENAGENT_REDIS_URL: redis://redis:6379/0
       OPENAGENT_WORKFLOW_EXECUTION_MODE: ${OPENAGENT_WORKFLOW_EXECUTION_MODE:-inline}
@@ -256,6 +335,14 @@ services:
     environment:
       RAG_API_KEY: ${RAG_API_KEY:-}
       OPENAGENT_RAG_SERVICE_URL: ${RAG_SERVICE_URL:-http://rag-service:8100}
+      OPENAGENT_RUNTIME: ${OPENAGENT_RUNTIME:-local}
+      OPENAGENT_AUTH_PROVIDER: ${OPENAGENT_AUTH_PROVIDER:-local}
+      OPENAGENT_ZITADEL_ISSUER_URL: ${OPENAGENT_ZITADEL_ISSUER_URL:-http://zitadel:8080}
+      OPENAGENT_ZITADEL_PROJECT_ID: ${OPENAGENT_ZITADEL_PROJECT_ID:-}
+      OPENAGENT_ZITADEL_CLIENT_ID: ${OPENAGENT_ZITADEL_CLIENT_ID:-}
+      OPENAGENT_ZITADEL_CLIENT_SECRET: ${OPENAGENT_ZITADEL_CLIENT_SECRET:-}
+      OPENAGENT_ZITADEL_REDIRECT_URI: ${OPENAGENT_ZITADEL_REDIRECT_URI:-http://localhost:8000/api/auth/callback}
+      OPENAGENT_ZITADEL_POST_LOGOUT_REDIRECT_URI: ${OPENAGENT_ZITADEL_POST_LOGOUT_REDIRECT_URI:-http://localhost:3000/}
       OPENAGENT_DB_URL: ${OPENAGENT_DB_URL:?Set OPENAGENT_DB_URL in .env (see .env.example)}
       OPENAGENT_REDIS_URL: redis://redis:6379/0
       OPENAGENT_JWT_SECRET_KEY: ${OPENAGENT_JWT_SECRET_KEY:?Set OPENAGENT_JWT_SECRET_KEY in .env to a random 32-byte secret}
@@ -312,12 +399,14 @@ services:
       context: ./frontend
       args:
         API_INTERNAL_URL: ${API_INTERNAL_URL:-http://api:8000}
+        NEXT_PUBLIC_AUTH_PROVIDER: ${OPENAGENT_AUTH_PROVIDER:-local}
         NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-https://your-project-ref.supabase.co}
         NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:-your-supabase-publishable-key}
         NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-your-supabase-anon-key}
     environment:
       API_INTERNAL_URL: ${API_INTERNAL_URL:-http://api:8000}
       NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
+      NEXT_PUBLIC_AUTH_PROVIDER: ${OPENAGENT_AUTH_PROVIDER:-local}
       NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-https://your-project-ref.supabase.co}
       NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:-your-supabase-publishable-key}
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-your-supabase-anon-key}
@@ -443,6 +532,8 @@ services:
 volumes:
   openagent_pgdata:
     name: openagent_pgdata
+  zitadel_pgdata:
+    name: zitadel_pgdata
   qdrant-data:
   minio-data:
   langfuse-postgres-data:

@@ -3,7 +3,6 @@
 import * as React from "react";
 import { Building2, Check, ChevronDown } from "lucide-react";
 import { useMe } from "@/hooks";
-import { setAccessToken } from "@/lib/auth";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -19,8 +18,7 @@ export function OrgSwitcher({ collapsed }: { collapsed?: boolean }) {
   async function switchOrg(orgId: string) {
     setSelectedOrgId(orgId);
     try {
-      const res = await api.post<{ access_token: string }>("/api/auth/switch-org", { org_id: orgId });
-      if (res.access_token) setAccessToken(res.access_token);
+      await api.post("/api/auth/switch-org", { org_id: orgId });
       window.location.reload();
     } catch {
       localStorage.setItem("active_org_id", orgId);

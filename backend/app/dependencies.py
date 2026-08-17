@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.core.auth.api_key import hash_api_key
+from app.core.auth.application_session import resolve_application_session
 from app.core.auth.jwt import verify_access_token
 from app.core.authz.policy import PrincipalContext, has_permission
 from app.core.authz.scope import set_ownership_scope
@@ -18,7 +19,7 @@ from app.models.api_key import ApiKey
 from app.models.membership import Membership
 from app.models.user import User
 
-DEFAULT_ORG_ID = "default-org-id"
+DEFAULT_ORG_ID = "default-org-id"  # disposable local/test compatibility only
 security_bearer = HTTPBearer(auto_error=False)
 
 
@@ -29,6 +30,29 @@ async def get_current_user(
     x_api_key: str | None = Header(None, alias="X-API-Key"),
 ) -> User:
     mark_chat_phase(request, "auth_start")
+    settings = get_settings()
+
+    # Production browser authentication is an opaque, organization-bound BFF
+    # session. The cookie contains no role, org, or user claims.
+    raw_session = request.cookies.get(settings.application_session_cookie_name)
+    if raw_session:
+        user, membership, session = await resolve_application_session(
+            db, raw_token=raw_session, request=request
+        )
+        request.state.user_id = user.id
+        request.state.org_id = membership.org_id
+        request.state.membership_id = membership.id
+        request.state.session_id = session.id
+        mark_chat_phase(request, "auth_done", auth_method="application_session")
+        return user
+
+    if settings.auth_provider == "zitadel":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="ZITADEL authentication required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     # 1. Check Bearer token or access_token cookie
     token = None
     if bearer and bearer.credentials:
@@ -40,7 +64,6 @@ async def get_current_user(
         try:
             import jwt as pyjwt
 
-            settings = get_settings()
             raw_payload = pyjwt.decode(
                 token,
                 settings.jwt_secret_key,
@@ -66,7 +89,11 @@ async def get_current_user(
                     user = res.scalar_one_or_none()
                     if user:
                         request.state.user_id = user.id
-                        request.state.org_id = org_id or DEFAULT_ORG_ID
+                        if not org_id and get_settings().auth_provider != "zitadel":
+                            org_id = DEFAULT_ORG_ID
+                        if not org_id:
+                            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Organization context required")
+                        request.state.org_id = org_id
                         request.state.actor_agent_identity_id = agent_payload.get("actor_agent_identity_id")
                         request.state.delegation_chain = agent_payload.get("delegation_chain")
                         mark_chat_phase(request, "auth_done", auth_method="agent_token")
@@ -82,7 +109,11 @@ async def get_current_user(
                     user = res.scalar_one_or_none()
                     if user:
                         request.state.user_id = user.id
-                        request.state.org_id = org_id or DEFAULT_ORG_ID
+                        if not org_id and get_settings().auth_provider != "zitadel":
+                            org_id = DEFAULT_ORG_ID
+                        if not org_id:
+                            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Organization context required")
+                        request.state.org_id = org_id
                         mark_chat_phase(request, "auth_done", auth_method="jwt")
                         return user
         except Exception:
@@ -124,23 +155,6 @@ async def get_current_user(
                     mark_chat_phase(request, "auth_done", auth_method="api_key")
                     return user
 
-    # 3. Global OPENAGENT_API_KEY machine fallback (only if settings.api_key is set and matches)
-    settings = get_settings()
-    # Accept X-API-Key header or Authorization: Bearer <api_key>
-    api_key_match = x_api_key == settings.api_key
-    if not api_key_match:
-        auth_header = request.headers.get("Authorization", "")
-        if auth_header.startswith("Bearer "):
-            api_key_match = auth_header.removeprefix("Bearer ") == settings.api_key
-    if settings.api_key and api_key_match:
-        res_admin = await db.execute(select(User).limit(1))
-        admin_user = res_admin.scalar_one_or_none()
-        if admin_user:
-            request.state.org_id = getattr(request.state, "org_id", DEFAULT_ORG_ID)
-            request.state.user_id = admin_user.id
-            mark_chat_phase(request, "auth_done", auth_method="global_api_key")
-            return admin_user
-
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -159,6 +173,7 @@ async def get_current_org_id(
     - If X-Org-Id header is provided, verifies user membership in target org.
     - Raises 403 Forbidden if user attempts tenant override to an un-joined org.
     """
+    settings = get_settings()
     header_org = request.headers.get("X-Org-Id")
     state_org = getattr(request.state, "org_id", None)
     user_id = getattr(request.state, "user_id", None)
@@ -210,7 +225,9 @@ async def get_current_org_id(
     if header_org:
         return header_org
 
-    return DEFAULT_ORG_ID
+    if settings.auth_provider == "local":
+        return DEFAULT_ORG_ID
+    raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Organization context required")
 
 
 def require_permission(permission: str):
@@ -234,7 +251,7 @@ def require_permission(permission: str):
             )
         )
         membership = res.scalar_one_or_none()
-        if membership is None:
+        if membership is None or membership.lifecycle_status != "active":
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="User does not belong to this organization",
@@ -244,7 +261,14 @@ def require_permission(permission: str):
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Permission denied: {permission}",
             )
-        principal = PrincipalContext(user_id=current_user.id, role=membership.role)
+        principal = PrincipalContext(
+            user_id=current_user.id,
+            principal_id=current_user.id,
+            role=membership.role,
+            organization_id=org_id,
+            membership_id=membership.id,
+            session_id=getattr(request.state, "session_id", None),
+        )
         request.state.principal = principal
         set_ownership_scope(db, principal=principal)
         mark_chat_phase(request, "rbac_done", permission=permission)
@@ -274,7 +298,14 @@ def require_any_permission(*permissions: str):
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Permission denied: {' or '.join(permissions)}",
             )
-        principal = PrincipalContext(user_id=current_user.id, role=membership.role)
+        principal = PrincipalContext(
+            user_id=current_user.id,
+            principal_id=current_user.id,
+            role=membership.role,
+            organization_id=org_id,
+            membership_id=membership.id,
+            session_id=getattr(request.state, "session_id", None),
+        )
         request.state.principal = principal
         set_ownership_scope(db, principal=principal)
         mark_chat_phase(request, "rbac_done", permission="|".join(permissions))

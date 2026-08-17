@@ -14,6 +14,7 @@ class UploadedFile(Base):
     created_by_user_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+    visibility: Mapped[str] = mapped_column(String(16), nullable=False, default="personal")
     filename: Mapped[str] = mapped_column(String(512), nullable=False)
     original_name: Mapped[str] = mapped_column(String(512), nullable=False)
     content_type: Mapped[str] = mapped_column(String(255), default="")

@@ -2,9 +2,12 @@ from enum import Enum
 
 
 class Role(str, Enum):  # noqa: UP042
-    # Two-role model: admin configures/operates the product (agents, workflows,
-    # providers, models, MCP, integrations, members, approvals-decide); user
-    # consumes it (chat with the org's primary agent, run published workflows,
-    # see their own data). See docs/superpowers/specs for the RBAC design.
-    admin = "admin"
+    """Organization roles owned by the OpenAgent authorization projection."""
+
+    org_admin = "org_admin"
+    operator = "operator"
     user = "user"
+
+    # Legacy spelling is accepted while disposable development databases and
+    # old fixtures are being reseeded. New production writes use org_admin.
+    admin = "admin"

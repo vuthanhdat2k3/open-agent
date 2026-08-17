@@ -5,7 +5,7 @@ import * as React from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "sonner";
 import { usePathname } from "next/navigation";
-import { getAccessToken, refreshAccessToken, subscribeAuth } from "@/lib/auth";
+import { isAuthenticated, refreshAccessToken, subscribeAuth } from "@/lib/auth";
 import { AppShell } from "@/components/layout/app-shell";
 
 function AuthGate({ children }: { children: React.ReactNode }) {
@@ -15,7 +15,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
   React.useEffect(() => {
     const unsubscribe = subscribeAuth(() => setReady(true));
-    if (getAccessToken() || publicRoute) {
+    if (isAuthenticated() || publicRoute) {
       setReady(true);
       return unsubscribe;
     }
@@ -25,7 +25,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   }, [publicRoute, pathname]);
 
   React.useEffect(() => {
-    if (ready && !publicRoute && !getAccessToken()) window.location.replace("/login");
+    if (ready && !publicRoute && !isAuthenticated()) window.location.replace("/login");
   }, [ready, publicRoute, pathname]);
 
   if (!ready && !publicRoute) return <div className="p-6 text-sm text-muted-foreground">Preparing session...</div>;

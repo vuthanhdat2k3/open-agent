@@ -4,6 +4,7 @@ from typing import Any
 
 from sqlalchemy import select
 
+from app.config import get_settings
 from app.core.memory_schema import (
     DEFAULT_OWNER_TYPE,
     MemorySchemaError,
@@ -61,7 +62,10 @@ async def _save_memory(args: dict[str, Any], ctx: ToolContext) -> str:
             res_agent = await db.execute(select(Agent.org_id).where(Agent.id == ctx.agent_id))
             org_id = res_agent.scalar_one_or_none()
         if not org_id:
-            org_id = "default-org-id"
+            if get_settings().auth_provider == "local":
+                org_id = "default-org-id"
+            else:
+                return "error: organization context is required"
 
         db.add(
             AgentMemory(

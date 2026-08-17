@@ -29,6 +29,9 @@ class Membership(Base):
     # - keeps Role's Python-side typing/validation without SQLAlchemy trying
     # to cast values with `::role`, a type that no longer exists.
     role: Mapped[Role] = mapped_column(Enum(Role, native_enum=False, length=32), nullable=False, default=Role.user)
+    lifecycle_status: Mapped[str] = mapped_column(String(24), nullable=False, default="active")
+    provisioning_source: Mapped[str] = mapped_column(String(24), nullable=False, default="platform")
+    zitadel_role_assignment_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     invited_by_user_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
