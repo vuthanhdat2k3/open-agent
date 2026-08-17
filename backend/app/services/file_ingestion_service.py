@@ -16,7 +16,6 @@ from app.models.files import UploadedFile
 from app.models.outbox import OutboxEvent
 from app.services.rag_ingest_client import RagIngestClient, RagIngestError
 
-
 ACTIVE = {"queued", "processing", "retrying"}
 TERMINAL = {"succeeded", "failed", "dead_letter"}
 

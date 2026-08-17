@@ -6,7 +6,6 @@ import sqlalchemy as sa
 
 from alembic import op
 
-
 revision: str = "0044_durable_file_ingestion"
 down_revision: str | None = "0043_task_triggered_by_user"
 branch_labels: str | Sequence[str] | None = None
