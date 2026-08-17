@@ -1,8 +1,11 @@
 # Durable Enterprise File Ingestion Design
 
-**Date:** 2026-08-17  
-**Status:** Approved architecture; written specification awaiting review  
-**Target branch:** `dev`  
+**Date:** 2026-08-17
+
+**Status:** Approved architecture; written specification awaiting review
+
+**Target branch:** `dev`
+
 **Implementation branch:** `feat/enterprise-rag-ingestion`
 
 ## 1. Summary
