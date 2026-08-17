@@ -1,8 +1,10 @@
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import get_current_org_id, get_db, require_permission
-from app.schemas.files import IngestRequest, IngestResult, UploadedFileOut
+from app.dependencies import get_current_org_id, get_current_user, get_db, require_permission
+from app.models.user import User
+from app.schemas.files import IngestJobOut, IngestJobRecord, IngestRequest, UploadedFileOut
+from app.services.file_ingestion_service import FileIngestionService
 from app.services.file_service import FileService
 from app.services.quota_service import QuotaService
 
@@ -48,16 +50,60 @@ async def delete_file(
     return {"ok": True}
 
 
-@router.post("/{id}/ingest", response_model=IngestResult, dependencies=[Depends(require_permission("files:manage"))])
+@router.post("/{id}/ingest", response_model=IngestJobOut, status_code=202, dependencies=[Depends(require_permission("files:manage"))])
 async def ingest_file(
     id: str,
     body: IngestRequest,
+    response: Response,
     org_id: str = Depends(get_current_org_id),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     try:
-        return await FileService(db).ingest_to_rag(
-            org_id, id, body.collection, body.chunk_size, body.chunk_overlap, body.tags
+        import uuid
+
+        job, deduplicated = await FileIngestionService(db).create_job(
+            org_id, id, current_user.id, collection=body.collection,
+            chunk_size=body.chunk_size, chunk_overlap=body.chunk_overlap,
+            tags=body.tags, correlation_id=str(uuid.uuid4()),
         )
-    except ValueError as e:
-        raise HTTPException(400, str(e))
+        if deduplicated and job.status == "succeeded":
+            response.status_code = 200
+        return IngestJobOut(
+            job_id=job.id, file_id=job.file_id, status=job.status,
+            deduplicated=deduplicated, attempt_count=job.attempt_count,
+            max_attempts=job.max_attempts, rag_document_id=job.rag_document_id,
+            chunk_count=job.chunk_count, warnings=job.warnings or [],
+            error_code=job.error_code, error_detail=job.error_detail,
+            created_at=job.created_at, updated_at=job.updated_at,
+        )
+    except FileNotFoundError:
+        raise HTTPException(404, "file not found")
+    except FileExistsError as e:
+        raise HTTPException(409, str(e))
+
+
+@router.get("/{id}/ingest-jobs", response_model=list[IngestJobRecord], dependencies=[Depends(require_permission("files:read"))])
+async def list_ingest_jobs(id: str, org_id: str = Depends(get_current_org_id), db: AsyncSession = Depends(get_db)):
+    from sqlalchemy import select
+
+    from app.models.file_ingest_job import FileIngestJob
+
+    jobs = list((await db.scalars(select(FileIngestJob).where(
+        FileIngestJob.file_id == id, FileIngestJob.org_id == org_id
+    ).order_by(FileIngestJob.created_at.desc()))).all())
+    return jobs
+
+
+@router.get("/{id}/ingest-jobs/{job_id}", response_model=IngestJobRecord, dependencies=[Depends(require_permission("files:read"))])
+async def get_ingest_job(id: str, job_id: str, org_id: str = Depends(get_current_org_id), db: AsyncSession = Depends(get_db)):
+    from sqlalchemy import select
+
+    from app.models.file_ingest_job import FileIngestJob
+
+    job = await db.scalar(select(FileIngestJob).where(
+        FileIngestJob.id == job_id, FileIngestJob.file_id == id, FileIngestJob.org_id == org_id
+    ))
+    if job is None:
+        raise HTTPException(404, "ingest job not found")
+    return job

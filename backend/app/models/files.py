@@ -18,6 +18,7 @@ class UploadedFile(Base):
     original_name: Mapped[str] = mapped_column(String(512), nullable=False)
     content_type: Mapped[str] = mapped_column(String(255), default="")
     size: Mapped[int] = mapped_column(Integer, default=0)
+    file_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     stored_path: Mapped[str] = mapped_column(String(1024), nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="uploaded")
     collection: Mapped[str | None] = mapped_column(String(128), nullable=True)

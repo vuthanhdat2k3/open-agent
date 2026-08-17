@@ -31,9 +31,12 @@ const statusVariant: Record<
   "secondary" | "warning" | "success" | "destructive"
 > = {
   uploaded: "secondary",
-  ingesting: "warning",
+  queued: "warning",
+  processing: "warning",
+  retrying: "warning",
   ingested: "success",
   error: "destructive",
+  dead_letter: "destructive",
 };
 
 function formatSize(bytes: number) {
@@ -135,7 +138,7 @@ export default function FilesPage() {
                           variant="outline"
                           className="gap-1.5 active-tactile transition-transform"
                           loading={ingest.isPending}
-                          disabled={f.status === "ingesting"}
+                          disabled={f.status === "queued" || f.status === "processing" || f.status === "retrying"}
                           onClick={async () => {
                             try {
                               const r = await ingest.mutateAsync({
@@ -143,16 +146,16 @@ export default function FilesPage() {
                                 body: { collection },
                               });
                               toast.success(
-                                r.document_id
-                                  ? `Ingested → ${r.document_id}`
-                                  : "Ingested",
+                                r.rag_document_id
+                                  ? `Ingestion accepted → ${r.rag_document_id}`
+                                  : "Ingestion submitted",
                               );
                             } catch (err: any) {
                               toast.error(err.message);
                             }
                           }}
                         >
-                          {f.status === "ingesting" ? (
+                          {f.status === "queued" || f.status === "processing" || f.status === "retrying" ? (
                             <Loader2 className="h-3.5 w-3.5 animate-spin" />
                           ) : null}
                           Ingest
