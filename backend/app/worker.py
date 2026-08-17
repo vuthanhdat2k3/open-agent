@@ -168,8 +168,17 @@ async def _outbox_dispatch_tick(ctx: dict) -> None:
             interval_seconds=1,
             lease_seconds=30,
             worker_id=_worker_identity(),
-            run=lambda: publish_pending_outbox(db, owner=_worker_identity()),
+            run=lambda: _dispatch_outbox_and_file_jobs(db),
         )
+
+
+async def _dispatch_outbox_and_file_jobs(db) -> dict:
+    from app.services.file_ingestion_service import FileIngestionService
+
+    ingestion = FileIngestionService(db)
+    await ingestion.recover_expired()
+    await ingestion.schedule_due_retries()
+    return await publish_pending_outbox(db, owner=_worker_identity())
 
 
 async def _gmail_reconciliation_tick(ctx: dict) -> None:
@@ -226,6 +235,15 @@ async def process_outbox_event(ctx: dict, event_id: str) -> None:
             )
         )
         if already_processed:
+            return
+        if event.event_type == "file.ingest.requested":
+            from app.services.file_ingestion_service import FileIngestionService
+
+            await FileIngestionService(db).process_job(
+                event.aggregate_id, _worker_identity()
+            )
+            await repo.mark_processed(event_id=event.id, consumer_name="worker")
+            await db.commit()
             return
         if event.event_type == "ci.research.requested":
             await run_ci_research(ctx, event.org_id, event.aggregate_id)
