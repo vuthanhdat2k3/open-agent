@@ -2,6 +2,7 @@ from app.models.agent import Agent
 from app.models.agent_identity import AgentIdentity
 from app.models.agent_release import AgentRelease
 from app.models.api_key import ApiKey
+from app.models.application_session import ApplicationSession
 from app.models.approval_request import ApprovalRequest
 from app.models.audit_log import AuditLog
 from app.models.chat_run_event import ChatRunEvent
@@ -40,6 +41,7 @@ from app.models.memory import AgentMemory, SessionMemory
 from app.models.message import Message
 from app.models.model import Model
 from app.models.oauth_account import OAuthAccount
+from app.models.oidc_login_transaction import OidcLoginTransaction
 from app.models.organization import Organization
 from app.models.organization_quota import OrganizationQuota
 from app.models.outbox import OutboxEvent, ProcessedEvent
@@ -47,6 +49,7 @@ from app.models.provider import Provider
 from app.models.refresh_token import RefreshToken
 from app.models.role import Role
 from app.models.sampling_policy import SamplingPolicy
+from app.models.service_principal import ServicePrincipal
 from app.models.session import Session
 from app.models.task import Task
 from app.models.tool_call_record import ToolCallRecord
@@ -64,6 +67,7 @@ __all__ = [
     "Agent",
     "AgentIdentity",
     "AgentRelease",
+    "ApplicationSession",
     "ApiKey",
     "ApprovalRequest",
     "AuditLog",
@@ -95,6 +99,7 @@ __all__ = [
     "Message",
     "Model",
     "OAuthAccount",
+    "OidcLoginTransaction",
     "Organization",
     "OrganizationQuota",
     "OutboxEvent",
@@ -105,6 +110,7 @@ __all__ = [
     "ResearchSource",
     "Role",
     "SamplingPolicy",
+    "ServicePrincipal",
     "Session",
     "Task",
     "ToolCallRecord",

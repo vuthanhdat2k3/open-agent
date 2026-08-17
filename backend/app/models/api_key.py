@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, String
+from sqlalchemy import JSON, DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, gen_id, utc_now
@@ -28,6 +28,10 @@ class ApiKey(Base):
     key_hash: Mapped[str] = mapped_column(String(128), unique=True, nullable=False, index=True)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    service_principal_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("service_principals.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    scopes: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
 
     created_at: Mapped[utc_now] = mapped_column(DateTime, default=utc_now)
 

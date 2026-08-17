@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.core.auth.api_key import generate_api_key
 from app.core.observability.audit import log_action
 from app.db.base import utc_now
@@ -48,6 +49,10 @@ class OrgMemberOut(BaseModel):
     created_at: datetime
 
 
+def _public_role(role: Role) -> str:
+    return "admin" if role == Role.org_admin else role.value
+
+
 async def _ensure_user_belongs_to_org(
     db: AsyncSession, user_id: str, org_id: str
 ) -> Membership:
@@ -69,13 +74,18 @@ async def create_org(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    if get_settings().auth_provider == "zitadel":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the platform provisioning authority may create organizations",
+        )
     slug = f"{body.name.lower().replace(' ', '-')}-{str(uuid.uuid4())[:8]}"
     org = Organization(name=body.name, slug=slug)
     db.add(org)
     await db.flush()
     db.add(default_organization_quota(org.id))
 
-    membership = Membership(org_id=org.id, user_id=current_user.id, role=Role.admin)
+    membership = Membership(org_id=org.id, user_id=current_user.id, role=Role.org_admin)
     db.add(membership)
     await db.commit()
     await db.refresh(org)
@@ -100,7 +110,7 @@ async def list_org_members(
             user_id=u.id,
             email=u.email,
             display_name=u.display_name,
-            role=mem.role,
+            role=_public_role(mem.role),
             created_at=mem.created_at,
         )
         for mem, u in rows
@@ -128,7 +138,12 @@ async def add_org_member(
     if res_mem.scalar_one_or_none():
         raise HTTPException(400, "User is already a member of this organization")
 
-    role_val = body.role if body.role in (Role.admin, Role.user) else Role.user
+    role_val = {
+        "admin": Role.org_admin,
+        "org_admin": Role.org_admin,
+        "operator": Role.operator,
+        "user": Role.user,
+    }.get(body.role, Role.user)
     mem = Membership(
         org_id=id,
         user_id=invited_user.id,
@@ -152,7 +167,7 @@ async def add_org_member(
         user_id=invited_user.id,
         email=invited_user.email,
         display_name=invited_user.display_name,
-        role=mem.role,
+        role=_public_role(mem.role),
         created_at=mem.created_at,
     )
 
@@ -192,6 +207,11 @@ async def create_api_key_endpoint(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    if get_settings().auth_provider == "zitadel":
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail="Product API keys require a provisioned service principal",
+        )
     await _ensure_user_belongs_to_org(db, current_user.id, id)
     full_key, key_prefix, key_hash = generate_api_key()
     expires_at = None

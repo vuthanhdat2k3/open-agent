@@ -30,7 +30,13 @@ from app.models.role import Role
 # ---------------------------------------------------------------------------
 
 PERMISSIONS: dict[Role, set[str]] = {
-    Role.admin: {"*"},
+    Role.org_admin: {"*"},
+    Role.operator: {
+        "agents:read", "agents:create", "agents:update", "agents:publish", "agents:run",
+        "workflows:*", "providers:*", "models:read", "mcp:*", "files:read", "files:write",
+        "sessions:*", "approvals:read", "approvals:manage", "evaluations:*", "ci:*",
+        "tools:use:safe", "tools:use:read", "tools:use:write", "tools:use:execute", "tools:use:network",
+    },
     Role.user: {
         "agents:read",
         "agents:run",
@@ -43,6 +49,7 @@ PERMISSIONS: dict[Role, set[str]] = {
         "tools:use:execute",
         "tools:use:network",
         "files:read",
+        "files:write",
         "sessions:*",
         "usage:read",
         "approvals:read",
@@ -56,7 +63,7 @@ PERMISSIONS: dict[Role, set[str]] = {
 # Permissions used by route-level decisions must be declared here even when
 # they are currently reachable only through the admin wildcard. This keeps the
 # policy auditable before additional org roles are introduced.
-PERMISSIONS[Role.admin].update({
+PERMISSIONS[Role.org_admin].update({
     "agents:manage",
     "agents:publish:force",
     "approvals:manage",
@@ -70,16 +77,25 @@ class PrincipalContext:
 
     user_id: str
     role: Role
+    principal_type: str = "human"
+    organization_id: str | None = None
+    membership_id: str | None = None
+    principal_id: str | None = None
+    session_id: str | None = None
 
     def allows(self, permission: str) -> bool:
         return has_permission(self.role, permission)
+
+    @property
+    def effective_principal_id(self) -> str:
+        return self.principal_id or self.user_id
 
     @property
     def owner_user_id(self) -> str | None:
         return self.user_id if self.role == Role.user else None
 
 
-def has_permission(role: Role, permission: str) -> bool:
+def has_permission(role: Role | str, permission: str) -> bool:
     """Check whether *role* has a specific *permission* string.
 
     Supports the ``*`` wildcard:
@@ -87,6 +103,15 @@ def has_permission(role: Role, permission: str) -> bool:
       - ``"agents:*"`` matches any ``agents:`` action.
       - ``"tools:use:*"`` matches any ``tools:use:`` action.
     """
+    if isinstance(role, str):
+        # Accept only the pre-cutover spelling at the local compatibility
+        # boundary; persisted production memberships use ``org_admin``.
+        try:
+            role = Role.org_admin if role == "admin" else Role(role)
+        except ValueError:
+            return False
+    elif role == Role.admin:
+        role = Role.org_admin
     allowed = PERMISSIONS.get(role)
     if allowed is None:
         return False

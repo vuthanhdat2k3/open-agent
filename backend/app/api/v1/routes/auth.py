@@ -1,14 +1,25 @@
 from __future__ import annotations
 
+import base64
+import hashlib
+import secrets
 import uuid
 from datetime import timedelta, timezone
 
+import httpx
+import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
+from app.core.auth.application_session import (
+    clear_application_session,
+    create_application_session,
+    resolve_application_session,
+)
 from app.core.auth.jwt import (
     create_access_token,
     create_refresh_token,
@@ -22,6 +33,7 @@ from app.db.session import get_db
 from app.dependencies import get_current_user
 from app.models.membership import Membership
 from app.models.oauth_account import OAuthAccount
+from app.models.oidc_login_transaction import OidcLoginTransaction
 from app.models.organization import Organization
 from app.models.refresh_token import RefreshToken
 from app.models.role import Role
@@ -39,6 +51,182 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 settings = get_settings()
 
 
+def _public_role(role: Role) -> str:
+    if get_settings().auth_provider == "local" and role == Role.org_admin:
+        return "admin"
+    return role.value
+
+
+def _require_local_auth() -> None:
+    if get_settings().auth_provider == "zitadel":
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Legacy authentication surface is disabled")
+
+
+def _digest(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+async def _oidc_discovery() -> dict[str, str]:
+    issuer = get_settings().zitadel_issuer_url.rstrip("/")
+    if not issuer:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "ZITADEL is not configured")
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        response = await client.get(f"{issuer}/.well-known/openid-configuration")
+    response.raise_for_status()
+    return response.json()
+
+
+@router.get("/login")
+async def oidc_login(
+    request: Request,
+    organization: str | None = None,
+    db: AsyncSession = Depends(get_db),
+):
+    if get_settings().auth_provider != "zitadel":
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "ZITADEL authentication is not enabled")
+    discovery = await _oidc_discovery()
+    state = secrets.token_urlsafe(32)
+    nonce = secrets.token_urlsafe(32)
+    verifier = secrets.token_urlsafe(48)
+    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
+    organization_id = None
+    if organization:
+        result = await db.execute(select(Organization).where(Organization.slug == organization))
+        org = result.scalar_one_or_none()
+        if org is None or org.lifecycle_status != "active":
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Organization not found")
+        organization_id = org.id
+    transaction = OidcLoginTransaction(
+        state_hash=_digest(state),
+        nonce_hash=_digest(nonce),
+        code_verifier=verifier,
+        organization_id=organization_id,
+        redirect_uri=get_settings().zitadel_redirect_uri,
+        expires_at=utc_now() + timedelta(minutes=10),
+    )
+    db.add(transaction)
+    await db.commit()
+    params = {
+        "client_id": get_settings().zitadel_client_id,
+        "response_type": "code",
+        "redirect_uri": get_settings().zitadel_redirect_uri,
+        "scope": "openid profile email",
+        "state": state,
+        "nonce": nonce,
+        "code_challenge": challenge,
+        "code_challenge_method": "S256",
+    }
+    if organization:
+        params["organization"] = organization
+    query = httpx.QueryParams(params)
+    return RedirectResponse(f"{discovery['authorization_endpoint']}?{query}", status_code=307)
+
+
+@router.get("/callback")
+async def oidc_callback(
+    request: Request,
+    response: Response,
+    code: str,
+    state: str,
+    db: AsyncSession = Depends(get_db),
+):
+    if get_settings().auth_provider != "zitadel":
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "ZITADEL authentication is not enabled")
+    transaction_result = await db.execute(
+        select(OidcLoginTransaction).where(OidcLoginTransaction.state_hash == _digest(state))
+    )
+    transaction = transaction_result.scalar_one_or_none()
+    now = utc_now()
+    if transaction is None or transaction.consumed_at is not None or transaction.expires_at < now:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired login transaction")
+    transaction.consumed_at = now
+    discovery = await _oidc_discovery()
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        token_response = await client.post(
+            discovery["token_endpoint"],
+            data={
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": transaction.redirect_uri,
+                "client_id": get_settings().zitadel_client_id,
+                "client_secret": get_settings().zitadel_client_secret,
+                "code_verifier": transaction.code_verifier,
+            },
+        )
+    if token_response.status_code >= 400:
+        await db.rollback()
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Authorization code exchange failed")
+    token = token_response.json()
+    id_token = token.get("id_token")
+    if not id_token:
+        await db.rollback()
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "ZITADEL did not return an ID token")
+    try:
+        signing_key = jwt.PyJWKClient(discovery["jwks_uri"]).get_signing_key_from_jwt(id_token).key
+        claims = jwt.decode(
+            id_token,
+            signing_key,
+            algorithms=["RS256", "RS384", "RS512"],
+            audience=get_settings().zitadel_client_id,
+            issuer=get_settings().zitadel_issuer_url.rstrip("/"),
+        )
+    except jwt.PyJWTError as exc:
+        await db.rollback()
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid ZITADEL ID token") from exc
+    if _digest(str(claims.get("nonce", ""))) != transaction.nonce_hash:
+        await db.rollback()
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid OIDC nonce")
+    zitadel_user_id = str(claims.get("sub", ""))
+    result = await db.execute(select(User).where(User.zitadel_user_id == zitadel_user_id))
+    user = result.scalar_one_or_none()
+    if user is None or not user.is_active or user.lifecycle_status != "active":
+        await db.rollback()
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "ACCOUNT_NOT_PROVISIONED")
+    org_claim = claims.get(get_settings().zitadel_required_org_claim) or claims.get("org_id")
+    if isinstance(org_claim, list):
+        org_claim = org_claim[0] if len(org_claim) == 1 else None
+    if transaction.organization_id:
+        org_result = await db.execute(select(Organization).where(Organization.id == transaction.organization_id))
+        expected_org = org_result.scalar_one_or_none()
+        if expected_org is None or (org_claim and org_claim not in {expected_org.id, expected_org.zitadel_org_id}):
+            await db.rollback()
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Organization context mismatch")
+        organization_id = expected_org.id
+    else:
+        org_result = await db.execute(select(Organization).where(Organization.zitadel_org_id == org_claim))
+        org = org_result.scalar_one_or_none()
+        if org is None:
+            await db.rollback()
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "ACCOUNT_NOT_PROVISIONED")
+        organization_id = org.id
+    membership_result = await db.execute(
+        select(Membership).where(
+            Membership.user_id == user.id,
+            Membership.org_id == organization_id,
+            Membership.lifecycle_status == "active",
+        )
+    )
+    membership = membership_result.scalar_one_or_none()
+    if membership is None:
+        await db.rollback()
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "ACCOUNT_NOT_PROVISIONED")
+    if claims.get("email") and not user.email:
+        user.email = str(claims["email"]).lower()
+    if claims.get("name"):
+        user.display_name = str(claims["name"])[:128]
+    redirect = RedirectResponse(get_settings().zitadel_post_logout_redirect_uri, status_code=303)
+    await create_application_session(
+        db,
+        user=user,
+        membership=membership,
+        request=request,
+        response=redirect,
+        zitadel_session_id=claims.get("sid"),
+    )
+    await db.commit()
+    return redirect
+
+
 def _set_refresh_cookie(response: Response, raw_refresh_token: str) -> None:
     response.set_cookie(
         key="refresh_token",
@@ -54,6 +242,7 @@ def _set_refresh_cookie(response: Response, raw_refresh_token: str) -> None:
 async def register(
     body: RegisterRequest, response: Response, db: AsyncSession = Depends(get_db)
 ):
+    _require_local_auth()
     # Check if email exists
     res = await db.execute(select(User).where(User.email == body.email.lower()))
     if res.scalar_one_or_none():
@@ -78,11 +267,11 @@ async def register(
     db.add(default_organization_quota(org.id))
 
     # Create Membership
-    membership = Membership(org_id=org.id, user_id=user.id, role=Role.admin)
+    membership = Membership(org_id=org.id, user_id=user.id, role=Role.org_admin)
     db.add(membership)
 
     # Issue Tokens
-    access_token = create_access_token(user_id=user.id, org_id=org.id, role=Role.admin)
+    access_token = create_access_token(user_id=user.id, org_id=org.id, role=Role.org_admin)
     raw_rt, rt_hash = create_refresh_token()
     now = utc_now()
     exp = now + timedelta(days=settings.jwt_refresh_ttl_days)
@@ -107,6 +296,7 @@ async def login(
     response: Response,
     db: AsyncSession = Depends(get_db),
 ):
+    _require_local_auth()
     res = await db.execute(select(User).where(User.email == body.email.lower()))
     user = res.scalar_one_or_none()
 
@@ -158,6 +348,7 @@ async def login(
 async def refresh_token_route(
     request: Request, response: Response, db: AsyncSession = Depends(get_db)
 ):
+    _require_local_auth()
     raw_rt = request.cookies.get("refresh_token")
     if not raw_rt:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Missing refresh token cookie")
@@ -199,8 +390,10 @@ async def refresh_token_route(
         )
         membership = res_m.scalars().first()
 
-    org_id = membership.org_id if membership else "default-org-id"
-    role = str(membership.role.value if hasattr(membership.role, "value") else membership.role) if membership else "developer"
+    if membership is None:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "User belongs to no organization")
+    org_id = membership.org_id
+    role = str(membership.role.value if hasattr(membership.role, "value") else membership.role)
 
     new_access_token = create_access_token(user_id=token_obj.user_id, org_id=org_id, role=role)
     new_raw_rt, new_rt_hash = create_refresh_token()
@@ -222,6 +415,22 @@ async def refresh_token_route(
 
 @router.post("/logout")
 async def logout(request: Request, response: Response, db: AsyncSession = Depends(get_db)):
+    if get_settings().auth_provider == "zitadel":
+        raw_session = request.cookies.get(get_settings().application_session_cookie_name)
+        if raw_session:
+            try:
+                _, _, application_session = await resolve_application_session(
+                    db, raw_token=raw_session, request=request
+                )
+                application_session.revoked_at = utc_now()
+                application_session.revocation_reason = "logout"
+                await db.commit()
+            except HTTPException:
+                # Logout remains idempotent, while an invalid CSRF token does
+                # not revoke a valid session.
+                await db.rollback()
+        clear_application_session(response)
+        return {"ok": True}
     raw_rt = request.cookies.get("refresh_token")
     if raw_rt:
         rt_hash = hash_refresh_token(raw_rt)
@@ -249,7 +458,7 @@ async def me(current_user: User = Depends(get_current_user), db: AsyncSession = 
             org_id=org.id,
             org_name=org.name,
             org_slug=org.slug,
-            role=mem.role,
+            role=_public_role(mem.role),
         )
         for mem, org in rows
     ]
@@ -276,6 +485,7 @@ async def update_me(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    _require_local_auth()
     if body.display_name is not None:
         current_user.display_name = body.display_name.strip()
 
@@ -295,9 +505,10 @@ class SwitchOrgRequest(BaseModel):
     org_id: str
 
 
-@router.post("/switch-org", response_model=TokenResponse)
+@router.post("/switch-org")
 async def switch_org(
     body: SwitchOrgRequest,
+    request: Request,
     response: Response,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -314,6 +525,23 @@ async def switch_org(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="User does not belong to this organization",
         )
+
+    if get_settings().auth_provider == "zitadel":
+        raw_session = request.cookies.get(get_settings().application_session_cookie_name)
+        if not raw_session:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Application session required")
+        _, _, old_session = await resolve_application_session(db, raw_token=raw_session, request=request)
+        old_session.revoked_at = utc_now()
+        old_session.revocation_reason = "organization_switched"
+        await create_application_session(
+            db,
+            user=current_user,
+            membership=membership,
+            request=request,
+            response=response,
+        )
+        await db.commit()
+        return {"ok": True}
 
     role = str(membership.role.value if hasattr(membership.role, "value") else membership.role)
     access_token = create_access_token(
@@ -335,6 +563,7 @@ async def switch_org(
 
 @router.get("/oauth/{provider}")
 async def oauth_login(provider: str, request: Request):
+    _require_local_auth()
     client = getattr(oauth, provider, None)
     if not client:
         raise HTTPException(400, f"OAuth provider '{provider}' not configured")
@@ -346,6 +575,7 @@ async def oauth_login(provider: str, request: Request):
 async def oauth_callback(
     provider: str, request: Request, response: Response, db: AsyncSession = Depends(get_db)
 ):
+    _require_local_auth()
     client = getattr(oauth, provider, None)
     if not client:
         raise HTTPException(400, f"OAuth provider '{provider}' not configured")
@@ -405,11 +635,13 @@ async def oauth_callback(
         select(Membership).where(Membership.user_id == user.id).order_by(Membership.created_at)
     )
     membership = res_m.scalars().first()
+    if membership is None:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "User belongs to no organization")
 
     access_token = create_access_token(
         user_id=user.id,
-        org_id=membership.org_id if membership else "default-org-id",
-        role=membership.role if membership else "owner",
+        org_id=membership.org_id,
+        role=membership.role,
     )
     raw_rt, rt_hash = create_refresh_token()
     now = utc_now()

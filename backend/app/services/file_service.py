@@ -36,8 +36,11 @@ class FileService:
             client.create_bucket(Bucket=self.settings.s3_bucket)
 
     async def save_upload(
-        self, org_id: str, file: UploadFile, user_id: str | None = None
+        self, org_id: str, file: UploadFile, user_id: str | None = None,
+        visibility: str = "personal",
     ) -> UploadedFile:
+        if visibility not in {"personal", "organization"}:
+            raise ValueError("visibility must be personal or organization")
         ext = os.path.splitext(file.filename or "")[1].lower()
         if ext and ext not in self.settings.allowed_extensions:
             raise ValueError(f"Unsupported file type: {ext or 'unknown'}")
@@ -58,6 +61,7 @@ class FileService:
         record = UploadedFile(
             org_id=org_id,
             created_by_user_id=user_id,
+            visibility=visibility,
             filename=stored_name,
             original_name=file.filename or stored_name,
             content_type=file.content_type or "",
@@ -68,14 +72,14 @@ class FileService:
         )
         return await self.repo.create(record)
 
-    async def list(self, org_id: str) -> list[UploadedFile]:
-        return await self.repo.list(org_id)
+    async def list(self, org_id: str, owner_user_id: str | None = None) -> list[UploadedFile]:
+        return await self.repo.list(org_id, created_by_user_id=owner_user_id)
 
     async def get(self, org_id: str, id: str) -> UploadedFile | None:
         return await self.repo.get(org_id, id)
 
-    async def delete(self, org_id: str, id: str) -> bool:
-        record = await self.repo.get(org_id, id)
+    async def delete(self, org_id: str, id: str, owner_user_id: str | None = None) -> bool:
+        record = await self.repo.get(org_id, id, created_by_user_id=owner_user_id)
         if record is None:
             return False
         if record.stored_path:

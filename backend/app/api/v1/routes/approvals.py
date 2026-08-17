@@ -114,6 +114,23 @@ async def decide_approval(
     idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
     db: AsyncSession = Depends(get_db),
 ):
+    approval_lookup = await db.execute(
+        select(ApprovalRequest).where(
+            ApprovalRequest.id == approval_id,
+            ApprovalRequest.org_id == org_id,
+        )
+    )
+    requested_approval = approval_lookup.scalar_one_or_none()
+    if requested_approval is None:
+        raise HTTPException(status_code=404, detail="approval request not found")
+
+    # Fail closed for side-effecting approvals. Until every tool is migrated
+    # to the reviewed registry, a tool/case approval is treated as high risk;
+    # neither an admin nor the requester may self-approve it.
+    high_risk = bool(requested_approval.tool_name or requested_approval.case_id)
+    if high_risk and requested_approval.requested_by == current_user.id:
+        raise HTTPException(status_code=403, detail="APPROVAL_SEPARATION_REQUIRED")
+
     # Users may decide only approvals they requested (for example, their own
     # Gmail draft); admins retain organization-wide decision authority.
     if not authz.allows("approvals:manage"):
