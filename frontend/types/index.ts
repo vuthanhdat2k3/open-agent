@@ -298,7 +298,7 @@ export interface UploadedFile {
   original_name: string;
   content_type: string;
   size: number;
-  status: "uploaded" | "ingesting" | "ingested" | "error";
+  status: "uploaded" | "queued" | "processing" | "retrying" | "ingested" | "error" | "dead_letter";
   collection: string | null;
   error: string | null;
   created_at: string;
@@ -306,9 +306,17 @@ export interface UploadedFile {
 }
 
 export interface IngestResult {
-  ok: boolean;
-  result: string;
-  document_id: string | null;
+  job_id: string;
+  file_id: string;
+  status: string;
+  deduplicated: boolean;
+  attempt_count: number;
+  max_attempts: number;
+  rag_document_id: string | null;
+  chunk_count: number | null;
+  warnings: string[];
+  error_code: string | null;
+  error_detail: string | null;
 }
 
 export interface WorkspaceArtifact {
