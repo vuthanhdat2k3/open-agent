@@ -48,6 +48,10 @@ class OrgMemberOut(BaseModel):
     created_at: datetime
 
 
+def _public_role(role: Role) -> str:
+    return "admin" if role == Role.org_admin else role.value
+
+
 async def _ensure_user_belongs_to_org(
     db: AsyncSession, user_id: str, org_id: str
 ) -> Membership:
@@ -75,7 +79,7 @@ async def create_org(
     await db.flush()
     db.add(default_organization_quota(org.id))
 
-    membership = Membership(org_id=org.id, user_id=current_user.id, role=Role.admin)
+    membership = Membership(org_id=org.id, user_id=current_user.id, role=Role.org_admin)
     db.add(membership)
     await db.commit()
     await db.refresh(org)
@@ -100,7 +104,7 @@ async def list_org_members(
             user_id=u.id,
             email=u.email,
             display_name=u.display_name,
-            role=mem.role,
+            role=_public_role(mem.role),
             created_at=mem.created_at,
         )
         for mem, u in rows
@@ -128,7 +132,12 @@ async def add_org_member(
     if res_mem.scalar_one_or_none():
         raise HTTPException(400, "User is already a member of this organization")
 
-    role_val = body.role if body.role in (Role.admin, Role.user) else Role.user
+    role_val = {
+        "admin": Role.org_admin,
+        "org_admin": Role.org_admin,
+        "operator": Role.operator,
+        "user": Role.user,
+    }.get(body.role, Role.user)
     mem = Membership(
         org_id=id,
         user_id=invited_user.id,
@@ -152,7 +161,7 @@ async def add_org_member(
         user_id=invited_user.id,
         email=invited_user.email,
         display_name=invited_user.display_name,
-        role=mem.role,
+        role=_public_role(mem.role),
         created_at=mem.created_at,
     )
 
