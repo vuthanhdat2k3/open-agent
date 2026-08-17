@@ -1,26 +1,16 @@
 from __future__ import annotations
 
 import asyncio
-import base64
+import hashlib
 import os
-import re
 import uuid
 
 import boto3
 from botocore.exceptions import ClientError
 from fastapi import UploadFile
-from sqlalchemy import select
-
 from app.config import get_settings
-from app.mcp.client import get_mcp_manager
 from app.models.files import UploadedFile
-from app.models.mcp import McpServer
 from app.repositories.files_repo import UploadedFileRepository
-
-
-def _extract_document_id(text: str) -> str | None:
-    m = re.search(r"Document ID:\s*(\S+)", text or "")
-    return m.group(1) if m else None
 
 
 class FileService:
@@ -71,6 +61,7 @@ class FileService:
             original_name=file.filename or stored_name,
             content_type=file.content_type or "",
             size=len(data),
+            file_sha256=hashlib.sha256(data).hexdigest(),
             stored_path=object_key,
             status="uploaded",
         )
@@ -96,60 +87,3 @@ class FileService:
             except ClientError:
                 pass
         return await self.repo.delete(org_id, id)
-
-    async def ingest_to_rag(
-        self,
-        org_id: str,
-        id: str,
-        collection: str,
-        chunk_size: int,
-        chunk_overlap: int,
-        tags: list[str],
-    ) -> dict:
-        record = await self.repo.get(org_id, id)
-        if record is None:
-            raise ValueError("file not found")
-        try:
-            def _download() -> bytes:
-                obj = self._s3_client().get_object(Bucket=self.settings.s3_bucket, Key=record.stored_path)
-                return obj["Body"].read()
-
-            data = await asyncio.to_thread(_download)
-            content_base64 = base64.b64encode(data).decode("ascii")
-            res = await self.db.execute(
-                select(McpServer).where(
-                    McpServer.org_id == org_id,
-                    McpServer.name == self.settings.rag_mcp_server_name,
-                )
-            )
-            server = res.scalar_one_or_none()
-            if server is None:
-                raise ValueError(
-                    f"RAG MCP server '{self.settings.rag_mcp_server_name}' not "
-                    "configured. Add it under MCP settings."
-                )
-            raw = await get_mcp_manager().call_tool(
-                server,
-                "rag_ingest_file",
-                {
-                    "filename": record.original_name,
-                    "content_base64": content_base64,
-                    "collection": collection,
-                    "tags": tags,
-                    "chunk_size": chunk_size,
-                    "chunk_overlap": chunk_overlap,
-                },
-            )
-            document_id = _extract_document_id(raw)
-            record.status = "ingested"
-            record.collection = collection
-            record.error = None
-            self.db.add(record)
-            await self.db.commit()
-            return {"ok": True, "result": raw, "document_id": document_id}
-        except Exception as e:  # noqa: BLE001
-            record.status = "error"
-            record.error = str(e)
-            self.db.add(record)
-            await self.db.commit()
-            raise ValueError(str(e))

@@ -553,6 +553,7 @@ export function useFiles() {
   return useQuery({
     queryKey: ["files"],
     queryFn: () => api.get<UploadedFile[]>("/api/files"),
+    refetchInterval: 3000,
   });
 }
 export function useUploadFile() {

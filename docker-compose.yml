@@ -192,6 +192,7 @@ services:
       context: ./backend
     environment:
       RAG_API_KEY: ${RAG_API_KEY:-}
+      OPENAGENT_RAG_SERVICE_URL: ${RAG_SERVICE_URL:-http://rag-service:8100}
       OPENAGENT_HOST: 0.0.0.0
       OPENAGENT_DB_URL: ${OPENAGENT_DB_URL:?Set OPENAGENT_DB_URL in .env (see .env.example)}
       OPENAGENT_REDIS_URL: redis://redis:6379/0
@@ -254,6 +255,7 @@ services:
       context: ./backend
     environment:
       RAG_API_KEY: ${RAG_API_KEY:-}
+      OPENAGENT_RAG_SERVICE_URL: ${RAG_SERVICE_URL:-http://rag-service:8100}
       OPENAGENT_DB_URL: ${OPENAGENT_DB_URL:?Set OPENAGENT_DB_URL in .env (see .env.example)}
       OPENAGENT_REDIS_URL: redis://redis:6379/0
       OPENAGENT_JWT_SECRET_KEY: ${OPENAGENT_JWT_SECRET_KEY:?Set OPENAGENT_JWT_SECRET_KEY in .env to a random 32-byte secret}

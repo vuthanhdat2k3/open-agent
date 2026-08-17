@@ -102,6 +102,20 @@ class Settings(BaseSettings):
     s3_bucket: str = "openagent-uploads"
     s3_region: str = "us-east-1"
     rag_mcp_server_name: str = "rag"
+    rag_service_url: str = Field(
+        default="http://rag-service:8100",
+        validation_alias=AliasChoices("OPENAGENT_RAG_SERVICE_URL", "RAG_SERVICE_URL"),
+    )
+    rag_api_key: str = Field(
+        default="",
+        validation_alias=AliasChoices("OPENAGENT_RAG_API_KEY", "RAG_API_KEY"),
+    )
+    rag_ingest_connect_timeout_seconds: float = 10.0
+    rag_ingest_read_timeout_seconds: float = 180.0
+    file_ingest_max_attempts: int = 5
+    file_ingest_lease_seconds: int = 300
+    file_ingest_retry_base_seconds: int = 5
+    file_ingest_retry_max_seconds: int = 300
 
     # --- Customer Intelligence (email-driven company research) ---
     # Master switch for the feature; when disabled the API returns 404 for the
