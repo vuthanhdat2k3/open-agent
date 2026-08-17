@@ -19,7 +19,7 @@ from app.models.api_key import ApiKey
 from app.models.membership import Membership
 from app.models.user import User
 
-DEFAULT_ORG_ID = "default-org-id"
+DEFAULT_ORG_ID = "default-org-id"  # disposable local/test compatibility only
 security_bearer = HTTPBearer(auto_error=False)
 
 
@@ -89,7 +89,11 @@ async def get_current_user(
                     user = res.scalar_one_or_none()
                     if user:
                         request.state.user_id = user.id
-                        request.state.org_id = org_id or DEFAULT_ORG_ID
+                        if not org_id and get_settings().auth_provider != "zitadel":
+                            org_id = DEFAULT_ORG_ID
+                        if not org_id:
+                            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Organization context required")
+                        request.state.org_id = org_id
                         request.state.actor_agent_identity_id = agent_payload.get("actor_agent_identity_id")
                         request.state.delegation_chain = agent_payload.get("delegation_chain")
                         mark_chat_phase(request, "auth_done", auth_method="agent_token")
@@ -105,7 +109,11 @@ async def get_current_user(
                     user = res.scalar_one_or_none()
                     if user:
                         request.state.user_id = user.id
-                        request.state.org_id = org_id or DEFAULT_ORG_ID
+                        if not org_id and get_settings().auth_provider != "zitadel":
+                            org_id = DEFAULT_ORG_ID
+                        if not org_id:
+                            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Organization context required")
+                        request.state.org_id = org_id
                         mark_chat_phase(request, "auth_done", auth_method="jwt")
                         return user
         except Exception:
@@ -217,9 +225,9 @@ async def get_current_org_id(
     if header_org:
         return header_org
 
-    if settings.auth_provider == "zitadel":
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Organization context required")
-    return DEFAULT_ORG_ID
+    if settings.auth_provider == "local":
+        return DEFAULT_ORG_ID
+    raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Organization context required")
 
 
 def require_permission(permission: str):

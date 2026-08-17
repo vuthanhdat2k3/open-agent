@@ -163,7 +163,7 @@ async def _memory_store(args: dict[str, Any], ctx: ToolContext) -> str:
             res_sess = await db.execute(select(Session.org_id).where(Session.id == ctx.session_id))
             org_id = res_sess.scalar_one_or_none()
         if not org_id:
-            org_id = "default-org-id"
+            return "error: organization context is required"
 
         db.add(
             SessionMemory(

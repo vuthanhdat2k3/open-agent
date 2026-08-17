@@ -390,8 +390,10 @@ async def refresh_token_route(
         )
         membership = res_m.scalars().first()
 
-    org_id = membership.org_id if membership else "default-org-id"
-    role = str(membership.role.value if hasattr(membership.role, "value") else membership.role) if membership else "developer"
+    if membership is None:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "User belongs to no organization")
+    org_id = membership.org_id
+    role = str(membership.role.value if hasattr(membership.role, "value") else membership.role)
 
     new_access_token = create_access_token(user_id=token_obj.user_id, org_id=org_id, role=role)
     new_raw_rt, new_rt_hash = create_refresh_token()
@@ -633,11 +635,13 @@ async def oauth_callback(
         select(Membership).where(Membership.user_id == user.id).order_by(Membership.created_at)
     )
     membership = res_m.scalars().first()
+    if membership is None:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "User belongs to no organization")
 
     access_token = create_access_token(
         user_id=user.id,
-        org_id=membership.org_id if membership else "default-org-id",
-        role=membership.role if membership else "owner",
+        org_id=membership.org_id,
+        role=membership.role,
     )
     raw_rt, rt_hash = create_refresh_token()
     now = utc_now()
