@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import json
 from dataclasses import dataclass
 from typing import BinaryIO
@@ -54,7 +53,7 @@ class RagIngestClient:
                     url, headers=headers, data=data,
                     files={"file": (filename, body, content_type or "application/octet-stream")},
                 )
-        except (httpx.TimeoutException, httpx.NetworkError, asyncio.TimeoutError) as exc:
+        except (TimeoutError, httpx.TimeoutException, httpx.NetworkError) as exc:
             raise RagIngestError("RAG_UNAVAILABLE", "rag-service request failed", retryable=True) from exc
         except httpx.HTTPError as exc:
             raise RagIngestError("RAG_REQUEST_FAILED", "rag-service request failed", retryable=True) from exc

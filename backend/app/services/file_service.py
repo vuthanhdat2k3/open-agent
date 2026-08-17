@@ -8,6 +8,7 @@ import uuid
 import boto3
 from botocore.exceptions import ClientError
 from fastapi import UploadFile
+
 from app.config import get_settings
 from app.models.files import UploadedFile
 from app.repositories.files_repo import UploadedFileRepository

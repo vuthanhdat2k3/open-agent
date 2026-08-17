@@ -86,6 +86,7 @@ async def ingest_file(
 @router.get("/{id}/ingest-jobs", response_model=list[IngestJobRecord], dependencies=[Depends(require_permission("files:read"))])
 async def list_ingest_jobs(id: str, org_id: str = Depends(get_current_org_id), db: AsyncSession = Depends(get_db)):
     from sqlalchemy import select
+
     from app.models.file_ingest_job import FileIngestJob
 
     jobs = list((await db.scalars(select(FileIngestJob).where(
@@ -97,6 +98,7 @@ async def list_ingest_jobs(id: str, org_id: str = Depends(get_current_org_id), d
 @router.get("/{id}/ingest-jobs/{job_id}", response_model=IngestJobRecord, dependencies=[Depends(require_permission("files:read"))])
 async def get_ingest_job(id: str, job_id: str, org_id: str = Depends(get_current_org_id), db: AsyncSession = Depends(get_db)):
     from sqlalchemy import select
+
     from app.models.file_ingest_job import FileIngestJob
 
     job = await db.scalar(select(FileIngestJob).where(
