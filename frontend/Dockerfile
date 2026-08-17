@@ -6,7 +6,9 @@ RUN npm ci
 FROM node:20-alpine AS builder
 WORKDIR /app
 ARG API_INTERNAL_URL=http://api:8000
+ARG NEXT_PUBLIC_AUTH_PROVIDER=local
 ENV API_INTERNAL_URL=$API_INTERNAL_URL
+ENV NEXT_PUBLIC_AUTH_PROVIDER=$NEXT_PUBLIC_AUTH_PROVIDER
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run build
