@@ -7,7 +7,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "0046_file_visibility"
-down_revision: str | None = "0045_identity_projection_and_sessions"
+down_revision: str | None = "0045_identity_sessions"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
