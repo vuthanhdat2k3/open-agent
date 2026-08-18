@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import logging
 import secrets
 import uuid
 from datetime import timedelta, timezone
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 import jwt
@@ -28,6 +30,7 @@ from app.core.auth.jwt import (
 from app.core.auth.oauth import oauth
 from app.core.auth.password import hash_password, verify_password
 from app.core.observability.audit import log_action
+from app.core.authz.policy import PERMISSIONS
 from app.db.base import utc_now
 from app.db.session import get_db
 from app.dependencies import get_current_user
@@ -49,6 +52,7 @@ from app.services.quota_service import default_organization_quota
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 
 def _public_role(role: Role) -> str:
@@ -70,10 +74,22 @@ async def _oidc_discovery() -> dict[str, str]:
     issuer = get_settings().zitadel_issuer_url.rstrip("/")
     if not issuer:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "ZITADEL is not configured")
+    discovery_base = (get_settings().zitadel_internal_url or issuer).rstrip("/")
+    public_host = issuer.removeprefix("http://").removeprefix("https://").split("/", 1)[0]
     async with httpx.AsyncClient(timeout=10.0) as client:
-        response = await client.get(f"{issuer}/.well-known/openid-configuration")
+        response = await client.get(
+            f"{discovery_base}/.well-known/openid-configuration",
+            headers={"Host": public_host},
+        )
     response.raise_for_status()
     return response.json()
+
+
+def _internal_oidc_url(external_url: str, internal_base: str) -> str:
+    """Route OIDC back-channel calls through Docker while preserving the public host."""
+    external = urlsplit(external_url)
+    internal = urlsplit(internal_base.rstrip("/"))
+    return urlunsplit((internal.scheme, internal.netloc, external.path, external.query, external.fragment))
 
 
 @router.get("/login")
@@ -141,9 +157,12 @@ async def oidc_callback(
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired login transaction")
     transaction.consumed_at = now
     discovery = await _oidc_discovery()
+    internal_base = get_settings().zitadel_internal_url or get_settings().zitadel_issuer_url
+    public_host = get_settings().zitadel_issuer_url.removeprefix("http://").removeprefix("https://").split("/", 1)[0]
     async with httpx.AsyncClient(timeout=15.0) as client:
         token_response = await client.post(
-            discovery["token_endpoint"],
+            _internal_oidc_url(discovery["token_endpoint"], internal_base),
+            headers={"Host": public_host},
             data={
                 "grant_type": "authorization_code",
                 "code": code,
@@ -162,7 +181,19 @@ async def oidc_callback(
         await db.rollback()
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "ZITADEL did not return an ID token")
     try:
-        signing_key = jwt.PyJWKClient(discovery["jwks_uri"]).get_signing_key_from_jwt(id_token).key
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            jwks_response = await client.get(
+                _internal_oidc_url(discovery["jwks_uri"], internal_base),
+                headers={"Host": public_host},
+            )
+        jwks_response.raise_for_status()
+        jwks = jwt.PyJWKSet.from_json(jwks_response.text)
+        key_id = jwt.get_unverified_header(id_token).get("kid")
+        signing_key = next((key.key for key in jwks.keys if key.key_id == key_id), None)
+        if signing_key is None:
+            await db.rollback()
+            logger.error("OIDC ID token signing key was not found", extra={"kid": key_id})
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "ZITADEL signing key not found")
         claims = jwt.decode(
             id_token,
             signing_key,
@@ -177,8 +208,41 @@ async def oidc_callback(
         await db.rollback()
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid OIDC nonce")
     zitadel_user_id = str(claims.get("sub", ""))
+    claim_email = str(claims.get("email", "")).strip().lower()
+    if not claim_email and token.get("access_token"):
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            userinfo_response = await client.get(
+                _internal_oidc_url(discovery["userinfo_endpoint"], internal_base),
+                headers={"Host": public_host, "Authorization": f"Bearer {token['access_token']}"},
+            )
+        if userinfo_response.is_success:
+            claim_email = str(userinfo_response.json().get("email", "")).strip().lower()
     result = await db.execute(select(User).where(User.zitadel_user_id == zitadel_user_id))
     user = result.scalar_one_or_none()
+    if user is None and claim_email:
+        # Existing disposable/local accounts may be linked only after a
+        # verified identity has authenticated at ZITADEL. No account is
+        # created for ordinary users (the callback remains fail-closed).
+        result = await db.execute(select(User).where(User.email == claim_email))
+        user = result.scalar_one_or_none()
+        if user is not None and user.zitadel_user_id in {None, zitadel_user_id}:
+            user.zitadel_user_id = zitadel_user_id
+    if user is None and claim_email in get_settings().platform_admin_email_set:
+        user = User(
+            email=claim_email,
+            zitadel_user_id=zitadel_user_id,
+            display_name=str(claims.get("name") or claim_email.split("@", 1)[0])[:128],
+        )
+        db.add(user)
+        await db.flush()
+        system_org_result = await db.execute(select(Organization).where(Organization.slug == "platform"))
+        system_org = system_org_result.scalar_one_or_none()
+        if system_org is None:
+            system_org = Organization(name="OpenAgent Platform", slug="platform", provisioning_mode="managed")
+            db.add(system_org)
+            await db.flush()
+            db.add(default_organization_quota(system_org.id))
+        db.add(Membership(org_id=system_org.id, user_id=user.id, role=Role.platform_admin))
     if user is None or not user.is_active or user.lifecycle_status != "active":
         await db.rollback()
         raise HTTPException(status.HTTP_403_FORBIDDEN, "ACCOUNT_NOT_PROVISIONED")
@@ -193,12 +257,39 @@ async def oidc_callback(
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Organization context mismatch")
         organization_id = expected_org.id
     else:
-        org_result = await db.execute(select(Organization).where(Organization.zitadel_org_id == org_claim))
-        org = org_result.scalar_one_or_none()
-        if org is None:
-            await db.rollback()
-            raise HTTPException(status.HTTP_403_FORBIDDEN, "ACCOUNT_NOT_PROVISIONED")
-        organization_id = org.id
+        platform_membership_result = await db.execute(
+            select(Membership)
+            .join(Organization, Organization.id == Membership.org_id)
+            .where(
+                Membership.user_id == user.id,
+                Membership.role == Role.platform_admin,
+                Membership.lifecycle_status == "active",
+                Organization.slug == "platform",
+            )
+        )
+        platform_membership = platform_membership_result.scalar_one_or_none()
+        if platform_membership is not None:
+            organization_id = transaction.organization_id or platform_membership.org_id
+        else:
+            if org_claim:
+                org_result = await db.execute(select(Organization).where(Organization.zitadel_org_id == org_claim))
+                org = org_result.scalar_one_or_none()
+                if org is None:
+                    await db.rollback()
+                    raise HTTPException(status.HTTP_403_FORBIDDEN, "ACCOUNT_NOT_PROVISIONED")
+                organization_id = org.id
+            else:
+                memberships_result = await db.execute(
+                    select(Membership).where(
+                        Membership.user_id == user.id,
+                        Membership.lifecycle_status == "active",
+                    )
+                )
+                memberships = memberships_result.scalars().all()
+                if len(memberships) != 1:
+                    await db.rollback()
+                    raise HTTPException(status.HTTP_403_FORBIDDEN, "ORGANIZATION_CONTEXT_REQUIRED")
+                organization_id = memberships[0].org_id
     membership_result = await db.execute(
         select(Membership).where(
             Membership.user_id == user.id,
@@ -446,7 +537,11 @@ async def logout(request: Request, response: Response, db: AsyncSession = Depend
 
 
 @router.get("/me", response_model=MeResponse)
-async def me(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def me(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     res = await db.execute(
         select(Membership, Organization)
         .join(Organization, Membership.org_id == Organization.id)
@@ -462,6 +557,10 @@ async def me(current_user: User = Depends(get_current_user), db: AsyncSession = 
         )
         for mem, org in rows
     ]
+    permissions_by_org = {
+        org.id: sorted(PERMISSIONS.get(mem.role, set()))
+        for mem, org in rows
+    }
 
     return MeResponse(
         id=current_user.id,
@@ -470,6 +569,8 @@ async def me(current_user: User = Depends(get_current_user), db: AsyncSession = 
         is_active=current_user.is_active,
         created_at=current_user.created_at,
         memberships=memberships_out,
+        permissions_by_org=permissions_by_org,
+        active_org_id=getattr(request.state, "org_id", None),
     )
 
 
@@ -482,6 +583,7 @@ class UpdateProfileRequest(BaseModel):
 @router.patch("/me", response_model=MeResponse)
 async def update_me(
     body: UpdateProfileRequest,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -498,7 +600,7 @@ async def update_me(
 
     await db.commit()
     await db.refresh(current_user)
-    return await me(current_user=current_user, db=db)
+    return await me(request=request, current_user=current_user, db=db)
 
 
 class SwitchOrgRequest(BaseModel):
@@ -513,6 +615,13 @@ async def switch_org(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    platform_membership = await db.scalar(
+        select(Membership).where(
+            Membership.user_id == current_user.id,
+            Membership.role == Role.platform_admin,
+            Membership.lifecycle_status == "active",
+        )
+    )
     res = await db.execute(
         select(Membership).where(
             Membership.user_id == current_user.id,
@@ -520,6 +629,25 @@ async def switch_org(
         )
     )
     membership = res.scalar_one_or_none()
+    if platform_membership and not membership:
+        organization = await db.scalar(
+            select(Organization).where(
+                Organization.id == body.org_id,
+                Organization.lifecycle_status == "active",
+            )
+        )
+        if organization:
+            membership = Membership(
+                org_id=organization.id,
+                user_id=current_user.id,
+                role=Role.platform_admin,
+                provisioning_source="platform",
+            )
+            db.add(membership)
+            await db.flush()
+    elif platform_membership and membership and membership.role != Role.platform_admin:
+        membership.role = Role.platform_admin
+        await db.flush()
     if not membership:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

@@ -38,6 +38,8 @@ class MeResponse(BaseModel):
     is_active: bool
     created_at: datetime
     memberships: list[UserMembershipOut]
+    permissions_by_org: dict[str, list[str]] = Field(default_factory=dict)
+    active_org_id: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -358,7 +358,7 @@ export interface OrgMember {
   user_id: string;
   email: string;
   display_name: string;
-  role: "admin" | "user";
+  role: "platform_admin" | "org_admin" | "operator" | "user" | "admin";
   created_at: string;
 }
 
@@ -473,6 +473,15 @@ export interface UserProfile {
   is_active: boolean;
   created_at: string;
   memberships: UserMembership[];
+  permissions_by_org: Record<string, string[]>;
+  active_org_id?: string | null;
+}
+
+export interface Organization {
+  id: string;
+  name: string;
+  slug: string;
+  created_at: string;
 }
 
 export interface CustomerIntelligenceConnection {

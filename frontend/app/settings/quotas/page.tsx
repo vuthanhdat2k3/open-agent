@@ -47,7 +47,8 @@ function optionalNumber(value: string) {
 
 export default function QuotasPage() {
   const me = useMe();
-  const isAdmin = useCurrentRole() === "admin";
+  const role = useCurrentRole();
+  const isAdmin = role === "admin" || role === "platform_admin";
   const activeOrgId = getActiveOrgId();
   const orgId = activeOrgId || me.data?.memberships?.[0]?.org_id;
   const quota = useOrganizationQuota(isAdmin ? orgId : undefined);

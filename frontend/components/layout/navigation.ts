@@ -7,7 +7,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-export interface NavItem { href: string; label: string; icon: LucideIcon; adminOnly?: boolean; userOnly?: boolean; }
+export interface NavItem { href: string; label: string; icon: LucideIcon; permission?: string; platformOnly?: boolean; }
 export interface NavGroup { title: string; items: NavItem[]; }
 
 // adminOnly items configure/operate the product (agents, workflows authoring,
@@ -18,29 +18,30 @@ export const navGroups: NavGroup[] = [
   { title: "Overview", items: [
     { href: "/", label: "Dashboard", icon: LayoutDashboard },
     { href: "/chat", label: "Chat", icon: MessageSquare },
-    { href: "/run-workflow", label: "Run Workflow", icon: PlayCircle, userOnly: true },
+    { href: "/run-workflow", label: "Run Workflow", icon: PlayCircle, permission: "workflows:run" },
   ] },
   { title: "AI Infrastructure", items: [
-    { href: "/agents", label: "Agents", icon: Bot, adminOnly: true },
-    { href: "/workflows", label: "Workflows", icon: Workflow, adminOnly: true },
-    { href: "/workspace", label: "Workspace", icon: FolderKanban },
-    { href: "/mcp", label: "MCP Servers", icon: Plug, adminOnly: true },
-    { href: "/integrations", label: "Integrations", icon: CalendarDays },
-    { href: "/email-intelligence", label: "Smart Inbox", icon: Bell },
-    { href: "/automations", label: "Automations", icon: Zap },
-    { href: "/email-intelligence/rules", label: "Automation Rules", icon: SlidersHorizontal },
-    { href: "/customer-intelligence", label: "Research Cases", icon: Search },
-    { href: "/models", label: "Models", icon: Cpu, adminOnly: true },
-    { href: "/providers", label: "Providers", icon: Server, adminOnly: true },
-    { href: "/files", label: "Files", icon: FileUp },
+    { href: "/agents", label: "Agents", icon: Bot, permission: "agents:read" },
+    { href: "/workflows", label: "Workflows", icon: Workflow, permission: "workflows:read" },
+    { href: "/workspace", label: "Workspace", icon: FolderKanban, permission: "files:read" },
+    { href: "/mcp", label: "MCP Servers", icon: Plug, permission: "mcp:read" },
+    { href: "/integrations", label: "Integrations", icon: CalendarDays, permission: "ci:personal:manage" },
+    { href: "/email-intelligence", label: "Smart Inbox", icon: Bell, permission: "ci:personal:manage" },
+    { href: "/automations", label: "Automations", icon: Zap, permission: "workflows:read" },
+    { href: "/email-intelligence/rules", label: "Automation Rules", icon: SlidersHorizontal, permission: "ci:personal:manage" },
+    { href: "/customer-intelligence", label: "Research Cases", icon: Search, permission: "ci:read" },
+    { href: "/models", label: "Models", icon: Cpu, permission: "models:read" },
+    { href: "/providers", label: "Providers", icon: Server, permission: "providers:read" },
+    { href: "/files", label: "Files", icon: FileUp, permission: "files:read" },
   ] },
   { title: "Governance & Ops", items: [
-    { href: "/approvals", label: "Approvals", icon: ShieldCheck },
-    { href: "/evaluations", label: "Evaluations", icon: FlaskConical, adminOnly: true },
-    { href: "/settings/quotas", label: "Quotas", icon: Gauge },
-    { href: "/settings/members", label: "Members", icon: Users, adminOnly: true },
-    { href: "/debug", label: "Debug", icon: Bug, adminOnly: true },
-    { href: "/admin/email-intelligence", label: "Email Operations", icon: Gauge, adminOnly: true },
+    { href: "/approvals", label: "Approvals", icon: ShieldCheck, permission: "approvals:read" },
+    { href: "/evaluations", label: "Evaluations", icon: FlaskConical, permission: "evaluations:read" },
+    { href: "/settings/quotas", label: "Quotas", icon: Gauge, permission: "quota:usage" },
+    { href: "/settings/members", label: "Members", icon: Users, permission: "orgs:manage" },
+    { href: "/debug", label: "Debug", icon: Bug, permission: "orgs:manage" },
+    { href: "/admin/email-intelligence", label: "Email Operations", icon: Gauge, permission: "ci:organization:read" },
+    { href: "/organizations", label: "Organizations", icon: Users, permission: "orgs:read", platformOnly: true },
   ] },
 ];
 

@@ -2,16 +2,28 @@
 
 import * as React from "react";
 import { Building2, Check, ChevronDown } from "lucide-react";
-import { useMe } from "@/hooks";
+import { useMe, useOrganizations } from "@/hooks";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 export function OrgSwitcher({ collapsed }: { collapsed?: boolean }) {
   const me = useMe();
-  const memberships = me.data?.memberships ?? [];
+  const isPlatformAdmin = me.data?.memberships?.some((membership) => membership.role === "platform_admin") ?? false;
+  const organizations = useOrganizations(isPlatformAdmin);
+  const memberships = isPlatformAdmin
+    ? (organizations.data ?? []).map((organization) => {
+        const membership = me.data?.memberships.find((item) => item.org_id === organization.id);
+        return {
+          org_id: organization.id,
+          org_name: organization.name,
+          org_slug: organization.slug,
+          role: membership?.role ?? "platform_admin",
+        };
+      })
+    : (me.data?.memberships ?? []);
   const [selectedOrgId, setSelectedOrgId] = React.useState<string | null>(null);
-  const activeOrgId = selectedOrgId || memberships[0]?.org_id;
+  const activeOrgId = selectedOrgId || me.data?.active_org_id || memberships[0]?.org_id;
   const currentMembership = memberships.find((membership) => membership.org_id === activeOrgId) || memberships[0];
   if (!currentMembership) return null;
 
@@ -19,7 +31,7 @@ export function OrgSwitcher({ collapsed }: { collapsed?: boolean }) {
     setSelectedOrgId(orgId);
     try {
       await api.post("/api/auth/switch-org", { org_id: orgId });
-      window.location.reload();
+      window.location.assign(window.location.href);
     } catch {
       localStorage.setItem("active_org_id", orgId);
       window.location.reload();

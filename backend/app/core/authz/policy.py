@@ -30,6 +30,7 @@ from app.models.role import Role
 # ---------------------------------------------------------------------------
 
 PERMISSIONS: dict[Role, set[str]] = {
+    Role.platform_admin: {"*"},
     Role.org_admin: {"*"},
     Role.operator: {
         "agents:read", "agents:create", "agents:update", "agents:publish", "agents:run",

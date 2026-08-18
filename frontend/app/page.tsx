@@ -19,7 +19,7 @@ function greeting() {
 
 export default function Dashboard() {
   const role = useCurrentRole();
-  const isAdmin = role === "admin";
+  const isAdmin = role === "admin" || role === "platform_admin" || role === "operator";
   const me = useMe();
   const usage = useUsageSummary(isAdmin);
   const providers = useProviders(isAdmin);

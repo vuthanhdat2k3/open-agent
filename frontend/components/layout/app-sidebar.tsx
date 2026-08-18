@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { QueryClient } from "@tanstack/react-query";
-import { useCurrentRole, useEmailIntelligenceNavigationSummary } from "@/hooks";
+import { hasUiPermission, useCurrentPermissions, useCurrentRole, useEmailIntelligenceNavigationSummary } from "@/hooks";
 import { OrgSwitcher } from "@/components/org-switcher";
 import { UserNav } from "@/components/user-nav";
 import {
@@ -30,6 +30,7 @@ export function AppSidebar({ queryClient }: { queryClient: QueryClient }) {
   const pending = summary.data?.user_workspace.approvals.pending ?? 0;
   const urgent = summary.data?.user_workspace.approvals.urgent ?? 0;
   const role = useCurrentRole();
+  const permissions = useCurrentPermissions();
 
   return (
     <Sidebar collapsible="icon">
@@ -57,9 +58,7 @@ export function AppSidebar({ queryClient }: { queryClient: QueryClient }) {
 
       <SidebarContent>
         {navGroups.map((group) => {
-          const items = group.items.filter((item) =>
-            role === "admin" ? !item.userOnly : !item.adminOnly,
-          );
+          const items = group.items.filter((item) => (!item.permission || hasUiPermission(permissions, item.permission)) && (!item.platformOnly || role === "platform_admin"));
           if (items.length === 0) return null;
           return (
           <SidebarGroup key={group.title}>

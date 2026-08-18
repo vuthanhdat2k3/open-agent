@@ -15,6 +15,14 @@ export default function LoginPage() {
   const [loading, setLoading] = React.useState(false);
   const zitadelEnabled = process.env.NEXT_PUBLIC_AUTH_PROVIDER === "zitadel";
 
+  React.useEffect(() => {
+    if (window.location.hostname === "localhost") {
+      const canonical = new URL(window.location.href);
+      canonical.hostname = "127.0.0.1.sslip.io";
+      window.location.replace(canonical.toString());
+    }
+  }, []);
+
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setLoading(true);
@@ -33,5 +41,5 @@ export default function LoginPage() {
     return <div className="mx-auto flex min-h-dvh max-w-md items-center px-4 py-12"><Card className="w-full border-border/80 shadow-3d-floating"><CardHeader className="space-y-3 pb-3 text-center"><div className="mx-auto grid h-12 w-12 place-items-center rounded-xl bg-primary text-primary-foreground shadow-card"><Bot className="h-6 w-6" aria-hidden="true" /></div><div><CardTitle className="text-xl">Sign in to OpenAgent</CardTitle><p className="mt-2 text-sm text-muted-foreground">Authentication is managed by your organization identity provider.</p></div></CardHeader><CardContent><Button type="button" className="h-11 w-full gap-2" onClick={() => { window.location.href = "/api/auth/login"; }}>Continue with organization SSO<ArrowRight className="h-4 w-4" aria-hidden="true" /></Button></CardContent></Card></div>;
   }
 
-  return <div className="mx-auto flex min-h-dvh max-w-md items-center px-4 py-12"><Card className="w-full border-border/80 shadow-3d-floating"><CardHeader className="space-y-3 pb-3 text-center"><div className="mx-auto grid h-12 w-12 place-items-center rounded-xl bg-primary text-primary-foreground shadow-card"><Bot className="h-6 w-6" aria-hidden="true" /></div><div><CardTitle className="text-xl">Welcome to OpenAgent</CardTitle><p className="mt-2 text-sm text-muted-foreground">Sign in to your multi-agent developer platform</p></div></CardHeader><CardContent><form onSubmit={submit} className="space-y-5"><div className="space-y-2"><Label htmlFor="login-email">Email</Label><Input id="login-email" type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="name@company.com" required /></div><div className="space-y-2"><Label htmlFor="login-password">Password</Label><Input id="login-password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></div><Button type="submit" className="h-11 w-full gap-2" loading={loading} disabled={!email || !password}>Sign in{!loading && <ArrowRight className="h-4 w-4" aria-hidden="true" />}</Button><p className="text-center text-sm text-muted-foreground">No account yet? <Link className="font-semibold text-primary underline-offset-4 hover:underline" href="/register">Create account</Link></p></form></CardContent></Card></div>;
+  return <div className="mx-auto flex min-h-dvh max-w-md items-center px-4 py-12"><Card className="w-full border-border/80 shadow-3d-floating"><CardHeader className="space-y-3 pb-3 text-center"><div className="mx-auto grid h-12 w-12 place-items-center rounded-xl bg-primary text-primary-foreground shadow-card"><Bot className="h-6 w-6" aria-hidden="true" /></div><div><CardTitle className="text-xl">Local authentication is disabled</CardTitle><p className="mt-2 text-sm text-muted-foreground">Use the configured organization identity provider to sign in.</p></div></CardHeader></Card></div>;
 }

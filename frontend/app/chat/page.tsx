@@ -910,7 +910,7 @@ export default function ChatPage() {
 
   const setDefaultModel = async (modelId: string) => {
     if (!agentId) return;
-    if (role !== "admin") {
+    if (role !== "admin" && role !== "platform_admin" && role !== "operator") {
       setPendingSessionModelId(modelId);
       toast.success("Model selected for this chat");
       return;

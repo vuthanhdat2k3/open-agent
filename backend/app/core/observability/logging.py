@@ -10,6 +10,8 @@ from structlog.contextvars import bind_contextvars, clear_contextvars
 
 from app.config import get_settings
 
+logger = structlog.get_logger(__name__)
+
 
 def configure_logging() -> None:
     renderer = (
@@ -38,7 +40,11 @@ async def request_context_middleware(
     request_id = request.headers.get("X-Request-Id") or str(uuid.uuid4())
     bind_contextvars(request_id=request_id)
     request.state.request_id = request_id
-    response = await call_next(request)
+    try:
+        response = await call_next(request)
+    except Exception:
+        await logger.aexception("unhandled_request_error", path=request.url.path, method=request.method)
+        raise
     response.headers["X-Request-Id"] = request_id
     for name, value in getattr(request.state, "rate_limit_headers", {}).items():
         response.headers[name] = value

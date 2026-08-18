@@ -50,7 +50,9 @@ class OrgMemberOut(BaseModel):
 
 
 def _public_role(role: Role) -> str:
-    return "admin" if role == Role.org_admin else role.value
+    if get_settings().auth_provider == "local" and role == Role.org_admin:
+        return "admin"
+    return role.value
 
 
 async def _ensure_user_belongs_to_org(
@@ -68,17 +70,34 @@ async def _ensure_user_belongs_to_org(
     return membership
 
 
-@router.post("", response_model=OrgOut, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_permission("orgs:create"))])
+async def require_platform_admin(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    """Authorize instance-level organization provisioning without an active org."""
+    result = await db.execute(
+        select(Membership).join(Organization, Membership.org_id == Organization.id).where(
+            Membership.user_id == current_user.id,
+            Organization.slug == "platform",
+            Membership.role == Role.platform_admin,
+            Membership.lifecycle_status == "active",
+        )
+    )
+    if result.scalar_one_or_none() is None:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only platform_admin can create organizations")
+    return current_user
+
+
+@router.post("", response_model=OrgOut, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_platform_admin)])
 async def create_org(
     body: OrgCreateRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_platform_admin),
     db: AsyncSession = Depends(get_db),
 ):
     if get_settings().auth_provider == "zitadel":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only the platform provisioning authority may create organizations",
-        )
+        # require_platform_admin already validates the instance-level
+        # platform organization by slug; its database id is not stable.
+        pass
     slug = f"{body.name.lower().replace(' ', '-')}-{str(uuid.uuid4())[:8]}"
     org = Organization(name=body.name, slug=slug)
     db.add(org)
@@ -90,6 +109,29 @@ async def create_org(
     await db.commit()
     await db.refresh(org)
     return OrgOut(id=org.id, name=org.name, slug=org.slug, created_at=org.created_at)
+
+
+@router.get("", response_model=list[OrgOut], dependencies=[Depends(require_permission("orgs:read"))])
+async def list_orgs(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Platform admins see all tenants; other roles see only their memberships."""
+    membership_query = select(Membership).where(
+        Membership.user_id == current_user.id,
+        Membership.lifecycle_status == "active",
+    )
+    memberships = (await db.execute(membership_query)).scalars().all()
+    if any(mem.role == Role.platform_admin for mem in memberships):
+        result = await db.execute(select(Organization).order_by(Organization.created_at.desc()))
+        organizations = result.scalars().all()
+    else:
+        org_ids = [mem.org_id for mem in memberships]
+        result = await db.execute(
+            select(Organization).where(Organization.id.in_(org_ids)).order_by(Organization.created_at.desc())
+        )
+        organizations = result.scalars().all()
+    return [OrgOut(id=org.id, name=org.name, slug=org.slug, created_at=org.created_at) for org in organizations]
 
 
 @router.get("/{id}/members", response_model=list[OrgMemberOut], dependencies=[Depends(require_permission("orgs:read"))])
@@ -128,9 +170,12 @@ async def add_org_member(
     res_u = await db.execute(select(User).where(User.email == body.email.lower()))
     invited_user = res_u.scalar_one_or_none()
     if not invited_user:
-        raise HTTPException(
-            404, "User with this email not found. Invite requires registered User."
+        invited_user = User(
+            email=body.email.lower(),
+            display_name=body.email.split("@", 1)[0],
         )
+        db.add(invited_user)
+        await db.flush()
 
     res_mem = await db.execute(
         select(Membership).where(Membership.org_id == id, Membership.user_id == invited_user.id)
@@ -149,6 +194,7 @@ async def add_org_member(
         user_id=invited_user.id,
         role=role_val,
         invited_by_user_id=current_user.id,
+        provisioning_source="invite",
     )
     db.add(mem)
     await db.commit()
