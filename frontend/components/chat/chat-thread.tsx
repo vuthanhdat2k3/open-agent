@@ -85,7 +85,7 @@ export function ChatThread({
   const hasLiveTools = messages.some((m) => m.role === "tool_call" || m.role === "tool_result");
   const hasPendingApproval = messages.some((m) => m.role === "approval" && m.meta?.approvalStatus === "pending");
   const role = useCurrentRole();
-  const canSwitchAgent = role === "admin";
+  const canSwitchAgent = role === "admin" || role === "platform_admin" || role === "operator";
   const canSwitchModel = Boolean(models?.some((model) => model.active));
 
   return (

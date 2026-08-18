@@ -21,6 +21,7 @@ import type {
   Message,
   Model,
   OrganizationQuota,
+  Organization,
   OrgMember,
   Provider,
   ProviderTemplate,
@@ -656,11 +657,44 @@ export function useMe(enabled: boolean = true) {
 // Fails closed: an unresolved role (loading, no membership found for the
 // active org) is treated as "user" rather than "admin" so admin-only UI
 // never flashes open before the real role is known.
-export function useCurrentRole(): "admin" | "user" {
+export function useCurrentRole(): "platform_admin" | "admin" | "operator" | "user" {
   const me = useMe();
-  const orgId = getActiveOrgId();
+  const orgId = me.data?.active_org_id || getActiveOrgId();
   const membership = me.data?.memberships?.find((m) => m.org_id === orgId) ?? me.data?.memberships?.[0];
-  return membership?.role === "admin" ? "admin" : "user";
+  if (membership?.role === "platform_admin") return "platform_admin";
+  if (membership?.role === "admin" || membership?.role === "org_admin") return "admin";
+  if (membership?.role === "operator") return "operator";
+  return "user";
+}
+
+export function useCurrentPermissions(): string[] {
+  const me = useMe();
+  const orgId = me.data?.active_org_id || getActiveOrgId() || me.data?.memberships?.[0]?.org_id;
+  return (orgId && me.data?.permissions_by_org?.[orgId]) || [];
+}
+
+export function hasUiPermission(permissions: string[], permission: string) {
+  return permissions.includes("*") || permissions.includes(permission) || permissions.some((value) => value.endsWith(":*") && permission.startsWith(value.slice(0, -1)));
+}
+
+export function useCan(permission: string) {
+  return hasUiPermission(useCurrentPermissions(), permission);
+}
+
+export function useOrganizations(enabled = true) {
+  return useQuery({
+    queryKey: ["organizations"],
+    enabled,
+    queryFn: () => api.get<Organization[]>("/api/orgs"),
+  });
+}
+
+export function useCreateOrganization() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { name: string }) => api.post<Organization>("/api/orgs", body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["organizations"] }),
+  });
 }
 
 export function useMembers(orgId?: string) {

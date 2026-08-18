@@ -10,19 +10,23 @@ class Settings(BaseSettings):
 
     host: str = "127.0.0.1"
     port: int = 8000
-    cors_origins: str = "http://localhost:3000"
+    cors_origins: str = "http://127.0.0.1.sslip.io:3000"
     runtime: str = "local"
 
     # Human identity authority. Local auth is retained only for disposable
     # development/test fixtures; production must use the ZITADEL provider.
     auth_provider: Literal["local", "zitadel"] = "local"
     zitadel_issuer_url: str = ""
+    zitadel_internal_url: str = ""
     zitadel_project_id: str = ""
     zitadel_client_id: str = ""
     zitadel_client_secret: str = ""
-    zitadel_redirect_uri: str = "http://localhost:8000/api/auth/callback"
-    zitadel_post_logout_redirect_uri: str = "http://localhost:3000/"
+    zitadel_redirect_uri: str = "http://127.0.0.1.sslip.io:8000/api/auth/callback"
+    zitadel_post_logout_redirect_uri: str = "http://127.0.0.1.sslip.io:3000/"
     zitadel_required_org_claim: str = "urn:zitadel:iam:org:id"
+    # Comma-separated bootstrap identities allowed to become platform admins
+    # on their first verified ZITADEL login.
+    platform_admin_emails: str = "zitadel-admin@localhost"
     application_session_idle_minutes: int = 60
     application_session_absolute_hours: int = 12
     application_session_cookie_name: str = "openagent_session"
@@ -240,6 +244,10 @@ class Settings(BaseSettings):
                     "ZITADEL auth is enabled but configuration is missing: " + ", ".join(missing)
                 )
         return self
+
+    @property
+    def platform_admin_email_set(self) -> set[str]:
+        return {item.strip().lower() for item in self.platform_admin_emails.split(",") if item.strip()}
 
 
 @lru_cache

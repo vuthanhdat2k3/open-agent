@@ -11,7 +11,7 @@ import { AppShell } from "@/components/layout/app-shell";
 function AuthGate({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [ready, setReady] = React.useState(false);
-  const publicRoute = pathname === "/login" || pathname === "/register" || pathname.startsWith("/oauth/");
+  const publicRoute = pathname === "/login" || pathname.startsWith("/oauth/");
 
   React.useEffect(() => {
     const unsubscribe = subscribeAuth(() => setReady(true));
@@ -39,7 +39,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     },
   }));
   const pathname = usePathname();
-  const isPublic = pathname === "/login" || pathname === "/register" || pathname.startsWith("/oauth/");
+  const isPublic = pathname === "/login" || pathname.startsWith("/oauth/");
 
   return (
     <html lang="en" className="dark">

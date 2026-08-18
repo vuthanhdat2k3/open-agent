@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { ChevronUp, LogOut, Settings, User } from "lucide-react";
-import { useProfile } from "@/hooks";
+import { useCan, useProfile } from "@/hooks";
 import { setAccessToken } from "@/lib/auth";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -16,6 +16,7 @@ export function UserNav({ collapsed }: { collapsed?: boolean }) {
   const displayName = user?.display_name || user?.email?.split("@")[0] || "User";
   const email = user?.email || "";
   const initial = displayName.charAt(0).toUpperCase();
+  const canManageOrg = useCan("orgs:manage");
 
   async function handleLogout() {
     try { await api.post("/api/auth/logout"); } catch { /* local logout still clears the session */ }
@@ -35,7 +36,7 @@ export function UserNav({ collapsed }: { collapsed?: boolean }) {
         <DropdownMenuLabel><span className="block truncate">{displayName}</span><span className="block truncate text-xs font-normal text-muted-foreground">{email}</span></DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild><Link href="/settings/profile"><User className="h-4 w-4" aria-hidden="true" />Profile Settings</Link></DropdownMenuItem>
-        <DropdownMenuItem asChild><Link href="/settings/members"><Settings className="h-4 w-4" aria-hidden="true" />Organization Settings</Link></DropdownMenuItem>
+        {canManageOrg && <DropdownMenuItem asChild><Link href="/settings/members"><Settings className="h-4 w-4" aria-hidden="true" />Organization Settings</Link></DropdownMenuItem>}
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={() => void handleLogout()} className="text-destructive focus:bg-destructive/10 focus:text-destructive"><LogOut className="h-4 w-4" aria-hidden="true" />Sign Out</DropdownMenuItem>
       </DropdownMenuContent>

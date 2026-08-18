@@ -109,7 +109,7 @@ export default function ApprovalsPage() {
   const urgent = items.filter((item) => item.risk_level === "HIGH").length;
   return (
     <div className="space-y-6">
-      <PageHeader icon={ShieldCheck} title="Approvals" description={role === "admin" ? "Review actions across your organization" : "Review actions that need your decision"} />
+      <PageHeader icon={ShieldCheck} title="Approvals" description={role === "admin" || role === "platform_admin" || role === "operator" ? "Review actions across your organization" : "Review actions that need your decision"} />
       <div className="flex flex-wrap items-center gap-2" aria-label="Approval summary">
         {urgent > 0 && <Badge variant="destructive">{urgent} urgent</Badge>}
         <Badge variant="outline">{items.length} pending</Badge>
