@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import * as React from "react";
 import { Bug, Trash2 } from "lucide-react";
@@ -138,7 +138,7 @@ export function ChatThread({
         role="log"
         aria-live="polite"
         aria-relevant="additions text"
-        className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4 sm:p-6"
+        className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 sm:p-6"
       >
         {messages.length === 0 ? (
           <ChatEmptyState
@@ -152,7 +152,7 @@ export function ChatThread({
             onAttachmentsChange={onAttachmentsChange}
           />
         ) : (
-          <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-3">
+          <div className="mx-auto flex w-full max-w-[var(--dsh-chat-content-width,736px)] flex-1 flex-col gap-4">
             {messages.map((m) => (
               <ChatMessageItem
                 key={m.id}

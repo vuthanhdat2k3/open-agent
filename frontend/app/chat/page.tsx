@@ -785,13 +785,13 @@ export default function ChatPage() {
       />
 
       {messages.length > 0 && (
-        <div className="mx-auto w-full max-w-3xl px-4 pb-4 sm:px-6">
+        <div className="mx-auto w-full max-w-[var(--dsh-chat-content-width,736px)] px-4 pb-4 sm:px-6">
           <ChatInput
             draft={draft}
             onDraftChange={setDraft}
             onSubmit={streaming ? stop : send}
-            streaming={streaming}
             disabled={!agentId || (!streaming && !draft.trim() && attachments.length === 0)}
+            streaming={streaming}
             connectionState={connectionState}
             attachments={attachments}
             onAttachmentsChange={setAttachments}
