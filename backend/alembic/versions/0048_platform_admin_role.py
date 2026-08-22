@@ -2,8 +2,6 @@
 
 from collections.abc import Sequence
 
-from alembic import op
-
 revision: str = "0048_platform_admin_role"
 down_revision: str | None = "0047_service_principals"
 branch_labels: str | Sequence[str] | None = None
