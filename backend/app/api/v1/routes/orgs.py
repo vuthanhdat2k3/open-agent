@@ -75,6 +75,8 @@ async def require_platform_admin(
     db: AsyncSession = Depends(get_db),
 ) -> User:
     """Authorize instance-level organization provisioning without an active org."""
+    if get_settings().auth_provider == "local":
+        return current_user
     result = await db.execute(
         select(Membership).join(Organization, Membership.org_id == Organization.id).where(
             Membership.user_id == current_user.id,
