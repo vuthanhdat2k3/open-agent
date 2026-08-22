@@ -62,6 +62,8 @@
     --info: 0 0% 35%;
     --info-foreground: 0 0% 100%;
     --radius: 0.75rem;
+    --dsh-chat-content-width: 736px;
+    --dsh-specific-bubble: hsl(0 0% 93%);
   }
 
   .dark {
@@ -92,7 +94,19 @@
     --warning-foreground: 0 0% 9%;
     --info: 0 0% 60%;
     --info-foreground: 0 0% 9%;
+    --dsh-chat-content-width: 736px;
+    --dsh-specific-bubble: hsl(0 0% 14%);
   }
+}
+
+@keyframes dsh-turn-status-shimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: -150% 0; }
+}
+
+@keyframes dsh-reasoning-row-sweep {
+  0% { left: -300px; }
+  90%, 100% { left: 100%; }
 }
 
 @layer base {

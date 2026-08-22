@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import * as React from "react";
 import { Copy, Check, ShieldCheck, ShieldX, ShieldAlert, Bot, XCircle } from "lucide-react";
@@ -43,23 +43,28 @@ function ChatMessageItemBase({ message: m, debug, onApprovalDecision }: ChatMess
     }
   }, []);
 
-  // 1. User message
+  // 1. User message (DeepSeek Harness User_Bubble: r22, max-w-[525px], 16px/24px font)
   if (m.role === "user") {
     return (
-      <div key={m.id} className="group flex max-w-[80%] flex-col items-end gap-1 self-end">
-        <div className="cursor-text select-text whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-secondary px-4 py-2.5 text-sm leading-relaxed text-secondary-foreground">
-          {m.content || "…"}
+      <div key={m.id} className="group flex w-full flex-col items-end gap-1.5 self-end">
+        <div className="flex max-w-[min(525px,85%)] flex-col items-end gap-1">
+          <div
+            className="cursor-text select-text whitespace-pre-wrap break-words rounded-[22px] px-4 py-2.5 text-[15px] leading-6 text-foreground shadow-sm"
+            style={{ backgroundColor: "var(--dsh-specific-bubble)" }}
+          >
+            {m.content || "…"}
+          </div>
+          <button
+            type="button"
+            onClick={() => void copyText(m.content)}
+            className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none group-hover:opacity-100"
+            aria-label={copied ? "User message copied" : "Copy user message"}
+            title={copied ? "Copied" : "Copy message"}
+          >
+            {copied ? <Check className="h-3 w-3" aria-hidden="true" /> : <Copy className="h-3 w-3" aria-hidden="true" />}
+            {copied ? "Copied" : "Copy"}
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={() => void copyText(m.content)}
-          className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none group-hover:opacity-100"
-          aria-label={copied ? "User message copied" : "Copy user message"}
-          title={copied ? "Copied" : "Copy message"}
-        >
-          {copied ? <Check className="h-3 w-3" aria-hidden="true" /> : <Copy className="h-3 w-3" aria-hidden="true" />}
-          {copied ? "Copied" : "Copy"}
-        </button>
       </div>
     );
   }
