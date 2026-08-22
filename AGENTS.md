@@ -108,6 +108,7 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 | `fix/alembic-revision-length` | `G:\open-agent-worktrees\fix-alembic-revision-length` | Keep Alembic revision IDs within PostgreSQL VARCHAR(32) | Codex |
 | `feat/enterprise-authz-hardening` | `G:\open-agent-worktrees\enterprise-authz-hardening-spec` | Production enterprise identity and authorization hardening | Codex |
 | `feat/enterprise-rag-ingestion` | `G:\open-agent-worktrees\enterprise-rag-ingestion` | Durable enterprise file ingestion through backend worker and internal RAG REST | Codex |
+| `feat/chat-ui-projection` | `G:\open-agent-worktrees\chat-ui-projection` | Chat UI projection layer (dsh-style blocks, run timeline, delegation tree) | Sisyphus |
 
 ## 8. Quy tắc chung khác (áp dụng mọi branch/worktree)
 
