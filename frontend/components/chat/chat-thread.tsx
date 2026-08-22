@@ -1,17 +1,18 @@
-"use client";
+﻿"use client";
 
 import * as React from "react";
 import { Bug, Trash2 } from "lucide-react";
 import { useCurrentRole } from "@/hooks";
 import { Button } from "@/components/ui/button";
-import { ChatMessageItem, type UIMessage } from "@/components/chat/chat-message-item";
+import { ChatMessageItem } from "@/components/chat/chat-message-item";
 import { ChatEmptyState } from "@/components/chat/chat-empty-state";
 import { ChatStatusRow } from "@/components/chat/chat-status-row";
 import { ChatHeaderControls } from "@/components/chat/chat-header-controls";
+import type { ChatMessage } from "@/lib/chat/projection";
 import type { Agent, Model, Session, UploadedFile } from "@/types";
 
 interface ChatThreadProps {
-  messages: UIMessage[];
+  messages: ChatMessage[];
   debug: boolean;
   streaming: boolean;
   statusPhase: string;
@@ -44,11 +45,6 @@ interface ChatThreadProps {
   onThreadScroll: () => void;
 }
 
-// Full-bleed thread surface (no card chrome — the page itself is the
-// surface now, matching the moon-chat full-screen aesthetic). Agent/model/
-// session switching lives inline in the header (ChatHeaderControls) instead
-// of a sidebar column. All streaming state is owned and mutated by the
-// page; this component only renders what it is given.
 export function ChatThread({
   messages,
   debug,
@@ -82,8 +78,7 @@ export function ChatThread({
   bottomRef,
   onThreadScroll,
 }: ChatThreadProps) {
-  const hasLiveTools = messages.some((m) => m.role === "tool_call" || m.role === "tool_result");
-  const hasPendingApproval = messages.some((m) => m.role === "approval" && m.meta?.approvalStatus === "pending");
+  const hasPendingApproval = messages.some((m) => m.role === "approval" && m.status === "pending");
   const role = useCurrentRole();
   const canSwitchAgent = role === "admin" || role === "platform_admin" || role === "operator";
   const canSwitchModel = Boolean(models?.some((model) => model.active));
@@ -122,7 +117,15 @@ export function ChatThread({
             <Bug className="h-3.5 w-3.5" aria-hidden="true" /> Debug
           </Button>
           {messages.length > 0 && (
-            <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={onClearMessages} aria-label="Clear conversation" title="Clear conversation">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-muted-foreground hover:text-destructive"
+              onClick={onClearMessages}
+              aria-label="Clear conversation"
+              title="Clear conversation"
+            >
               <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
             </Button>
           )}
@@ -151,7 +154,12 @@ export function ChatThread({
         ) : (
           <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-3">
             {messages.map((m) => (
-              <ChatMessageItem key={m.id} message={m} debug={debug} hasLiveTools={hasLiveTools} onApprovalDecision={onApprovalDecision} />
+              <ChatMessageItem
+                key={m.id}
+                message={m}
+                debug={debug}
+                onApprovalDecision={onApprovalDecision}
+              />
             ))}
             {(streaming || statusPhase === "approval") && !hasPendingApproval && (
               <ChatStatusRow statusPhase={statusPhase} effectiveModel={effectiveModel} />

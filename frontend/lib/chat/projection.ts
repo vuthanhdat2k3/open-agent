@@ -272,22 +272,22 @@ export function applyChatEvent(
     case "message_done": {
       // A run can die before emitting any content (crash after bootstrap);
       // still materialize the assistant so stats/noAnswer render.
-      ensureMsg();
+      const assistant = ensureMsg();
       // Finalize every transient flag — the run is over, nothing streams.
-      msg.blocks = msg.blocks.map((b): AssistantBlock => {
+      assistant.blocks = assistant.blocks.map((b): AssistantBlock => {
         if (b.kind === "text" || b.kind === "reasoning") return { ...b, streaming: false };
         if (b.kind === "tool_call" && b.status === "running") return { ...b, status: "done" };
         return b;
       });
       const usage = (d.usage ?? {}) as Record<string, any>;
-      const liveToolCount = msg.blocks.filter((b) => b.kind === "tool_call").length;
+      const liveToolCount = assistant.blocks.filter((b) => b.kind === "tool_call").length;
       const toolCount = Array.isArray(d.tools) ? d.tools.length : liveToolCount;
-      const hasText = msg.blocks.some((b) => b.kind === "text" && b.content.trim().length > 0);
-      const hasReasoning = msg.blocks.some((b) => b.kind === "reasoning" && b.content.trim().length > 0);
+      const hasText = assistant.blocks.some((b) => b.kind === "text" && b.content.trim().length > 0);
+      const hasReasoning = assistant.blocks.some((b) => b.kind === "reasoning" && b.content.trim().length > 0);
       if (!hasText) {
         // Explicit empty anchor so the bubble position stays visible; the
         // stats line carries the "no answer" hint for the renderer.
-        msg.blocks.push({ kind: "text", id: genId(), content: "", streaming: false });
+        assistant.blocks.push({ kind: "text", id: genId(), content: "", streaming: false });
       }
       const stats: StatsBlock = {
         kind: "stats",
@@ -301,9 +301,9 @@ export function applyChatEvent(
         finalization: strOrUndef(d.finalization),
         noAnswer: !hasText && !hasReasoning,
       };
-      const statsIdx = msg.blocks.findIndex((b) => b.kind === "stats");
-      if (statsIdx >= 0) msg.blocks[statsIdx] = { ...stats, id: (msg.blocks[statsIdx] as StatsBlock).id };
-      else msg.blocks.push(stats);
+      const statsIdx = assistant.blocks.findIndex((b) => b.kind === "stats");
+      if (statsIdx >= 0) assistant.blocks[statsIdx] = { ...stats, id: (assistant.blocks[statsIdx] as StatsBlock).id };
+      else assistant.blocks.push(stats);
       side.terminal = true;
       side.phase = null;
       const sid = strOrUndef(d.session_id);
