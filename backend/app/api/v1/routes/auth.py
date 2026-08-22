@@ -29,8 +29,8 @@ from app.core.auth.jwt import (
 )
 from app.core.auth.oauth import oauth
 from app.core.auth.password import hash_password, verify_password
-from app.core.observability.audit import log_action
 from app.core.authz.policy import PERMISSIONS
+from app.core.observability.audit import log_action
 from app.db.base import utc_now
 from app.db.session import get_db
 from app.dependencies import get_current_user

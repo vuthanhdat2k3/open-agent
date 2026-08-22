@@ -16,7 +16,9 @@ services:
   api:
     environment:
       OPENAGENT_DB_URL: postgresql+asyncpg://openagent:openagent@postgres:5432/openagent
+      OPENAGENT_AUTH_PROVIDER: local
 
   worker:
     environment:
       OPENAGENT_DB_URL: postgresql+asyncpg://openagent:openagent@postgres:5432/openagent
+      OPENAGENT_AUTH_PROVIDER: local

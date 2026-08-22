@@ -4,9 +4,26 @@ import * as React from "react";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { api, ApiError, streamSSE, streamSSEGet } from "@/lib/api";
-import { useAgents, useCurrentRole, useSessions, useSessionMessages, useDeleteSession, useModels, useChatRun, useApprovals, useUpdateAgent } from "@/hooks";
+import {
+  useAgents,
+  useCurrentRole,
+  useSessions,
+  useSessionMessages,
+  useDeleteSession,
+  useModels,
+  useChatRun,
+  useApprovals,
+  useUpdateAgent,
+} from "@/hooks";
 import { useChatStore } from "@/stores";
-import { type UIMessage } from "@/components/chat/chat-message-item";
+import {
+  type ChatMessage,
+  type RunProjectionState,
+  createRunProjection,
+  applyChatEvent,
+  messagesFromPersisted,
+  type PersistedMessageRow,
+} from "@/lib/chat/projection";
 import { ChatThread } from "@/components/chat/chat-thread";
 import { ChatInput } from "@/components/chat/chat-input";
 import type { ConnectionState } from "@/components/chat/chat-connection-banner";
@@ -28,18 +45,13 @@ export default function ChatPage() {
     setActiveRun,
     setPendingModel,
   } = useChatStore();
-  // Survives reloads now, so the model the user picked still applies to the
-  // next message instead of silently falling back to the agent default.
+
   const pendingSessionModelId = (agentId && pendingModelIdByAgent[agentId]) || "";
   const setPendingSessionModelId = React.useCallback(
     (modelId: string) => setPendingModel(agentId, modelId || null),
     [agentId, setPendingModel],
   );
   const chatRun = useChatRun(activeRunId);
-
-  // Destructured so the identity stays stable across polls: callbacks that
-  // depend on the whole query object would change every 2s and defeat the
-  // message-level memoisation in the thread.
   const { refetch: refetchChatRun } = chatRun;
   const approvals = useApprovals(Boolean(activeRunId));
   const sessions = useSessions();
@@ -49,66 +61,40 @@ export default function ChatPage() {
   const selectedSession = sessions.data?.find((s) => s.id === sessionId);
   const [draft, setDraft] = React.useState("");
   const [attachments, setAttachments] = React.useState<UploadedFile[]>([]);
-  const [messages, setMessages] = React.useState<UIMessage[]>([]);
-  // Live message store mutated during a stream, flushed to React state via
-  // requestAnimationFrame so per-token events coalesce into one render per
-  // frame instead of an O(n²) re-map for every token.
-  const liveRef = React.useRef<UIMessage[]>([]);
+
+  // Projection state
+  const [messages, setMessages] = React.useState<ChatMessage[]>([]);
+  const projectionRef = React.useRef<RunProjectionState>(createRunProjection(""));
+
   const rafRef = React.useRef<number | null>(null);
-  const composeRef = React.useRef<Map<number, string>>(new Map());
-  const deltaArgsRef = React.useRef<Map<number, string>>(new Map());
-  // Typewriter drip buffer (declared here, used further down) — some
-  // providers stream multi-word chunks per delta rather than single tokens;
-  // this decouples display speed from provider chunk size. Hoisted above the
-  // session/agent reset effects below so they can clear it directly.
+
+  // Typewriter reveal buffer (maps blockId -> full & shown count)
   const typewriterRef = React.useRef<
-    Map<string, { field: "content" | "reasoning"; full: string; shown: number }>
+    Map<string, { full: string; shown: number }>
   >(new Map());
   const typewriterRafRef = React.useRef<number | null>(null);
+
   const [streaming, setStreamingState] = React.useState(false);
-  // Guards the messages-loading effect: while a stream is live we must not let
-  // a `refetch` wipe the partially-built UI.
   const streamingRef = React.useRef(false);
-  // streamingRef must never lag one tick behind the streaming state: the
-  // messages-merge effect below reads streamingRef.current synchronously to
-  // decide whether a background refetch may overwrite the live optimistic
-  // transcript. Updating it only from a useEffect(() => { ... }, [streaming])
-  // means any effect that runs in the same commit before that effect (e.g.
-  // right after send() calls setStreaming(true)) still sees the previous
-  // value and can wipe out the just-sent user message + assistant
-  // placeholder with stale DB data. Setting the ref inline here removes that
-  // window entirely.
   const setStreaming = React.useCallback((value: boolean) => {
     streamingRef.current = value;
     setStreamingState(value);
   }, []);
+
   const [phase, setPhase] = React.useState<string>("");
   const [debug, setDebug] = React.useState(false);
   const [connectionState, setConnectionState] = React.useState<ConnectionState>("connected");
   const bottomRef = React.useRef<HTMLDivElement>(null);
-  // Stable id of the in-flight assistant message for the *current* run. `send`
-  // seeds it from Date.now(); a reattach seeds it from the run id so a rebuild
-  // is deterministic. The shared event reducer reads it.
   const assistantIdRef = React.useRef<string>("");
-  // Tracks which run we already (re)attached a follow-stream to, so the
-  // reattach effect runs at most once per run.
   const attachedRunRef = React.useRef<string | null>(null);
-  // Set by `send` the moment the POST bootstrap reports chat_run_start. It
-  // lets the follow-stream effect open immediately instead of waiting for
-  // useChatRun's first response just to learn a status we already know is
-  // live — that round trip was pure added time-to-first-token.
   const justStartedRunRef = React.useRef<string | null>(null);
   const terminalRunRef = React.useRef<string | null>(null);
   const terminalSyncRef = React.useRef(false);
   const reattachAbortRef = React.useRef<AbortController | null>(null);
   const lastEventSeqRef = React.useRef(0);
-  // Tracks whether the user is pinned to the bottom of the thread so we only
-  // auto-scroll while they are reading along (no yanking when they scroll up).
   const nearBottomRef = React.useRef(true);
   const scrollHostRef = React.useRef<HTMLDivElement>(null);
 
-  // A newly-created session is announced by the stream before the sessions
-  // query has refreshed. Keep the optimistic messages alive during that gap.
   const pendingSession = Boolean(
     agentReady && streaming && (!sessionId || !selectedSession),
   );
@@ -121,8 +107,6 @@ export default function ChatPage() {
     if (!activeRunId || !(chatRun.error instanceof ApiError) || chatRun.error.status !== 404) {
       return;
     }
-    // A run can disappear after an API restart, or be an old localStorage
-    // value. Stop polling it and let the next send establish a fresh run.
     reattachAbortRef.current?.abort();
     reattachAbortRef.current = null;
     attachedRunRef.current = null;
@@ -137,6 +121,106 @@ export default function ChatPage() {
     agentReady && sessions.isSuccess && sessionBelongsToAgent,
   );
   const { refetch: refetchMessages } = messagesQuery;
+
+  const commit = React.useCallback(() => {
+    rafRef.current = null;
+    setMessages([...projectionRef.current.messages]);
+  }, []);
+
+  const touch = React.useCallback(() => {
+    if (rafRef.current == null) rafRef.current = requestAnimationFrame(commit);
+  }, [commit]);
+
+  // Reveal buffer (Typewriter smoothing)
+  const TYPEWRITER_CHARS_PER_FRAME = 3;
+
+  const applyTypewriterFrame = React.useCallback(() => {
+    typewriterRafRef.current = null;
+    let dirty = false;
+
+    for (const [blockId, buf] of typewriterRef.current) {
+      if (buf.shown >= buf.full.length) {
+        typewriterRef.current.delete(blockId);
+        continue;
+      }
+      buf.shown = Math.min(buf.full.length, buf.shown + TYPEWRITER_CHARS_PER_FRAME);
+      const shownText = buf.full.slice(0, buf.shown);
+
+      // Find block in projection state and update content
+      const msgs = projectionRef.current.messages;
+      for (let mi = 0; mi < msgs.length; mi++) {
+        const m = msgs[mi];
+        if (m.role === "assistant") {
+          const bi = m.blocks.findIndex((b) => b.id === blockId);
+          if (bi >= 0) {
+            const b = m.blocks[bi];
+            if (b.kind === "text" || b.kind === "reasoning") {
+              const updatedBlocks = [...m.blocks];
+              updatedBlocks[bi] = { ...b, content: shownText };
+              msgs[mi] = { ...m, blocks: updatedBlocks };
+              dirty = true;
+            }
+            break;
+          }
+        }
+      }
+    }
+
+    if (dirty) commit();
+    if (typewriterRef.current.size > 0) {
+      typewriterRafRef.current = requestAnimationFrame(applyTypewriterFrame);
+    }
+  }, [commit]);
+
+  const feedTypewriter = React.useCallback(
+    (blockId: string, fullContent: string) => {
+      const existing = typewriterRef.current.get(blockId);
+      if (existing) {
+        existing.full = fullContent;
+      } else {
+        typewriterRef.current.set(blockId, { full: fullContent, shown: 0 });
+      }
+      if (typewriterRafRef.current == null) {
+        typewriterRafRef.current = requestAnimationFrame(applyTypewriterFrame);
+      }
+    },
+    [applyTypewriterFrame],
+  );
+
+  const flushTypewriter = React.useCallback(() => {
+    if (typewriterRafRef.current != null) {
+      cancelAnimationFrame(typewriterRafRef.current);
+      typewriterRafRef.current = null;
+    }
+    for (const [blockId, buf] of typewriterRef.current) {
+      const msgs = projectionRef.current.messages;
+      for (let mi = 0; mi < msgs.length; mi++) {
+        const m = msgs[mi];
+        if (m.role === "assistant") {
+          const bi = m.blocks.findIndex((b) => b.id === blockId);
+          if (bi >= 0) {
+            const b = m.blocks[bi];
+            if (b.kind === "text" || b.kind === "reasoning") {
+              const updatedBlocks = [...m.blocks];
+              updatedBlocks[bi] = { ...b, content: buf.full };
+              msgs[mi] = { ...m, blocks: updatedBlocks };
+            }
+            break;
+          }
+        }
+      }
+    }
+    typewriterRef.current.clear();
+  }, []);
+
+  const resetTypewriter = React.useCallback(() => {
+    if (typewriterRafRef.current != null) {
+      cancelAnimationFrame(typewriterRafRef.current);
+      typewriterRafRef.current = null;
+    }
+    typewriterRef.current.clear();
+  }, []);
+
   const syncPersistedMessages = React.useCallback(async () => {
     if (!sessionId) return;
     terminalSyncRef.current = true;
@@ -144,50 +228,36 @@ export default function ChatPage() {
       for (let attempt = 0; attempt < 8; attempt += 1) {
         const result = await refetchMessages();
         if (!result.isSuccess || !result.data) return;
-        const persisted: UIMessage[] = result.data.map((m) => ({
-          id: m.id,
-          role: m.role,
-          content: m.content,
-          meta: m.meta,
-        }));
-        const persistedHasAssistant = persisted.some(
-          (message) => message.role === "assistant" && message.content.trim(),
-        );
-        const liveHasAssistant = liveRef.current.some(
-          (message) => message.role === "assistant" && message.content.trim(),
-        );
-        // message_done can reach the browser just before the transaction that
-        // writes the assistant message commits. Keep the already-rendered live
-        // answer and retry briefly instead of replacing it with user-only
-        // history (which used to make the answer appear only after reload).
+        const persisted = messagesFromPersisted(result.data as PersistedMessageRow[]);
+        const persistedHasAssistant = persisted.some((m) => m.role === "assistant");
+        const liveHasAssistant = projectionRef.current.messages.some((m) => m.role === "assistant");
+
         if (!persistedHasAssistant && liveHasAssistant) {
-          // message_done can reach the browser before the assistant transaction
-          // commits. Keep the live answer/fallback visible; if persistence is
-          // still catching up, the next poll will reconcile it.
           if (attempt < 7) {
             await new Promise((resolve) => window.setTimeout(resolve, 150));
             continue;
           }
           return;
         }
-        // A provider can fail before the backend persists any transcript. Keep
-        // the optimistic user/error messages visible instead of replacing them
-        // with an empty history.
-        if (persisted.length === 0 && liveRef.current.length > 0) {
+
+        if (persisted.length === 0 && projectionRef.current.messages.length > 0) {
           return;
         }
+
         if (rafRef.current != null) {
           cancelAnimationFrame(rafRef.current);
           rafRef.current = null;
         }
-        liveRef.current = persisted;
+        resetTypewriter();
+        projectionRef.current = createRunProjection(assistantIdRef.current, persisted);
         setMessages(persisted);
         return;
       }
     } finally {
       terminalSyncRef.current = false;
     }
-  }, [refetchMessages, sessionId]);
+  }, [refetchMessages, resetTypewriter, sessionId]);
+
   const { refetch: refetchSessions } = sessions;
 
   React.useEffect(() => {
@@ -206,71 +276,48 @@ export default function ChatPage() {
   React.useEffect(() => {
     if (!agentReady || !sessions.isSuccess || !sessionId) return;
     const session = sessions.data?.find((s) => s.id === sessionId);
-    // A streamed first message creates its session on the backend. The
-    // session list can briefly lag behind the session_start event; do not
-    // discard the persisted run while that new session is being indexed.
     if (!session && (activeRunId || pendingSession)) return;
     if (!session || session.agent_id !== agentId) {
-      liveRef.current = [];
-      typewriterRef.current.clear();
+      projectionRef.current = createRunProjection("");
+      resetTypewriter();
       setMessages([]);
       setSession(null);
       setActiveRun(null);
     }
-  }, [activeRunId, agentId, agentReady, pendingSession, sessionId, sessions.data, sessions.isSuccess, setActiveRun, setSession]);
+  }, [activeRunId, agentId, agentReady, pendingSession, resetTypewriter, sessionId, sessions.data, sessions.isSuccess, setActiveRun, setSession]);
 
   React.useEffect(() => {
     if (!agentReady || pendingSession) return;
     if (!sessionId || !sessionBelongsToAgent) {
-      liveRef.current = [];
-      typewriterRef.current.clear();
+      projectionRef.current = createRunProjection("");
+      resetTypewriter();
       setMessages([]);
-      composeRef.current.clear();
-      deltaArgsRef.current.clear();
       return;
     }
-    // While a stream is live (send or reattached follow) the partial UI is
-    // authoritative; a background refetch must not overwrite it.
     if (messagesQuery.data) {
       if (messagesQuery.data.length === 0 && chatRun.data?.status === "failed" && chatRun.data.error) {
-        // Provider failures can leave the durable transcript empty. The run
-        // effect below owns the visible user/error messages in that case.
         return;
       }
-      const initial: UIMessage[] = messagesQuery.data.map((m) => ({
-        id: m.id,
-        role: m.role,
-        content: m.content,
-        meta: m.meta,
-      }));
-      const hasPendingApproval = liveRef.current.some(
-        (message) => message.role === "approval" && message.meta?.approvalStatus === "pending",
+      const initial = messagesFromPersisted(messagesQuery.data as PersistedMessageRow[]);
+      const hasPendingApproval = projectionRef.current.messages.some(
+        (m) => m.role === "approval" && m.status === "pending",
       );
       const terminalSyncInFlight = terminalSyncRef.current;
       if (!streamingRef.current && !hasPendingApproval && !terminalSyncInFlight) {
-        // Keep the live approval card while the run is waiting for a human
-        // decision; approval events are run-scoped and are not part of the
-        // persisted message transcript. Once the approval is decided, the
-        // persisted transcript becomes authoritative so stale tool cards and
-        // placeholders are replaced by the final assistant response.
-        liveRef.current = initial;
+        projectionRef.current = createRunProjection(assistantIdRef.current, initial);
         setMessages(initial);
       } else {
-        // Recovery may start before history finishes loading. Merge the
-        // persisted transcript behind the already-replayed live events.
-        const existing = liveRef.current;
+        const existing = projectionRef.current.messages;
         const merged = [...initial];
         for (const message of existing) {
-          const duplicate = merged.some(
-            (item) => item.role === message.role && item.content === message.content,
-          );
+          const duplicate = merged.some((item) => item.id === message.id);
           if (!duplicate) merged.push(message);
         }
-        liveRef.current = merged;
+        projectionRef.current = createRunProjection(assistantIdRef.current, merged);
         setMessages(merged);
       }
     }
-  }, [agentReady, chatRun.data, messagesQuery.data, pendingSession, sessionBelongsToAgent, sessionId, streaming]);
+  }, [agentReady, chatRun.data, messagesQuery.data, pendingSession, resetTypewriter, sessionBelongsToAgent, sessionId, streaming]);
 
   React.useEffect(() => {
     const run = chatRun.data;
@@ -292,14 +339,15 @@ export default function ChatPage() {
       if (run.status !== "waiting_approval") {
         if (run.status === "failed" && run.error) {
           const message = run.message || "Your request";
-          const current = liveRef.current;
+          const current = [...projectionRef.current.messages];
           if (!current.some((item) => item.role === "user")) {
             current.unshift({ id: `u-${run.id}`, role: "user", content: message });
           }
           if (!current.some((item) => item.role === "error")) {
-            current.push({ id: `e-${run.id}`, role: "error", content: run.error, meta: { error: true } });
+            current.push({ id: `e-${run.id}`, role: "error", content: run.error });
           }
-          setMessages([...current]);
+          projectionRef.current = createRunProjection(assistantIdRef.current, current);
+          setMessages(current);
         }
         if (!alreadyTerminal) void syncPersistedMessages();
       }
@@ -309,8 +357,6 @@ export default function ChatPage() {
     }
   }, [chatRun.data, sessionId, setSession, setStreaming, syncPersistedMessages]);
 
-  // Smooth auto-scroll: follow the bottom only while the user is already
-  // reading along, so streaming tokens don't yank them up if they scroll back.
   React.useEffect(() => {
     if (nearBottomRef.current && bottomRef.current) {
       bottomRef.current.scrollIntoView({ block: "end" });
@@ -324,282 +370,72 @@ export default function ChatPage() {
     nearBottomRef.current = distance < 80;
   }, []);
 
-
   const currentAgent = agents.data?.find((a) => a.id === agentId);
   const currentAgentModel = models.data?.find((m) => m.id === currentAgent?.model_id);
   const effectiveModelId = pendingSessionModelId || currentAgent?.model_id || "";
   const effectiveModel = models.data?.find((m) => m.id === effectiveModelId);
   const statusPhase = phase || (streaming ? "answering" : "");
 
-  const commit = React.useCallback(() => {
-    rafRef.current = null;
-    setMessages([...liveRef.current]);
-  }, []);
-
-  const touch = React.useCallback(() => {
-    if (rafRef.current == null) rafRef.current = requestAnimationFrame(commit);
-  }, [commit]);
-
-  // Typewriter drip: some providers stream multi-word chunks per delta
-  // (observed: 3-5 words/~20 chars every ~90ms) rather than single tokens.
-  // Appending each chunk whole makes text visibly jump in clumps. This
-  // buffers the *received* text separately per field and reveals it to the
-  // DOM a few characters per animation frame, so display speed is decoupled
-  // from provider chunk size — a fast provider still looks like smooth
-  // character-by-character typing instead of racing ahead in bursts.
-  // Characters revealed per frame. At 60fps this is ~900 chars/s, comfortably
-  // faster than any real provider's token rate, so the buffer only smooths
-  // bursts — it never falls behind and queues up a backlog.
-  const TYPEWRITER_CHARS_PER_FRAME = 3;
-
-  const applyTypewriterFrame = React.useCallback(() => {
-    typewriterRafRef.current = null;
-    let dirty = false;
-    for (const [id, buf] of typewriterRef.current) {
-      if (buf.shown >= buf.full.length) {
-        typewriterRef.current.delete(id);
-        continue;
-      }
-      buf.shown = Math.min(buf.full.length, buf.shown + TYPEWRITER_CHARS_PER_FRAME);
-      const i = liveRef.current.findIndex((x) => x.id === id);
-      if (i >= 0) {
-        const cur = liveRef.current[i];
-        const shownText = buf.full.slice(0, buf.shown);
-        liveRef.current[i] =
-          buf.field === "content"
-            ? { ...cur, content: shownText }
-            : { ...cur, meta: { ...cur.meta, reasoning: shownText } };
-        dirty = true;
-      }
-    }
-    if (dirty) commit();
-    if (typewriterRef.current.size > 0) {
-      typewriterRafRef.current = requestAnimationFrame(applyTypewriterFrame);
-    }
-  }, [commit]);
-
-  const feedTypewriter = React.useCallback(
-    (id: string, field: "content" | "reasoning", appended: string) => {
-      const key = `${id}:${field}`;
-      const existing = typewriterRef.current.get(key);
-      if (existing) {
-        existing.full += appended;
-      } else {
-        // Start from empty, not from whatever is already committed to
-        // `messages` — the caller keeps the full text out of the message
-        // object until the drip reveals it, so there is exactly one source
-        // of "how much has actually been shown".
-        typewriterRef.current.set(key, { field, full: appended, shown: 0 });
-      }
-      if (typewriterRafRef.current == null) {
-        typewriterRafRef.current = requestAnimationFrame(applyTypewriterFrame);
-      }
-    },
-    [applyTypewriterFrame],
-  );
-
-  const flushTypewriter = React.useCallback((id?: string) => {
-    for (const [key, buf] of typewriterRef.current) {
-      if (id && !key.startsWith(`${id}:`)) continue;
-      buf.shown = buf.full.length;
-      const i = liveRef.current.findIndex((x) => x.id === key.split(":")[0]);
-      if (i >= 0) {
-        const cur = liveRef.current[i];
-        liveRef.current[i] =
-          buf.field === "content"
-            ? { ...cur, content: buf.full }
-            : { ...cur, meta: { ...cur.meta, reasoning: buf.full } };
-      }
-      typewriterRef.current.delete(key);
-    }
-  }, []);
-
-  // Shared SSE event reducer for chat runs. Used by both `send` (live POST
-  // stream) and the reattach follow-stream, so a reload rebuilds the exact
-  // same UI the user would have seen live. `assistantIdRef` carries the id of
-  // the in-flight assistant message for the current run.
+  // Shared event handler using pure projection reducer
   const handleChatEvent = React.useCallback(
-    (ev: { event: string; data: any }) => {
-      const d = ev.data;
-      const msgs = liveRef.current;
-      const assistantId = assistantIdRef.current;
-      const ensureAssistant = () => {
-        const i = msgs.findIndex((x) => x.id === assistantId);
-        if (i >= 0) return i;
-        msgs.push({ id: assistantId, role: "assistant", content: "" });
-        return msgs.length - 1;
-      };
-      if (ev.event === "message_start") {
-        setPhase("thinking");
-      } else if (ev.event === "reasoning") {
-        setPhase("thinking");
-        const i = ensureAssistant();
-        feedTypewriter(msgs[i].id, "reasoning", d.content ?? "");
-      } else if (ev.event === "token") {
-        setPhase("");
-        const i = ensureAssistant();
-        feedTypewriter(msgs[i].id, "content", d.delta ?? d.content ?? "");
-      } else if (ev.event === "tool_call_delta") {
-        const idx = d.index ?? 0;
-        const prev = deltaArgsRef.current.get(idx) ?? "";
-        deltaArgsRef.current.set(idx, prev + (d.arguments ?? ""));
-        let toolId = composeRef.current.get(idx);
-        if (!toolId) {
-          toolId = `tc-${Date.now()}-${idx}`;
-          composeRef.current.set(idx, toolId);
-          msgs.push({
-            id: toolId,
-            role: "tool_call",
-            content: deltaArgsRef.current.get(idx) ?? "",
-            meta: { toolName: d.name || "tool" },
-          });
-          // A brand-new tool card must land on screen before any later event
-          // in this same batch (e.g. tool_result arriving in the same SSE
-          // read/flush) can replace it — flush synchronously instead of
-          // waiting for the shared end-of-handler touch()/RAF below.
-          commit();
-        } else {
-          const ti = msgs.findIndex((x) => x.id === toolId);
-          if (ti >= 0) msgs[ti] = { ...msgs[ti], content: deltaArgsRef.current.get(idx) ?? "" };
-        }
-      } else if (ev.event === "tool_call") {
-        setPhase(`tool:${d.name}`);
-        const idx = d.index ?? 0;
-        const toolId = composeRef.current.get(idx);
-        const card = {
-          id: toolId ?? `tc-${Date.now()}-${idx}`,
-          role: "tool_call",
-          content: JSON.stringify(d.args ?? d.arguments ?? {}, null, 2),
-          meta: { toolName: d.name },
-        };
-        if (toolId) {
-          const ti = msgs.findIndex((x) => x.id === toolId);
-          if (ti >= 0) msgs[ti] = card;
-          else msgs.push(card);
-        } else {
-          composeRef.current.set(idx, card.id);
-          msgs.push(card);
-        }
-        // Same reasoning as tool_call_delta above: the "Running" state must
-        // be committed to React state before a fast tool's tool_result (which
-        // can arrive in the same network read, i.e. the same synchronous
-        // pass through this reducer) overwrites/appends past it.
-        commit();
-      } else if (ev.event === "tool_progress") {
-        setPhase(`tool:${d.name}`);
-        const toolId = composeRef.current.get(d.index ?? 0);
-        const line = d.line ?? "";
-        if (toolId) {
-          const ti = msgs.findIndex((x) => x.id === toolId);
-          if (ti >= 0) {
-            const cur = msgs[ti];
-            const progress = (cur.meta?.progress ?? "") + line;
-            msgs[ti] = { ...cur, meta: { ...cur.meta, progress } };
+    (ev: { event: string; data?: any }) => {
+      const { state: nextState, side } = applyChatEvent(projectionRef.current, ev);
+      projectionRef.current = nextState;
+
+      // Typewriter smoothing for live streaming text and reasoning blocks
+      if (ev.event === "token" || ev.event === "reasoning") {
+        const assistant = nextState.messages.find((m) => m.role === "assistant");
+        if (assistant && assistant.role === "assistant") {
+          const lastBlock = assistant.blocks[assistant.blocks.length - 1];
+          if (lastBlock && (lastBlock.kind === "text" || lastBlock.kind === "reasoning")) {
+            feedTypewriter(lastBlock.id, lastBlock.content);
           }
         }
-      } else if (ev.event === "tool_result") {
-        setPhase("result");
-        msgs.push({
-          id: `tr-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-          role: "tool_result",
-          content: `${d.result ?? d.output ?? ""}`,
-          meta: { toolName: d.name },
-        });
       } else if (ev.event === "message_done") {
-        setPhase("");
-        flushTypewriter(assistantId);
-        const hasContent = Boolean(String(d.content ?? "").trim());
-        const filtered = msgs
-          .filter((x) => x.role !== "tool_call" && x.role !== "tool_result")
-          .map((x) =>
-            x.id === assistantId
-              ? {
-                  ...x,
-                  content: hasContent ? d.content : "No answer was generated. Please try again.",
-                  meta: {
-                    ...x.meta,
-                    in_tokens: d.usage?.input_tokens,
-                    out_tokens: d.usage?.output_tokens,
-                    cost_usd: d.cost_usd,
-                    latency_ms: d.latency_ms,
-                    tools: d.tools,
-                    model: d.model,
-                    finalization: d.finalization ?? (hasContent ? "direct" : "incomplete"),
-                    ...(d.reasoning ? { reasoning: d.reasoning } : {}),
-                  },
-                }
-              : x,
-          );
-        liveRef.current = filtered;
-        commit();
+        flushTypewriter();
+      }
+
+      // Execute side effects
+      if (side.phase !== undefined) setPhase(side.phase ?? "");
+      if (side.terminal) {
         setStreaming(false);
-        if (d.session_id) setSession(d.session_id);
         void syncPersistedMessages();
         void refetchSessions();
-      } else if (ev.event === "error") {
-        setPhase("");
-        const message = String(d.message ?? "Stream error");
-        if (!msgs.some((x) => x.role === "error")) {
-          msgs.push({ id: `e-${Date.now()}`, role: "error", content: message, meta: { error: true } });
-          commit();
-        }
+      }
+      if (side.sessionId) setSession(side.sessionId);
+      if (side.errorMessage) {
         setStreaming(false);
-        toast.error(message);
-      } else if (ev.event === "approval_required") {
-        setPhase("approval");
-        if (!msgs.some((x) => x.role === "approval" && x.meta?.approvalId === d.approval_id)) {
-          msgs.push({
-            id: `approval-${d.approval_id}`,
-            role: "approval",
-            content: "",
-            meta: {
-              approvalId: d.approval_id,
-              approvalTool: d.tool_name,
-              approvalArgs: d.args_snapshot ?? {},
-              approvalStatus: "pending",
-            },
-          });
-        }
-      } else if (ev.event === "approval_rejected") {
-        setPhase("");
-        const i = msgs.findIndex((x) => x.meta?.approvalId === d.approval_id);
-        if (i >= 0) msgs[i] = { ...msgs[i], meta: { ...msgs[i].meta, approvalStatus: "rejected" } };
-      } else if (ev.event === "budget_exceeded") {
-        setPhase("");
-        toast.error(d.reason ?? "Run budget exceeded");
-      } else if (ev.event === "replay_diverged") {
-        setPhase("");
+        toast.error(side.errorMessage);
+      }
+      if (side.budgetReason) {
+        toast.error(side.budgetReason);
+      }
+      if (side.diverged) {
         toast.error("Run replay diverged and was stopped");
       }
-      touch();
+
+      // For tool calls and structural additions, commit immediately for crisp feedback
+      if (ev.event === "tool_call" || ev.event === "tool_call_delta" || ev.event === "message_done" || ev.event === "error") {
+        commit();
+      } else {
+        touch();
+      }
     },
     [commit, feedTypewriter, flushTypewriter, refetchSessions, setSession, setStreaming, syncPersistedMessages, touch],
   );
 
   const chatRunLoaded = Boolean(chatRun.data);
 
-  // Stream recovery: after a reload / tab switch while a run is still in
-  // flight, rebuild the exact UI from the durable event log and keep following
-  // it live. The run id (and thus the log) survives in localStorage, so the
-  // client reconnects instead of waiting blind until message_done.
+  // Stream recovery / follow effect
   React.useEffect(() => {
     if (!chatHydrated || !agentReady) return;
     if (!activeRunId) return;
     if (attachedRunRef.current === activeRunId) return;
     const run = chatRun.data;
-    // A run we just started locally is known-live: attach without waiting for
-    // the first useChatRun response. On the reload-recovery path there is no
-    // such marker, so we still need the status read before touching anything.
     const justStarted = justStartedRunRef.current === activeRunId;
     if (!run && !justStarted) return;
     const TERMINAL = ["succeeded", "failed", "diverged", "cancelled", "waiting_approval"];
     if (run && TERMINAL.includes(run.status)) {
-      // The run already finished by the time this effect saw its first
-      // chatRun read (fast model + slow first poll tick). The other effect
-      // that normally flips streaming off and refetches messages only runs
-      // on the next chatRun poll (up to useChatRun's 2s interval) — without
-      // this, the UI would sit in "streaming" for that whole window even
-      // though the answer has been sitting in the DB the entire time.
       if (terminalRunRef.current !== run.id) {
         terminalRunRef.current = run.id;
         setStreaming(false);
@@ -613,18 +449,15 @@ export default function ChatPage() {
     }
     attachedRunRef.current = activeRunId;
     setStreaming(true);
-    // Only reseed the in-flight assistant id on the recovery path. `send`
-    // already seeded it and pushed the matching placeholder bubble;
-    // overwriting it here would orphan that placeholder and make the streamed
-    // tokens build a second, duplicate assistant message.
+
     if (!justStarted) {
       assistantIdRef.current = `a-${activeRunId}`;
       lastEventSeqRef.current = 0;
-      composeRef.current.clear();
-      deltaArgsRef.current.clear();
+      projectionRef.current = createRunProjection(assistantIdRef.current);
     }
-    if (liveRef.current.length === 0 && run?.message) {
-      liveRef.current = [{ id: `u-${activeRunId}`, role: "user", content: run.message }];
+    if (projectionRef.current.messages.length === 0 && run?.message) {
+      const initialUser: ChatMessage[] = [{ id: `u-${activeRunId}`, role: "user", content: run.message }];
+      projectionRef.current = createRunProjection(assistantIdRef.current, initialUser);
       commit();
     }
 
@@ -650,9 +483,6 @@ export default function ChatPage() {
           if (terminalSeen) break;
         } catch {
           if (stopped || ctrl.signal.aborted) break;
-          // The follow stream dropped mid-run (network blip, server restart).
-          // Surface a non-blocking banner while the backoff loop retries;
-          // it clears itself on the next successful attempt above.
           setConnectionState("reconnecting");
         }
         if (stopped || ctrl.signal.aborted) break;
@@ -675,66 +505,77 @@ export default function ChatPage() {
     sessionBelongsToAgent,
     activeRunId,
     chatRun.data?.status,
-    // Re-run when the run status changes so approval resume can reattach the
-    // SSE stream after the task leaves waiting_approval. The event cursor is
-    // preserved across reconnects, so replay remains deduplicated.
-    // Terminal transitions are also handled by the sibling chatRun effect.
-    /*
-    // status. Keying on status made every running→succeeded transition tear
-    // this effect down (cleanup aborts the SSE connection) and immediately
-    // re-run it, which opened a second follow stream for the same run — both
-    // replaying from after_seq=0, so every event was reduced twice. Terminal
-    // transitions are owned by the sibling chatRun effect instead. */
     chatRunLoaded,
+    commit,
+    handleChatEvent,
     syncPersistedMessages,
+    setStreaming,
   ]);
 
   React.useEffect(() => {
     const approval = approvals.data?.find((item) => item.run_id === activeRunId);
-    if (!approval || liveRef.current.some((item) => item.meta?.approvalId === approval.id)) return;
-    liveRef.current.push({
+    if (!approval || projectionRef.current.messages.some((item) => item.role === "approval" && item.approvalId === approval.id)) return;
+    const approvalMsg: ChatMessage = {
       id: `approval-${approval.id}`,
       role: "approval",
-      content: "",
-      meta: {
-        approvalId: approval.id,
-        approvalTool: approval.tool_name ?? undefined,
-        approvalArgs: approval.args_snapshot,
-        approvalStatus: approval.status === "expired" ? "rejected" : approval.status,
-      },
-    });
+      approvalId: approval.id,
+      toolName: approval.tool_name ?? undefined,
+      argsSnapshot: approval.args_snapshot,
+      status: approval.status === "expired" ? "rejected" : approval.status,
+    };
+    projectionRef.current = {
+      ...projectionRef.current,
+      messages: [...projectionRef.current.messages, approvalMsg],
+    };
     commit();
     setPhase("approval");
   }, [activeRunId, approvals.data, commit]);
 
-  const handleApprovalDecision = React.useCallback(async (messageId: string, decision: "approved" | "rejected") => {
-    const message = liveRef.current.find((item) => item.id === messageId);
-    const approvalId = message?.meta?.approvalId;
-    if (!approvalId) return;
-    liveRef.current = liveRef.current.map((item) => item.id === messageId
-      ? { ...item, meta: { ...item.meta, approvalStatus: decision } }
-      : item);
-    commit();
-    try {
-      const decided = await api.post<{ status: "pending" | "approved" | "rejected" | "expired" }>(`/api/approvals/${approvalId}/decide`, { decision });
-      const authoritative = decided.status === "expired" ? "rejected" : decided.status;
-      liveRef.current = liveRef.current.map((item) => item.id === messageId
-        ? { ...item, meta: { ...item.meta, approvalStatus: authoritative } }
-        : item);
+  const handleApprovalDecision = React.useCallback(
+    async (messageId: string, decision: "approved" | "rejected") => {
+      const message = projectionRef.current.messages.find((item) => item.id === messageId);
+      if (!message || message.role !== "approval") return;
+      const approvalId = message.approvalId;
+
+      projectionRef.current = {
+        ...projectionRef.current,
+        messages: projectionRef.current.messages.map((item) =>
+          item.id === messageId && item.role === "approval" ? { ...item, status: decision } : item,
+        ),
+      };
       commit();
-      attachedRunRef.current = null;
-      terminalRunRef.current = null;
-      setStreaming(true);
-      setPhase("thinking");
-      await refetchChatRun();
-    } catch (error) {
-      liveRef.current = liveRef.current.map((item) => item.id === messageId
-        ? { ...item, meta: { ...item.meta, approvalStatus: "pending" } }
-        : item);
-      commit();
-      toast.error(error instanceof Error ? error.message : "Could not decide approval");
-    }
-  }, [commit, refetchChatRun, setStreaming]);
+
+      try {
+        const decided = await api.post<{ status: "pending" | "approved" | "rejected" | "expired" }>(
+          `/api/approvals/${approvalId}/decide`,
+          { decision },
+        );
+        const authoritative = decided.status === "expired" ? "rejected" : decided.status;
+        projectionRef.current = {
+          ...projectionRef.current,
+          messages: projectionRef.current.messages.map((item) =>
+            item.id === messageId && item.role === "approval" ? { ...item, status: authoritative } : item,
+          ),
+        };
+        commit();
+        attachedRunRef.current = null;
+        terminalRunRef.current = null;
+        setStreaming(true);
+        setPhase("thinking");
+        await refetchChatRun();
+      } catch (error) {
+        projectionRef.current = {
+          ...projectionRef.current,
+          messages: projectionRef.current.messages.map((item) =>
+            item.id === messageId && item.role === "approval" ? { ...item, status: "pending" } : item,
+          ),
+        };
+        commit();
+        toast.error(error instanceof Error ? error.message : "Could not decide approval");
+      }
+    },
+    [commit, refetchChatRun, setStreaming],
+  );
 
   const abortRef = React.useRef<AbortController | null>(null);
   const pageUnloadingRef = React.useRef(false);
@@ -749,25 +590,25 @@ export default function ChatPage() {
 
   const send = async () => {
     if ((!draft.trim() && attachments.length === 0) || !agentId) return;
-    // Attachments are already uploaded (ChatComposer does that on pick); the
-    // agent sees them as a plain-text reference by name, since the chat API
-    // has no attachment field of its own — tool-capable agents can look
-    // uploaded files up by name from there.
     const attachmentNote = attachments.length
       ? `\n\n[Attached file${attachments.length > 1 ? "s" : ""}: ${attachments.map((f) => f.original_name).join(", ")}]`
       : "";
     const sentDraft = (draft.trim() ? draft : "Please review the attached file(s).") + attachmentNote;
-    const userMsg: UIMessage = { id: `u-${Date.now()}`, role: "user", content: sentDraft };
+    const userMsg: ChatMessage = { id: `u-${Date.now()}`, role: "user", content: sentDraft };
     const assistantId = `a-${Date.now()}`;
     assistantIdRef.current = assistantId;
     lastEventSeqRef.current = 0;
-    liveRef.current = [...liveRef.current, userMsg, { id: assistantId, role: "assistant", content: "" }];
+
+    const initialMessages: ChatMessage[] = [
+      ...projectionRef.current.messages,
+      userMsg,
+      { role: "assistant", id: assistantId, blocks: [] },
+    ];
+    projectionRef.current = createRunProjection(assistantId, initialMessages);
     commit();
     setDraft("");
     setAttachments([]);
     setStreaming(true);
-    composeRef.current.clear();
-    deltaArgsRef.current.clear();
 
     const payload: Record<string, any> = {
       agent_id: agentId,
@@ -778,11 +619,7 @@ export default function ChatPage() {
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     };
     if (pendingSessionModelId) payload.model_id = pendingSessionModelId;
-    // The POST creates the durable Task and then emits chat_run_start. Do not
-    // publish the run id before that frame: useChatRun would poll a row that
-    // does not exist yet and produce a visible 404 race. Once the bootstrap
-    // frame is received, the id is persisted and reload recovery remains
-    // available.
+
     attachedRunRef.current = null;
     setActiveRun(null);
 
@@ -792,16 +629,7 @@ export default function ChatPage() {
         `/api/chat`,
         payload,
         (ev) => {
-          // session_start / chat_run_start only arrive on the live POST stream
-          // (not on the reattach follow-stream); handle them, then delegate
-          // everything else to the shared reducer used by both paths.
           if (ev.event === "session_start") {
-            // Keep the model selection. Clearing it here made the choice
-            // apply to exactly one message and then silently revert to the
-            // agent default, which is the opposite of how ChatGPT/Claude
-            // behave: a picked model stays picked for subsequent messages.
-            // Sending it on every request also keeps the session's pinned
-            // release in step with the selection.
             setSession(ev.data.session_id);
             void refetchSessions();
             return;
@@ -809,9 +637,6 @@ export default function ChatPage() {
           if (ev.event === "chat_run_start") {
             justStartedRunRef.current = ev.data.run_id;
             setActiveRun(ev.data.run_id);
-            // The POST response only bootstraps the durable run. The
-            // reattach effect owns the GET follow stream that carries live
-            // tool_call/tool_progress/tool_result events.
             attachedRunRef.current = null;
             setStreaming(true);
             setPhase("thinking");
@@ -829,10 +654,6 @@ export default function ChatPage() {
       }
     } finally {
       abortRef.current = null;
-      // The POST/SSE connection only bootstraps a durable run. Its state is
-      // controlled by useChatRun polling, including after a page reload.
-      // Do not clear streaming here: the bootstrap request ending is not the
-      // same thing as the agent run finishing.
     }
   };
 
@@ -844,14 +665,6 @@ export default function ChatPage() {
     setConnectionState("connected");
   };
 
-  const resetTypewriter = () => {
-    if (typewriterRafRef.current != null) {
-      cancelAnimationFrame(typewriterRafRef.current);
-      typewriterRafRef.current = null;
-    }
-    typewriterRef.current.clear();
-  };
-
   const stop = () => {
     const runId = activeRunId;
     abortRef.current?.abort();
@@ -861,9 +674,7 @@ export default function ChatPage() {
     setPhase("");
     setActiveRun(null);
     if (runId) {
-      void api.post(`/api/chat/runs/${runId}/cancel`).catch(() => {
-        // The local stream is already stopped; a missing/finished run needs no UI recovery.
-      });
+      void api.post(`/api/chat/runs/${runId}/cancel`).catch(() => {});
     }
   };
 
@@ -872,7 +683,7 @@ export default function ChatPage() {
     abortRef.current?.abort();
     resetReattach();
     resetTypewriter();
-    liveRef.current = [];
+    projectionRef.current = createRunProjection("");
     setMessages([]);
     setSession(null);
     setActiveRun(null);
@@ -888,7 +699,7 @@ export default function ChatPage() {
     abortRef.current?.abort();
     resetReattach();
     resetTypewriter();
-    liveRef.current = [];
+    projectionRef.current = createRunProjection("");
     setMessages([]);
     setActiveRun(null);
     setSession(nextSessionId);
@@ -900,7 +711,7 @@ export default function ChatPage() {
     abortRef.current?.abort();
     resetReattach();
     resetTypewriter();
-    liveRef.current = [];
+    projectionRef.current = createRunProjection("");
     setMessages([]);
     setSession(null);
     setActiveRun(null);
@@ -928,8 +739,6 @@ export default function ChatPage() {
       toast.error(error instanceof Error ? error.message : "Could not update agent model");
     }
   };
-
-  const hasLiveTools = messages.some((x) => x.role === "tool_call" || x.role === "tool_result");
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -992,4 +801,3 @@ export default function ChatPage() {
     </div>
   );
 }
-
