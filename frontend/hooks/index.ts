@@ -20,6 +20,7 @@ import type {
   McpServer,
   Message,
   Model,
+  ModelTestResult,
   OrganizationQuota,
   Organization,
   OrgMember,
@@ -335,6 +336,12 @@ export function useUpdateModel() {
   return useMutation({
     mutationFn: ({ id, ...body }: any) => api.put<Model>(`/api/models/${id}`, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["models"] }),
+  });
+}
+
+export function useTestModel() {
+  return useMutation({
+    mutationFn: (id: string) => api.post<ModelTestResult>(`/api/models/${id}/test`),
   });
 }
 

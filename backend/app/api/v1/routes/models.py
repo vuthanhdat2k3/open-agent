@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_current_org_id, get_db, require_permission
-from app.schemas.model import ModelCreate, ModelOut, ModelUpdate
+from app.schemas.model import ModelCreate, ModelOut, ModelTestResult, ModelUpdate
 from app.services.model_service import ModelService
 
 router = APIRouter(
@@ -74,3 +74,15 @@ async def delete_model(
     except ValueError as e:
         raise HTTPException(400, str(e))
     return {"ok": True}
+
+
+@router.post("/{id}/test", response_model=ModelTestResult, dependencies=[Depends(require_permission("models:read"))])
+async def test_model(
+    id: str,
+    org_id: str = Depends(get_current_org_id),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        return await ModelService(db).test_chat(org_id, id)
+    except ValueError as e:
+        raise HTTPException(404, str(e))

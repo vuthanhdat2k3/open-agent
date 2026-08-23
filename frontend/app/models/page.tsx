@@ -2,8 +2,8 @@
 
 import * as React from "react";
 import { toast } from "sonner";
-import { Cpu, Plus, Pencil, Trash2, Search } from "lucide-react";
-import { useModels, useCreateModel, useDeleteModel, useUpdateModel, useProviders } from "@/hooks";
+import { Cpu, Plus, Pencil, Trash2, Search, Zap } from "lucide-react";
+import { useModels, useCreateModel, useDeleteModel, useUpdateModel, useTestModel, useProviders } from "@/hooks";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +22,7 @@ export default function ModelsPage() {
   const [query, setQuery] = React.useState("");
   const [activeFilter, setActiveFilter] = React.useState<string>("all");
   const [providerFilter, setProviderFilter] = React.useState<string>("all");
+  const [testingModelId, setTestingModelId] = React.useState<string | null>(null);
   const activeOption = activeFilter === "all" ? undefined : activeFilter === "active";
   const providerOption = providerFilter === "all" ? undefined : providerFilter;
 
@@ -35,6 +36,29 @@ export default function ModelsPage() {
   const create = useCreateModel();
   const del = useDeleteModel();
   const update = useUpdateModel();
+  const testModel = useTestModel();
+
+  const handleTestModel = async (model: Model) => {
+    setTestingModelId(model.id);
+    try {
+      const res = await testModel.mutateAsync(model.id);
+      if (res.ok) {
+        toast.success(`${model.display_name} is active & chat ready!`, {
+          description: `Response: "${res.sample_response || "OK"}" (${res.latency_ms}ms)`,
+        });
+      } else {
+        toast.error(`Test failed for ${model.display_name}`, {
+          description: res.message || "No response received",
+        });
+      }
+    } catch (err: any) {
+      toast.error(`Failed to test ${model.display_name}`, {
+        description: err.message || "Connection error",
+      });
+    } finally {
+      setTestingModelId(null);
+    }
+  };
 
   const toggleEnabled = async (model: Model) => {
     try {
@@ -106,7 +130,27 @@ export default function ModelsPage() {
                 <div className="flex items-center gap-1"><Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-foreground" aria-label={`Edit ${model.display_name}`} onClick={() => { setEditTarget(model); setEditOpen(true); }}><Pencil className="h-4 w-4" /></Button><ConfirmDialog trigger={<Button size="icon" variant="ghost" className="h-10 w-10 text-muted-foreground hover:text-destructive" aria-label={`Delete ${model.display_name}`}><Trash2 className="h-4 w-4" /></Button>} title={`Delete ${model.display_name}?`} description="This model configuration will be permanently removed." confirmLabel="Delete model" destructive onConfirm={() => del.mutateAsync(model.id).then(() => undefined)} /></div>
               </div>
               <div className="mt-4 flex flex-wrap gap-1.5"><Badge variant="outline" className="border-border/60 font-mono text-muted-foreground">{provider?.key ?? "provider"}</Badge><Badge variant="outline" className="border-border/60 font-mono text-muted-foreground">{model.tier}</Badge><Badge variant="outline" className="border-border/60 text-muted-foreground">{model.source}</Badge>{model.active ? <Badge variant="success" className="text-[10px] font-semibold uppercase tracking-wider">active</Badge> : <Badge variant="secondary" className="text-[10px] font-semibold uppercase tracking-wider">inactive</Badge>}</div>
-              <div className="mt-4 flex items-center justify-between rounded-lg border border-border/50 bg-muted/20 p-2.5"><div><p className="text-xs font-medium">Use in Agent / Chat</p><p className="text-[10px] text-muted-foreground">{model.active ? "Available for selection" : "Not available until active"}</p></div><Button size="sm" variant={model.enabled ? "default" : "outline"} onClick={() => void toggleEnabled(model)}>{model.enabled ? "Enabled" : "Enable"}</Button></div>
+              <div className="mt-4 flex items-center justify-between rounded-lg border border-border/50 bg-muted/20 p-2.5">
+                <div>
+                  <p className="text-xs font-medium">Use in Agent / Chat</p>
+                  <p className="text-[10px] text-muted-foreground">{model.active ? "Available for selection" : "Not available until active"}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1 text-xs"
+                    disabled={testingModelId === model.id}
+                    onClick={() => void handleTestModel(model)}
+                  >
+                    <Zap className={`h-3.5 w-3.5 text-amber-500 ${testingModelId === model.id ? "animate-spin" : ""}`} />
+                    {testingModelId === model.id ? "Testing..." : "Test Chat"}
+                  </Button>
+                  <Button size="sm" variant={model.enabled ? "default" : "outline"} onClick={() => void toggleEnabled(model)}>
+                    {model.enabled ? "Enabled" : "Enable"}
+                  </Button>
+                </div>
+              </div>
               <div className="mt-4 space-y-1.5 border-t border-border/40 pt-3 font-mono text-[11px] text-muted-foreground"><div className="flex justify-between"><span>context:</span><span className="font-semibold text-foreground">{model.context_window.toLocaleString()}</span></div><div className="flex justify-between"><span>input / 1k:</span><span className="font-semibold text-foreground">${model.input_cost_per_1k}</span></div><div className="flex justify-between"><span>output / 1k:</span><span className="font-semibold text-foreground">${model.output_cost_per_1k}</span></div>{model.last_seen_at && <div className="flex justify-between gap-3"><span>last seen:</span><span className="truncate text-foreground">{new Date(model.last_seen_at).toLocaleString()}</span></div>}</div>
             </Card>;
           })}
