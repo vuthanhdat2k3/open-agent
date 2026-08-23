@@ -20,8 +20,18 @@ export default function ModelsPage() {
   const [editOpen, setEditOpen] = React.useState(false);
   const [editTarget, setEditTarget] = React.useState<Model | null>(null);
   const [query, setQuery] = React.useState("");
-  const { data, isLoading, isError, refetch } = useModels(true, { withInactive: true, q: query });
-  const providers = useProviders(open);
+  const [activeFilter, setActiveFilter] = React.useState<string>("all");
+  const [providerFilter, setProviderFilter] = React.useState<string>("all");
+  const activeOption = activeFilter === "all" ? undefined : activeFilter === "active";
+  const providerOption = providerFilter === "all" ? undefined : providerFilter;
+
+  const { data, isLoading, isError, refetch } = useModels(true, {
+    withInactive: true,
+    active: activeOption,
+    provider: providerOption,
+    q: query,
+  });
+  const providers = useProviders(true);
   const create = useCreateModel();
   const del = useDeleteModel();
   const update = useUpdateModel();
@@ -44,9 +54,42 @@ export default function ModelsPage() {
         </Dialog>
       } />
 
-      <div className="relative max-w-xl">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search model name or provider" className="pl-9" aria-label="Search models" />
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="relative flex-1 max-w-md">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search model name or provider" className="pl-9" aria-label="Search models" />
+        </div>
+
+        <div className="flex items-center gap-3">
+          <div className="w-40">
+            <select
+              value={activeFilter}
+              onChange={(e) => setActiveFilter(e.target.value)}
+              className="flex h-10 w-full cursor-pointer rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground shadow-inner-edge transition-colors hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              aria-label="Filter by active status"
+            >
+              <option value="all">All Status</option>
+              <option value="active">Active Only</option>
+              <option value="inactive">Inactive Only</option>
+            </select>
+          </div>
+
+          <div className="w-48">
+            <select
+              value={providerFilter}
+              onChange={(e) => setProviderFilter(e.target.value)}
+              className="flex h-10 w-full cursor-pointer rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground shadow-inner-edge transition-colors hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              aria-label="Filter by provider"
+            >
+              <option value="all">All Providers</option>
+              {providers.data?.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name || p.key}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
       </div>
 
       <Dialog open={editOpen} onOpenChange={setEditOpen}>

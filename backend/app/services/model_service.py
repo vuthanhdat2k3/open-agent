@@ -65,9 +65,15 @@ class ModelService:
         return await self.repo.delete(org_id, id)
 
     async def list(
-        self, org_id: str, *, with_inactive: bool = False, query: str | None = None
+        self,
+        org_id: str,
+        *,
+        with_inactive: bool = False,
+        active: bool | None = None,
+        query: str | None = None,
+        provider_id: str | None = None,
     ) -> list[Model]:
-        rows = await self.repo.list_all(org_id, query=query)
+        rows = await self.repo.list_all(org_id, query=query, provider_id=provider_id)
         changed = False
         for row in rows:
             old_active = row.active
@@ -76,7 +82,9 @@ class ModelService:
                 changed = True
         if changed:
             await self.db.commit()
-        if not with_inactive:
+        if active is not None:
+            rows = [row for row in rows if row.active is active]
+        elif not with_inactive:
             rows = [row for row in rows if row.active]
         return rows
 

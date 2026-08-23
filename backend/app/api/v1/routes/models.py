@@ -14,11 +14,21 @@ router = APIRouter(
 @router.get("", response_model=list[ModelOut], dependencies=[Depends(require_permission("models:read"))])
 async def list_models(
     with_inactive: bool = False,
+    active: bool | None = None,
+    provider: str | None = None,
+    provider_id: str | None = None,
     q: str | None = None,
     org_id: str = Depends(get_current_org_id),
     db: AsyncSession = Depends(get_db),
 ):
-    return await ModelService(db).list(org_id, with_inactive=with_inactive, query=q)
+    selected_provider = provider or provider_id
+    return await ModelService(db).list(
+        org_id,
+        with_inactive=with_inactive,
+        active=active,
+        query=q,
+        provider_id=selected_provider,
+    )
 
 
 @router.post("", response_model=ModelOut, status_code=201, dependencies=[Depends(require_permission("models:manage"))])
