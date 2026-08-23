@@ -288,14 +288,29 @@ export function useTestProvider() {
 
 export function useModels(
   enabled: boolean = true,
-  options: { withInactive?: boolean; q?: string } = {},
+  options: {
+    withInactive?: boolean;
+    active?: boolean;
+    provider?: string;
+    providerId?: string;
+    q?: string;
+  } = {},
 ) {
   const params = new URLSearchParams();
   if (options.withInactive) params.set("with_inactive", "true");
+  if (options.active !== undefined) params.set("active", String(options.active));
+  const prov = options.provider || options.providerId;
+  if (prov?.trim()) params.set("provider", prov.trim());
   if (options.q?.trim()) params.set("q", options.q.trim());
   const suffix = params.toString() ? `?${params.toString()}` : "";
   return useQuery({
-    queryKey: ["models", options.withInactive ?? false, options.q ?? ""],
+    queryKey: [
+      "models",
+      options.withInactive ?? false,
+      options.active ?? "all",
+      prov ?? "all",
+      options.q ?? "",
+    ],
     queryFn: () => api.get<Model[]>(`/api/models${suffix}`),
     enabled,
   });
