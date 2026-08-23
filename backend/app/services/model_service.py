@@ -93,6 +93,7 @@ class ModelService:
 
     async def test_chat(self, org_id: str, id: str) -> dict:
         import time
+
         from app.core.providers.factory import build_driver
         from app.schemas.model import ModelTestResult
 
