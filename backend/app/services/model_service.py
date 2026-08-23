@@ -90,3 +90,54 @@ class ModelService:
 
     async def get(self, org_id: str, id: str) -> Model | None:
         return await self.repo.get(org_id, id)
+
+    async def test_chat(self, org_id: str, id: str) -> dict:
+        import time
+
+        from app.core.providers.factory import build_driver
+        from app.schemas.model import ModelTestResult
+
+        model = await self.repo.get(org_id, id)
+        if model is None:
+            raise ValueError("model not found")
+
+        prov = await self.provider_repo.get(org_id, model.provider_id)
+        if prov is None:
+            raise ValueError("provider not found")
+
+        try:
+            driver = build_driver(prov, model)
+        except Exception as exc:
+            return ModelTestResult(
+                ok=False,
+                latency_ms=0,
+                message=f"Failed to initialize driver: {exc}",
+                model_name=model.name,
+            ).model_dump()
+
+        test_messages = [{"role": "user", "content": "Hi, are you ready? Reply 'OK'."}]
+        started_at = time.monotonic()
+        try:
+            res = await driver.complete(
+                test_messages,
+                tools=[],
+                temperature=0.0,
+                max_tokens=20,
+            )
+            elapsed_ms = max(1, int((time.monotonic() - started_at) * 1000))
+            text_response = (res.content or "").strip()
+            return ModelTestResult(
+                ok=True,
+                latency_ms=elapsed_ms,
+                message="Model is responding successfully",
+                sample_response=text_response[:100] if text_response else "OK",
+                model_name=model.name,
+            ).model_dump()
+        except Exception as exc:
+            elapsed_ms = max(1, int((time.monotonic() - started_at) * 1000))
+            return ModelTestResult(
+                ok=False,
+                latency_ms=elapsed_ms,
+                message=str(exc),
+                model_name=model.name,
+            ).model_dump()

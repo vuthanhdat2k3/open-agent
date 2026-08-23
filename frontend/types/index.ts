@@ -39,6 +39,14 @@ export interface ProviderTestResult {
   message: string;
 }
 
+export interface ModelTestResult {
+  ok: boolean;
+  latency_ms: number;
+  message: string;
+  sample_response?: string | null;
+  model_name?: string | null;
+}
+
 export interface Model {
   id: string;
   provider_id: string;

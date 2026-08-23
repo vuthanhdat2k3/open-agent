@@ -59,3 +59,11 @@ class ModelOut(BaseModel):
     supports_reasoning: bool | None = None
     supports_vision: bool | None = None
     created_at: datetime
+
+
+class ModelTestResult(BaseModel):
+    ok: bool
+    latency_ms: int
+    message: str
+    sample_response: str | None = None
+    model_name: str | None = None
