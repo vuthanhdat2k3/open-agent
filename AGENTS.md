@@ -95,20 +95,12 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 | Branch | Worktree path | Phạm vi/task | Agent/người phụ trách |
 |---|---|---|---|
 | `dev` | `G:\open-agent` | Nhánh tích hợp chính — không code trực tiếp ở đây | — |
-| `feat/runtime-date-time` | `G:\open-agent-worktrees\runtime-date-time` | Runtime date/time context for all agents and workflows | Codex |
-| `fix/gmail-incremental-sync` | `G:\open-agent-worktrees\gmail-incremental-sync` | Gmail incremental sync and Approval Center UI | Codex |
-| `docs/agent-email-classification-spec` | `G:\open-agent-worktrees\agent-email-classification-spec` | Agent-based email classification, cutover, latency and cost specification | Codex |
-| `fix/gmail-ingest-timezone` | `G:\open-agent-worktrees\gmail-ingest-timezone` | Normalize Gmail timestamps before inbound email persistence | Codex |
-| `feat/smart-inbox-production` | `G:\open-agent-worktrees\smart-inbox-production` | Production Smart Inbox list, search, filters and pagination | Codex |
-| `feat/delegated-approval-fix` | `G:\open-agent-worktrees\delegated-approval-fix` | Sửa approval propagation/resume cho delegated sub-agents | Agent khác |
-| `feat/ci-job-scheduling-hardening` | `G:\open-agent-worktrees\ci-job-scheduling-hardening` | Hardening scheduler/worker production: generic lease, retry/backoff, dead-letter, worker health | Kiro |
-| `feat/langfuse-compose` | `G:\open-agent-worktrees\langfuse-compose` | Integrate Langfuse services into the main Docker Compose stack | Codex |
-| `feat/enterprise-rbac-authz` | `G:\open-agent-worktrees\enterprise-rbac-authz` | Enterprise RBAC authorization and ownership hardening — merged (PR #70), worktree/branch not yet cleaned up | Codex |
 | `docs/enterprise-rbac-zitadel-design` | `G:\open-agent-worktrees\enterprise-rbac-zitadel-design` | Enterprise RBAC, invite-only provisioning, and ZITADEL SSO design | Codex |
-| `fix/alembic-revision-length` | `G:\open-agent-worktrees\fix-alembic-revision-length` | Keep Alembic revision IDs within PostgreSQL VARCHAR(32) | Codex |
-| `feat/enterprise-authz-hardening` | `G:\open-agent-worktrees\enterprise-authz-hardening-spec` | Production enterprise identity and authorization hardening | Codex |
-| `feat/enterprise-rag-ingestion` | `G:\open-agent-worktrees\enterprise-rag-ingestion` | Durable enterprise file ingestion through backend worker and internal RAG REST | Codex |
-| `feat/chat-ui-projection` | `G:\open-agent-worktrees\chat-ui-projection` | Chat UI projection layer (dsh-style blocks, run timeline, delegation tree) | Sisyphus |
+
+> 2026-08-23: Đã dọn dẹp toàn bộ worktree/branch có PR đã merge vào `dev`
+> (#70–#80: enterprise-rbac-authz, enterprise-authz-hardening, enterprise-rag-ingestion,
+> chat-ui-projection, alembic-revision-length, models-filter, model-test-chat,
+> rag-runtime-git, workspace-run-file) cùng các dòng stale của worktree không còn tồn tại.
 
 ## 8. Quy tắc chung khác (áp dụng mọi branch/worktree)
 
