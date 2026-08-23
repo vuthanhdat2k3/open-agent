@@ -118,14 +118,12 @@ class ModelService:
         test_messages = [{"role": "user", "content": "Hi, are you ready? Reply 'OK'."}]
         started_at = time.monotonic()
         try:
-            res = await driver.complete(
+            content, _usage, _tool_calls = await driver.complete(
                 test_messages,
-                tools=[],
                 temperature=0.0,
-                max_tokens=20,
             )
             elapsed_ms = max(1, int((time.monotonic() - started_at) * 1000))
-            text_response = (res.content or "").strip()
+            text_response = (content or "").strip()
             return ModelTestResult(
                 ok=True,
                 latency_ms=elapsed_ms,
