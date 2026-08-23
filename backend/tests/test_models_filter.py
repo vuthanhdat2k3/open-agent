@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -84,3 +84,40 @@ async def test_model_filtering(db_session: AsyncSession):
     openai_active = await service.list(org_id, provider_id=p1.id, active=True)
     assert len(openai_active) == 1
     assert openai_active[0].name == "gpt-4o"
+
+
+@pytest.mark.asyncio
+async def test_model_chat_connectivity(db_session: AsyncSession, monkeypatch):
+    org_id = gen_id()
+    p1 = Provider(id=gen_id(), org_id=org_id, key="openai", name="OpenAI", base_url="https://api.openai.com/v1")
+    db_session.add(p1)
+    await db_session.flush()
+
+    m1 = Model(
+        id=gen_id(),
+        org_id=org_id,
+        provider_id=p1.id,
+        name="gpt-4o",
+        display_name="GPT-4o",
+        enabled=True,
+        active=True,
+    )
+    db_session.add(m1)
+    await db_session.commit()
+
+    service = ModelService(db_session)
+
+    class FakeDriverResponse:
+        content = "OK. I am ready."
+
+    class FakeDriver:
+        async def complete(self, messages, tools, temperature, max_tokens):
+            return FakeDriverResponse()
+
+    monkeypatch.setattr("app.core.providers.factory.build_driver", lambda prov, model: FakeDriver())
+
+    result = await service.test_chat(org_id, m1.id)
+    assert result["ok"] is True
+    assert result["model_name"] == "gpt-4o"
+    assert result["sample_response"] == "OK. I am ready."
+    assert result["latency_ms"] >= 1
