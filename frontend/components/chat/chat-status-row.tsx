@@ -9,6 +9,7 @@ interface ChatStatusRowProps {
 }
 
 export function ChatStatusRow({ statusPhase, effectiveModel }: ChatStatusRowProps) {
+  const modelName = effectiveModel?.display_name || effectiveModel?.name;
   const label =
     statusPhase === "approval"
       ? "Waiting for approval…"
@@ -18,7 +19,9 @@ export function ChatStatusRow({ statusPhase, effectiveModel }: ChatStatusRowProp
           ? "Processing result…"
           : statusPhase === "answering"
             ? "Writing response…"
-            : "DeepSeek is thinking…";
+            : modelName
+              ? `${modelName} is thinking…`
+              : "Thinking…";
 
   return (
     <div className="flex w-full max-w-[min(525px,85%)] items-center self-start py-1 text-[13px] font-medium leading-6 select-none">
@@ -35,7 +38,7 @@ export function ChatStatusRow({ statusPhase, effectiveModel }: ChatStatusRowProp
       >
         {label}
       </span>
-      {effectiveModel && (
+      {effectiveModel && !label.includes(modelName ?? "") && (
         <span className="ml-2 font-mono text-xs text-muted-foreground/60">
           ({effectiveModel.display_name || effectiveModel.name})
         </span>

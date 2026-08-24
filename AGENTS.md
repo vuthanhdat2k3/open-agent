@@ -95,6 +95,7 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 | Branch | Worktree path | Phạm vi/task | Agent/người phụ trách |
 |---|---|---|---|
 | `dev` | `G:\open-agent` | Nhánh tích hợp chính — không code trực tiếp ở đây | — |
+| `fix/chat-thinking-streaming-ui` | `G:\open-agent-worktrees\chat-thinking-ui` | Fix UI chat: thinking streaming position/model label/collapse + issue doc run_code | Sisyphus |
 
 > 2026-08-24: Đã dọn dẹp worktree/branch của các PR đã merge vào `dev`
 > (#81 model-test-chat, #82 chat-send-insecure-context, #83 github-actions-cd)
