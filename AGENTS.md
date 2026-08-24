@@ -96,6 +96,7 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 |---|---|---|---|
 | `dev` | `G:\open-agent` | Nhánh tích hợp chính — không code trực tiếp ở đây | — |
 | `docs/enterprise-rbac-zitadel-design` | `G:\open-agent-worktrees\enterprise-rbac-zitadel-design` | Enterprise RBAC, invite-only provisioning, and ZITADEL SSO design | Codex |
+| `feat/github-actions-cd` | `G:\open-agent-worktrees\github-actions-cd` | CD pipeline (deploy/dev + self-hosted Windows runner) | Sisyphus |
 
 > 2026-08-23: Đã dọn dẹp toàn bộ worktree/branch có PR đã merge vào `dev`
 > (#70–#80: enterprise-rbac-authz, enterprise-authz-hardening, enterprise-rag-ingestion,
