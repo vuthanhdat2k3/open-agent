@@ -6,6 +6,7 @@ import {
   messagesFromPersisted,
   type AssistantMessage,
   type ChatEvent,
+  type ChatMessage,
 } from "./projection";
 
 function reduce(seq: Array<[string, Record<string, unknown>]>) {
@@ -31,6 +32,33 @@ describe("applyChatEvent", () => {
     const a = assistantOf(state);
     expect(a.blocks).toHaveLength(1);
     expect(a.blocks[0]).toMatchObject({ kind: "text", content: "Hello world", streaming: true });
+  });
+
+  it("streams into the run's own assistant message, not the first historical one", () => {
+    const history: ChatMessage[] = [
+      { role: "user", id: "u-old", content: "old question" },
+      {
+        role: "assistant",
+        id: "a-old",
+        blocks: [{ kind: "text", id: "a-old-b0", content: "old answer", streaming: false }],
+      },
+      { role: "user", id: "u-new", content: "new question" },
+      { role: "assistant", id: "a-run", blocks: [] },
+    ];
+    let state = createRunProjection("a-run", history);
+    for (const ev of [
+      { event: "reasoning", data: { content: "thinking..." } },
+      { event: "token", data: { delta: "new answer" } },
+    ] as ChatEvent[]) {
+      state = applyChatEvent(state, ev).state;
+    }
+    const oldMsg = state.messages.find((m) => m.id === "a-old") as AssistantMessage;
+    const runMsg = state.messages.find((m) => m.id === "a-run") as AssistantMessage;
+    expect(oldMsg.blocks[0]).toMatchObject({ content: "old answer", streaming: false });
+    expect(runMsg.blocks).toHaveLength(2);
+    expect(runMsg.blocks[0]).toMatchObject({ kind: "reasoning", content: "thinking..." });
+    expect(runMsg.blocks[1]).toMatchObject({ kind: "text", content: "new answer" });
+    expect(state.messages[state.messages.length - 1].id).toBe("a-run");
   });
 
   it("keeps true arrival order around a tool round", () => {

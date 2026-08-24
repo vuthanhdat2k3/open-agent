@@ -144,7 +144,9 @@ export function applyChatEvent(
   let nextId = state.nextId;
   const genId = () => `${state.assistantId}-b${nextId++}`;
 
-  const ai = messages.findIndex((m) => m.role === "assistant");
+  const ai = messages.findIndex(
+    (m) => m.role === "assistant" && m.id === state.assistantId,
+  );
   let msg: AssistantMessage | null =
     ai >= 0
       ? { ...(messages[ai] as AssistantMessage), blocks: [...(messages[ai] as AssistantMessage).blocks] }
