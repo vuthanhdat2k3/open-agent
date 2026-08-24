@@ -110,5 +110,8 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 - Không commit file `.env`, credential, database dump, backup chứa dữ liệu thật.
 - Stage file cụ thể (`git add <file>`), không dùng `git add .` khi không chắc phạm vi thay đổi.
 - Message commit ngắn gọn, mô tả đúng thay đổi, theo convention hiện có trong `git log` (`feat:`, `fix:`, `docs:`...).
+- **Khi merge PR: dùng "Create a merge commit", KHÔNG dùng "Squash and merge".** Squash phá lịch sử
+  atomic mà các file task yêu cầu, làm branch feature không xóa được bằng `git branch -d` sau merge,
+  và gây phân kỳ `deploy/dev` so với `dev` (phải merge commit hòa giải mỗi lần sync).
 - Không amend commit không phải của mình.
 - Nếu phát hiện file `.kiro/` hoặc file debug tạm (`_debug_*.py`) không thuộc phạm vi task của mình xuất hiện trong `git status`, không xóa hay commit chúng — để lại cho agent/người tạo ra chúng xử lý.
