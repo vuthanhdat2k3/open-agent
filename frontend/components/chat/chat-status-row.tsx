@@ -38,7 +38,7 @@ export function ChatStatusRow({ statusPhase, effectiveModel }: ChatStatusRowProp
       >
         {label}
       </span>
-      {effectiveModel && (
+      {effectiveModel && !label.includes(modelName ?? "") && (
         <span className="ml-2 font-mono text-xs text-muted-foreground/60">
           ({effectiveModel.display_name || effectiveModel.name})
         </span>
