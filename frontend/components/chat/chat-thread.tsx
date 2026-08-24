@@ -1,8 +1,9 @@
 "use client";
 
 import * as React from "react";
-import { Bug, Trash2 } from "lucide-react";
+import { Bot, Bug, Trash2 } from "lucide-react";
 import { useCurrentRole } from "@/hooks";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { ChatMessageItem } from "@/components/chat/chat-message-item";
 import { ChatEmptyState } from "@/components/chat/chat-empty-state";
@@ -79,6 +80,12 @@ export function ChatThread({
   onThreadScroll,
 }: ChatThreadProps) {
   const hasPendingApproval = messages.some((m) => m.role === "approval" && m.status === "pending");
+  const lastMessage = messages[messages.length - 1];
+  const inMessageStreaming =
+    lastMessage?.role === "assistant" &&
+    lastMessage.blocks.some((b) => "streaming" in b && b.streaming);
+  const showStatusRow =
+    (streaming || statusPhase === "approval") && !hasPendingApproval && !inMessageStreaming;
   const role = useCurrentRole();
   const canSwitchAgent = role === "admin" || role === "platform_admin" || role === "operator";
   const canSwitchModel = Boolean(models?.some((model) => model.active));
@@ -161,8 +168,15 @@ export function ChatThread({
                 onApprovalDecision={onApprovalDecision}
               />
             ))}
-            {(streaming || statusPhase === "approval") && !hasPendingApproval && (
-              <ChatStatusRow statusPhase={statusPhase} effectiveModel={effectiveModel} />
+            {showStatusRow && (
+              <div className="flex w-full max-w-[92%] items-start gap-2.5 self-start">
+                <Avatar className="mt-0.5 h-7 w-7 shrink-0 border border-border bg-muted">
+                  <AvatarFallback className="bg-transparent text-foreground">
+                    <Bot className="h-3.5 w-3.5 animate-pulse" aria-hidden="true" />
+                  </AvatarFallback>
+                </Avatar>
+                <ChatStatusRow statusPhase={statusPhase} effectiveModel={effectiveModel} />
+              </div>
             )}
             <div ref={bottomRef} />
           </div>

@@ -32,6 +32,12 @@ export function ReasoningRow({ content, streaming }: ReasoningRowProps) {
   }, [streaming]);
 
   React.useEffect(() => {
+    if (!streaming && content) {
+      setOpen(false);
+    }
+  }, [streaming, content]);
+
+  React.useEffect(() => {
     if (streaming && summaryRef.current) {
       summaryRef.current.scrollLeft = summaryRef.current.scrollWidth;
     }
