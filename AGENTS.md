@@ -95,9 +95,11 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 | Branch | Worktree path | Phạm vi/task | Agent/người phụ trách |
 |---|---|---|---|
 | `dev` | `G:\open-agent` | Nhánh tích hợp chính — không code trực tiếp ở đây | — |
-| `docs/enterprise-rbac-zitadel-design` | `G:\open-agent-worktrees\enterprise-rbac-zitadel-design` | Enterprise RBAC, invite-only provisioning, and ZITADEL SSO design | Codex |
-| `feat/github-actions-cd` | `G:\open-agent-worktrees\github-actions-cd` | CD pipeline (deploy/dev + self-hosted Windows runner) | Sisyphus |
 
+> 2026-08-24: Đã dọn dẹp worktree/branch của các PR đã merge vào `dev`
+> (#81 model-test-chat, #82 chat-send-insecure-context, #83 github-actions-cd)
+> cùng các dòng stale của worktree không còn tồn tại. Branch
+> `docs/enterprise-rbac-zitadel-design` được GIỮ (còn 3 commit chưa merge của Codex).
 > 2026-08-23: Đã dọn dẹp toàn bộ worktree/branch có PR đã merge vào `dev`
 > (#70–#80: enterprise-rbac-authz, enterprise-authz-hardening, enterprise-rag-ingestion,
 > chat-ui-projection, alembic-revision-length, models-filter, model-test-chat,
