@@ -30,11 +30,11 @@ jobs:
     runs-on: [self-hosted, windows]
     timeout-minutes: 60
     steps:
-      - name: Preflight — Docker must be reachable
+      - name: Preflight - Docker must be reachable
         shell: powershell
         run: |
           docker version --format '{{.Server.Version}}'
-          if ($LASTEXITCODE -ne 0) { throw "Docker engine unreachable — is Docker Desktop running?" }
+          if ($LASTEXITCODE -ne 0) { throw "Docker engine unreachable - is Docker Desktop running?" }
 
       - name: Resolve env file
         shell: powershell
