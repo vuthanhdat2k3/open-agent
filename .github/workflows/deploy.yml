@@ -1,0 +1,98 @@
+# CD pipeline — deploys the full Docker Compose stack onto the self-hosted
+# Windows runner whenever `deploy/dev` receives new commits (or manually via
+# workflow_dispatch).
+#
+# Flow: PR merge vào `dev` (CI gate) -> merge/fast-forward sang `deploy/dev`
+#       -> workflow này chạy trên runner self-hosted và `compose up`.
+#
+# Required repository VARIABLE (Settings -> Secrets and variables -> Actions
+# -> Variables):
+#   DEPLOY_ENV_FILE  Absolute path on the runner machine to the production
+#                    .env file, e.g. G:\open-agent\.env. Kept out of git on
+#                    purpose (credentials); see .gitignore.
+#
+# NOTE: this job rebuilds images in place. It never runs `down -v`, so named
+# volumes (postgres, qdrant, minio, ...) survive every deploy.
+
+name: Deploy (self-hosted)
+
+on:
+  push:
+    branches: [deploy/dev]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, windows]
+    timeout-minutes: 60
+    steps:
+      - name: Preflight — Docker must be reachable
+        shell: pwsh
+        run: |
+          docker version --format '{{.Server.Version}}'
+          if ($LASTEXITCODE -ne 0) { throw "Docker engine unreachable — is Docker Desktop running?" }
+
+      - name: Resolve env file
+        shell: pwsh
+        env:
+          DEPLOY_ENV_FILE: ${{ vars.DEPLOY_ENV_FILE }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:DEPLOY_ENV_FILE)) {
+            throw "Repository variable DEPLOY_ENV_FILE is not set. Point it at the machine-local .env (e.g. G:\open-agent\.env)."
+          }
+          if (-not (Test-Path -LiteralPath $env:DEPLOY_ENV_FILE)) {
+            throw "Env file not found: $env:DEPLOY_ENV_FILE"
+          }
+          Write-Host "Using env file: $env:DEPLOY_ENV_FILE"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build & start stack
+        shell: pwsh
+        env:
+          DEPLOY_ENV_FILE: ${{ vars.DEPLOY_ENV_FILE }}
+        run: |
+          docker compose --env-file "$env:DEPLOY_ENV_FILE" up -d --build --remove-orphans
+          if ($LASTEXITCODE -ne 0) { throw "docker compose up failed" }
+
+      - name: Wait for API health
+        shell: pwsh
+        timeout-minutes: 5
+        run: |
+          $deadline = (Get-Date).AddMinutes(4)
+          while ((Get-Date) -lt $deadline) {
+            try {
+              $r = Invoke-WebRequest -Uri 'http://localhost:8000/healthz' -UseBasicParsing -TimeoutSec 5
+              if ($r.StatusCode -eq 200) { Write-Host "API healthy"; exit 0 }
+            } catch { }
+            Start-Sleep -Seconds 5
+          }
+          throw "API /healthz did not turn healthy within 4 minutes"
+
+      - name: Wait for Frontend
+        shell: pwsh
+        timeout-minutes: 5
+        run: |
+          $deadline = (Get-Date).AddMinutes(4)
+          while ((Get-Date) -lt $deadline) {
+            try {
+              $r = Invoke-WebRequest -Uri 'http://localhost:3000/' -UseBasicParsing -TimeoutSec 10
+              if ($r.StatusCode -lt 500) { Write-Host "Frontend responding"; exit 0 }
+            } catch { }
+            Start-Sleep -Seconds 5
+          }
+          throw "Frontend did not respond within 4 minutes"
+
+      - name: Dump logs on failure
+        if: failure()
+        shell: pwsh
+        env:
+          DEPLOY_ENV_FILE: ${{ vars.DEPLOY_ENV_FILE }}
+        run: |
+          docker compose --env-file "$env:DEPLOY_ENV_FILE" ps -a
+          docker compose --env-file "$env:DEPLOY_ENV_FILE" logs --no-color --tail=100 api worker frontend
