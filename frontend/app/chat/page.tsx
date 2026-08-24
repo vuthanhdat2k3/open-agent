@@ -4,6 +4,7 @@ import * as React from "react";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { api, ApiError, streamSSE, streamSSEGet } from "@/lib/api";
+import { randomId } from "@/lib/utils";
 import {
   useAgents,
   useCurrentRole,
@@ -612,7 +613,7 @@ export default function ChatPage() {
 
     const payload: Record<string, any> = {
       agent_id: agentId,
-      run_id: crypto.randomUUID(),
+      run_id: randomId(),
       message: sentDraft,
       session_id: sessionId || undefined,
       stream: true,
