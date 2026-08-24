@@ -57,7 +57,7 @@ jobs:
         env:
           DEPLOY_ENV_FILE: ${{ vars.DEPLOY_ENV_FILE }}
         run: |
-          docker compose --env-file "$env:DEPLOY_ENV_FILE" up -d --build --remove-orphans
+          docker compose --env-file "$env:DEPLOY_ENV_FILE" --profile identity up -d --build --remove-orphans
           if ($LASTEXITCODE -ne 0) { throw "docker compose up failed" }
 
       - name: Wait for API health
