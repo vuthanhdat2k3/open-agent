@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from unittest.mock import patch
 
 from app.core.memory.tiers import (
     WARM_SUMMARY_KEY,
@@ -145,8 +146,6 @@ async def test_retry_succeeds_after_transient_failure(async_session_factory):
 
 @pytest.mark.asyncio
 async def test_incremental_summary_only_sends_new_messages(async_session_factory):
-    from unittest.mock import AsyncMock
-
     prompts: list[str] = []
 
     async def fake_complete(messages, *args, **kwargs):
