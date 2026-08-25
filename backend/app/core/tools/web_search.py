@@ -103,15 +103,24 @@ async def _web_search(args: dict[str, Any], ctx: ToolContext) -> str:
     except (TypeError, ValueError):
         max_results = 5
 
+    if ctx.emit:
+        await ctx.emit({"stage": "searching", "query": query, "line": f"Searching web for: '{query}'...\n"})
+
     searxng_url = get_settings().searxng_url
     if searxng_url:
         try:
-            return _format_results(await _searxng_search(searxng_url, query, max_results))
+            results = await _searxng_search(searxng_url, query, max_results)
+            if ctx.emit:
+                await ctx.emit({"stage": "found", "count": len(results), "line": f"Found {len(results)} results via SearXNG\n"})
+            return _format_results(results)
         except Exception:  # noqa: BLE001
             pass  # fall through to the DDG fallback below
 
     try:
-        return _format_results(await _ddg_search(query, max_results))
+        results = await _ddg_search(query, max_results)
+        if ctx.emit:
+            await ctx.emit({"stage": "found", "count": len(results), "line": f"Found {len(results)} results via DuckDuckGo\n"})
+        return _format_results(results)
     except Exception as e:  # noqa: BLE001
         return f"error searching the web: {e}"
 

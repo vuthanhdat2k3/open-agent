@@ -122,6 +122,24 @@ describe("applyChatEvent", () => {
     expect(assistantOf(state).blocks[0]).toMatchObject({ progress: "file.txt\ndir/\n", status: "running" });
   });
 
+  it("attaches subagent thinking, tokens, and tools to the tool block", () => {
+    const { state } = reduce([
+      ["tool_call", { index: 0, name: "call_agent", args: { target_agent_id: "researcher", instruction: "Search news" } }],
+      ["tool_progress", { index: 0, stage: "subagent_start", agent_name: "Researcher" }],
+      ["tool_progress", { index: 0, stage: "subagent_reasoning", agent_name: "Researcher", content: "I should search for news." }],
+      ["tool_progress", { index: 0, stage: "subagent_tool_call", agent_name: "Researcher", tool_name: "web_search" }],
+      ["tool_progress", { index: 0, stage: "subagent_tool_result", agent_name: "Researcher", tool_name: "web_search" }],
+      ["tool_progress", { index: 0, stage: "subagent_token", agent_name: "Researcher", content: "Here are the top headlines:" }],
+    ]);
+    const block = assistantOf(state).blocks[0] as any;
+    expect(block.subagent).toMatchObject({
+      agentName: "Researcher",
+      thinking: "I should search for news.",
+      response: "Here are the top headlines:",
+      tools: [{ name: "web_search", status: "done" }],
+    });
+  });
+
   it("marks noAnswer and keeps an empty anchor when done without content", () => {
     const { state } = reduce([["message_done", { cost_usd: 0.01 }]]);
     const a = assistantOf(state);

@@ -25,6 +25,15 @@ export interface TextBlock {
   streaming: boolean;
 }
 
+export interface SubagentActivity {
+  agentName?: string;
+  agentId?: string;
+  stage?: string;
+  thinking?: string;
+  response?: string;
+  tools?: { name: string; status: "running" | "done" }[];
+}
+
 export interface ToolCallBlock {
   kind: "tool_call";
   id: string;
@@ -34,6 +43,7 @@ export interface ToolCallBlock {
   result?: string;
   progress?: string;
   status: ToolCallStatus;
+  subagent?: SubagentActivity;
 }
 
 export interface StatsBlock {
@@ -254,7 +264,35 @@ export function applyChatEvent(
       const idx = typeof d.index === "number" ? d.index : 0;
       const target = findTool(idx, true) ?? findTool(idx, false);
       if (target) {
-        replaceBlock(target.id, { ...target, progress: (target.progress ?? "") + String(d.line ?? "") });
+        let subagent = target.subagent;
+        const stage = typeof d.stage === "string" ? d.stage : undefined;
+        const agentName = typeof d.agent_name === "string" ? d.agent_name : undefined;
+        const agentId = typeof d.agent_id === "string" ? d.agent_id : undefined;
+
+        if (stage?.startsWith("subagent_") || agentName) {
+          subagent = { ...(subagent ?? {}) };
+          if (agentName) subagent.agentName = agentName;
+          if (agentId) subagent.agentId = agentId;
+          if (stage) subagent.stage = stage;
+
+          if (stage === "subagent_reasoning" && d.content) {
+            subagent.thinking = (subagent.thinking ?? "") + String(d.content);
+          } else if (stage === "subagent_token" && d.content) {
+            subagent.response = (subagent.response ?? "") + String(d.content);
+          } else if (stage === "subagent_tool_call" && d.tool_name) {
+            const currentTools = subagent.tools ?? [];
+            subagent.tools = [...currentTools, { name: String(d.tool_name), status: "running" }];
+          } else if (stage === "subagent_tool_result" && d.tool_name) {
+            const currentTools = (subagent.tools ?? []).map((t) =>
+              t.name === d.tool_name && t.status === "running" ? { ...t, status: "done" as const } : t,
+            );
+            subagent.tools = currentTools;
+          }
+        }
+
+        const line = d.line != null ? String(d.line) : d.message != null ? String(d.message) : "";
+        const progress = (target.progress ?? "") + line;
+        replaceBlock(target.id, { ...target, progress, subagent });
       }
       if (d.name) side.phase = `tool:${String(d.name)}`;
       break;
