@@ -67,6 +67,25 @@ class TestPermissionMatrix:
     def test_unknown_role_returns_false(self) -> None:
         assert not has_permission("superadmin", "agents:read")  # type: ignore[arg-type]
 
+    def test_org_admin_has_declared_admin_permissions(self) -> None:
+        # Route-level permissions must be declared explicitly for the audit
+        # list even though org_admin's wildcard would grant them anyway.
+        assert has_permission(Role.org_admin, "admin:email-intelligence")
+
+    def test_operator_usage_and_quota_read(self) -> None:
+        assert has_permission(Role.operator, "usage:read")
+        assert has_permission(Role.operator, "quota:usage")
+
+    def test_operator_lacks_org_admin_surfaces(self) -> None:
+        assert not has_permission(Role.operator, "admin:email-intelligence")
+        assert not has_permission(Role.operator, "orgs:manage")
+        assert not has_permission(Role.operator, "models:manage")
+
+    def test_user_lacks_ingest_and_org_management(self) -> None:
+        assert not has_permission(Role.user, "files:manage")
+        assert not has_permission(Role.user, "admin:email-intelligence")
+        assert not has_permission(Role.user, "orgs:manage")
+
 
 # ---------------------------------------------------------------------------
 # Fixtures

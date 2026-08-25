@@ -40,7 +40,7 @@ export const navGroups: NavGroup[] = [
     { href: "/settings/quotas", label: "Quotas", icon: Gauge, permission: "quota:usage" },
     { href: "/settings/members", label: "Members", icon: Users, permission: "orgs:manage" },
     { href: "/debug", label: "Debug", icon: Bug, permission: "orgs:manage" },
-    { href: "/admin/email-intelligence", label: "Email Operations", icon: Gauge, permission: "ci:organization:read" },
+    { href: "/admin/email-intelligence", label: "Email Operations", icon: Gauge, permission: "admin:email-intelligence" },
     { href: "/organizations", label: "Organizations", icon: Users, permission: "orgs:read", platformOnly: true },
   ] },
 ];

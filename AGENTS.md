@@ -95,6 +95,7 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 | Branch | Worktree path | Phạm vi/task | Agent/người phụ trách |
 |---|---|---|---|
 | `dev` | `G:\open-agent` | Nhánh tích hợp chính — không code trực tiếp ở đây | — |
+| `fix/rbac-permission-audit` | `G:\open-agent-worktrees\rbac-permission-audit` | Audit phân quyền: nav↔API mismatch, explicit declarations, gate ingest | Sisyphus |
 | `docs/rbac-matrix` | `G:\open-agent-worktrees\rbac-matrix-doc` | Tài liệu ma trận RBAC: role × chức năng × UI visibility | Sisyphus |
 | `feat/dsh-inspired-hardening` | `G:\open-agent-worktrees\dsh-refactor` | Refactor hardening học từ deepseek-harness: tool timeout/retry, budget cost, compaction fallback | ox-alpha |
 
