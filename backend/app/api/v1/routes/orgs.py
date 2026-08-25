@@ -56,9 +56,22 @@ def _public_role(role: Role) -> str:
     return role.value
 
 
+async def _is_platform_admin(db: AsyncSession, user_id: str) -> bool:
+    result = await db.execute(
+        select(Membership).join(Organization, Membership.org_id == Organization.id).where(
+            Membership.user_id == user_id,
+            Membership.role == Role.platform_admin,
+            Membership.lifecycle_status == "active",
+        )
+    )
+    return result.scalar_one_or_none() is not None
+
+
 async def _ensure_user_belongs_to_org(
     db: AsyncSession, user_id: str, org_id: str
-) -> Membership:
+) -> Membership | None:
+    if await _is_platform_admin(db, user_id):
+        return None
     res = await db.execute(
         select(Membership).where(Membership.org_id == org_id, Membership.user_id == user_id)
     )
