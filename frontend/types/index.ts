@@ -80,6 +80,7 @@ export interface Agent {
   allowed_risk_tiers: string[];
   max_iterations: number;
   temperature: number;
+  enable_thinking: boolean | null;
   kind: "worker" | "orchestrator";
   active_release_id: string | null;
   latest_release_number: number;

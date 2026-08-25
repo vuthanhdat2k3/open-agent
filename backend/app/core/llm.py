@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import asyncio
 import os
@@ -23,7 +23,7 @@ from app.core.credential_secrets import decrypt_string
 settings = get_settings()
 
 # Errors worth one retry because they are about the connection/provider load,
-# not the request itself — retrying a bad request would just fail the same
+# not the request itself â€” retrying a bad request would just fail the same
 # way again slower. Only applied before any chunk has been yielded (see
 # `LLMClient.stream`): once content has streamed to the caller, retrying would
 # re-run the whole prompt and duplicate/conflict with what was already sent.
@@ -76,6 +76,7 @@ class LLMClient:
         tools: list[dict[str, Any]] | None = None,
         temperature: float = 0.7,
         tool_choice: Any | None = None,
+        thinking: bool | None = None,
     ) -> tuple[str, dict[str, int], list[dict[str, Any]]]:
         """Non-streaming completion. Returns (content, usage, tool_calls)."""
         kwargs: dict[str, Any] = {
@@ -86,6 +87,8 @@ class LLMClient:
         if tools:
             kwargs["tools"] = tools
             kwargs["tool_choice"] = tool_choice if tool_choice is not None else "auto"
+        if thinking is False:
+            kwargs["extra_body"] = {"enable_thinking": False}
         try:
             resp = await self._client.chat.completions.create(**kwargs)
         except BadRequestError as exc:
@@ -119,6 +122,7 @@ class LLMClient:
         tools: list[dict[str, Any]] | None = None,
         temperature: float = 0.7,
         tool_choice: Any | None = None,
+        thinking: bool | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         """Streaming completion. Yields dicts:
         {"type": "content", "text": str},
@@ -140,6 +144,8 @@ class LLMClient:
         if tools:
             kwargs["tools"] = tools
             kwargs["tool_choice"] = tool_choice if tool_choice is not None else "auto"
+        if thinking is False:
+            kwargs["extra_body"] = {"enable_thinking": False}
 
         async def _open() -> Any:
             try:
