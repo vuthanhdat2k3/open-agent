@@ -14,6 +14,7 @@ class AgentBase(BaseModel):
     kind: Literal["worker", "orchestrator"] = "worker"
     max_iterations: int = 12
     temperature: float = 0.7
+    enable_thinking: bool | None = None
     a2a_exposed: bool = False
 
 
@@ -31,6 +32,7 @@ class AgentUpdate(BaseModel):
     kind: Literal["worker", "orchestrator"] | None = None
     max_iterations: int | None = None
     temperature: float | None = None
+    enable_thinking: bool | None = None
     a2a_exposed: bool | None = None
 
 
