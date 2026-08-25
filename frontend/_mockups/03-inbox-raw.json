@@ -1,0 +1,43 @@
+﻿{
+    "outputComponents":  [
+                             {
+                                 "design":  {
+                                                "screens":  [
+                                                                {
+                                                                    "designSystem":  "@{designSystem=; name=assets/eeddfcc795704f4ba5f2567bd5c281cc; version=1}",
+                                                                    "deviceType":  "DESKTOP",
+                                                                    "generatedBy":  "figaro_agent",
+                                                                    "height":  "2048",
+                                                                    "htmlCode":  "@{downloadUrl=https://contribution.usercontent.google.com/download?c=CgthaWRhX2NvZGVmeBJ8Eh1hcHBfY29tcGFuaW9uX2dlbmVyYXRlZF9maWxlcxpbCiVodG1sX2VkMjVkYzg2MDdhYTQ5OGU4OTkyNGNmZWNmMDNlZjgzEgsSBxCN3bDIhR0YAZIBJAoKcHJvamVjdF9pZBIWQhQxMTk2Njc1MTYyMDY3NDU1NDgwNA\u0026filename=\u0026opi=96797242; mimeType=text/html; name=projects/11966751620674554804/files/a28c42abfe6f4e6cbc386747872c5060}",
+                                                                    "id":  "7229f225bbe641a7a5ba3ec390667247",
+                                                                    "name":  "projects/11966751620674554804/screens/7229f225bbe641a7a5ba3ec390667247",
+                                                                    "prompt":  "A right-side slide-out Notification Inbox Sheet, 420px wide, following the Monochrome Logic design system (dark mode, Inter font, deep blacks #131313, subtle borders). \n\nStructure:\n- Header: Title \u0027Notifications\u0027 with an urgent count badge \u00272\u0027, and a close \u0027X\u0027 icon.\n- Section 1: \u0027Needs your attention\u0027 (2 items). \n    - Item 1: \u0027Calendar invite approval\u0027, meta: \u0027User • High • 2m ago\u0027. Red left border for HIGH priority. Icon: \u0027calendar_today\u0027.\n    - Item 2: \u0027Save research\u0027, meta: \u0027System • High • 15m ago\u0027. Icon: \u0027save\u0027.\n- Section 2: \u0027Today\u0027 (4 items).\n    - Item 1: \u0027Email flagged\u0027, meta: \u0027User • Low • 1h ago\u0027. Icon: \u0027flag\u0027.\n    - Item 2: \u00273 new emails\u0027, meta: \u0027System • Low • 2h ago\u0027. Icon: \u0027mail\u0027.\n    - Item 3: \u0027Daily research done\u0027, meta: \u0027Agent • Low • 4h ago\u0027. Icon: \u0027check_circle\u0027.\n    - Item 4: \u0027Invoice digest done\u0027, meta: \u0027Agent • Low • 5h ago\u0027. Icon: \u0027check_circle\u0027.\n- Section 3: \u0027Earlier\u0027 (2 items).\n    - Item 1: \u0027Agent release v1.2\u0027, meta: \u0027System • Info • 1d ago\u0027. Icon: \u0027update\u0027.\n    - Item 2: \u0027Integration error: Datadog\u0027, meta: \u0027System • Med • 2d ago\u0027. Icon: \u0027report_problem\u0027.\n\nStyling:\n- Use deep blacks (#131313) for background.\n- Subtle borders for separation.\n- Title bold 12px for items. Meta line below.\n- Icon on the left for each item.\n- Hover background effects on items.\n- NO purple, NO neon. Strictly monochrome/grayscale except for the specific red priority indicator.\n- The sheet should appear as an overlay on the right side of the screen.",
+                                                                    "screenMetadata":  "@{agentType=PRO_AGENT; status=COMPLETE}",
+                                                                    "screenType":  "DESIGN",
+                                                                    "screenshot":  "@{downloadUrl=https://lh3.googleusercontent.com/aida/AEtjO1Xq-0OTU8zzb2AFWzcylByQPe3Apo66gPqk8LO8PHGxU6zYYx1vOwQsiujVM70qkbG8nA3TBy8eO3JCXCECB4zyFwy0QgsI-jtCihIU1cz4IvIhHFGBlkJF6k053An-kgDdwc9sIULtMJ7xPG5mh_-FLNL13ZjGIhKjkPSyPorjtNcxoPvNdflI3_hD4KeuxZcM01RvMuUT6BcnD172YyquOZDdrwujiIYmdOH2jnburs2lYIZnBYgVbkE; name=projects/11966751620674554804/files/fe65f983a5e744b581c89671da9f4109}",
+                                                                    "theme":  "@{bodyFont=INTER; bodyFontFamily=Inter; colorMode=DARK; colorVariant=FIDELITY; customColor=#ffffff; font=INTER; headlineFont=INTER; headlineFontFamily=Inter; labelFont=INTER; labelFontFamily=Inter; namedColors=; overrideNeutralColor=#000000; overridePrimaryColor=#ffffff; overrideSecondaryColor=#1a1a1a; overrideTertiaryColor=#262626; roundness=ROUND_EIGHT; spacing=; spacingScale=2; typography=}",
+                                                                    "title":  "Notification Inbox Sheet",
+                                                                    "width":  "2560"
+                                                                }
+                                                            ],
+                                                "theme":  {
+
+                                                          }
+                                            }
+                             },
+                             {
+                                 "text":  "I\u0027ve designed the **Notification Inbox Sheet** as a 420px right-side slide-out, fully integrated with the **Monochrome Logic** design system. \n\n### Design Choices:\n- **Layout:** A clean, vertical drawer layout that provides high density without sacrificing legibility.\n- **Visual Hierarchy:** \n    - **Urgent Priority:** The \"Calendar invite approval\" item features a distinct red left border to signal high importance, contrasting with the strictly monochrome palette.\n    - **Categorization:** Clearly defined sections (\"Needs your attention,\" \"Today,\" \"Earlier\") help users scan and prioritize their workload.\n- **Typography:** Used Inter with a bold 12px weight for item titles and a refined meta line for actors and timestamps, maintaining a technical, developer-first aesthetic.\n- **Interactivity:** Added subtle hover states for items to provide clear feedback during navigation.\n\nThe design strictly avoids non-brand colors like purple or neon, sticking to deep blacks and subtle grays for a professional look."
+                             },
+                             {
+                                 "suggestion":  "Add a \u0027Mark all as read\u0027 button to the footer"
+                             },
+                             {
+                                 "suggestion":  "Change the high-priority indicator to an icon badge instead of a border"
+                             },
+                             {
+                                 "suggestion":  "Create a mobile version of this notification sheet"
+                             }
+                         ],
+    "projectId":  "11966751620674554804",
+    "sessionId":  "8585027423705241581"
+}

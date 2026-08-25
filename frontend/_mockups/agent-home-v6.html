@@ -1,0 +1,1545 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<script type="module" src="https://unpkg.com/@google/model-viewer@4.1.0/dist/model-viewer.min.js"></script>
+<title>OpenAgent — Multi-Item Scale Operator (Carousel & Tabs Preview)</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Fira+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
+
+:root {
+  --bg: #09090b;
+  --surface: #111114;
+  --surface2: #16161a;
+  --surface3: #1f1f25;
+  --surface4: #272730;
+  --line: #24242a;
+  --line-strong: #363640;
+  --text: #f4f4f7;
+  --muted: #94949f;
+  --dim: #585864;
+
+  --state-color: #2dd4bf;
+  --state-bg: #0f2924;
+  --state-border: #1d534b;
+  --state-glow: rgba(45, 212, 191, 0.3);
+
+  --neural-grad: linear-gradient(135deg, #2dd4bf, #38bdf8, #818cf8, #fbbf24);
+  
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  min-height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Fira Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+button, input, textarea, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+.mono { font-family: 'Fira Code', monospace; }
+
+.shell {
+  min-height: 100dvh;
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+}
+
+/* Sidebar */
+.side {
+  border-right: 1px solid var(--line);
+  background: #0c0c0e;
+  padding: 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  user-select: none;
+  height: 100vh;
+  position: sticky;
+  top: 0;
+  overflow-y: auto;
+}
+.brand { display: flex; align-items: center; gap: 10px; padding: 4px 6px; }
+.brand-mark {
+  width: 28px; height: 28px; border: 1px solid #444; background: #18181b; border-radius: 8px;
+  display: grid; place-items: center; color: #fff; box-shadow: 0 0 10px rgba(255,255,255,0.06);
+}
+.brand-mark svg { width: 16px; height: 16px; }
+.brand b { font-size: 13.5px; font-weight: 600; letter-spacing: -0.01em; display: block; }
+.brand small { display: block; color: var(--dim); font-size: 10px; font-family: 'Fira Code', monospace; }
+
+.workspace-selector {
+  border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: #121215; cursor: pointer;
+  transition: all 0.15s ease;
+}
+.workspace-selector:hover { border-color: var(--line-strong); background: #16161a; }
+.workspace-selector label { display: block; color: var(--dim); font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 600; }
+.workspace-selector b { font-size: 12px; font-weight: 500; display: flex; align-items: center; justify-content: space-between; margin-top: 3px; }
+.workspace-selector b span { font-size: 9px; color: #22c55e; background: #14532d33; padding: 1px 5px; border-radius: 4px; border: 1px solid #22c55e33; }
+
+.nav-group { display: grid; gap: 2px; }
+.nav-label { color: var(--dim); font-size: 9px; text-transform: uppercase; letter-spacing: 0.12em; font-weight: 600; padding: 6px 8px 3px; }
+.nav-item {
+  border: 0; background: none; border-radius: 7px; color: var(--muted); padding: 7px 9px; text-align: left;
+  display: flex; align-items: center; gap: 9px; font-size: 12.5px; transition: all 0.15s ease;
+}
+.nav-item:hover { background: var(--surface2); color: var(--text); }
+.nav-item.active { background: var(--surface3); color: var(--text); font-weight: 500; }
+.nav-item svg { width: 15px; height: 15px; opacity: 0.75; stroke-width: 1.8; }
+.nav-item.active svg { opacity: 1; }
+.nav-badge { margin-left: auto; font-size: 10px; font-family: 'Fira Code', monospace; background: #d9770622; color: #fbbf24; border: 1px solid #d9770644; padding: 1px 5px; border-radius: 4px; }
+.nav-badge.red { background: #dc262622; color: #f87171; border-color: #ef444444; }
+
+.user-nav { margin-top: auto; border-top: 1px solid var(--line); padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+.user-profile { display: flex; gap: 9px; align-items: center; padding: 4px; border-radius: 6px; cursor: pointer; }
+.user-profile:hover { background: var(--surface2); }
+.avatar-badge { width: 28px; height: 28px; border: 1px solid var(--line-strong); background: #1c1c21; border-radius: 6px; display: grid; place-items: center; color: var(--muted); font-size: 10px; font-family: 'Fira Code', monospace; }
+.user-profile b { display: block; font-size: 12px; font-weight: 500; }
+.user-profile small { color: var(--dim); font-size: 10px; font-family: 'Fira Code', monospace; }
+
+/* Main Area */
+.main { min-width: 0; display: flex; flex-direction: column; }
+
+.topbar {
+  height: 56px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 12px; padding: 0 28px;
+  background: rgba(9, 9, 11, 0.85); backdrop-filter: blur(12px); position: sticky; top: 0; z-index: 10;
+}
+.topbar-title { font-size: 13.5px; font-weight: 600; color: var(--text); }
+.topbar-grow { flex: 1; }
+
+.quick-hotkey-hint {
+  display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--dim); font-family: 'Fira Code', monospace;
+  background: #141417; border: 1px solid var(--line); padding: 4px 8px; border-radius: 6px; cursor: pointer; transition: all 0.15s ease;
+}
+.quick-hotkey-hint:hover { border-color: var(--line-strong); color: var(--muted); }
+.quick-hotkey-hint kbd { background: #202026; border: 1px solid #33333d; padding: 1px 4px; border-radius: 3px; color: #ccc; font-size: 10px; }
+
+.status-pill {
+  display: flex; align-items: center; gap: 7px; border: 1px solid var(--line); background: #121215; border-radius: 999px;
+  padding: 5px 10px; color: var(--muted); font-size: 11px; cursor: pointer; transition: border-color 0.2s ease;
+}
+.status-pill:hover { border-color: var(--line-strong); }
+.status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--state-color); box-shadow: 0 0 0 3px var(--state-glow); transition: all 0.3s ease; }
+
+.page-body { width: min(1240px, 100%); margin: 0 auto; padding: 24px 28px 60px; flex: 1; }
+.view-surface { display: none; }
+.view-surface.active { display: block; animation: fadeIn 0.2s ease; }
+
+/* Dashboard Grid */
+.hero { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; margin-bottom: 20px; }
+.hero-tag { color: var(--dim); font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; font-weight: 600; }
+.hero h2 { font-size: 22px; letter-spacing: -0.03em; line-height: 1.15; margin: 4px 0 0; font-weight: 600; color: #fff; }
+.hero p { max-width: 52ch; color: var(--muted); font-size: 12.5px; line-height: 1.5; margin: 0; }
+
+.dashboard-grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 30px; }
+.panel-section { border-top: 1px solid var(--line); padding-top: 14px; }
+.section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.section-header h3 { font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--dim); font-weight: 600; }
+
+.activity-list { display: grid; gap: 2px; }
+.activity-card {
+  width: 100%; border: 0; border-bottom: 1px solid var(--line); background: transparent; text-align: left;
+  padding: 12px 6px; display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; gap: 12px; align-items: flex-start;
+  transition: all 0.15s ease; border-radius: 6px; position: relative;
+}
+.activity-card:hover { background: #131317; }
+.activity-card:hover .card-quick-hint { opacity: 1; }
+.act-dot { width: 6px; height: 6px; border-radius: 50%; background: #71717a; margin-top: 6px; }
+.activity-card.urgent .act-dot { background: #f87171; box-shadow: 0 0 0 3px #ef444422; }
+.activity-card.warning .act-dot { background: #fbbf24; box-shadow: 0 0 0 3px #d9770622; }
+.act-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 3px; }
+.act-tag { color: var(--dim); font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em; font-family: 'Fira Code', monospace; }
+.activity-card strong { display: block; font-size: 13px; font-weight: 500; color: var(--text); }
+.activity-card p { margin: 3px 0 0; color: var(--muted); font-size: 11.5px; line-height: 1.45; }
+.activity-card time { color: var(--dim); font-size: 10px; font-family: 'Fira Code', monospace; white-space: nowrap; }
+.card-quick-hint { position: absolute; right: 10px; bottom: 8px; font-size: 9.5px; color: var(--dim); font-family: 'Fira Code', monospace; opacity: 0; transition: opacity 0.15s ease; background: #1c1c22; border: 1px solid var(--line-strong); padding: 1px 5px; border-radius: 4px; }
+
+.rail { display: grid; gap: 20px; }
+.block-box { border-top: 1px solid var(--line); padding-top: 14px; }
+.block-box h3 { font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--dim); font-weight: 600; margin-bottom: 12px; }
+
+.stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.stat-cell { background: #0d0d0f; padding: 12px; transition: background 0.15s ease; }
+.stat-cell:hover { background: #131317; }
+.stat-cell b { font-size: 20px; font-weight: 600; font-family: 'Fira Code', monospace; color: #fff; }
+.stat-cell span { display: block; color: var(--dim); font-size: 9.5px; margin-top: 3px; text-transform: uppercase; }
+
+.quick-actions { display: grid; gap: 6px; }
+.action-item {
+  border: 1px solid var(--line); background: #111114; border-radius: 8px; padding: 9px 12px; text-align: left;
+  color: var(--muted); font-size: 12px; display: flex; align-items: center; justify-content: space-between; transition: all 0.15s ease;
+}
+.action-item:hover { background: #19191d; color: #fff; border-color: var(--line-strong); }
+.action-item svg { width: 14px; height: 14px; color: var(--dim); }
+
+.chat-redirect-box {
+  border: 1px dashed rgba(255,255,255,0.12); background: #101014; border-radius: 8px; padding: 8px 10px;
+  display: flex; align-items: center; justify-content: space-between; font-size: 11px; color: var(--muted); cursor: pointer; transition: all 0.15s ease;
+}
+.chat-redirect-box:hover { background: #16161c; border-color: #2dd4bf; color: #fff; }
+
+/* Base tables & forms */
+.data-table-container { border: 1px solid var(--line); background: #111114; border-radius: 8px; overflow: hidden; }
+.data-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.data-table th { text-align: left; color: var(--dim); font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.08em; padding: 10px 12px; background: #141418; border-bottom: 1px solid var(--line); }
+.data-table td { padding: 11px 12px; border-bottom: 1px solid rgba(255,255,255,0.04); color: var(--muted); }
+.data-table tr:hover td { background: #16161c; color: #fff; }
+.data-table td.num { text-align: right; font-family: 'Fira Code', monospace; }
+
+.tag-badge { font-size: 9.5px; font-family: 'Fira Code', monospace; padding: 2px 6px; border-radius: 4px; background: #202026; color: var(--muted); border: 1px solid var(--line); }
+.tag-badge.teal { color: #2dd4bf; background: #0f2924; border-color: #1d534b; }
+.tag-badge.amber { color: #fbbf24; background: #2a1f0a; border-color: #593e10; }
+.tag-badge.red { color: #f87171; background: #2b1111; border-color: #5a1f1f; }
+
+.cmd-btn { border: 1px solid var(--line); background: #1a1a1e; border-radius: 6px; padding: 6px 10px; color: #c4c4cc; font-size: 11px; transition: all 0.15s ease; }
+.cmd-btn:hover { background: #26262d; color: #fff; }
+
+/* Magnetic Dock Zones */
+.dock-zone {
+  position: fixed;
+  border: 1px dashed rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  pointer-events: none;
+  opacity: 0;
+  transition: all 0.25s var(--ease);
+  z-index: 15;
+  display: grid;
+  place-items: center;
+}
+.dock-zone.visible { opacity: 1; }
+.dock-zone.hovered {
+  border-color: var(--state-color);
+  background: var(--state-glow);
+  box-shadow: 0 0 20px var(--state-glow);
+}
+.dock-zone::after {
+  content: attr(data-label);
+  font-size: 9.5px;
+  color: var(--dim);
+  font-family: 'Fira Code', monospace;
+  background: #111114;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+}
+
+#dockCenter { left: calc(50% + 180px); top: 50%; width: 170px; height: 165px; transform: translate(-50%, -50%); }
+#dockBottomRight { right: 28px; bottom: 24px; width: 160px; height: 155px; }
+#dockLeftRail { left: 260px; top: 140px; width: 160px; height: 155px; }
+
+/* 3D Companion with Living Thought Bubble */
+.companion {
+  position: fixed;
+  left: calc(50% + 180px);
+  top: 50%;
+  width: 170px;
+  height: 165px;
+  z-index: 30;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  transform: translate(-50%, -50%);
+  outline: none;
+}
+.companion.hidden { display: none !important; }
+.companion.dragging { cursor: grabbing !important; z-index: 35; }
+
+/* Living Thought Bubble Floating Above Robot */
+.thought-bubble {
+  position: absolute;
+  top: -34px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(18, 18, 24, 0.94);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.6), 0 0 12px rgba(251, 191, 36, 0.2);
+  border-radius: 999px;
+  padding: 4px 11px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: #fef08a;
+  white-space: nowrap;
+  cursor: pointer;
+  animation: float-bubble 4s ease-in-out infinite;
+  transition: all 0.2s var(--ease);
+  pointer-events: auto;
+}
+.thought-bubble:hover {
+  transform: translateX(-50%) scale(1.04);
+  border-color: #fbbf24;
+  box-shadow: 0 10px 28px rgba(0,0,0,0.8), 0 0 18px rgba(251, 191, 36, 0.4);
+}
+.thought-bubble-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #fbbf24;
+  box-shadow: 0 0 6px #fbbf24;
+  animation: pulse-ring 1.5s infinite;
+}
+
+.model-wrapper {
+  position: absolute; inset: 0 5px 22px 5px; transform-origin: 50% 75%; transition: filter 0.2s var(--ease);
+  filter: drop-shadow(0 18px 24px rgba(0,0,0,0.85));
+}
+model-viewer { width: 100%; height: 100%; background: transparent; --poster-color: transparent; pointer-events: none; }
+
+.hud-ring-svg { position: absolute; inset: 4% 6% 12% 6%; pointer-events: none; animation: hud-spin 24s linear infinite; opacity: 0.45; }
+.hud-telemetry { position: absolute; top: 4%; right: 6%; font-family: 'Fira Code', monospace; font-size: 8.5px; color: var(--state-color); opacity: 0.75; pointer-events: none; background: rgba(10, 10, 14, 0.75); padding: 1px 5px; border-radius: 3px; border: 1px solid rgba(255,255,255,0.08); }
+.halo-ring { position: absolute; inset: 12% 14% 16% 14%; border: 1px solid var(--state-color); border-radius: 36%; opacity: 0.35; filter: drop-shadow(0 0 8px var(--state-color)); pointer-events: none; }
+
+.companion.state-idle .model-wrapper { animation: float-idle 5.5s ease-in-out infinite; }
+.companion.state-waiting .model-wrapper { animation: float-waiting 3s ease-in-out infinite; }
+
+.companion-tag {
+  position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); white-space: nowrap;
+  border: 1px solid var(--line); background: rgba(18, 18, 22, 0.94); backdrop-filter: blur(8px);
+  border-radius: 999px; padding: 3px 10px; color: var(--muted); font-size: 9.5px; display: flex; align-items: center; gap: 6px; pointer-events: none;
+}
+.companion-tag b { color: var(--text); font-weight: 500; }
+.companion-tag span { font-family: 'Fira Code', monospace; color: var(--state-color); }
+
+/* =========================================================================
+   SCALABLE OPERATOR POPUP (CAROUSEL & TABS FOR MULTI-ITEM COGNITION)
+   ========================================================================= */
+.command-surface {
+  position: fixed;
+  width: 480px;
+  max-width: calc(100vw - 32px);
+  background: rgba(12, 12, 16, 0.96);
+  backdrop-filter: blur(32px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 16px;
+  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.95), 0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+  opacity: 0;
+  transform: translateY(6px) scale(0.98);
+  pointer-events: none;
+  transition: opacity 0.25s var(--ease), transform 0.25s var(--ease);
+  z-index: 40;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+}
+.command-surface.open { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
+.command-surface.above .command-arrow {
+  top: auto; bottom: -6px; border-left: 0; border-top: 0;
+  border-right: 1px solid rgba(255, 255, 255, 0.14); border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+}
+.command-arrow {
+  position: absolute; top: -6px; left: var(--arrow-x, 50%); width: 12px; height: 12px; background: #0c0c10;
+  border-left: 1px solid rgba(255, 255, 255, 0.14); border-top: 1px solid rgba(255, 255, 255, 0.14);
+  transform: translateX(-50%) rotate(45deg); z-index: 1; pointer-events: none;
+}
+.command-inner { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+
+/* 1. Header with Capsule Nav Tabs */
+.exec-header {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 12px;
+}
+.exec-top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.exec-title-box b { font-size: 13.5px; font-weight: 600; color: #fff; display: flex; align-items: center; gap: 6px; }
+
+/* Segmented Capsule Tabs */
+.tab-capsule-strip {
+  display: flex;
+  gap: 4px;
+  background: #09090c;
+  padding: 3px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+}
+.tab-capsule-btn {
+  flex: 1;
+  border: 0;
+  background: transparent;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  transition: all 0.15s ease;
+}
+.tab-capsule-btn:hover { background: #16161c; color: #fff; }
+.tab-capsule-btn.active {
+  background: #1f1f26;
+  color: #fff;
+  font-weight: 600;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.5);
+}
+.tab-counter {
+  font-size: 9.5px;
+  font-family: 'Fira Code', monospace;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+.tab-counter.amber { background: #f59e0b22; color: #fbbf24; border: 1px solid #f59e0b44; }
+.tab-counter.cyan { background: #0284c722; color: #38bdf8; border: 1px solid #0284c744; }
+.tab-counter.teal { background: #0f766e22; color: #2dd4bf; border: 1px solid #0f766e44; }
+
+/* Tab Content Surfaces */
+.operator-tab-pane { display: none; flex-direction: column; gap: 10px; }
+.operator-tab-pane.active { display: flex; animation: fadeIn 0.2s ease; }
+
+/* 2. TAB 1: 3D Stack Carousel for Multi-Approvals */
+.carousel-nav-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 10px;
+  font-family: 'Fira Code', monospace;
+  color: var(--dim);
+}
+.carousel-btn {
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--line);
+  background: #141418;
+  border-radius: 5px;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  transition: all 0.15s ease;
+}
+.carousel-btn:hover { background: var(--surface3); color: #fff; border-color: var(--line-strong); }
+
+.carousel-slide-card {
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  background: linear-gradient(180deg, rgba(38, 28, 12, 0.8) 0%, rgba(20, 16, 10, 0.9) 100%);
+  border-radius: 12px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 0 20px rgba(251, 191, 36, 0.08) inset;
+}
+.carousel-slide-card.standard-risk {
+  border-color: rgba(56, 189, 248, 0.35);
+  background: linear-gradient(180deg, rgba(12, 28, 38, 0.8) 0%, rgba(8, 16, 24, 0.9) 100%);
+  box-shadow: 0 0 20px rgba(56, 189, 248, 0.08) inset;
+}
+
+.reasoning-box {
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+}
+.reasoning-item { display: flex; align-items: flex-start; gap: 6px; color: #d4d4d8; line-height: 1.4; }
+.reasoning-item span { color: var(--dim); font-family: 'Fira Code', monospace; font-size: 9.5px; }
+
+/* Shimmer 1-Click Action Button */
+.shimmer-btn-primary {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(135deg, #d97706, #f59e0b);
+  border: 1px solid #fbbf24;
+  color: #0f0b03;
+  font-weight: 600;
+  font-size: 11px;
+  padding: 7px 11px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transition: all 0.2s var(--ease);
+  box-shadow: 0 2px 10px rgba(245, 158, 11, 0.3);
+}
+.shimmer-btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(245, 158, 11, 0.5);
+}
+.shimmer-btn-primary::after {
+  content: '';
+  position: absolute;
+  top: 0; left: -100%; width: 50%; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+  transform: skewX(-20deg);
+  animation: btn-shimmer 3s infinite;
+}
+
+.batch-approve-strip {
+  border: 1px dashed rgba(251, 191, 36, 0.3);
+  background: rgba(251, 191, 36, 0.04);
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #fef08a;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.batch-approve-strip:hover {
+  background: rgba(251, 191, 36, 0.08);
+  border-color: #fbbf24;
+}
+
+/* 3. TAB 2 & 3: Micro-Expand Accordion Rows for Multi-Notifications & Reports */
+.micro-list { display: flex; flex-direction: column; gap: 4px; }
+.micro-row {
+  border: 1px solid var(--line);
+  background: #111115;
+  border-radius: 8px;
+  padding: 9px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: all 0.15s ease;
+  cursor: pointer;
+}
+.micro-row:hover { background: #16161c; border-color: var(--line-strong); }
+.micro-row-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11.5px;
+  gap: 8px;
+}
+.micro-row-details {
+  display: none;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255,255,255,0.05);
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+.micro-row.expanded {
+  background: #171720;
+  border-color: #38bdf866;
+}
+.micro-row.expanded .micro-row-details { display: block; }
+
+.deep-link-escalation {
+  text-align: center;
+  font-size: 11px;
+  color: #38bdf8;
+  padding: 6px;
+  cursor: pointer;
+  display: block;
+}
+.deep-link-escalation:hover { text-decoration: underline; color: #7dd3fc; }
+
+/* 4. Direction Input Box with Neural Focus */
+.direction-box {
+  display: flex;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #09090b;
+  padding: 6px 8px 6px 12px;
+  align-items: center;
+  transition: all 0.2s ease;
+}
+.direction-box:focus-within {
+  border-color: #38bdf8;
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.25);
+}
+.direction-box input { flex: 1; background: transparent; border: 0; outline: 0; font-size: 12px; color: #fff; }
+.direction-send-btn { border: 0; background: var(--text); color: #09090b; font-size: 11px; font-weight: 600; padding: 5px 12px; border-radius: 5px; transition: all 0.15s ease; }
+.direction-send-btn:hover { background: #fff; transform: scale(1.02); }
+
+.exec-quick-chips { display: flex; gap: 5px; flex-wrap: wrap; }
+.exec-chip {
+  border: 1px solid var(--line);
+  background: #141418;
+  border-radius: 5px;
+  padding: 3px 8px;
+  font-size: 10.5px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.exec-chip:hover { background: var(--surface3); color: #fff; border-color: var(--line-strong); }
+
+/* Bottom Role Dock */
+.bottom-dock-container { position: fixed; left: 24px; bottom: 20px; z-index: 50; display: flex; gap: 12px; align-items: center; }
+.role-switcher-box { border: 1px solid #444452; background: #18181f; border-radius: 10px; padding: 6px 10px; display: flex; gap: 4px; align-items: center; box-shadow: 0 8px 24px rgba(0,0,0,0.7); }
+.role-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.12em; color: #fbbf24; font-weight: 600; margin-right: 6px; font-family: 'Fira Code', monospace; }
+.role-btn { border: 1px solid transparent; background: transparent; border-radius: 6px; padding: 5px 9px; color: var(--muted); font-size: 11px; font-weight: 500; transition: all 0.15s ease; }
+.role-btn:hover { background: #262630; color: #fff; }
+.role-btn.active { background: #2e2e3a; border-color: #636375; color: #fff; }
+
+/* Detail Drawer */
+.drawer-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(4px); opacity: 0; pointer-events: none; transition: opacity 0.3s var(--ease); z-index: 60; }
+.drawer-overlay.open { opacity: 1; pointer-events: auto; }
+.detail-drawer { position: fixed; right: 0; top: 0; height: 100dvh; width: min(540px, 100%); background: #111114; border-left: 1px solid var(--line); box-shadow: -15px 0 45px rgba(0,0,0,0.8); transform: translateX(105%); transition: transform 0.35s var(--ease); z-index: 70; display: flex; flex-direction: column; }
+.detail-drawer.open { transform: translateX(0); }
+.drawer-header { padding: 18px 24px; border-bottom: 1px solid var(--line); display: flex; align-items: flex-start; justify-content: space-between; }
+.drawer-category { font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--dim); font-family: 'Fira Code', monospace; }
+.drawer-header h2 { font-size: 17px; font-weight: 600; color: #fff; margin-top: 4px; }
+.drawer-close { width: 28px; height: 28px; border: 1px solid var(--line); background: transparent; border-radius: 6px; color: var(--muted); display: grid; place-items: center; font-size: 16px; }
+.drawer-content { padding: 24px; flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
+.drawer-footer { padding: 18px 24px; border-top: 1px solid var(--line); display: flex; gap: 8px; background: #0e0e11; }
+.drawer-footer button { flex: 1; padding: 9px; border-radius: 6px; font-size: 12px; font-weight: 500; }
+.drawer-btn-primary { background: #fff; color: #000; border: 1px solid #fff; }
+.drawer-btn-secondary { background: #1c1c20; color: #ccc; border: 1px solid var(--line); }
+
+@keyframes float-idle { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(-7px); } }
+@keyframes float-waiting { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(-2px); } }
+@keyframes float-bubble { 0%, 100% { transform: translate(-50%, 0px); } 50% { transform: translate(-50%, -5px); } }
+@keyframes hud-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+@keyframes btn-shimmer { 0% { left: -100%; } 20%, 100% { left: 200%; } }
+@keyframes pulse-ring { 0%, 100% { transform: scale(1); opacity: 0.4; } 50% { transform: scale(1.15); opacity: 0.9; } }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+</style>
+</head>
+
+<body>
+<div class="shell">
+  <!-- Authentic Sidebar Navigation -->
+  <aside class="side">
+    <div class="brand">
+      <div class="brand-mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M7 8.5h10v8H7z"/><path d="M12 5v3.5M9 12h.01M15 12h.01M9 16.5h6"/></svg>
+      </div>
+      <div>
+        <b>OpenAgent</b>
+        <small>Agent Platform OS</small>
+      </div>
+    </div>
+
+    <div class="workspace-selector" onclick="switchMainView('orgs')">
+      <label>Workspace</label>
+      <b id="sidebarOrgName">ProtonX <span id="sidebarTier">ACTIVE</span></b>
+    </div>
+
+    <!-- 1. Workspace Navigation -->
+    <div class="nav-group" id="navGroupWorkspace">
+      <div class="nav-label">Workspace</div>
+      <button class="nav-item active" data-view="home" onclick="switchMainView('home')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="m4 12 8-7 8 7M6 10v9h12v-9"/></svg>
+        Home (Agent Operator)
+      </button>
+      <button class="nav-item" data-view="chat" onclick="switchMainView('chat')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 5h14v12H8l-3 3zM8 9h8M8 13h5"/></svg>
+        Chat Workspace
+      </button>
+      <button class="nav-item" data-view="inbox" onclick="switchMainView('inbox')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 6h16v12H4zM4 14h4l1.5 2h5l1.5-2h4"/></svg>
+        Smart Inbox
+        <span class="nav-badge">6</span>
+      </button>
+      <button class="nav-item" data-view="research_cases" onclick="switchMainView('research_cases')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        Research Cases
+        <span class="nav-badge" style="background:#0f766e22;color:#2dd4bf;border-color:#0f766e44">4</span>
+      </button>
+      <button class="nav-item" data-view="workspace" onclick="switchMainView('workspace')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        Files & Artifacts
+      </button>
+    </div>
+
+    <!-- 2. AI Infrastructure & Builder -->
+    <div class="nav-group" id="navGroupBuilder">
+      <div class="nav-label">AI Infrastructure</div>
+      <button class="nav-item" data-view="builder" onclick="switchMainView('builder')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 5h16v14H4zM8 9h8M8 13h5"/></svg>
+        Workflows & DAGs
+      </button>
+      <button class="nav-item" data-view="mcp" onclick="switchMainView('mcp')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        MCP Servers
+      </button>
+      <button class="nav-item" data-view="models" onclick="switchMainView('models')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3"/></svg>
+        Models (/models)
+      </button>
+      <button class="nav-item" data-view="providers" onclick="switchMainView('providers')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M20 17.58A5 5 0 0 0 18 8h-1.26A8 8 0 1 0 4 16.25"/><path d="M8 16h.01M12 16h.01M16 16h.01"/></svg>
+        Providers (/providers)
+      </button>
+      <button class="nav-item" data-view="integrations" onclick="switchMainView('integrations')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><path d="M22 6l-10 7L2 6"/></svg>
+        Integrations (OAuth)
+      </button>
+      <button class="nav-item" data-view="rules" onclick="switchMainView('rules')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        Automation Rules
+      </button>
+    </div>
+
+    <!-- 3. Governance & Operations -->
+    <div class="nav-group" id="navGroupPlatform">
+      <div class="nav-label">Governance & Ops</div>
+      <button class="nav-item" data-view="approvals" onclick="switchMainView('approvals')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="m12 3-8 4v5c0 4.5 3.4 7.5 8 9 4.6-1.5 8-4.5 8-9V7zM9 12l2 2 4-4"/></svg>
+        Approvals Queue
+        <span class="nav-badge red">3</span>
+      </button>
+      <button class="nav-item" data-view="evaluations" onclick="switchMainView('evaluations')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M6 18h12M10 6h4M12 2v4M12 18v4M7 9a5 5 0 0 1 10 0v5a5 5 0 0 1-10 0z"/></svg>
+        Evaluations
+      </button>
+      <button class="nav-item" data-view="quotas" onclick="switchMainView('quotas')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        Tenant Quotas
+      </button>
+      <button class="nav-item" data-view="members" onclick="switchMainView('members')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Members & Roles
+      </button>
+      <button class="nav-item" data-view="debug" onclick="switchMainView('debug')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="m8 2 1.88 1.88M14.12 3.88 16 2M9 7.13v-1a3.003 3.003 0 1 1 6 0v1M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6M12 20v-9"/></svg>
+        Debug Console
+      </button>
+      <button class="nav-item" data-view="orgs" onclick="switchMainView('orgs')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect width="16" height="20" x="4" y="2" rx="2" ry="2"/><path d="M9 22v-4h6v4"/><path d="M8 6h.01M16 6h.01M8 10h.01M16 10h.01M8 14h.01M16 14h.01"/></svg>
+        Organizations
+      </button>
+    </div>
+
+    <div class="user-nav">
+      <div class="user-profile" onclick="openDrawer('User Profile & API Keys', 'profile')">
+        <div class="avatar-badge" id="userAvatarBadge">NV</div>
+        <div>
+          <b id="userProfileName">Nguyen Van</b>
+          <small id="userRoleBadge">Member · ProtonX</small>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main Area -->
+  <main class="main">
+    <header class="topbar">
+      <h1 class="topbar-title" id="topbarViewTitle">Home</h1>
+      <div class="topbar-grow"></div>
+      
+      <div class="quick-hotkey-hint" onclick="openMultiScaleOperator('approvals')" title="Gọi Executive Agent Operator">
+        <span>🤖 Personal Operator</span>
+        <kbd>⌘K</kbd>
+      </div>
+
+      <div class="status-pill" id="topStatusPill" role="button" tabindex="0" onclick="openMultiScaleOperator('approvals')">
+        <i class="status-dot" id="topStatusDot"></i>
+        <span id="topStatusText">Assistant · 3 Cần duyệt · 6 Emails</span>
+      </div>
+
+      <button class="cmd-btn" onclick="openMultiScaleOperator('approvals')">
+        🔔 3 Cần duyệt
+      </button>
+    </header>
+
+    <div class="page-body">
+      <!-- VIEW 1: HOME -->
+      <div class="view-surface active" id="viewHome">
+        <div class="hero">
+          <div>
+            <div class="hero-tag">Executive Chief of Staff · ProtonX</div>
+            <h2>Trung tâm Điều hành Cá nhân</h2>
+          </div>
+          <p><b>7 Routine tự động</b> đang chạy ngầm trong workspace. Hiện có <b>3 yêu cầu duyệt, 6 email phân loại và 4 báo cáo</b> đã sẵn sàng. Con Robot 3D điều phối mượt mà qua hệ thống Carousel & Tabs thu gọn.</p>
+        </div>
+
+        <div class="dashboard-grid">
+          <section class="panel-section">
+            <div class="section-header">
+              <h3>Bản tin & Hành động cần xử lý</h3>
+            </div>
+
+            <div class="activity-list" id="activityFeedList">
+              <button class="activity-card urgent" onclick="openMultiScaleOperator('approvals')">
+                <span class="act-dot"></span>
+                <div>
+                  <div class="act-meta"><span class="act-tag">Security · Cần phê duyệt (1/3)</span></div>
+                  <strong>Yêu cầu gửi email gia hạn hợp đồng Acme Corp (HIGH RISK)</strong>
+                  <p>Workflow `Monitor and triage new Gmail` đã soạn sẵn bản nháp xác nhận 120 seats cho sarah.chen@acme.com.</p>
+                </div>
+                <time>18 phút hết hạn</time>
+                <span class="card-quick-hint">1-Click Approve</span>
+              </button>
+
+              <button class="activity-card warning" onclick="openMultiScaleOperator('approvals', 1)">
+                <span class="act-dot"></span>
+                <div>
+                  <div class="act-meta"><span class="act-tag">Calendar · Cần phê duyệt (2/3)</span></div>
+                  <strong>Tạo lịch họp Architecture Review với Northstar Labs</strong>
+                  <p>Workflow `Meeting Preparation` chuẩn bị lời mời Google Calendar lúc 14:00 hôm nay.</p>
+                </div>
+                <time>35 phút trước</time>
+                <span class="card-quick-hint">Duyệt lịch họp</span>
+              </button>
+
+              <button class="activity-card" onclick="openMultiScaleOperator('reports')">
+                <span class="act-dot"></span>
+                <div>
+                  <div class="act-meta"><span class="act-tag">Briefing · Morning Command</span></div>
+                  <strong>Morning Command Center hoàn tất lúc 08:00 AM</strong>
+                  <p>Đã tóm tắt lịch trình 2 cuộc họp và danh sách 6 đối tác đã được phản hồi đúng hạn.</p>
+                </div>
+                <time>Hôm nay 08:00</time>
+                <span class="card-quick-hint">Xem tóm tắt</span>
+              </button>
+            </div>
+          </section>
+
+          <aside class="rail">
+            <section class="block-box">
+              <h3>Tổng quan hôm nay</h3>
+              <div class="stats-grid">
+                <div class="stat-cell" onclick="openMultiScaleOperator('inbox')" style="cursor:pointer">
+                  <b>06</b><span>Email đã phân loại</span>
+                </div>
+                <div class="stat-cell" onclick="openMultiScaleOperator('approvals')" style="cursor:pointer">
+                  <b style="color:#fbbf24">03</b><span>Chờ phê duyệt</span>
+                </div>
+                <div class="stat-cell" onclick="openMultiScaleOperator('reports')" style="cursor:pointer">
+                  <b style="color:#2dd4bf">04</b><span>Báo cáo mới</span>
+                </div>
+                <div class="stat-cell" onclick="switchMainView('quotas')" style="cursor:pointer">
+                  <b>12%</b><span>Quota sử dụng</span>
+                </div>
+              </div>
+            </section>
+
+            <section class="block-box">
+              <h3>Chỉ đạo nhanh</h3>
+              <div class="quick-actions">
+                <button class="action-item" onclick="openMultiScaleOperator('approvals')">
+                  <span style="color:#fbbf24;font-weight:500">⚡ Xử lý 3 phê duyệt đang chờ</span>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="m9 18 6-6-6-6"/></svg>
+                </button>
+                <button class="action-item" onclick="openMultiScaleOperator('inbox')">
+                  <span>✉ Xem 6 email phân loại mới</span>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="m9 18 6-6-6-6"/></svg>
+                </button>
+                <button class="action-item" onclick="openMultiScaleOperator('reports')">
+                  <span>📋 Mở 4 báo cáo & hồ sơ đối tác</span>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="m9 18 6-6-6-6"/></svg>
+                </button>
+              </div>
+            </section>
+
+            <div class="chat-redirect-box" onclick="switchMainView('chat')">
+              <div>
+                <b style="color:#fff;display:block">Cần hỏi đáp / Chat tự do?</b>
+                <span style="color:var(--dim);font-size:10px">Mở Chat Workspace với Qwen3.6 Flash</span>
+              </div>
+              <span style="color:#2dd4bf;font-size:12px;font-weight:600">Mở Chat →</span>
+            </div>
+          </aside>
+        </div>
+      </div>
+
+      <!-- VIEW 2: SMART INBOX -->
+      <div class="view-surface" id="viewInbox">
+        <div class="hero"><div><div class="hero-tag">Inbound Triage</div><h2>Smart Inbox (/email-intelligence)</h2></div></div>
+        <div class="data-table-container">
+          <table class="data-table">
+            <thead><tr><th>Người gửi</th><th>Tiêu đề & Trích xuất</th><th>Phân loại</th><th>Thời gian</th><th class="num">Thao tác</th></tr></thead>
+            <tbody>
+              <tr><td><b>Sarah Chen</b><br><small style="color:var(--dim)">sarah.chen@acme.com</small></td><td><b>Re: Acme Corp - Renewal & Seat Expansion</b><br><small style="color:var(--muted)">Đồng ý 120 seats mốc 01/10/2026.</small></td><td><span class="tag-badge amber">CONTRACT_UPDATE</span></td><td>8 phút trước</td><td class="num"><button class="cmd-btn" onclick="openMultiScaleOperator('approvals', 0)">Duyệt</button></td></tr>
+              <tr><td><b>David Kim</b><br><small style="color:var(--dim)">david.kim@northstar.io</small></td><td><b>Architecture Review Meeting</b><br><small style="color:var(--muted)">Xác nhận cuộc họp 14:00 hôm nay.</small></td><td><span class="tag-badge teal">CALENDAR_INVITE</span></td><td>35 phút trước</td><td class="num"><button class="cmd-btn" onclick="openMultiScaleOperator('approvals', 1)">Duyệt</button></td></tr>
+              <tr><td><b>Marcus Vance</b><br><small style="color:var(--dim)">marcus@logitech.com</small></td><td><b>Request for Security Whitepaper</b><br><small style="color:var(--muted)">Cần bản báo cáo bảo mật Drive.</small></td><td><span class="tag-badge teal">DRIVE_EXPORT</span></td><td>1 giờ trước</td><td class="num"><button class="cmd-btn" onclick="openMultiScaleOperator('approvals', 2)">Duyệt</button></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- VIEW 3: RESEARCH CASES -->
+      <div class="view-surface" id="viewResearchCases">
+        <div class="hero"><div><div class="hero-tag">Automated Briefings</div><h2>Research Cases (/customer-intelligence)</h2></div></div>
+        <div class="form-card"><b>4 Hồ sơ Dossier sẵn sàng:</b> Acme Corp, Northstar Labs, LogiTech, Q3 Market Digest.</div>
+      </div>
+
+      <!-- VIEW 4-16: REMAINING PRESERVED SCREENS -->
+      <div class="view-surface" id="viewRules"><div class="hero"><div><div class="hero-tag">Policy</div><h2>Automation Rules (/email-intelligence/rules)</h2></div></div><div class="form-card">Active Shadow Rules: acme.com, northstar.io</div></div>
+      <div class="view-surface" id="viewChat"><div class="hero"><div><div class="hero-tag">Chat</div><h2>Chat Workspace (/chat)</h2></div><button class="cmd-btn" onclick="switchMainView('home')">← Home</button></div><div class="form-card"><p>Chat Assistant (Qwen3.6 Flash)</p></div></div>
+      <div class="view-surface" id="viewBuilder"><div class="hero"><div><div class="hero-tag">Workflows</div><h2>Workflows (/workflows)</h2></div></div><div class="form-card">7 Auto Routines Active</div></div>
+      <div class="view-surface" id="viewMcp"><div class="hero"><div><div class="hero-tag">MCP</div><h2>MCP Servers (/mcp)</h2></div></div><div class="form-card">mcp-drive-server (:8200)</div></div>
+      <div class="view-surface" id="viewModels"><div class="hero"><div><div class="hero-tag">Models</div><h2>Models (/models)</h2></div></div><div class="form-card">Qwen3.6 Flash, Gemini 1.5 Flash</div></div>
+      <div class="view-surface" id="viewProviders"><div class="hero"><div><div class="hero-tag">Providers</div><h2>Providers (/providers)</h2></div></div><div class="form-card">Alibaba, Google Gemini, Bifrost</div></div>
+      <div class="view-surface" id="viewIntegrations"><div class="hero"><div><div class="hero-tag">Integrations</div><h2>Integrations (/integrations)</h2></div></div><div class="form-card">Gmail & Google Calendar OAuth</div></div>
+      <div class="view-surface" id="viewApprovals"><div class="hero"><div><div class="hero-tag">Governance</div><h2>Approvals (/approvals)</h2></div></div><div class="form-card">3 Pending Approvals</div></div>
+      <div class="view-surface" id="viewEvaluations"><div class="hero"><div><div class="hero-tag">QA</div><h2>Evaluations (/evaluations)</h2></div></div><div class="form-card">100% Pass Rate</div></div>
+      <div class="view-surface" id="viewQuotas"><div class="hero"><div><div class="hero-tag">Quotas</div><h2>Quotas (/settings/quotas)</h2></div></div><div class="form-card">$100.00 Limit</div></div>
+      <div class="view-surface" id="viewMembers"><div class="hero"><div><div class="hero-tag">ZITADEL</div><h2>Members (/settings/members)</h2></div></div><div class="form-card">ProtonX Member Access</div></div>
+      <div class="view-surface" id="viewDebug"><div class="hero"><div><div class="hero-tag">Debug</div><h2>Debug Console (/debug)</h2></div></div><div class="form-card">Container 88f7a9 (Running)</div></div>
+      <div class="view-surface" id="viewOrgs"><div class="hero"><div><div class="hero-tag">Tenants</div><h2>Organizations (/organizations)</h2></div></div><div class="form-card">ProtonX (Active)</div></div>
+      <div class="view-surface" id="viewWorkspace"><div class="hero"><div><div class="hero-tag">Files</div><h2>Files & Artifacts (/workspace)</h2></div></div><div class="form-card">QDTN_D21-KY-THUAT_543.pdf</div></div>
+    </div>
+  </main>
+</div>
+
+<!-- Magnetic Dock Zones -->
+<div class="dock-zone" id="dockCenter" data-label="Dock: Trung tâm"></div>
+<div class="dock-zone" id="dockBottomRight" data-label="Dock: Góc phải"></div>
+<div class="dock-zone" id="dockLeftRail" data-label="Dock: Cạnh bảng tin"></div>
+
+<!-- 3D Companion with Living Thought Bubble -->
+<div class="companion state-idle" id="companion" role="button" tabindex="0" aria-label="3D Cybernetic Agent Companion">
+  <!-- Interactive Thought Bubble -->
+  <div class="thought-bubble" id="thoughtBubble" onclick="openMultiScaleOperator('approvals')">
+    <span class="thought-bubble-dot"></span>
+    <span id="thoughtBubbleText">⚡ 3 hành động cần bạn phê duyệt (Acme Corp, Northstar...) →</span>
+  </div>
+
+  <div class="model-wrapper" id="modelWrapper">
+    <svg class="hud-ring-svg" viewBox="0 0 200 200" fill="none" stroke="currentColor">
+      <circle cx="100" cy="100" r="92" stroke="var(--state-color)" stroke-width="1" stroke-dasharray="4 8" opacity="0.6"/>
+      <circle cx="100" cy="100" r="84" stroke="var(--state-color)" stroke-width="1.5" stroke-dasharray="24 16 8 16" opacity="0.8"/>
+      <path d="M100 6 V16 M100 184 V194 M6 100 H16 M184 100 H194" stroke="var(--state-color)" stroke-width="2"/>
+    </svg>
+    <div class="hud-telemetry" id="hudTelemetry">QUEUE // 3 APPROVALS</div>
+    <div class="halo-ring"></div>
+    <model-viewer
+      id="agentModel"
+      src="./agent-service-robot.glb"
+      alt="OpenAgent 3D Companion"
+      camera-orbit="0deg 75deg 2.4m"
+      field-of-view="28deg"
+      disable-zoom
+      interaction-prompt="none"
+      loading="eager">
+    </model-viewer>
+  </div>
+  <div class="companion-tag"><b>Personal Operator</b> · <span id="tagStateText">3 pending</span></div>
+</div>
+
+<!-- =========================================================================
+     MULTI-ITEM SCALABLE OPERATOR POPUP (CAROUSEL & TABS)
+     ========================================================================= -->
+<div class="command-surface" id="commandSurface">
+  <div class="command-arrow" id="cmdArrow"></div>
+  <div class="command-inner">
+    
+    <!-- 1. Header with Capsule Nav Tabs -->
+    <div class="exec-header">
+      <div class="exec-top-row">
+        <div class="exec-title-box">
+          <b>🤖 OpenAgent Operator</b>
+        </div>
+        <button class="cmd-close-btn" onclick="closeMultiScaleOperator()" aria-label="Close">×</button>
+      </div>
+
+      <!-- Segmented Capsule Tabs -->
+      <div class="tab-capsule-strip">
+        <button class="tab-capsule-btn active" id="tabBtnApprovals" onclick="switchOperatorTab('approvals')">
+          <span>⚡ Phê duyệt</span>
+          <span class="tab-counter amber" id="badgeApprovalsCount">3</span>
+        </button>
+        <button class="tab-capsule-btn" id="tabBtnInbox" onclick="switchOperatorTab('inbox')">
+          <span>✉ Email Triage</span>
+          <span class="tab-counter cyan">6</span>
+        </button>
+        <button class="tab-capsule-btn" id="tabBtnReports" onclick="switchOperatorTab('reports')">
+          <span>📋 Báo cáo</span>
+          <span class="tab-counter teal">4</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- =====================================================================
+         TAB 1: 3D STACK CAROUSEL FOR MULTI-APPROVALS
+         ===================================================================== -->
+    <div class="operator-tab-pane active" id="paneApprovals">
+      <div class="carousel-nav-bar">
+        <span>YÊU CẦU PHÊ DUYỆT (<span id="carouselCurrentNum">1</span> / <span id="carouselTotalNum">3</span>)</span>
+        <div style="display:flex;gap:4px">
+          <button class="carousel-btn" onclick="prevApprovalCard()" title="Xem thẻ trước">◀</button>
+          <button class="carousel-btn" onclick="nextApprovalCard()" title="Xem thẻ tiếp theo">▶</button>
+        </div>
+      </div>
+
+      <!-- Carousel Card Container -->
+      <div id="carouselCardSlot">
+        <!-- Rendered dynamically by JS -->
+      </div>
+
+      <!-- Batch Action -->
+      <div class="batch-approve-strip" onclick="approveAllPending()">
+        <div style="display:flex;align-items:center;gap:6px">
+          <span>✨</span>
+          <b>Duyệt nhanh tất cả 3 hành động an toàn</b>
+        </div>
+        <span style="font-size:10px;color:#fbbf24;font-weight:600">Tiết kiệm ~45p →</span>
+      </div>
+
+      <a class="deep-link-escalation" onclick="switchMainView('approvals');closeMultiScaleOperator()">
+        Xem toàn bộ danh sách trong Approvals Queue (/approvals) →
+      </a>
+    </div>
+
+    <!-- =====================================================================
+         TAB 2: MICRO-EXPAND ACCORDION FOR EMAIL TRIAGE (6 NOTIFICATIONS)
+         ===================================================================== -->
+    <div class="operator-tab-pane" id="paneInbox">
+      <div style="font-size:10px;font-family:'Fira Code',monospace;color:var(--dim);display:flex;justify-content:space-between">
+        <span>INBOUND EMAIL TRIAGE (6 MỚI)</span>
+        <span style="color:#38bdf8">TỰ ĐỘNG PHÂN LOẠI</span>
+      </div>
+
+      <div class="micro-list">
+        <div class="micro-row expanded" onclick="toggleMicroRow(this)">
+          <div class="micro-row-summary">
+            <div style="display:flex;align-items:center;gap:6px">
+              <span style="color:#fbbf24">✉</span>
+              <b>Sarah Chen (Acme Corp)</b>
+            </div>
+            <span class="tag-badge amber">120 seats</span>
+            <time style="color:var(--dim);font-size:10px;margin-left:auto">8p trước</time>
+          </div>
+          <div class="micro-row-details">
+            "Đồng ý điều khoản 120 seats với điều kiện triển khai trước ngày 01/10/2026."<br>
+            <div style="margin-top:6px;display:flex;gap:6px">
+              <button class="cmd-btn primary-amber" style="padding:3px 8px;font-size:10px" onclick="event.stopPropagation();openMultiScaleOperator('approvals', 0)">Xử lý phê duyệt</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="micro-row" onclick="toggleMicroRow(this)">
+          <div class="micro-row-summary">
+            <div style="display:flex;align-items:center;gap:6px">
+              <span style="color:#38bdf8">📅</span>
+              <b>David Kim (Northstar Labs)</b>
+            </div>
+            <span class="tag-badge teal">Họp 14:00</span>
+            <time style="color:var(--dim);font-size:10px;margin-left:auto">35p trước</time>
+          </div>
+          <div class="micro-row-details">
+            "Xác nhận cuộc họp Architecture Review lúc 14:00 hôm nay qua Google Meet."<br>
+            <span style="color:#2dd4bf;font-size:10px">✓ Đã tạo sẵn tài liệu Dossier Briefing 5 trang.</span>
+          </div>
+        </div>
+
+        <div class="micro-row" onclick="toggleMicroRow(this)">
+          <div class="micro-row-summary">
+            <div style="display:flex;align-items:center;gap:6px">
+              <span style="color:#a855f7">📁</span>
+              <b>Marcus Vance (LogiTech)</b>
+            </div>
+            <span class="tag-badge">Xuất Drive</span>
+            <time style="color:var(--dim);font-size:10px;margin-left:auto">1h trước</time>
+          </div>
+          <div class="micro-row-details">
+            "Yêu cầu gửi bản báo cáo Security Whitepaper lưu trên Google Drive."
+          </div>
+        </div>
+
+        <div class="micro-row" onclick="toggleMicroRow(this)">
+          <div class="micro-row-summary">
+            <div style="display:flex;align-items:center;gap:6px">
+              <span>💳</span>
+              <b>Stripe Billing</b>
+            </div>
+            <span class="tag-badge">Hóa đơn Q3</span>
+            <time style="color:var(--dim);font-size:10px;margin-left:auto">2h trước</time>
+          </div>
+          <div class="micro-row-details">
+            "Hóa đơn tháng 08/2026 đã được quyết toán thành công ($0.00 / $100.00 Quota)."
+          </div>
+        </div>
+      </div>
+
+      <a class="deep-link-escalation" onclick="switchMainView('inbox');closeMultiScaleOperator()">
+        Xem toàn bộ 12 email trong Smart Inbox (/email-intelligence) →
+      </a>
+    </div>
+
+    <!-- =====================================================================
+         TAB 3: REPORTS & DOSSIERS (4 REPORTS)
+         ===================================================================== -->
+    <div class="operator-tab-pane" id="paneReports">
+      <div style="font-size:10px;font-family:'Fira Code',monospace;color:var(--dim);display:flex;justify-content:space-between">
+        <span>BÁO CÁO & DOSSIERS (4 SẴN SÀNG)</span>
+        <span style="color:#2dd4bf">ĐỒNG BỘ 08:00 AM</span>
+      </div>
+
+      <div class="micro-list">
+        <div class="micro-row expanded" onclick="toggleMicroRow(this)">
+          <div class="micro-row-summary">
+            <div style="display:flex;align-items:center;gap:6px">
+              <span style="color:#2dd4bf">📋</span>
+              <b>Morning Command Center Digest</b>
+            </div>
+            <span class="tag-badge teal">Hôm nay</span>
+          </div>
+          <div class="micro-row-details">
+            • 4 email quan trọng đã được phân loại.<br>
+            • 2 cuộc họp hôm nay (14:00 Northstar Labs & 16:30 Internal Sync).<br>
+            • Follow-up Radar: 6/6 đối tác đã được hồi đáp đúng hạn.
+          </div>
+        </div>
+
+        <div class="micro-row" onclick="toggleMicroRow(this)">
+          <div class="micro-row-summary">
+            <div style="display:flex;align-items:center;gap:6px">
+              <span style="color:#38bdf8">🏢</span>
+              <b>Hồ sơ Đối tác: Acme Corp</b>
+            </div>
+            <span class="tag-badge teal">98% Confidence</span>
+          </div>
+          <div class="micro-row-details">
+            Supply Chain SaaS (450 nhân sự) · Đang đàm phán mở rộng 120 seats APAC.<br>
+            <button class="cmd-btn" style="padding:2px 8px;font-size:10px;margin-top:4px" onclick="event.stopPropagation();openDrawer('Hồ sơ Acme Corp', 'ci_detail')">Mở toàn văn hồ sơ</button>
+          </div>
+        </div>
+
+        <div class="micro-row" onclick="toggleMicroRow(this)">
+          <div class="micro-row-summary">
+            <div style="display:flex;align-items:center;gap:6px">
+              <span style="color:#fbbf24">🎯</span>
+              <b>Follow-up Radar (2 nhắc nhở)</b>
+            </div>
+            <span class="tag-badge amber">Đã soạn nháp</span>
+          </div>
+          <div class="micro-row-details">
+            Đã soạn sẵn 2 email nhắc nhở cho LogiTech và FinTech VN sau 3 ngày chưa phản hồi.
+          </div>
+        </div>
+      </div>
+
+      <a class="deep-link-escalation" onclick="switchMainView('research_cases');closeMultiScaleOperator()">
+        Xem toàn bộ báo cáo trong Research Cases (/customer-intelligence) →
+      </a>
+    </div>
+
+    <!-- 4. Natural Executive Direction Input with Neural Focus -->
+    <div class="direction-box">
+      <input type="text" id="neuralInput" placeholder="Chỉ đạo trợ lý: 'Duyệt tất cả', 'Tóm tắt Acme', 'Nhắc follow-up'..." onkeydown="if(event.key==='Enter')submitNeuralDirection()">
+      <button class="direction-send-btn" onclick="submitNeuralDirection()">Chỉ đạo</button>
+    </div>
+
+    <!-- Quick Direction Chips -->
+    <div class="exec-quick-chips">
+      <button class="exec-chip" onclick="approveAllPending()">✨ Duyệt nhanh tất cả</button>
+      <button class="exec-chip" onclick="askExecutiveAgent('Tóm tắt hồ sơ Acme Corp')">Tóm tắt Acme Corp</button>
+      <button class="exec-chip" onclick="switchOperatorTab('inbox')">✉ Xem 6 email</button>
+      <button class="exec-chip" style="margin-left:auto;color:#2dd4bf" onclick="switchMainView('chat')">Mở Chat →</button>
+    </div>
+
+  </div>
+</div>
+
+<!-- Bottom Control Dock -->
+<div class="bottom-dock-container">
+  <div class="role-switcher-box">
+    <span class="role-label">Role:</span>
+    <button class="role-btn active" data-role="member" onclick="switchUserRole('member')">Member</button>
+    <button class="role-btn" data-role="org_admin" onclick="switchUserRole('org_admin')">Org Admin</button>
+    <button class="role-btn" data-role="platform_admin" onclick="switchUserRole('platform_admin')">Platform Admin</button>
+  </div>
+</div>
+
+<!-- Drawer -->
+<div class="drawer-overlay" id="drawerOverlay"></div>
+<aside class="detail-drawer" id="detailDrawer">
+  <div class="drawer-header">
+    <div>
+      <div class="drawer-category" id="drawerCategory">Chi tiết hoạt động</div>
+      <h2 id="drawerTitle">Cấu hình</h2>
+    </div>
+    <button class="drawer-close" id="drawerCloseBtn" aria-label="Close drawer">×</button>
+  </div>
+  <div class="drawer-content" id="drawerContent"></div>
+  <div class="drawer-footer" id="drawerFooter">
+    <button class="drawer-btn-secondary" onclick="closeDrawer()">Đóng</button>
+    <button class="drawer-btn-primary" id="drawerPrimaryBtn" onclick="closeDrawer()">Lưu thay đổi</button>
+  </div>
+</aside>
+
+<script>
+// Roles
+const ROLES = {
+  member: { name: 'Member', badge: 'Member · ProtonX', avatar: 'NV', userName: 'Nguyen Van', landingView: 'home', showBuilderNav: false, showPlatformNav: false },
+  org_admin: { name: 'Org Admin', badge: 'Org Admin · ProtonX', avatar: 'AD', userName: 'Alex Danvers (Admin)', landingView: 'builder', showBuilderNav: true, showPlatformNav: false },
+  platform_admin: { name: 'Platform Admin', badge: 'Super Admin · Global', avatar: 'ZA', userName: 'zitadel-admin', landingView: 'orgs', showBuilderNav: true, showPlatformNav: true }
+};
+
+let currentRole = 'member';
+let activeView = 'home';
+let isOperatorOpen = false;
+
+function switchUserRole(roleKey) {
+  currentRole = roleKey;
+  const r = ROLES[roleKey];
+  document.getElementById('userProfileName').textContent = r.userName;
+  document.getElementById('userRoleBadge').textContent = r.badge;
+  document.getElementById('userAvatarBadge').textContent = r.avatar;
+  document.getElementById('navGroupBuilder').style.display = r.showBuilderNav ? 'grid' : 'none';
+  document.getElementById('navGroupPlatform').style.display = r.showPlatformNav ? 'grid' : 'none';
+  document.querySelectorAll('.role-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.role === roleKey));
+  switchMainView(r.landingView);
+}
+
+function switchMainView(viewKey) {
+  activeView = viewKey;
+  document.querySelectorAll('.view-surface').forEach(el => el.classList.remove('active'));
+  const map = { home: 'viewHome', chat: 'viewChat', inbox: 'viewInbox', research_cases: 'viewResearchCases', workspace: 'viewWorkspace', builder: 'viewBuilder', mcp: 'viewMcp', models: 'viewModels', providers: 'viewProviders', integrations: 'viewIntegrations', rules: 'viewRules', approvals: 'viewApprovals', evaluations: 'viewEvaluations', quotas: 'viewQuotas', members: 'viewMembers', debug: 'viewDebug', orgs: 'viewOrgs' };
+  const target = document.getElementById(map[viewKey] || 'viewHome');
+  if (target) target.classList.add('active');
+
+  const titles = { home: 'Home (Agent Operator)', chat: 'Chat Workspace', inbox: 'Smart Inbox (6)', research_cases: 'Research Cases (4)', workspace: 'Files & Artifacts', builder: 'Workflows & DAGs', mcp: 'MCP Servers', models: 'Models (/models)', providers: 'Providers (/providers)', integrations: 'Integrations', rules: 'Automation Rules', approvals: 'Approvals Queue (3)', evaluations: 'Evaluations', quotas: 'Tenant Quotas', members: 'Members & Roles', debug: 'Debug Console', orgs: 'Organizations' };
+  document.getElementById('topbarViewTitle').textContent = titles[viewKey] || 'Home';
+  document.querySelectorAll('.nav-item').forEach(btn => btn.classList.toggle('active', btn.dataset.view === viewKey));
+
+  if (viewKey === 'chat') {
+    companion.classList.add('hidden');
+    closeMultiScaleOperator();
+  } else {
+    companion.classList.remove('hidden');
+  }
+}
+
+// Multi-Approval Carousel Data
+const APPROVAL_ITEMS = [
+  {
+    id: 'app-1',
+    title: 'Gia hạn hợp đồng Acme Corp · Nâng cấp 120 seats',
+    risk: 'HIGH RISK',
+    riskClass: 'high-risk',
+    confidence: '98% Confidence',
+    steps: [
+      { num: '01 / TRÍCH XUẤT', text: 'Email lúc 21:18 từ sarah.chen@acme.com chốt mở rộng 120 seats mốc 01/10/2026.' },
+      { num: '02 / CHÍNH SÁCH', text: 'Hợp lệ theo quy tắc chiết khấu Q3. Đã đối chiếu hồ sơ Customer Intelligence.' },
+      { num: '03 / ĐỀ XUẤT', text: 'Tự động gửi email xác nhận Gmail API. Cần chữ ký phê duyệt từ bạn.' }
+    ]
+  },
+  {
+    id: 'app-2',
+    title: 'Tạo lịch họp Architecture Review với Northstar Labs',
+    risk: 'STANDARD',
+    riskClass: 'standard-risk',
+    confidence: '99% Match',
+    steps: [
+      { num: '01 / THỜI GIAN', text: '14:00 - 15:00 hôm nay trên Google Meet kèm 4 kỹ sư tham gia.' },
+      { num: '02 / BỐI CẢNH', text: 'Đã chuẩn bị sẵn tài liệu Dossier Briefing 5 trang lưu trữ trong RAG.' },
+      { num: '03 / ĐỀ XUẤT', text: 'Gửi lời mời lịch Google Calendar tự động tới david.kim@northstar.io.' }
+    ]
+  },
+  {
+    id: 'app-3',
+    title: 'Xuất báo cáo Customer Intelligence lên Google Drive',
+    risk: 'STANDARD',
+    riskClass: 'standard-risk',
+    confidence: '95% Auto-save',
+    steps: [
+      { num: '01 / TÀI LIỆU', text: 'Báo cáo tổng hợp bảo mật Security Whitepaper theo yêu cầu LogiTech.' },
+      { num: '02 / ĐÍCH ĐẾN', text: 'Thư mục `/OpenAgent/Briefings/2026-08/` qua MCP Drive Connector.' },
+      { num: '03 / ĐỀ XUẤT', text: 'Tạo file tài liệu và sinh đường dẫn chia sẻ an toàn cho khách hàng.' }
+    ]
+  }
+];
+
+let currentApprovalIndex = 0;
+
+function renderApprovalCard() {
+  const item = APPROVAL_ITEMS[currentApprovalIndex];
+  document.getElementById('carouselCurrentNum').textContent = currentApprovalIndex + 1;
+  document.getElementById('carouselTotalNum').textContent = APPROVAL_ITEMS.length;
+
+  const slot = document.getElementById('carouselCardSlot');
+  slot.innerHTML = `
+    <div class="carousel-slide-card ${item.risk === 'STANDARD' ? 'standard-risk' : ''}">
+      <div style="display:flex;align-items:center;justify-content:space-between;font-size:9.5px;font-family:'Fira Code',monospace">
+        <span style="color:${item.risk === 'HIGH RISK' ? '#fbbf24' : '#38bdf8'};font-weight:600">⚡ ${item.risk}</span>
+        <span class="intel-confidence" style="color:#22c55e;background:#14532d33;padding:1px 6px;border-radius:4px;border:1px solid #22c55e44">${item.confidence}</span>
+      </div>
+      <h4 style="font-size:12.5px;font-weight:600;color:#fff;line-height:1.35">${item.title}</h4>
+      <div class="reasoning-box">
+        ${item.steps.map(s => `
+          <div class="reasoning-item">
+            <span>${s.num}:</span>
+            <div>${s.text}</div>
+          </div>
+        `).join('')}
+      </div>
+      <div style="display:flex;gap:7px;align-items:center;margin-top:2px">
+        <button class="shimmer-btn-primary" onclick="approveCurrentCard()">
+          <span>✨ Duyệt mục này</span>
+        </button>
+        <button class="cmd-btn" onclick="openDrawer('Xem & Sửa chi tiết', 'approval')">✏ Xem & Sửa</button>
+        <button class="cmd-btn" onclick="nextApprovalCard()">Bỏ qua →</button>
+      </div>
+    </div>
+  `;
+}
+
+function nextApprovalCard() {
+  currentApprovalIndex = (currentApprovalIndex + 1) % APPROVAL_ITEMS.length;
+  renderApprovalCard();
+}
+
+function prevApprovalCard() {
+  currentApprovalIndex = (currentApprovalIndex - 1 + APPROVAL_ITEMS.length) % APPROVAL_ITEMS.length;
+  renderApprovalCard();
+}
+
+function approveCurrentCard() {
+  alert(`✓ Đã phê duyệt thành công: "${APPROVAL_ITEMS[currentApprovalIndex].title}"`);
+  nextApprovalCard();
+}
+
+function approveAllPending() {
+  document.getElementById('paneApprovals').innerHTML = `
+    <div style="border:1px solid #15803d;background:#052e16;border-radius:10px;padding:16px;text-align:center">
+      <div style="color:#4ade80;font-weight:600;font-size:13px">✓ Đã phê duyệt toàn bộ 3 hành động thành công!</div>
+      <p style="font-size:11.5px;color:#bbf7d0;margin-top:4px">Email Acme Corp, lịch họp Northstar Labs và file Drive LogiTech đã được thực thi đồng thời.</p>
+    </div>
+  `;
+  document.getElementById('badgeApprovalsCount').textContent = '0';
+  document.getElementById('badgeApprovalsCount').className = 'tab-counter teal';
+  document.getElementById('thoughtBubble').style.display = 'none';
+  document.getElementById('tagStateText').textContent = 'all caught up';
+}
+
+function switchOperatorTab(tabKey) {
+  document.querySelectorAll('.tab-capsule-btn').forEach(btn => btn.classList.remove('active'));
+  document.querySelectorAll('.operator-tab-pane').forEach(p => p.classList.remove('active'));
+  
+  if (tabKey === 'approvals') {
+    document.getElementById('tabBtnApprovals').classList.add('active');
+    document.getElementById('paneApprovals').classList.add('active');
+  } else if (tabKey === 'inbox') {
+    document.getElementById('tabBtnInbox').classList.add('active');
+    document.getElementById('paneInbox').classList.add('active');
+  } else if (tabKey === 'reports') {
+    document.getElementById('tabBtnReports').classList.add('active');
+    document.getElementById('paneReports').classList.add('active');
+  }
+}
+
+function toggleMicroRow(el) {
+  el.classList.toggle('expanded');
+}
+
+// Drag & Drop Functionality with Magnetic Snapping
+const companion = document.getElementById('companion');
+const commandSurface = document.getElementById('commandSurface');
+let isDragging = false, hasMoved = false, startX = 0, startY = 0, offsetX = 0, offsetY = 0;
+
+const dockZones = [
+  { el: document.getElementById('dockCenter'), x: window.innerWidth / 2 + 180, y: window.innerHeight * 0.5 },
+  { el: document.getElementById('dockBottomRight'), x: window.innerWidth - 108, y: window.innerHeight - 100 },
+  { el: document.getElementById('dockLeftRail'), x: 340, y: 215 }
+];
+
+function getPoint(e) { return e.touches ? e.touches[0] : e; }
+
+function handleDragStart(e) {
+  if (e.target.closest('button, input, .thought-bubble')) return;
+  const p = getPoint(e);
+  const r = companion.getBoundingClientRect();
+  isDragging = true;
+  hasMoved = false;
+  startX = p.clientX;
+  startY = p.clientY;
+  offsetX = p.clientX - r.left;
+  offsetY = p.clientY - r.top;
+  companion.classList.add('dragging');
+  document.querySelectorAll('.dock-zone').forEach(z => z.classList.add('visible'));
+  if (isOperatorOpen) closeMultiScaleOperator();
+}
+
+function handleDragMove(e) {
+  if (!isDragging) return;
+  const p = getPoint(e);
+  if (Math.hypot(p.clientX - startX, p.clientY - startY) > 5) hasMoved = true;
+  const targetX = Math.max(240, Math.min(window.innerWidth - 130, p.clientX - offsetX));
+  const targetY = Math.max(70, Math.min(window.innerHeight - 130, p.clientY - offsetY));
+  companion.style.left = `${targetX}px`;
+  companion.style.top = `${targetY}px`;
+  companion.style.transform = 'none';
+
+  const cCenterX = targetX + 85, cCenterY = targetY + 80;
+  dockZones.forEach(z => {
+    const zR = z.el.getBoundingClientRect();
+    const d = Math.hypot(cCenterX - (zR.left + zR.width / 2), cCenterY - (zR.top + zR.height / 2));
+    z.el.classList.toggle('hovered', d < 80);
+  });
+}
+
+function handleDragEnd() {
+  if (!isDragging) return;
+  isDragging = false;
+  companion.classList.remove('dragging');
+  const r = companion.getBoundingClientRect();
+  const cCX = r.left + r.width / 2, cCY = r.top + r.height / 2;
+
+  dockZones.forEach(z => {
+    const zR = z.el.getBoundingClientRect();
+    if (Math.hypot(cCX - (zR.left + zR.width / 2), cCY - (zR.top + zR.height / 2)) < 90) {
+      companion.style.transition = 'left 0.3s var(--ease-spring), top 0.3s var(--ease-spring)';
+      companion.style.left = `${zR.left + zR.width / 2 - 85}px`;
+      companion.style.top = `${zR.top + zR.height / 2 - 80}px`;
+      setTimeout(() => { companion.style.transition = ''; }, 300);
+    }
+    z.el.classList.remove('hovered', 'visible');
+  });
+}
+
+companion.addEventListener('mousedown', handleDragStart);
+window.addEventListener('mousemove', handleDragMove);
+window.addEventListener('mouseup', handleDragEnd);
+
+companion.addEventListener('click', (e) => {
+  if (hasMoved) { hasMoved = false; return; }
+  if (isOperatorOpen) closeMultiScaleOperator();
+  else openMultiScaleOperator('approvals');
+});
+
+// Smart Popup Positioning (Clamped & Auto-Flipped)
+function openMultiScaleOperator(tabKey = 'approvals', initialIndex = 0) {
+  isOperatorOpen = true;
+  commandSurface.classList.add('open');
+  if (initialIndex !== undefined) currentApprovalIndex = initialIndex;
+  renderApprovalCard();
+  switchOperatorTab(tabKey);
+  placeSurface();
+}
+
+function closeMultiScaleOperator() {
+  isOperatorOpen = false;
+  commandSurface.classList.remove('open');
+}
+
+function placeSurface() {
+  const r = companion.getBoundingClientRect();
+  const surfaceWidth = Math.min(480, window.innerWidth - 32);
+  const surfaceHeight = commandSurface.offsetHeight || 440;
+  
+  // Horizontal clamping
+  let left = r.left + (r.width / 2) - (surfaceWidth / 2);
+  const clampedLeft = Math.max(16, Math.min(window.innerWidth - surfaceWidth - 16, left));
+  const arrowX = Math.max(20, Math.min(surfaceWidth - 20, (r.left + r.width / 2) - clampedLeft));
+
+  // Vertical auto-flip & clamping
+  let top = r.bottom + 14;
+  let isAbove = false;
+  if (top + surfaceHeight > window.innerHeight - 16) {
+    top = r.top - surfaceHeight - 14;
+    isAbove = true;
+  }
+  top = Math.max(16, Math.min(window.innerHeight - surfaceHeight - 16, top));
+
+  commandSurface.classList.toggle('above', isAbove);
+  commandSurface.style.setProperty('--arrow-x', `${arrowX}px`);
+  commandSurface.style.width = `${surfaceWidth}px`;
+  commandSurface.style.left = `${clampedLeft}px`;
+  commandSurface.style.top = `${top}px`;
+}
+
+// Close on outside click
+document.addEventListener('click', (e) => {
+  if (!isOperatorOpen) return;
+  if (!commandSurface.contains(e.target) && !companion.contains(e.target) && !e.target.closest('.bottom-dock-container') && !e.target.closest('#topStatusPill') && !e.target.closest('.quick-hotkey-hint') && !e.target.closest('.activity-card')) {
+    closeMultiScaleOperator();
+  }
+});
+
+function askExecutiveAgent(query) {
+  openMultiScaleOperator('reports');
+  if (query.includes('Acme')) {
+    alert("🤖 Tóm tắt Acme Corp (Customer Intelligence):\n• Doanh nghiệp Supply Chain SaaS (450 nhân sự).\n• Nhu cầu: Mở rộng từ 50 lên 120 seats cho chi nhánh APAC.\n• Người đại diện: Sarah Chen (sarah.chen@acme.com).\n• Độ tin cậy: 98% (Dựa trên 5 nguồn tin email và lịch sử thanh toán).");
+  } else {
+    alert("🔄 Đang đồng bộ và làm mới kết quả từ 7 Routine tự động trong background...");
+  }
+}
+
+function submitNeuralDirection() {
+  const input = document.getElementById('neuralInput');
+  const val = input.value.trim();
+  if (!val) return;
+  if (val.includes('duyệt') || val.includes('approve')) {
+    approveAllPending();
+  } else {
+    alert(`🤖 Đã nhận chỉ đạo: "${val}"\nTrợ lý đang phối hợp cùng các Routine để thực hiện trong nền.`);
+  }
+  input.value = '';
+}
+
+// Head look at loop
+let targetTheta = 0, currentTheta = 0, targetPhi = 75, currentPhi = 75;
+window.addEventListener('mousemove', (e) => {
+  if (isDragging) return;
+  const r = companion.getBoundingClientRect();
+  const dx = (e.clientX - (r.left + r.width / 2)) / window.innerWidth;
+  const dy = (e.clientY - (r.top + r.height / 2)) / window.innerHeight;
+  targetTheta = Math.max(-28, Math.min(28, dx * 65));
+  targetPhi = Math.max(68, Math.min(84, 75 + dy * 22));
+});
+
+function renderCameraOrbitLoop() {
+  currentTheta += (targetTheta - currentTheta) * 0.12;
+  currentPhi += (targetPhi - currentPhi) * 0.12;
+  const model = document.getElementById('agentModel');
+  if (model && model.cameraOrbit !== undefined) {
+    model.cameraOrbit = `${currentTheta.toFixed(1)}deg ${currentPhi.toFixed(1)}deg 2.4m`;
+  }
+  requestAnimationFrame(renderCameraOrbitLoop);
+}
+requestAnimationFrame(renderCameraOrbitLoop);
+
+// Drawer
+function openDrawer(title, type) {
+  closeMultiScaleOperator();
+  document.getElementById('drawerTitle').textContent = title;
+  const content = document.getElementById('drawerContent');
+  if (type === 'approval') {
+    content.innerHTML = `
+      <div style="background:#141418;border:1px solid var(--line);padding:12px;border-radius:8px">
+        <b>Bối cảnh yêu cầu:</b><br>Sarah Chen (Acme Corp) đề cập gia hạn hợp đồng từ 50 lên 120 seats.
+      </div>
+      <div style="background:#09090b;border:1px solid var(--line);padding:12px;border-radius:6px;font-family:'Fira Code',monospace;font-size:11px;color:#d4d4d8;margin-top:10px">
+[PROPOSED EMAIL ACTION]
+To: sarah.chen@acme.com
+Subject: Re: Acme Corp - Renewal & Seat Expansion
+Body:
+Chào Sarah,
+Cảm ơn bạn đã xác nhận. Chúng tôi đã cập nhật 120 seats vào hợp đồng gia hạn ngày 01/10/2026.
+      </div>
+    `;
+  } else {
+    content.innerHTML = `<div style="color:var(--muted);font-size:12px">Chi tiết thông tin dữ liệu.</div>`;
+  }
+  drawerOverlay.classList.add('open');
+  detailDrawer.classList.add('open');
+}
+
+function closeDrawer() {
+  drawerOverlay.classList.remove('open');
+  detailDrawer.classList.remove('open');
+}
+drawerOverlay.onclick = closeDrawer;
+document.getElementById('drawerCloseBtn').onclick = closeDrawer;
+
+// Hotkey ⌘K
+document.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+    e.preventDefault();
+    if (isOperatorOpen) closeMultiScaleOperator(); else openMultiScaleOperator('approvals');
+  }
+  if (e.key === 'Escape') { closeMultiScaleOperator(); closeDrawer(); }
+});
+
+renderApprovalCard();
+switchUserRole('member');
+</script>
+</body>
+</html>
