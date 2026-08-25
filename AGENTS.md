@@ -97,6 +97,7 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 | `dev` | `G:\open-agent` | Nhánh tích hợp chính — không code trực tiếp ở đây | — |
 | `feat/dsh-inspired-hardening` | `G:\open-agent-worktrees\dsh-refactor` | Refactor hardening học từ deepseek-harness: tool timeout/retry, budget cost, compaction fallback | ox-alpha |
 | `feat/user-deactivation-disconnect` | `G:\open-agent-worktrees\user-deactivation-disconnect` | User lifecycle & deactivation session termination | ox-alpha |
+| `fix/tool-call-debug-visibility` | `G:\open-agent-worktrees\tool-call-debug-visibility` | Tool call visibility strictly controlled by debug toggle | ox-alpha |
 
 > 2026-08-25: Đã dọn dẹp worktree/branch của các PR đã merge vào `dev`
 > (#86 chat-projection-stream-target, #88 chat-tool-chips, #90 chat-markdown-links,

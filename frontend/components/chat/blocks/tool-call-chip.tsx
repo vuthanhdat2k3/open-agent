@@ -1,15 +1,13 @@
 "use client";
 
-import { CheckCircle2, Loader2, Wrench, XCircle, Bot, Terminal, ChevronDown } from "lucide-react";
+import { CheckCircle2, Loader2, Wrench, XCircle, Bot, Terminal } from "lucide-react";
 import type { ToolCallBlock } from "@/lib/chat/projection";
 
 interface ToolCallChipProps {
   block: ToolCallBlock;
-  active?: boolean;
-  onClick?: () => void;
 }
 
-export function ToolCallChip({ block, active = false, onClick }: ToolCallChipProps) {
+export function ToolCallChip({ block }: ToolCallChipProps) {
   const isSubagent = block.name === "call_agent" || Boolean(block.subagent);
   const isCode = block.name === "run_code" || block.name === "write_file";
 
@@ -33,30 +31,15 @@ export function ToolCallChip({ block, active = false, onClick }: ToolCallChipPro
   const displayName = block.subagent?.agentName ? `subagent: ${block.subagent.agentName}` : block.name;
 
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] transition-all cursor-pointer select-none ${
-        active
-          ? "border-primary bg-primary/10 text-foreground shadow-sm ring-1 ring-primary/30"
-          : block.status === "running"
-            ? "border-primary/50 bg-primary/5 text-foreground animate-pulse"
-            : "border-border/60 bg-muted/30 text-muted-foreground hover:border-border hover:bg-muted/60 hover:text-foreground"
-      }`}
-      title={`${displayName} — ${block.status} (click to toggle details)`}
+    <span
+      className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-muted/30 px-2.5 py-0.5 text-[11px] text-muted-foreground select-none"
+      title={`${displayName} — ${block.status}`}
     >
       {statusIcon}
       {kindIcon}
-      <span className="font-mono text-[10.5px] font-medium">{displayName}</span>
-      {onClick && (
-        <ChevronDown
-          className={`h-2.5 w-2.5 text-muted-foreground/60 transition-transform duration-150 ${
-            active ? "rotate-180 text-foreground" : ""
-          }`}
-          aria-hidden="true"
-        />
-      )}
-    </button>
+      <span className="font-mono text-[10.5px]">{displayName}</span>
+    </span>
   );
 }
+
 
