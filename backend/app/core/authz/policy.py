@@ -9,16 +9,16 @@ from app.models.role import Role
 # Every resource:action pair below is checked via require_permission() in the
 # FastAPI dependency chain.
 #
-# Two-role model: admin configures/operates the product; user consumes it.
-# Admin gets "*" (everything, including every current and future permission
-# string) rather than an enumerated list - there is no "trusted but slightly
-# less than admin" tier to reason about anymore.
-#
-# User's permissions are deliberately narrow: chat with the org's primary
-# (orchestrator-kind) agent, run already-published workflows, see their own
-# usage/quota/data. Everything that shapes the product for every user
-# (agents, workflows authoring, providers, models, MCP,
-# members, evaluations, audit, approvals-decide, files write) is admin-only.
+# Four-role model:
+#   platform_admin and org_admin get "*" - full control of the platform
+#   (platform_admin) or the org (org_admin), including every current and
+#   future permission string. Route-level permissions must still be declared
+#   explicitly below (see the update block) so the audit list stays complete.
+#   operator runs and edits the product's artifacts but does not manage the
+#   org (no orgs:*, models:manage, files:manage, admin:email-intelligence).
+#   user consumes: chat with the org's primary (orchestrator-kind) agent, run
+#   already-published workflows, manage their OWN customer-intelligence
+#   connections (ci:personal:manage), see their own usage/quota/data.
 #
 # Convention: ``<domain>:<action>``
 #   domain  = plural noun (agents, workflows, providers, models, mcp, org, …)
@@ -37,6 +37,7 @@ PERMISSIONS: dict[Role, set[str]] = {
         "workflows:*", "providers:*", "models:read", "mcp:*", "files:read", "files:write",
         "sessions:*", "approvals:read", "approvals:manage", "evaluations:*", "ci:*",
         "tools:use:safe", "tools:use:read", "tools:use:write", "tools:use:execute", "tools:use:network",
+        "usage:read", "quota:usage",
     },
     Role.user: {
         "agents:read",
@@ -69,6 +70,7 @@ PERMISSIONS[Role.org_admin].update({
     "agents:publish:force",
     "approvals:manage",
     "ci:organization:read",
+    "admin:email-intelligence",
 })
 
 

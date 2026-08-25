@@ -4,6 +4,7 @@ import * as React from "react";
 import { toast } from "sonner";
 import { Upload, Trash2, FileText, Loader2 } from "lucide-react";
 import {
+  useCan,
   useFiles,
   useUploadFile,
   useDeleteFile,
@@ -50,6 +51,7 @@ export default function FilesPage() {
   const upload = useUploadFile();
   const del = useDeleteFile();
   const ingest = useIngestFile();
+  const canIngest = useCan("files:manage");
   const fileRef = React.useRef<HTMLInputElement>(null);
   const [collection, setCollection] = React.useState("default");
 
@@ -133,33 +135,35 @@ export default function FilesPage() {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="gap-1.5 active-tactile transition-transform"
-                          loading={ingest.isPending}
-                          disabled={f.status === "queued" || f.status === "processing" || f.status === "retrying"}
-                          onClick={async () => {
-                            try {
-                              const r = await ingest.mutateAsync({
-                                id: f.id,
-                                body: { collection },
-                              });
-                              toast.success(
-                                r.rag_document_id
-                                  ? `Ingestion accepted → ${r.rag_document_id}`
-                                  : "Ingestion submitted",
-                              );
-                            } catch (err: any) {
-                              toast.error(err.message);
-                            }
-                          }}
-                        >
-                          {f.status === "queued" || f.status === "processing" || f.status === "retrying" ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : null}
-                          Ingest
-                        </Button>
+                        {canIngest && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="gap-1.5 active-tactile transition-transform"
+                            loading={ingest.isPending}
+                            disabled={f.status === "queued" || f.status === "processing" || f.status === "retrying"}
+                            onClick={async () => {
+                              try {
+                                const r = await ingest.mutateAsync({
+                                  id: f.id,
+                                  body: { collection },
+                                });
+                                toast.success(
+                                  r.rag_document_id
+                                    ? `Ingestion accepted ${r.rag_document_id}`
+                                    : "Ingestion submitted",
+                                );
+                              } catch (err: any) {
+                                toast.error(err.message);
+                              }
+                            }}
+                          >
+                            {f.status === "queued" || f.status === "processing" || f.status === "retrying" ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : null}
+                            Ingest
+                          </Button>
+                        )}
                         <ConfirmDialog
                           trigger={<Button size="icon" variant="ghost" className="h-10 w-10 text-muted-foreground hover:text-destructive" aria-label={`Delete ${f.original_name}`}><Trash2 className="h-4 w-4" /></Button>}
                           title={`Delete ${f.original_name}?`}
