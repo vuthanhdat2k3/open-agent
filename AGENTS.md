@@ -95,6 +95,7 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 | Branch | Worktree path | Phạm vi/task | Agent/người phụ trách |
 |---|---|---|---|
 | `dev` | `G:\open-agent` | Nhánh tích hợp chính — không code trực tiếp ở đây | — |
+| `feat/zitadel-auto-provision-roles` | `G:\open-agent-worktrees\zitadel-auto-provision` | Automatic Zitadel account creation upon member invite and strict 2-tier role appointment | ox-alpha |
 
 > 2026-08-25: Đã dọn dẹp worktree/branch của các PR đã merge vào `dev`
 > (#86 chat-projection-stream-target, #88 chat-tool-chips, #90 chat-markdown-links,

@@ -22,13 +22,19 @@ export default function MembersPage() {
   const canManage = useCan("orgs:manage");
   const [email, setEmail] = React.useState("");
   const [role, setRole] = React.useState("user");
+  const [password, setPassword] = React.useState("");
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     try {
-      await invite.mutateAsync({ email, role });
-      toast.success("Member added");
+      await invite.mutateAsync({
+        email,
+        role,
+        initial_password: password.trim() ? password.trim() : undefined,
+      });
+      toast.success("Member added & provisioned successfully");
       setEmail("");
+      setPassword("");
     } catch (error: any) {
       toast.error(error.message || "Unable to add member");
     }
@@ -47,9 +53,10 @@ export default function MembersPage() {
     <div className="space-y-6">
       <PageHeader icon={Users} title="Members & roles" description="Manage access in the active organization" />
       {!canManage ? <ErrorState title="Read-only access" description="Only organization administrators can manage members and roles." /> : <>
-        <Card glass><CardContent className="space-y-4 p-5"><p className="text-sm text-muted-foreground">Add the email first. The user must then be created by an administrator in ZITADEL and sign in through SSO; the first verified login activates this membership.</p><form onSubmit={submit} className="grid gap-4 md:grid-cols-[minmax(0,1fr)_180px_auto] md:items-end">
+        <Card glass><CardContent className="space-y-4 p-5"><p className="text-sm text-muted-foreground">Adding a member automatically provisions their account on ZITADEL with the initial password so they can log in immediately.</p><form onSubmit={submit} className="grid gap-4 md:grid-cols-[minmax(0,1fr)_160px_160px_auto] md:items-end">
           <div className="space-y-2"><Label htmlFor="member-email">Email</Label><Input id="member-email" name="email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="teammate@example.com" required /></div>
           <div className="space-y-2"><Label htmlFor="member-role">Role</Label><Select id="member-role" value={role} onChange={(event) => setRole(event.target.value)}><option value="user">user</option><option value="operator">operator</option><option value="org_admin">org_admin</option></Select></div>
+          <div className="space-y-2"><Label htmlFor="member-password">Initial Password</Label><Input id="member-password" name="password" type="text" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Default: OpenAgent@2026" /></div>
           <Button type="submit" className="gap-2" loading={invite.isPending} disabled={!email}><UserPlus className="h-4 w-4" aria-hidden="true" />Add member</Button>
         </form></CardContent></Card>
         {members.isLoading ? <LoadingSkeleton variant="table" /> : members.isError ? <ErrorState title="Unable to load members" description="Organization member data could not be loaded." onRetry={() => void members.refetch()} /> : members.data?.length ? <div className="space-y-3">{members.data.map((member) => <Card key={member.user_id} glass><CardContent className="flex items-center justify-between gap-3 p-4"><div className="min-w-0"><div className="truncate text-sm font-semibold text-foreground">{member.email}</div><div className="truncate text-sm text-muted-foreground">{member.display_name}</div></div><div className="flex items-center gap-2"><Badge variant="outline" className="font-mono text-xs uppercase">{member.role}</Badge>{canRemoveMember(member) ? <ConfirmDialog trigger={<Button size="icon" variant="ghost" className="h-10 w-10 text-muted-foreground hover:text-destructive" aria-label={`Remove ${member.email}`}><Trash2 className="h-4 w-4" /></Button>} title={`Remove ${member.email}?`} description="This member will lose access to the organization. This action cannot be undone." confirmLabel="Remove member" destructive onConfirm={() => remove.mutateAsync(member.user_id).then(() => undefined)} /> : <Lock className="h-4 w-4 text-muted-foreground/40" aria-label={`${member.email} is a protected member`} />}</div></CardContent></Card>)}</div> : <EmptyState icon={Users} title="No members yet" description="Add a provisioned teammate to collaborate in this organization." />}
