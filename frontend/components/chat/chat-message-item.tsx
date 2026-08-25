@@ -5,10 +5,11 @@ import { Copy, Check, ShieldCheck, ShieldX, ShieldAlert, Bot, XCircle } from "lu
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import type { ChatMessage, AssistantBlock } from "@/lib/chat/projection";
+import type { ChatMessage, AssistantBlock, ToolCallBlock } from "@/lib/chat/projection";
 import { TextBlock } from "./blocks/text-block";
 import { ReasoningRow } from "./blocks/reasoning-row";
 import { ToolCallCard } from "./blocks/tool-call-card";
+import { ToolCallChip } from "./blocks/tool-call-chip";
 import { StatsLine } from "./blocks/stats-line";
 
 export interface ChatMessageItemProps {
@@ -162,6 +163,44 @@ function ChatMessageItemBase({ message: m, debug, onApprovalDecision }: ChatMess
 
   if (!hasVisibleBlocks) return null;
 
+  const rendered: React.ReactNode[] = [];
+  let chipGroup: ToolCallBlock[] = [];
+  const flushChips = () => {
+    if (chipGroup.length > 0) {
+      rendered.push(
+        <div key={`chips-${rendered.length}`} className="flex flex-wrap items-center gap-1.5">
+          {chipGroup.map((b) => (
+            <ToolCallChip key={b.id} block={b} />
+          ))}
+        </div>,
+      );
+      chipGroup = [];
+    }
+  };
+
+  for (const block of m.blocks) {
+    if (!debug && block.kind === "tool_call") {
+      chipGroup.push(block);
+      continue;
+    }
+    flushChips();
+    switch (block.kind) {
+      case "reasoning":
+        rendered.push(<ReasoningRow key={block.id} content={block.content} streaming={block.streaming} />);
+        break;
+      case "tool_call":
+        rendered.push(<ToolCallCard key={block.id} block={block} />);
+        break;
+      case "text":
+        rendered.push(<TextBlock key={block.id} content={block.content} streaming={block.streaming} />);
+        break;
+      case "stats":
+        rendered.push(<StatsLine key={block.id} block={block} />);
+        break;
+    }
+  }
+  flushChips();
+
   return (
     <div key={m.id} className="group flex w-full max-w-[92%] items-start gap-2.5 self-start">
       <Avatar className="mt-0.5 h-7 w-7 shrink-0 border border-border bg-muted">
@@ -171,20 +210,7 @@ function ChatMessageItemBase({ message: m, debug, onApprovalDecision }: ChatMess
       </Avatar>
 
       <div className="min-w-0 flex-1 space-y-2 pt-0.5">
-        {m.blocks.map((block) => {
-          switch (block.kind) {
-            case "reasoning":
-              return <ReasoningRow key={block.id} content={block.content} streaming={block.streaming} />;
-            case "tool_call":
-              return <ToolCallCard key={block.id} block={block} />;
-            case "text":
-              return <TextBlock key={block.id} content={block.content} streaming={block.streaming} />;
-            case "stats":
-              return <StatsLine key={block.id} block={block} />;
-            default:
-              return null;
-          }
-        })}
+        {rendered}
 
         {fullTextContent && (
           <div className="flex items-center gap-1.5 pt-0.5">
