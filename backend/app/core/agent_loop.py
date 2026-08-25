@@ -1934,6 +1934,52 @@ async def _agent_stream(
                         unexpected_tool_calls,
                     ) = await _retry_finalization_without_tools()
                     finalization_attempts.append((retry_usage, retry_estimated))
+                    if not retry_estimated and retry_usage:
+                        for key in ("input_tokens", "output_tokens"):
+                            usage_totals[key] = usage_totals.get(key, 0) + int(
+                                retry_usage.get(key, 0) or 0
+                            )
+                        retry_cost = LLMClient.estimate_cost(model, {
+                            "input_tokens": int(retry_usage.get("input_tokens", 0) or 0),
+                            "output_tokens": int(retry_usage.get("output_tokens", 0) or 0),
+                        })
+                        retry_budget_reason = budget.add_cost(retry_cost)
+                        if retry_budget_reason:
+                            guardrail_events_total.labels(
+                                agent.org_id, "budget_exceeded", "blocked"
+                            ).inc()
+                            await log_action(
+                                db,
+                                org_id=agent.org_id,
+                                actor_user_id=user_id or agent.created_by_user_id,
+                                actor_agent_identity_id=actor_agent_identity_id,
+                                delegation_chain=delegation_chain,
+                                action="guardrail.budget_exceeded",
+                                resource_type="model",
+                                resource_id=model.name,
+                                metadata={
+                                    "reason": retry_budget_reason,
+                                    "run_id": root_run_id or session_id,
+                                },
+                                commit=False,
+                            )
+                            budget_ev = {
+                                "event": "budget_exceeded",
+                                "data": {"reason": retry_budget_reason},
+                            }
+                            if rec is not None:
+                                await rec.record(budget_ev)
+                                await rec.close()
+                            await _finish_task(
+                                db,
+                                root_task,
+                                status="failed",
+                                result=f"error: run budget exceeded: {retry_budget_reason}",
+                                cost_usd=budget.cost_usd,
+                                token_usage={**usage_totals, "estimated": False},
+                            )
+                            yield budget_ev
+                            return
                     if unexpected_tool_calls:
                         logger.warning(
                             "chat_finalization_retry_returned_tool_calls",
