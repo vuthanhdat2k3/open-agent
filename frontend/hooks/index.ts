@@ -716,7 +716,7 @@ export function useOrganizations(enabled = true) {
 export function useCreateOrganization() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: { name: string; admin_email?: string }) => api.post<Organization>("/api/orgs", body),
+    mutationFn: (body: { name: string; admin_email?: string; initial_password?: string }) => api.post<Organization>("/api/orgs", body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["organizations"] }),
   });
 }
@@ -732,7 +732,7 @@ export function useMembers(orgId?: string) {
 export function useInviteMember(orgId?: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: { email: string; role: string }) =>
+    mutationFn: (body: { email: string; role: string; initial_password?: string }) =>
       api.post<OrgMember>(`/api/orgs/${orgId}/members`, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["members", orgId] }),
   });

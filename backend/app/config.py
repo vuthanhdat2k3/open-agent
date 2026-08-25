@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     zitadel_project_id: str = ""
     zitadel_client_id: str = ""
     zitadel_client_secret: str = ""
+    zitadel_admin_pat: str = ""
+    zitadel_pat_path: str = "/zitadel/bootstrap/login-client.pat"
     zitadel_redirect_uri: str = "http://127.0.0.1.sslip.io:8000/api/auth/callback"
     zitadel_post_logout_redirect_uri: str = "http://127.0.0.1.sslip.io:3000/"
     zitadel_required_org_claim: str = "urn:zitadel:iam:org:id"
