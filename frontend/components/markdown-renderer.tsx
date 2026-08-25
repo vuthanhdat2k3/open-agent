@@ -4,12 +4,10 @@
  * highlight, blockquotes, links, task lists, strikethrough, and LaTeX
  * formulas (inline $…$ and block $$…$$) rendered via KaTeX.
  *
- * Includes a pre-processing step that normalises common LLM LaTeX output
- * variants into the $…$ / $$…$$ format that remark-math understands:
- *   \[…\]      → $$…$$   (display math)
- *   \(…\)      → $…$     (inline math)
- *   [ \cmd… ]  → $$…$$   (display math without backslash-bracket)
- *   ( \cmd… )  → $…$     (inline math — only when clearly LaTeX)
+ * Includes a pre-processing step (lib/chat/markdown-text) that normalises
+ * common LLM LaTeX output variants into the $…$ / $$…$$ format that
+ * remark-math understands — with guards so URLs and markdown link
+ * destinations are never mangled into math.
  */
 "use client";
 
@@ -26,6 +24,7 @@ import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import React from "react";
 import { streamSSE } from "@/lib/api";
+import { inlineCodeHttpUrl, normalizeLatex } from "@/lib/chat/markdown-text";
 
 // content is LLM output, which is attacker-influenceable via prompt
 // injection (e.g. from ingested documents). rehype-raw turns raw HTML in
@@ -47,74 +46,6 @@ const markdownSanitizeSchema = (() => {
   ];
   return schema;
 })();
-
-interface Props {
-  content: string;
-}
-
-/**
- * Converts the various LaTeX delimiter styles that LLMs commonly produce
- * into the `$…$` / `$$…$$` style that remark-math recognises.
- */
-function normalizeLatex(text: string): string {
-  // 1. Convert standard LaTeX block delimiters \[…\] to $$…$$
-  text = text.replace(/\\\[\s*([\s\S]*?)\s*\\\]/g, (_m, inner) => `\n$$\n${inner.trim()}\n$$\n`);
-
-  // 2. Convert standard LaTeX inline delimiters \(…\) to $…$
-  text = text.replace(/\\\(\s*([\s\S]*?)\s*\\\)/g, (_m, inner) => `$${inner.trim()}$`);
-
-  // 3. Convert display math blocks [ \cmd… ] to $$…$$
-  text = text.replace(/\[\s*(\\[\s\S]*?)\s*\]/g, (_m, inner) => {
-    if (/\\[a-zA-Z]/.test(inner)) {
-      return `\n$$\n${inner.trim()}\n$$\n`;
-    }
-    return _m;
-  });
-
-  // 4. Hide all existing $$…$$ and $…$ blocks using placeholders to protect them
-  const placeholders: string[] = [];
-  
-  // Protect $$…$$
-  text = text.replace(/\$\$\s*([\s\S]*?)\s*\$\$/g, (_match, inner) => {
-    placeholders.push(`$$\n${inner.trim()}\n$$`);
-    return `___LATEX_PLACEHOLDER_${placeholders.length - 1}___`;
-  });
-
-  // Protect $…$
-  text = text.replace(/\$\s*([^\n$]*?)\s*\$/g, (_match, inner) => {
-    placeholders.push(`$${inner.trim()}$`);
-    return `___LATEX_PLACEHOLDER_${placeholders.length - 1}___`;
-  });
-
-  // 5. On the remaining unprotected text, convert plain parenthesis ( math ) to $…$
-  //    Only if:
-  //    - The parenthese is not preceded by \left or followed by \right (lookbehinds)
-  //    - It contains a backslash, operator, or is a single variable/function call to prevent text matching
-  text = text.replace(/(?<!\\left)\(\s*([\s\S]*?)\s*(?<!\\right)\)/g, (match, inner) => {
-    const trimmed = inner.trim();
-    if (trimmed.length === 0 || trimmed.length > 150) return match;
-
-    const isSingleVar = /^[a-zA-Z]$/.test(trimmed);
-    const isFunctionCall = /^[a-zA-Z]\([a-zA-Z0-9]\)$/.test(trimmed);
-    const hasMathIndicator = 
-      /\\/.test(trimmed) || 
-      /[+\-*/=<>]/.test(trimmed) || 
-      /\b(to|implies)\b/.test(trimmed) || 
-      /[_^]/.test(trimmed);
-
-    if (isSingleVar || isFunctionCall || hasMathIndicator) {
-      return `$${trimmed}$`;
-    }
-    return match;
-  });
-
-  // 6. Restore the protected math blocks in reverse order
-  for (let i = placeholders.length - 1; i >= 0; i--) {
-    text = text.replace(`___LATEX_PLACEHOLDER_${i}___`, placeholders[i]);
-  }
-
-  return text;
-}
 
 function extractCodeText(children: React.ReactNode): string {
   if (typeof children === "string") return children;
@@ -151,6 +82,25 @@ function CodeBlockWithAction({ className, children, ...props }: any) {
   }, [logs, exitCode, errorMessage]);
 
   if (!isBlock) {
+    const plainText = extractCodeText(children);
+    const linkHref = inlineCodeHttpUrl(plainText);
+    if (linkHref !== undefined) {
+      return (
+        <code
+          className="rounded bg-muted/60 border border-border/40 px-1.5 py-0.5 font-mono text-[10.5px] text-foreground"
+          {...props}
+        >
+          <a
+            href={linkHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary underline underline-offset-2 hover:opacity-80 transition-opacity"
+          >
+            {children}
+          </a>
+        </code>
+      );
+    }
     return (
       <code
         className="rounded bg-muted/60 border border-border/40 px-1.5 py-0.5 font-mono text-[10.5px] text-foreground"
@@ -300,6 +250,10 @@ function CodeBlockWithAction({ className, children, ...props }: any) {
       )}
     </div>
   );
+}
+
+interface Props {
+  content: string;
 }
 
 function MarkdownRendererBase({ content }: Props) {

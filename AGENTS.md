@@ -96,6 +96,7 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 |---|---|---|---|
 | `dev` | `G:\open-agent` | Nhánh tích hợp chính — không code trực tiếp ở đây | — |
 | `feat/chat-tool-chips-debug-gate` | `G:\open-agent-worktrees\chat-tool-chips` | Tool calls: chip mỏng mặc định, full cards khi bật Debug | Sisyphus |
+| `fix/chat-markdown-links-and-latex` | `G:\open-agent-worktrees\chat-markdown-links` | Render link (markdown/inline-code URL) + vá LaTeX normalizer nuốt link/$$ | Sisyphus |
 
 > 2026-08-24: Đã dọn dẹp worktree/branch của các PR đã merge vào `dev`
 > (#81 model-test-chat, #82 chat-send-insecure-context, #83 github-actions-cd)
