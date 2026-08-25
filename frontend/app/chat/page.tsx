@@ -264,7 +264,7 @@ export default function ChatPage() {
   }, [activeRunId, agentId, agentReady, pendingSession, sessionId, sessions.data, sessions.isSuccess, setActiveRun, setSession]);
 
   React.useEffect(() => {
-    if (!agentReady || pendingSession) return;
+    if (!agentReady || pendingSession || streamingRef.current) return;
     if (!sessionId || !sessionBelongsToAgent) {
       projectionRef.current = createRunProjection("");
       setMessages([]);
@@ -279,18 +279,9 @@ export default function ChatPage() {
         (m) => m.role === "approval" && m.status === "pending",
       );
       const terminalSyncInFlight = terminalSyncRef.current;
-      if (!streamingRef.current && !hasPendingApproval && !terminalSyncInFlight) {
+      if (!hasPendingApproval && !terminalSyncInFlight) {
         projectionRef.current = createRunProjection(assistantIdRef.current, initial);
         setMessages(initial);
-      } else {
-        const existing = projectionRef.current.messages;
-        const merged = [...initial];
-        for (const message of existing) {
-          const duplicate = merged.some((item) => item.id === message.id);
-          if (!duplicate) merged.push(message);
-        }
-        projectionRef.current = createRunProjection(assistantIdRef.current, merged);
-        setMessages(merged);
       }
     }
   }, [agentReady, chatRun.data, messagesQuery.data, pendingSession, sessionBelongsToAgent, sessionId, streaming]);
@@ -394,6 +385,9 @@ export default function ChatPage() {
     if (!chatHydrated || !agentReady) return;
     if (!activeRunId) return;
     if (attachedRunRef.current === activeRunId) return;
+    // If send() is currently actively streaming this run, do not start a parallel follow stream!
+    if (abortRef.current != null) return;
+
     const run = chatRun.data;
     const justStarted = justStartedRunRef.current === activeRunId;
     if (!run && !justStarted) return;
@@ -617,6 +611,7 @@ export default function ChatPage() {
       }
     } finally {
       abortRef.current = null;
+      justStartedRunRef.current = null;
     }
   };
 
