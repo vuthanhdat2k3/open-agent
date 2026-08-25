@@ -6,7 +6,7 @@ import json
 import re
 import time
 import unicodedata
-from collections.abc import AsyncIterator, Coroutine
+from collections.abc import AsyncIterator, Awaitable, Callable, Coroutine
 from datetime import timedelta
 from typing import Any
 
@@ -2055,6 +2055,7 @@ async def run_agent_loop(
     record_stream: bool = True,
     approval_resume_id: str | None = None,
     timezone_name: str | None = None,
+    on_event: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
 ) -> AgentLoopResult:
     content = ""
     usage: dict[str, Any] = {"input_tokens": 0, "output_tokens": 0}
@@ -2080,6 +2081,11 @@ async def run_agent_loop(
         approval_resume_id=approval_resume_id,
         timezone_name=timezone_name,
     ):
+        if on_event is not None:
+            try:
+                await on_event(ev)
+            except Exception:  # noqa: BLE001
+                pass
         if ev["event"] == "message_done":
             data = ev["data"]
             content = data["content"]

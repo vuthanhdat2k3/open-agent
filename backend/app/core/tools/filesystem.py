@@ -54,6 +54,8 @@ async def _write_file(args: dict[str, Any], ctx: ToolContext) -> str:
         return "error: missing 'path'"
     if content is None:
         return "error: missing 'content'"
+    if ctx.emit:
+        await ctx.emit({"stage": "writing", "path": path, "line": f"Writing {len(str(content))} chars to '{path}'...\n"})
     target = safe_resolve(ctx.workspace_dir, path)
     if target is None:
         return "error: path escapes workspace directory"
@@ -82,6 +84,8 @@ async def _write_file(args: dict[str, Any], ctx: ToolContext) -> str:
 
 async def _list_dir(args: dict[str, Any], ctx: ToolContext) -> str:
     path = args.get("path", "") or "."
+    if ctx.emit:
+        await ctx.emit({"stage": "listing", "path": path, "line": f"Listing directory '{path}'...\n"})
     target = safe_resolve(ctx.workspace_dir, path)
     if target is None:
         return "error: path escapes workspace directory"
@@ -116,6 +120,8 @@ async def _search_files(args: dict[str, Any], ctx: ToolContext) -> str:
     max_results = int(args.get("max_results", MAX_GREP_RESULTS))
     if not pattern:
         return "error: missing 'pattern'"
+    if ctx.emit:
+        await ctx.emit({"stage": "searching", "pattern": pattern, "line": f"Searching workspace for pattern: '{pattern}'...\n"})
     try:
         rx = re.compile(pattern)
     except re.error as e:
