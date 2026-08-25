@@ -26,6 +26,7 @@ from app.schemas.auth import (
     InviteMemberRequest,
 )
 from app.services.quota_service import default_organization_quota
+from app.services.zitadel_service import ZitadelProvisioningService
 
 router = APIRouter(prefix="/api/orgs", tags=["orgs"])
 
@@ -33,6 +34,7 @@ router = APIRouter(prefix="/api/orgs", tags=["orgs"])
 class OrgCreateRequest(BaseModel):
     name: str
     admin_email: str | None = None
+    initial_password: str | None = None
 
 
 class OrgOut(BaseModel):
@@ -143,6 +145,12 @@ async def create_org(
         )
         db.add(invited_membership)
 
+        await ZitadelProvisioningService().provision_user(
+            email=target_email,
+            display_name=target_user.display_name,
+            initial_password=body.initial_password or "OpenAgent@2026",
+        )
+
     await db.commit()
     await db.refresh(org)
     return OrgOut(id=org.id, name=org.name, slug=org.slug, created_at=org.created_at)
@@ -236,6 +244,13 @@ async def add_org_member(
     db.add(mem)
     await db.commit()
     await db.refresh(mem)
+
+    await ZitadelProvisioningService().provision_user(
+        email=invited_user.email,
+        display_name=invited_user.display_name,
+        initial_password=body.initial_password or "OpenAgent@2026",
+    )
+
     await log_action(
         db,
         org_id=id,

@@ -46,7 +46,8 @@ class MeResponse(BaseModel):
 
 class InviteMemberRequest(BaseModel):
     email: EmailStr
-    role: str = "developer"
+    role: str = "user"
+    initial_password: str | None = None
 
 
 class ApiKeyCreateRequest(BaseModel):

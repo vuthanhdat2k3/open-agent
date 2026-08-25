@@ -25,17 +25,22 @@ function OrgMembersDialog({ organization, open, onOpenChange }: OrgMembersDialog
   const invite = useInviteMember(organization.id);
   const remove = useRemoveMember(organization.id);
   const [email, setEmail] = React.useState("");
-  const [role, setRole] = React.useState("org_admin");
+  const [password, setPassword] = React.useState("");
 
   async function handleAddMember(e: React.FormEvent) {
     e.preventDefault();
     if (!email.trim()) return;
     try {
-      await invite.mutateAsync({ email: email.trim(), role });
+      await invite.mutateAsync({
+        email: email.trim(),
+        role: "org_admin",
+        initial_password: password.trim() ? password.trim() : undefined,
+      });
       setEmail("");
-      toast.success(`Member added to ${organization.name}`);
+      setPassword("");
+      toast.success(`Org Admin appointed for ${organization.name}`);
     } catch (err: any) {
-      toast.error(err.message || "Failed to add member");
+      toast.error(err.message || "Failed to appoint Org Admin");
     }
   }
 
@@ -54,17 +59,17 @@ function OrgMembersDialog({ organization, open, onOpenChange }: OrgMembersDialog
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Users className="h-5 w-5 text-primary" />
-            Members of {organization.name}
+            Org Admins of {organization.name}
           </DialogTitle>
           <DialogDescription>
-            View members, appoint new Org Admins, or manage access for this tenant organization.
+            Appoint or manage Org Admins for this tenant. Org Admins will manage their own operators and users.
           </DialogDescription>
         </DialogHeader>
 
-        {/* Add Member Form */}
-        <form onSubmit={handleAddMember} className="grid gap-3 pt-2 sm:grid-cols-[1fr_140px_auto] sm:items-end">
+        {/* Add Member Form - Fixed to org_admin */}
+        <form onSubmit={handleAddMember} className="grid gap-3 pt-2 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
           <div className="space-y-1.5">
-            <Label htmlFor="new-member-email" className="text-xs">Email</Label>
+            <Label htmlFor="new-member-email" className="text-xs">Admin Email</Label>
             <Input
               id="new-member-email"
               type="email"
@@ -75,15 +80,17 @@ function OrgMembersDialog({ organization, open, onOpenChange }: OrgMembersDialog
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="new-member-role" className="text-xs">Role</Label>
-            <Select id="new-member-role" value={role} onChange={(e) => setRole(e.target.value)}>
-              <option value="org_admin">org_admin</option>
-              <option value="operator">operator</option>
-              <option value="user">user</option>
-            </Select>
+            <Label htmlFor="new-member-password" className="text-xs">Initial Password (optional)</Label>
+            <Input
+              id="new-member-password"
+              type="text"
+              placeholder="Default: OpenAgent@2026"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
           </div>
           <Button type="submit" loading={invite.isPending} disabled={!email.trim()} className="gap-1.5">
-            <UserPlus className="h-4 w-4" /> Add
+            <UserPlus className="h-4 w-4" /> Appoint Org Admin
           </Button>
         </form>
 
@@ -139,6 +146,7 @@ export default function OrganizationsPage() {
   const create = useCreateOrganization();
   const [name, setName] = React.useState("");
   const [adminEmail, setAdminEmail] = React.useState("");
+  const [password, setPassword] = React.useState("");
   const [selectedOrg, setSelectedOrg] = React.useState<Organization | null>(null);
 
   if (role !== "platform_admin") {
@@ -152,9 +160,11 @@ export default function OrganizationsPage() {
       await create.mutateAsync({
         name: name.trim(),
         admin_email: adminEmail.trim() ? adminEmail.trim() : undefined,
+        initial_password: password.trim() ? password.trim() : undefined,
       });
       setName("");
       setAdminEmail("");
+      setPassword("");
       toast.success("Organization created");
     } catch (error: any) {
       toast.error(error.message || "Unable to create organization");
@@ -166,7 +176,7 @@ export default function OrganizationsPage() {
       <PageHeader icon={Building2} title="Organizations" description="Create and oversee tenant organizations" />
       <Card glass>
         <CardContent className="p-5">
-          <form onSubmit={submit} className="grid gap-4 md:grid-cols-[1fr_1fr_auto] md:items-end">
+          <form onSubmit={submit} className="grid gap-4 md:grid-cols-[1fr_1fr_1fr_auto] md:items-end">
             <div className="space-y-2">
               <Label htmlFor="organization-name">Organization name</Label>
               <Input id="organization-name" value={name} onChange={(event) => setName(event.target.value)} placeholder="Acme Corporation" required />
@@ -174,6 +184,10 @@ export default function OrganizationsPage() {
             <div className="space-y-2">
               <Label htmlFor="admin-email">Initial Org Admin Email (optional)</Label>
               <Input id="admin-email" type="email" value={adminEmail} onChange={(event) => setAdminEmail(event.target.value)} placeholder="admin@acme.com" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="admin-password">Initial Password (optional)</Label>
+              <Input id="admin-password" type="text" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Default: OpenAgent@2026" />
             </div>
             <Button type="submit" className="gap-2" loading={create.isPending} disabled={!name.trim()}><Plus className="h-4 w-4" />Create organization</Button>
           </form>
