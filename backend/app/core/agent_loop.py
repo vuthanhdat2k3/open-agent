@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import asyncio
 import copy
@@ -168,7 +168,7 @@ MEMORY_DIRECTIVE = (
     "memory_type='profile', attribute='name'. Never invent custom keys.\n"
     "- Aliases are normalized automatically (full_name, formal_name, "
     "display_name, username all become profile.name), so just pass the closest "
-    "attribute and the backend folds it correctly. Writes UPSERT â€” repeating a "
+    "attribute and the backend folds it correctly. Writes UPSERT — repeating a "
     "fact updates it, it never creates duplicates.\n"
     "- Before answering any question about the user (name, preferences, goals, "
     "context), call `call_memory` to recall what you know. To get the user's "
@@ -301,9 +301,9 @@ async def _build_orchestrator_delegate_tools(
 
 
 _ROUTING_SYNONYMS: dict[str, tuple[str, ...]] = {
-    "email": ("email", "gmail", "mail", "thÆ°", "email"),
-    "calendar": ("calendar", "lá»‹ch", "schedule", "meeting", "cuá»™c há»p"),
-    "drive": ("drive", "tÃ i liá»‡u", "document", "documents", "file", "files"),
+    "email": ("email", "gmail", "mail", "thư", "email"),
+    "calendar": ("calendar", "lịch", "schedule", "meeting", "cuộc họp"),
+    "drive": ("drive", "tài liệu", "document", "documents", "file", "files"),
 }
 
 _GOOGLE_TOOL_PREFIXES = ("email_", "drive_", "calendar_")
@@ -427,7 +427,7 @@ def _route_orchestrator_turn(
 
 
 def _normalized_route_text(message: str) -> str:
-    text = unicodedata.normalize("NFKD", message.lower().replace("Ä‘", "d"))
+    text = unicodedata.normalize("NFKD", message.lower().replace("đ", "d"))
     ascii_text = "".join(char for char in text if not unicodedata.combining(char))
     return f" {re.sub(r'[^a-z0-9]+', ' ', ascii_text).strip()} "
 
@@ -609,7 +609,7 @@ async def fail_chat_run(db: AsyncSession, task: Task, exc: Exception) -> None:
     """Mark a top-level chat run failed and clean up its unanswered user turn.
 
     Shared by both execution paths (inline ``BackgroundTasks`` and the arq
-    worker) so a crash is handled identically regardless of which one ran it â€”
+    worker) so a crash is handled identically regardless of which one ran it —
     previously only the inline path deleted the eagerly-saved user message,
     so a queued-mode failure left it to be resent as duplicate context.
     """
@@ -629,7 +629,7 @@ async def _find_direct_child_toward(
     Delegation can nest arbitrarily deep (call_agent inside a delegated
     sub-agent), so an approval's owning task may be several ``call_agent``
     hops below the task that is resuming. Resuming must walk one hop at a
-    time â€” jumping straight to the owning task would skip every
+    time — jumping straight to the owning task would skip every
     intermediate sub-agent's turn, leaving their in-flight tool call
     unanswered in their own message history. Walking up ``parent_task_id``
     from the target to whichever ancestor is a direct child of
@@ -762,7 +762,7 @@ async def _agent_stream(
     model = res.scalar_one_or_none()
     if model is None:
         msg = (
-            "no model assigned to this agent â€” assign one before chatting"
+            "no model assigned to this agent — assign one before chatting"
             if selected_model_id is None
             else f"model {selected_model_id} not found or unavailable"
         )
@@ -886,7 +886,7 @@ async def _agent_stream(
     system_prompt = "\n\n".join(system_parts)
 
     # Build messages: system prompt first, then conversation history, then current user message.
-    # NOTE: previously messages was built before system_prompt and then overwritten here â€”
+    # NOTE: previously messages was built before system_prompt and then overwritten here —
     # that caused history + user message to be lost entirely.
     messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
     if session_id:
@@ -1311,7 +1311,7 @@ async def _agent_stream(
                     elif ev["type"] == "tool_calls":
                         for tc in ev["tool_calls"]:
                             # Every driver (OpenAI-compatible, Anthropic, Gemini)
-                            # yields plain dicts with this shape â€” see
+                            # yields plain dicts with this shape — see
                             # LLMClient.stream's normalization of the OpenAI SDK
                             # object into the same dict contract.
                             idx = tc.get("index", 0)
@@ -1325,7 +1325,7 @@ async def _agent_stream(
                                 entry["arguments"] += fragment
                                 # Stream the raw fragment so the UI can render
                                 # tool-call arguments as they are composed,
-                                # like ChatGPT/DeepSeek do â€” not after the
+                                # like ChatGPT/DeepSeek do — not after the
                                 # whole completion finishes.
                                 out_ev = {
                                     "event": "tool_call_delta",
@@ -1533,7 +1533,7 @@ async def _agent_stream(
                         elif replay_cursor is not None:
                             # Replay never executes a tool. If the run takes a
                             # different path than the recording, stop and say
-                            # where â€” falling through to a live call would
+                            # where — falling through to a live call would
                             # spend money and cause side effects the operator
                             # never asked for.
                             try:
@@ -1774,7 +1774,7 @@ async def _agent_stream(
                             action="guardrail.secret_redacted",
                             resource_type="tool",
                             resource_id=name,
-                            # Kinds and counts only â€” never the secret value.
+                            # Kinds and counts only — never the secret value.
                             metadata={
                                 "count": len(secret_findings),
                                 "kinds": sorted({f.kind for f in secret_findings}),
