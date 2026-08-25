@@ -235,6 +235,31 @@ async def remove_org_member(
     if not mem:
         raise HTTPException(404, "Member not found in organization")
 
+    if mem.role == Role.platform_admin:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "platform_admin members cannot be removed",
+        )
+    if user_id == current_user.id:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "You cannot remove your own membership",
+        )
+    if mem.role in (Role.org_admin, Role.admin):
+        res_other_admins = await db.execute(
+            select(Membership.user_id).where(
+                Membership.org_id == id,
+                Membership.user_id != user_id,
+                Membership.role.in_([Role.org_admin, Role.admin]),
+                Membership.lifecycle_status == "active",
+            )
+        )
+        if res_other_admins.first() is None:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "Cannot remove the last org_admin of the organization",
+            )
+
     await db.delete(mem)
     await db.commit()
     await log_action(

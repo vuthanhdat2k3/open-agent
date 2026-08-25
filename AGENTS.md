@@ -95,11 +95,10 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 | Branch | Worktree path | Phạm vi/task | Agent/người phụ trách |
 |---|---|---|---|
 | `dev` | `G:\open-agent` | Nhánh tích hợp chính — không code trực tiếp ở đây | — |
-| `feat/chat-tool-chips-debug-gate` | `G:\open-agent-worktrees\chat-tool-chips` | Tool calls: chip mỏng mặc định, full cards khi bật Debug | Sisyphus |
-| `fix/chat-markdown-links-and-latex` | `G:\open-agent-worktrees\chat-markdown-links` | Render link (markdown/inline-code URL) + vá LaTeX normalizer nuốt link/$$ | Sisyphus |
+| `fix/member-removal-guards` | `G:\open-agent-worktrees\member-removal-guards` | Guard xóa member: platform_admin/self/last-org_admin (backend + UI) | Sisyphus |
 
-> 2026-08-24: Đã dọn dẹp worktree/branch của các PR đã merge vào `dev`
-> (#81 model-test-chat, #82 chat-send-insecure-context, #83 github-actions-cd)
+> 2026-08-25: Đã dọn dẹp worktree/branch của các PR đã merge vào `dev`
+> (#86 chat-projection-stream-target, #88 chat-tool-chips, #90 chat-markdown-links).
 > cùng các dòng stale của worktree không còn tồn tại. Branch
 > `docs/enterprise-rbac-zitadel-design` được GIỮ (còn 3 commit chưa merge của Codex).
 > 2026-08-23: Đã dọn dẹp toàn bộ worktree/branch có PR đã merge vào `dev`
