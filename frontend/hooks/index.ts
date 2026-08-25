@@ -716,7 +716,7 @@ export function useOrganizations(enabled = true) {
 export function useCreateOrganization() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: { name: string }) => api.post<Organization>("/api/orgs", body),
+    mutationFn: (body: { name: string; admin_email?: string }) => api.post<Organization>("/api/orgs", body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["organizations"] }),
   });
 }
