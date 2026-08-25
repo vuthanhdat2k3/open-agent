@@ -95,8 +95,6 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 | Branch | Worktree path | Phạm vi/task | Agent/người phụ trách |
 |---|---|---|---|
 | `dev` | `G:\open-agent` | Nhánh tích hợp chính — không code trực tiếp ở đây | — |
-| `feat/dsh-inspired-hardening` | `G:\open-agent-worktrees\dsh-refactor` | Refactor hardening học từ deepseek-harness: tool timeout/retry, budget cost, compaction fallback | ox-alpha |
-| `feat/user-deactivation-disconnect` | `G:\open-agent-worktrees\user-deactivation-disconnect` | User lifecycle & deactivation session termination | ox-alpha |
 
 > 2026-08-25: Đã dọn dẹp worktree/branch của các PR đã merge vào `dev`
 > (#86 chat-projection-stream-target, #88 chat-tool-chips, #90 chat-markdown-links,
@@ -105,7 +103,8 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 > #104 chat-streaming-debug-fix, #106 chat-streaming-text-fidelity,
 > #108 chat-scroll-flicker-tool-loading-fix, #110 agent-home-redesign,
 > #111 tool-live-progress-subagent-stream, #114 tool-call-debug-visibility,
-> #118 rbac-matrix-ui-streamline, #120 rbac-clean-personas-knowledge-base).
+> #118 rbac-matrix-ui-streamline, #120 rbac-clean-personas-knowledge-base,
+> #123 platform-admin-org-member-management).
 > cùng các dòng stale của worktree không còn tồn tại. Branch
 > `docs/enterprise-rbac-zitadel-design` được GIỮ (còn 3 commit chưa merge của Codex).
 > 2026-08-23: Đã dọn dẹp toàn bộ worktree/branch có PR đã merge vào `dev`
