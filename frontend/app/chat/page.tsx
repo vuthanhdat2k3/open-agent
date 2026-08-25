@@ -279,12 +279,20 @@ export default function ChatPage() {
         (m) => m.role === "approval" && m.status === "pending",
       );
       const terminalSyncInFlight = terminalSyncRef.current;
-      if (!hasPendingApproval && !terminalSyncInFlight) {
+      // Do not replace projection if it already has more content than what
+      // the DB snapshot contains — this prevents a stale background refetch
+      // from wiping a just-completed live stream (the "flash to empty then
+      // reappear" symptom).
+      const projectionHasMore =
+        projectionRef.current.messages.length > 0 &&
+        initial.length < projectionRef.current.messages.length;
+      if (!hasPendingApproval && !terminalSyncInFlight && !projectionHasMore) {
         projectionRef.current = createRunProjection(assistantIdRef.current, initial);
         setMessages(initial);
       }
     }
   }, [agentReady, chatRun.data, messagesQuery.data, pendingSession, sessionBelongsToAgent, sessionId, streaming]);
+
 
   React.useEffect(() => {
     const run = chatRun.data;
@@ -324,11 +332,17 @@ export default function ChatPage() {
     }
   }, [changeSession, chatRun.data, sessionId, setStreaming, syncPersistedMessages]);
 
+  const prevMessageCountRef = React.useRef(0);
   React.useEffect(() => {
-    if (nearBottomRef.current && bottomRef.current) {
-      bottomRef.current.scrollIntoView({ block: "end" });
-    }
-  }, [messages]);
+    const el = scrollHostRef.current;
+    if (!el || !nearBottomRef.current) return;
+    // Use el.scrollTo instead of scrollIntoView so we control the scroll container
+    // directly — scrollIntoView can fight the browser's "maintain scroll position"
+    // heuristic and cause the view to jump back/lock while the user is scrolling.
+    el.scrollTo({ top: el.scrollHeight, behavior: streaming ? "instant" : "smooth" });
+    prevMessageCountRef.current = messages.length;
+  }, [messages, streaming]);
+
 
   const onThreadScroll = React.useCallback(() => {
     const el = scrollHostRef.current;
