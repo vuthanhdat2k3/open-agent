@@ -35,7 +35,9 @@ async def _run_with_timeout(spec: ToolSpec, args: dict[str, Any], ctx: ToolConte
     if spec.timeout_s and spec.timeout_s > 0:
         try:
             return await asyncio.wait_for(spec.run(args, ctx), timeout=spec.timeout_s)
-        except asyncio.TimeoutError:
+        except (asyncio.TimeoutError, TimeoutError):  # noqa: UP041 -- alias only on py311+; py310 raises the asyncio class
+            # asyncio.TimeoutError is an alias of the builtin only on
+            # Python 3.11+; 3.10 still raises the asyncio-specific class.
             raise ToolTimeoutError(
                 f"tool '{spec.name}' timed out after {spec.timeout_s:g}s"
             ) from None

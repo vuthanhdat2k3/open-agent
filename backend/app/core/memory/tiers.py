@@ -71,7 +71,7 @@ async def _summarize(
         generation_name=generation_name,
     )
     last_exc: Exception | None = None
-    for attempt in range(_SUMMARIZE_MAX_ATTEMPTS):
+    for _attempt in range(_SUMMARIZE_MAX_ATTEMPTS):
         try:
             summary, _, _ = await llm.complete(
                 [
