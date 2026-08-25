@@ -1212,6 +1212,11 @@ async def _agent_stream(
     finalization_retry_used = False
     finalization_outcome = "direct"
 
+    # Running token totals across the whole run, so a mid-run budget trip can
+    # persist what was actually spent onto the failed task - consistent with
+    # budget.cost_usd, which also accumulates across iterations.
+    usage_totals: dict[str, int] = {}
+
     async def _retry_finalization_without_tools() -> tuple[str, str, dict[str, int], bool, bool]:
         parts: list[str] = []
         reasoning: list[str] = []
@@ -1242,9 +1247,6 @@ async def _agent_stream(
         # is only a fallback for providers that do not report it.
         stream_usage: dict[str, int] = {}
         usage_estimated = True
-        # Running totals across steps in this iteration, so a mid-run budget
-        # trip can persist what was actually spent onto the failed task.
-        usage_totals: dict[str, int] = {}
 
         # invoke_agent is the parent of both the chat span and every
         # execute_tool span in this iteration, so a trace viewer shows one
