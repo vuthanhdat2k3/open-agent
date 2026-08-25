@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -40,11 +40,13 @@ export default function ChatPage() {
     agentId,
     sessionId,
     activeRunId,
+    debug,
     pendingModelIdByAgent,
     hydrated: chatHydrated,
     setAgent,
     setSession,
     setActiveRun,
+    toggleDebug,
     setPendingModel,
   } = useChatStore();
 
@@ -101,14 +103,7 @@ export default function ChatPage() {
   // Projection state
   const [messages, setMessages] = React.useState<ChatMessage[]>([]);
   const projectionRef = React.useRef<RunProjectionState>(createRunProjection(""));
-
   const rafRef = React.useRef<number | null>(null);
-
-  // Typewriter reveal buffer (maps blockId -> full & shown count)
-  const typewriterRef = React.useRef<
-    Map<string, { full: string; shown: number }>
-  >(new Map());
-  const typewriterRafRef = React.useRef<number | null>(null);
 
   const [streaming, setStreamingState] = React.useState(false);
   const streamingRef = React.useRef(false);
@@ -118,7 +113,6 @@ export default function ChatPage() {
   }, []);
 
   const [phase, setPhase] = React.useState<string>("");
-  const [debug, setDebug] = React.useState(false);
   const [connectionState, setConnectionState] = React.useState<ConnectionState>("connected");
   const bottomRef = React.useRef<HTMLDivElement>(null);
   const assistantIdRef = React.useRef<string>("");
@@ -167,95 +161,6 @@ export default function ChatPage() {
     if (rafRef.current == null) rafRef.current = requestAnimationFrame(commit);
   }, [commit]);
 
-  // Reveal buffer (Typewriter smoothing)
-  const TYPEWRITER_CHARS_PER_FRAME = 3;
-
-  const applyTypewriterFrame = React.useCallback(() => {
-    typewriterRafRef.current = null;
-    let dirty = false;
-
-    for (const [blockId, buf] of typewriterRef.current) {
-      if (buf.shown >= buf.full.length) {
-        typewriterRef.current.delete(blockId);
-        continue;
-      }
-      buf.shown = Math.min(buf.full.length, buf.shown + TYPEWRITER_CHARS_PER_FRAME);
-      const shownText = buf.full.slice(0, buf.shown);
-
-      // Find block in projection state and update content
-      const msgs = projectionRef.current.messages;
-      for (let mi = 0; mi < msgs.length; mi++) {
-        const m = msgs[mi];
-        if (m.role === "assistant") {
-          const bi = m.blocks.findIndex((b) => b.id === blockId);
-          if (bi >= 0) {
-            const b = m.blocks[bi];
-            if (b.kind === "text" || b.kind === "reasoning") {
-              const updatedBlocks = [...m.blocks];
-              updatedBlocks[bi] = { ...b, content: shownText };
-              msgs[mi] = { ...m, blocks: updatedBlocks };
-              dirty = true;
-            }
-            break;
-          }
-        }
-      }
-    }
-
-    if (dirty) commit();
-    if (typewriterRef.current.size > 0) {
-      typewriterRafRef.current = requestAnimationFrame(applyTypewriterFrame);
-    }
-  }, [commit]);
-
-  const feedTypewriter = React.useCallback(
-    (blockId: string, fullContent: string) => {
-      const existing = typewriterRef.current.get(blockId);
-      if (existing) {
-        existing.full = fullContent;
-      } else {
-        typewriterRef.current.set(blockId, { full: fullContent, shown: 0 });
-      }
-      if (typewriterRafRef.current == null) {
-        typewriterRafRef.current = requestAnimationFrame(applyTypewriterFrame);
-      }
-    },
-    [applyTypewriterFrame],
-  );
-
-  const flushTypewriter = React.useCallback(() => {
-    if (typewriterRafRef.current != null) {
-      cancelAnimationFrame(typewriterRafRef.current);
-      typewriterRafRef.current = null;
-    }
-    for (const [blockId, buf] of typewriterRef.current) {
-      const msgs = projectionRef.current.messages;
-      for (let mi = 0; mi < msgs.length; mi++) {
-        const m = msgs[mi];
-        if (m.role === "assistant") {
-          const bi = m.blocks.findIndex((b) => b.id === blockId);
-          if (bi >= 0) {
-            const b = m.blocks[bi];
-            if (b.kind === "text" || b.kind === "reasoning") {
-              const updatedBlocks = [...m.blocks];
-              updatedBlocks[bi] = { ...b, content: buf.full };
-              msgs[mi] = { ...m, blocks: updatedBlocks };
-            }
-            break;
-          }
-        }
-      }
-    }
-    typewriterRef.current.clear();
-  }, []);
-
-  const resetTypewriter = React.useCallback(() => {
-    if (typewriterRafRef.current != null) {
-      cancelAnimationFrame(typewriterRafRef.current);
-      typewriterRafRef.current = null;
-    }
-    typewriterRef.current.clear();
-  }, []);
 
   const syncPersistedMessages = React.useCallback(async () => {
     if (!sessionId) return;
@@ -284,7 +189,6 @@ export default function ChatPage() {
           cancelAnimationFrame(rafRef.current);
           rafRef.current = null;
         }
-        resetTypewriter();
         projectionRef.current = createRunProjection(assistantIdRef.current, persisted);
         setMessages(persisted);
         return;
@@ -292,7 +196,7 @@ export default function ChatPage() {
     } finally {
       terminalSyncRef.current = false;
     }
-  }, [refetchMessages, resetTypewriter, sessionId]);
+  }, [refetchMessages, sessionId]);
 
   const { refetch: refetchSessions } = sessions;
 
@@ -353,18 +257,16 @@ export default function ChatPage() {
     if (!session && (activeRunId || pendingSession)) return;
     if (!session || session.agent_id !== agentId) {
       projectionRef.current = createRunProjection("");
-      resetTypewriter();
       setMessages([]);
       setSession(null);
       setActiveRun(null);
     }
-  }, [activeRunId, agentId, agentReady, pendingSession, resetTypewriter, sessionId, sessions.data, sessions.isSuccess, setActiveRun, setSession]);
+  }, [activeRunId, agentId, agentReady, pendingSession, sessionId, sessions.data, sessions.isSuccess, setActiveRun, setSession]);
 
   React.useEffect(() => {
     if (!agentReady || pendingSession) return;
     if (!sessionId || !sessionBelongsToAgent) {
       projectionRef.current = createRunProjection("");
-      resetTypewriter();
       setMessages([]);
       return;
     }
@@ -391,7 +293,7 @@ export default function ChatPage() {
         setMessages(merged);
       }
     }
-  }, [agentReady, chatRun.data, messagesQuery.data, pendingSession, resetTypewriter, sessionBelongsToAgent, sessionId, streaming]);
+  }, [agentReady, chatRun.data, messagesQuery.data, pendingSession, sessionBelongsToAgent, sessionId, streaming]);
 
   React.useEffect(() => {
     const run = chatRun.data;
@@ -456,19 +358,6 @@ export default function ChatPage() {
       const { state: nextState, side } = applyChatEvent(projectionRef.current, ev);
       projectionRef.current = nextState;
 
-      // Typewriter smoothing for live streaming text and reasoning blocks
-      if (ev.event === "token" || ev.event === "reasoning") {
-        const assistant = nextState.messages.find((m) => m.role === "assistant");
-        if (assistant && assistant.role === "assistant") {
-          const lastBlock = assistant.blocks[assistant.blocks.length - 1];
-          if (lastBlock && (lastBlock.kind === "text" || lastBlock.kind === "reasoning")) {
-            feedTypewriter(lastBlock.id, lastBlock.content);
-          }
-        }
-      } else if (ev.event === "message_done") {
-        flushTypewriter();
-      }
-
       // Execute side effects
       if (side.phase !== undefined) setPhase(side.phase ?? "");
       if (side.terminal) {
@@ -495,7 +384,7 @@ export default function ChatPage() {
         touch();
       }
     },
-    [changeSession, commit, feedTypewriter, flushTypewriter, refetchSessions, setStreaming, syncPersistedMessages, touch],
+    [changeSession, commit, refetchSessions, setStreaming, syncPersistedMessages, touch],
   );
 
   const chatRunLoaded = Boolean(chatRun.data);
@@ -743,7 +632,6 @@ export default function ChatPage() {
     const runId = activeRunId;
     abortRef.current?.abort();
     resetReattach();
-    resetTypewriter();
     setStreaming(false);
     setPhase("");
     setActiveRun(null);
@@ -756,7 +644,6 @@ export default function ChatPage() {
     if (nextAgentId === agentId) return;
     abortRef.current?.abort();
     resetReattach();
-    resetTypewriter();
     projectionRef.current = createRunProjection("");
     setMessages([]);
     setActiveRun(null);
@@ -771,7 +658,6 @@ export default function ChatPage() {
     if (!nextSession || nextSession.agent_id !== agentId) return;
     abortRef.current?.abort();
     resetReattach();
-    resetTypewriter();
     projectionRef.current = createRunProjection("");
     setMessages([]);
     setActiveRun(null);
@@ -783,7 +669,6 @@ export default function ChatPage() {
   const clearMessages = () => {
     abortRef.current?.abort();
     resetReattach();
-    resetTypewriter();
     projectionRef.current = createRunProjection("");
     setMessages([]);
     changeSession(null);
@@ -843,7 +728,7 @@ export default function ChatPage() {
             toast.error(error instanceof Error ? error.message : "Could not delete session");
           }
         }}
-        onToggleDebug={() => setDebug((v) => !v)}
+        onToggleDebug={toggleDebug}
         onClearMessages={clearMessages}
         onApprovalDecision={handleApprovalDecision}
         draft={draft}

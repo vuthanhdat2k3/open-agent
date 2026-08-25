@@ -45,6 +45,7 @@ interface ChatState {
   agentId: string | null;
   sessionId: string | null;
   activeRunId: string | null;
+  debug: boolean;
   // Model the user picked for upcoming messages, kept per agent so switching
   // agents does not carry a selection that may not even be valid for the next
   // one. Persisted on purpose: this used to live in component state, so a
@@ -55,6 +56,8 @@ interface ChatState {
   setAgent: (id: string | null) => void;
   setSession: (id: string | null) => void;
   setActiveRun: (id: string | null) => void;
+  setDebug: (debug: boolean) => void;
+  toggleDebug: () => void;
   setPendingModel: (agentId: string | null, modelId: string | null) => void;
   setHydrated: (hydrated: boolean) => void;
 }
@@ -65,11 +68,14 @@ export const useChatStore = create<ChatState>()(
       agentId: null,
       sessionId: null,
       activeRunId: null,
+      debug: false,
       pendingModelIdByAgent: {},
       hydrated: false,
       setAgent: (id) => set({ agentId: id }),
       setSession: (id) => set({ sessionId: id }),
       setActiveRun: (id) => set({ activeRunId: id }),
+      setDebug: (debug) => set({ debug }),
+      toggleDebug: () => set((state) => ({ debug: !state.debug })),
       setPendingModel: (agentId, modelId) =>
         set((state) => {
           if (!agentId) return state;
@@ -86,6 +92,7 @@ export const useChatStore = create<ChatState>()(
         agentId: state.agentId,
         sessionId: state.sessionId,
         activeRunId: state.activeRunId,
+        debug: state.debug,
         pendingModelIdByAgent: state.pendingModelIdByAgent,
       }),
       onRehydrateStorage: () => (state) => {

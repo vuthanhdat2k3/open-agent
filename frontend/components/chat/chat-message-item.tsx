@@ -195,7 +195,7 @@ function ChatMessageItemBase({ message: m, debug, onApprovalDecision }: ChatMess
         rendered.push(<TextBlock key={block.id} content={block.content} streaming={block.streaming} />);
         break;
       case "stats":
-        rendered.push(<StatsLine key={block.id} block={block} />);
+        rendered.push(<StatsLine key={block.id} block={block} debug={debug} />);
         break;
     }
   }
