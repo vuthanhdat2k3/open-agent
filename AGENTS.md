@@ -95,7 +95,6 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 | Branch | Worktree path | Phạm vi/task | Agent/người phụ trách |
 |---|---|---|---|
 | `dev` | `G:\open-agent` | Nhánh tích hợp chính — không code trực tiếp ở đây | — |
-| `feat/zitadel-auto-provision-roles` | `G:\open-agent-worktrees\zitadel-auto-provision` | Automatic Zitadel account creation upon member invite and strict 2-tier role appointment | ox-alpha |
 
 > 2026-08-25: Đã dọn dẹp worktree/branch của các PR đã merge vào `dev`
 > (#86 chat-projection-stream-target, #88 chat-tool-chips, #90 chat-markdown-links,
@@ -105,7 +104,7 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 > #108 chat-scroll-flicker-tool-loading-fix, #110 agent-home-redesign,
 > #111 tool-live-progress-subagent-stream, #114 tool-call-debug-visibility,
 > #118 rbac-matrix-ui-streamline, #120 rbac-clean-personas-knowledge-base,
-> #123 platform-admin-org-member-management).
+> #123 platform-admin-org-member-management, #124 zitadel-auto-provision-roles).
 > cùng các dòng stale của worktree không còn tồn tại. Branch
 > `docs/enterprise-rbac-zitadel-design` được GIỮ (còn 3 commit chưa merge của Codex).
 > 2026-08-23: Đã dọn dẹp toàn bộ worktree/branch có PR đã merge vào `dev`
