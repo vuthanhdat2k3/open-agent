@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -49,9 +49,43 @@ export default function ChatPage() {
   } = useChatStore();
 
   const pendingSessionModelId = (agentId && pendingModelIdByAgent[agentId]) || "";
+
+  const buildChatUrl = React.useCallback(
+    (agent: string | null, session: string | null, model: string | null) => {
+      const params = new URLSearchParams();
+      if (agent) params.set("agent", agent);
+      if (session) params.set("session", session);
+      if (model) params.set("model", model);
+      const qs = params.toString();
+      return qs ? `/chat?${qs}` : "/chat";
+    },
+    [],
+  );
+
   const setPendingSessionModelId = React.useCallback(
-    (modelId: string) => setPendingModel(agentId, modelId || null),
-    [agentId, setPendingModel],
+    (modelId: string) => {
+      setPendingModel(agentId, modelId || null);
+      router.replace(buildChatUrl(agentId, sessionId, modelId || null), { scroll: false });
+    },
+    [agentId, buildChatUrl, router, sessionId, setPendingModel],
+  );
+
+  const changeSession = React.useCallback(
+    (id: string | null) => {
+      setSession(id);
+      const model = agentId ? pendingModelIdByAgent[agentId] ?? null : null;
+      router.replace(buildChatUrl(agentId, id, model), { scroll: false });
+    },
+    [agentId, buildChatUrl, pendingModelIdByAgent, router, setSession],
+  );
+
+  const changeAgent = React.useCallback(
+    (nextAgentId: string | null) => {
+      setAgent(nextAgentId);
+      setSession(null);
+      router.replace(buildChatUrl(nextAgentId, null, null), { scroll: false });
+    },
+    [buildChatUrl, router, setAgent, setSession],
   );
   const chatRun = useChatRun(activeRunId);
   const { refetch: refetchChatRun } = chatRun;
@@ -262,45 +296,56 @@ export default function ChatPage() {
 
   const { refetch: refetchSessions } = sessions;
 
+  // URL watcher: the address bar carries agent/session/model and browser
+  // navigation (back/forward, shared links) is adopted back into the store
+  // after validation. In-app changes go through the sync wrappers above,
+  // which keep the url in sync themselves.
+  const urlAgent = searchParams.get("agent");
+  const urlSession = searchParams.get("session");
+  const urlModel = searchParams.get("model");
+
   React.useEffect(() => {
     if (!chatHydrated || !agents.data?.length) return;
-    const preselect = searchParams.get("agent");
-    const resolvedAgentId =
-      preselect && agents.data.some((a) => a.id === preselect)
-        ? preselect
+    const resolvedAgent =
+      urlAgent && agents.data.some((a) => a.id === urlAgent)
+        ? urlAgent
         : agentId && agents.data.some((a) => a.id === agentId)
           ? agentId
           : agents.data[0].id;
-    if (agentId !== resolvedAgentId) setAgent(resolvedAgentId);
+
+    if (resolvedAgent !== agentId) {
+      setAgent(resolvedAgent);
+      setAgentReady(true);
+      return;
+    }
     setAgentReady(true);
-  }, [agentId, agents.data, chatHydrated, searchParams, setAgent]);
 
-  // The URL is the shareable record of the active agent + session. The store
-  // mirrors it back once any deep-link adoption has settled; adoption only
-  // accepts sessions that exist and belong to the active agent.
-  const urlSession = searchParams.get("session");
-
-  React.useEffect(() => {
-    if (!agentReady || !agentId) return;
-    if (urlSession && urlSession !== sessionId) return;
-    const params = new URLSearchParams({ agent: agentId });
-    if (sessionId) params.set("session", sessionId);
-    const target = `/chat?${params.toString()}`;
-    if (window.location.pathname + window.location.search !== target) {
-      router.replace(target, { scroll: false });
+    if (urlSession && urlSession !== sessionId && sessions.isSuccess) {
+      const session = sessions.data.find((s) => s.id === urlSession);
+      if (session && session.agent_id === resolvedAgent) {
+        setSession(urlSession);
+      } else if (!session) {
+        router.replace(buildChatUrl(resolvedAgent, null, pendingSessionModelId || null), { scroll: false });
+      }
+      return;
     }
-  }, [agentId, agentReady, router, sessionId, urlSession]);
 
-  React.useEffect(() => {
-    if (!agentReady || !sessions.isSuccess) return;
-    if (!urlSession || urlSession === sessionId) return;
-    const session = sessions.data?.find((s) => s.id === urlSession);
-    if (session && session.agent_id === agentId) {
-      setSession(urlSession);
-    } else if (!session) {
-      router.replace(`/chat?agent=${agentId}`, { scroll: false });
+    if (urlModel && urlModel !== pendingSessionModelId) {
+      if (models.data?.some((m) => m.id === urlModel)) {
+        setPendingModel(resolvedAgent, urlModel);
+      }
+      return;
     }
-  }, [agentId, agentReady, router, sessionId, sessions.data, sessions.isSuccess, setSession, urlSession]);
+
+    if (!urlAgent && !urlSession) {
+      router.replace(buildChatUrl(resolvedAgent, sessionId, pendingSessionModelId || null), { scroll: false });
+    }
+  }, [
+    agentId, agents.data, buildChatUrl, chatHydrated, models.data,
+    pendingSessionModelId, router, searchParams, sessionId, sessions.data,
+    sessions.isSuccess, setAgent, setPendingModel, setSession, urlAgent,
+    urlModel, urlSession,
+  ]);
 
   React.useEffect(() => {
     if (!agentReady || !sessions.isSuccess || !sessionId) return;
@@ -353,7 +398,7 @@ export default function ChatPage() {
     if (!run) return;
     const recoveredSessionId = run.session_id || run.progress?.session_id;
     if (recoveredSessionId && recoveredSessionId !== sessionId) {
-      setSession(recoveredSessionId);
+      changeSession(recoveredSessionId);
     }
     if (run.status === "running" || run.status === "queued") {
       setPhase(run.progress?.phase && run.progress.phase !== "queued" ? run.progress.phase : "thinking");
@@ -384,7 +429,7 @@ export default function ChatPage() {
       if (terminalRunRef.current !== run.id) terminalRunRef.current = null;
       setStreaming(true);
     }
-  }, [chatRun.data, sessionId, setSession, setStreaming, syncPersistedMessages]);
+  }, [changeSession, chatRun.data, sessionId, setStreaming, syncPersistedMessages]);
 
   React.useEffect(() => {
     if (nearBottomRef.current && bottomRef.current) {
@@ -431,7 +476,7 @@ export default function ChatPage() {
         void syncPersistedMessages();
         void refetchSessions();
       }
-      if (side.sessionId) setSession(side.sessionId);
+      if (side.sessionId) changeSession(side.sessionId);
       if (side.errorMessage) {
         setStreaming(false);
         toast.error(side.errorMessage);
@@ -450,7 +495,7 @@ export default function ChatPage() {
         touch();
       }
     },
-    [commit, feedTypewriter, flushTypewriter, refetchSessions, setSession, setStreaming, syncPersistedMessages, touch],
+    [changeSession, commit, feedTypewriter, flushTypewriter, refetchSessions, setStreaming, syncPersistedMessages, touch],
   );
 
   const chatRunLoaded = Boolean(chatRun.data);
@@ -659,7 +704,7 @@ export default function ChatPage() {
         payload,
         (ev) => {
           if (ev.event === "session_start") {
-            setSession(ev.data.session_id);
+            changeSession(ev.data.session_id);
             void refetchSessions();
             return;
           }
@@ -714,11 +759,10 @@ export default function ChatPage() {
     resetTypewriter();
     projectionRef.current = createRunProjection("");
     setMessages([]);
-    setSession(null);
     setActiveRun(null);
     setStreaming(false);
     setPhase("");
-    setAgent(nextAgentId);
+    changeAgent(nextAgentId);
     setAgentReady(true);
   };
 
@@ -731,7 +775,7 @@ export default function ChatPage() {
     projectionRef.current = createRunProjection("");
     setMessages([]);
     setActiveRun(null);
-    setSession(nextSessionId);
+    changeSession(nextSessionId);
     setStreaming(false);
     setPhase("");
   };
@@ -742,7 +786,7 @@ export default function ChatPage() {
     resetTypewriter();
     projectionRef.current = createRunProjection("");
     setMessages([]);
-    setSession(null);
+    changeSession(null);
     setActiveRun(null);
     setStreaming(false);
     setPhase("");
