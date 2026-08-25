@@ -117,11 +117,22 @@ export function ChatThread({
             type="button"
             variant={debug ? "secondary" : "ghost"}
             size="sm"
-            className={`h-7 gap-1 px-2 text-[10px] ${debug ? "font-semibold text-primary" : "text-muted-foreground"}`}
+            className={`h-7 gap-1 px-2 text-[10px] transition-colors ${
+              debug
+                ? "bg-secondary font-semibold text-primary shadow-sm border border-primary/30"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
             onClick={onToggleDebug}
-            title="Toggle debug trace (thinking, tool calls, results)"
+            aria-pressed={debug}
+            title={
+              debug
+                ? "Debug mode is ON (expanded tool cards, exact token counts & timings). Click to switch to Clean mode."
+                : "Debug mode is OFF (compact tool chips & clean text). Click to enable Debug mode."
+            }
           >
-            <Bug className="h-3.5 w-3.5" aria-hidden="true" /> Debug
+            <Bug className={`h-3.5 w-3.5 ${debug ? "text-primary" : ""}`} aria-hidden="true" />
+            <span>Debug</span>
+            {debug && <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-hidden="true" />}
           </Button>
           {messages.length > 0 && (
             <Button
