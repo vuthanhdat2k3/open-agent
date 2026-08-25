@@ -34,17 +34,19 @@ async def require_platform_admin_any_org(
 
 @router.post(
     "/{user_id}/deactivate",
-    dependencies=[Depends(require_platform_admin_any_org)],
 )
 async def deactivate_user_account(
     user_id: str,
+    current_user: User = Depends(require_platform_admin_any_org),
     db: AsyncSession = Depends(get_db),
 ):
     """Soft-delete the account (active -> inactive), revoke sessions and
     disconnect every integration the account created. The user row is kept
     for audit; only the ZITADEL-side identity deletion is a hard delete."""
-    ok = await UserLifecycleService(db).deactivate_everywhere(user_id=user_id)
+    ok = await UserLifecycleService(db).deactivate_everywhere(
+        user_id=user_id,
+        actor_user_id=current_user.id,
+    )
     if not ok:
         raise HTTPException(status_code=404, detail="user not found")
     return {"ok": True, "status": "inactive"}
-
