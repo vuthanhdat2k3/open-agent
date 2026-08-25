@@ -1348,6 +1348,45 @@ async def _agent_stream(
                             estimated=usage_estimated,
                         )
                         genai.record_finish_reasons(chat_span, ev.get("finish_reasons") or [])
+                        # Feed this step's real cost into the run budget so
+                        # max_cost_usd can trip mid-run, not just at the end.
+                        if not usage_estimated and stream_usage:
+                            step_cost = LLMClient.estimate_cost(model, {
+                                "input_tokens": int(stream_usage.get("input_tokens", 0) or 0),
+                                "output_tokens": int(stream_usage.get("output_tokens", 0) or 0),
+                            })
+                            cost_reason = budget.add_cost(step_cost)
+                            if cost_reason:
+                                guardrail_events_total.labels(
+                                    agent.org_id, "budget_exceeded", "blocked"
+                                ).inc()
+                                await log_action(
+                                    db,
+                                    org_id=agent.org_id,
+                                    actor_user_id=user_id or agent.created_by_user_id,
+                                    actor_agent_identity_id=actor_agent_identity_id,
+                                    delegation_chain=delegation_chain,
+                                    action="guardrail.budget_exceeded",
+                                    resource_type="model",
+                                    resource_id=model.name,
+                                    metadata={"reason": cost_reason, "run_id": root_run_id or session_id},
+                                    commit=False,
+                                )
+                                budget_ev = {
+                                    "event": "budget_exceeded",
+                                    "data": {"reason": cost_reason},
+                                }
+                                if rec is not None:
+                                    await rec.record(budget_ev)
+                                    await rec.close()
+                                await _finish_task(
+                                    db,
+                                    root_task,
+                                    status="failed",
+                                    result=f"error: run budget exceeded: {cost_reason}",
+                                )
+                                yield budget_ev
+                                return
 
             if tc_map:
                 openai_tcs = []
