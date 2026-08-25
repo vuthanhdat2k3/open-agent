@@ -6,7 +6,7 @@ import json
 import re
 import time
 import unicodedata
-from collections.abc import AsyncIterator, Coroutine
+from collections.abc import AsyncIterator, Awaitable, Callable, Coroutine
 from datetime import timedelta
 from typing import Any
 
