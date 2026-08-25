@@ -32,6 +32,7 @@ router = APIRouter(prefix="/api/orgs", tags=["orgs"])
 
 class OrgCreateRequest(BaseModel):
     name: str
+    admin_email: str | None = None
 
 
 class OrgOut(BaseModel):
@@ -108,6 +109,27 @@ async def create_org(
 
     membership = Membership(org_id=org.id, user_id=current_user.id, role=Role.org_admin)
     db.add(membership)
+
+    if body.admin_email and body.admin_email.strip().lower() != (current_user.email or "").lower():
+        target_email = body.admin_email.strip().lower()
+        res_u = await db.execute(select(User).where(User.email == target_email))
+        target_user = res_u.scalar_one_or_none()
+        if not target_user:
+            target_user = User(
+                email=target_email,
+                display_name=target_email.split("@", 1)[0],
+            )
+            db.add(target_user)
+            await db.flush()
+        invited_membership = Membership(
+            org_id=org.id,
+            user_id=target_user.id,
+            role=Role.org_admin,
+            invited_by_user_id=current_user.id,
+            provisioning_source="invite",
+        )
+        db.add(invited_membership)
+
     await db.commit()
     await db.refresh(org)
     return OrgOut(id=org.id, name=org.name, slug=org.slug, created_at=org.created_at)

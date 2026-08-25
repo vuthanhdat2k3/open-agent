@@ -20,7 +20,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { isActive, navGroups, prefetchTab } from "./navigation";
+import { isActive, navGroups, prefetchTab, type UserRole } from "./navigation";
 
 export function AppSidebar({ queryClient }: { queryClient: QueryClient }) {
   const pathname = usePathname();
@@ -31,6 +31,13 @@ export function AppSidebar({ queryClient }: { queryClient: QueryClient }) {
   const urgent = summary.data?.user_workspace.approvals.urgent ?? 0;
   const role = useCurrentRole();
   const permissions = useCurrentPermissions();
+
+  const isRoleAllowed = (allowedRoles?: UserRole[]) => {
+    if (!allowedRoles || allowedRoles.length === 0) return true;
+    if (allowedRoles.includes(role as UserRole)) return true;
+    if (role === "admin" && (allowedRoles.includes("org_admin") || allowedRoles.includes("admin"))) return true;
+    return false;
+  };
 
   return (
     <Sidebar collapsible="icon">
@@ -57,10 +64,17 @@ export function AppSidebar({ queryClient }: { queryClient: QueryClient }) {
       </SidebarHeader>
 
       <SidebarContent>
-        {navGroups.map((group) => {
-          const items = group.items.filter((item) => (!item.permission || hasUiPermission(permissions, item.permission)) && (!item.platformOnly || role === "platform_admin"));
-          if (items.length === 0) return null;
-          return (
+        {navGroups
+          .filter((group) => isRoleAllowed(group.roles))
+          .map((group) => {
+            const items = group.items.filter((item) => {
+              const hasPerm = !item.permission || hasUiPermission(permissions, item.permission);
+              const passPlatform = !item.platformOnly || role === "platform_admin";
+              const passRole = isRoleAllowed(item.roles);
+              return hasPerm && passPlatform && passRole;
+            });
+            if (items.length === 0) return null;
+            return (
           <SidebarGroup key={group.title}>
             <SidebarGroupLabel>{group.title}</SidebarGroupLabel>
             <SidebarMenu>
