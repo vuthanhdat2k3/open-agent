@@ -677,3 +677,56 @@ Each plan is reviewable + rollbackable independently. Do not ship as a single PR
 - Stitch 4 PNG mocks: `frontend/_mockups/stitch-screens/01-home.png` … `04-drawer.png`
 - Stitch gallery: `frontend/_mockups/stitch-gallery.html`
 - HTML mockup v2: `frontend/_mockups/agent-home-v2.html` (Right rail already updated)
+- HTML mockup v6 (Final Interactive Simulator): `frontend/_mockups/agent-home-v6.html` (Executive Operator with 3D Stack Carousel, Thought Bubble & Capsule Tabs)
+
+---
+
+## 13. Executive Agent Operator Paradigm (v6 Final Design Reference)
+
+**Finalized 2026-08-25 after user interactive review on `agent-home-v6.html`.**
+
+### 13.1 Core Product Shift: From Passive Chat / Manual DAG to Executive Chief of Staff
+1. **Background Routines Are the Core Engine**: The system operates 7 automated routines in the background (`open-agent-worker-1`):
+   - **Event-Driven (Group 1)**: `gmail_monitor_and_triage` (`Monitor and triage new Gmail`), `new-customer-intelligence` (`New Customer Intelligence`).
+   - **Daily Scheduled Cron (Group 2)**: `morning-command-center` (07:30 daily), `follow-up-radar` (07:30 daily), `meeting-preparation` (07:30 daily), `end-of-day-client-digest` (07:30 daily), `weekly-account-review` (07:30 daily).
+2. **The 3D Companion Is an Operator, Not a Form**:
+   - The user does not manually trigger DAGs daily.
+   - The 3D Robot acts as a personal operator surfacing time-aware briefings, synthesizing customer dossiers, and gatekeeping high-risk actions.
+
+### 13.2 Visual & Interaction Architecture (Living Cybernetic AI)
+- **Draggable 3D Companion with Magnetic Docking**:
+  - Freely draggable across the viewport.
+  - 3 Magnetic Snapping Zones: Center (`#dockCenter`), Bottom-Right (`#dockBottomRight`), Left-Rail (`#dockLeftRail`).
+  - Head look-at loop tracking pointer motion smoothly via spring interpolation.
+- **Living Thought Bubble (`#thoughtBubble`)**:
+  - Frosted glass capsule floating dynamically above the robot's head (`top: -34px`).
+  - Displays high-priority real-time alerts (e.g. `✨ 3 hành động cần bạn phê duyệt (Acme Corp, Northstar...) →`).
+  - Clicking the bubble or robot smoothly triggers the Command Surface.
+- **Smart Clamping & Auto-Flip Surface**:
+  - Automatically checks bottom viewport clearance and flips upward (`above` mode) when near bottom edges.
+  - Clamps horizontally with a 16px safety margin.
+  - Dynamic pointer arrow (`--arrow-x`) aligned with the robot's center.
+
+### 13.3 Multi-Item Scalability Architecture
+When managing multiple concurrent approvals, notifications, and briefings, the interface scales gracefully:
+1. **3D Stacked Carousel (`[◀ 1 / N ▶]`)**:
+   - Cycles through pending approvals one at a time without growing popup height.
+   - Each card displays **Reasoning Transparency (3 Steps: Extract ➔ Policy ➔ Action)** + **Confidence Score (98%)** + **Time Saved (~25m)**.
+   - Includes **`[✨ Duyệt nhanh tất cả N hành động an toàn]`** (Batch 1-Click Approve).
+2. **Segmented Capsule Tabs (`tab-capsule-strip`)**:
+   - `⚡ Phê duyệt (count)` (Amber badge).
+   - `✉ Email Triage (count)` (Cyan badge).
+   - `📋 Báo cáo (count)` (Teal badge).
+3. **Micro-Expand Accordion Rows (`micro-list`)**:
+   - 1-line compact rows that smoothly expand on click for quick triaging.
+4. **Deep-Link Escalation**:
+   - Direct escalation links to full-screen views (`/approvals`, `/email-intelligence`, `/customer-intelligence`) when reviewing 50+ historical records.
+
+### 13.4 Preserved 17 Authentic Routes (Zero Destructive Refactor)
+All 17 existing routes remain fully supported and navigable in the shell:
+`/chat`, `/approvals`, `/email-intelligence`, `/customer-intelligence`, `/mcp`, `/models`, `/providers`, `/workflows`, `/integrations`, `/evaluations`, `/settings/quotas`, `/settings/members`, `/debug`, `/organizations`, `/files`, `/workspace`, and `/home`.
+
+### 13.5 Complete Reference Spec & Mockup
+- **Technical Specification**: [`docs/executive-agent-operator-spec.md`](../executive-agent-operator-spec.md)
+- **Interactive Simulator**: [`frontend/_mockups/agent-home-v6.html`](../../frontend/_mockups/agent-home-v6.html) (Live on port 8787).
+
