@@ -39,6 +39,7 @@ class LLMDriver(Protocol):
         tools: list[dict[str, Any]] | None = None,
         temperature: float = 0.7,
         tool_choice: Any | None = None,
+        thinking: bool | None = None,
     ) -> tuple[str, dict[str, int], list[dict[str, Any]]]: ...
 
     def stream(
@@ -47,6 +48,7 @@ class LLMDriver(Protocol):
         tools: list[dict[str, Any]] | None = None,
         temperature: float = 0.7,
         tool_choice: Any | None = None,
+        thinking: bool | None = None,
     ) -> AsyncIterator[dict[str, Any]]: ...
 
 

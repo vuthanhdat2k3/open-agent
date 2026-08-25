@@ -62,6 +62,7 @@ class RuntimeAgent:
     latest_release_number: int
     created_at: datetime
     updated_at: datetime
+    enable_thinking: bool | None = None
 
 
 def _snapshot(source: Agent | AgentRelease, overrides: dict | None = None) -> dict:
@@ -127,6 +128,8 @@ class AgentService:
         for field in ("name", "a2a_exposed", "auto_rollback_enabled"):
             if field in data and data[field] is not None:
                 setattr(agent, field, data[field])
+        if "enable_thinking" in data:
+            agent.enable_thinking = data["enable_thinking"]
         if config_changes:
             await self._create_release_locked(
                 agent,
@@ -300,6 +303,7 @@ class AgentService:
             latest_release_number=release.version,
             created_at=agent.created_at,
             updated_at=agent.updated_at,
+            enable_thinking=getattr(agent, "enable_thinking", None),
             **_snapshot(release),
         )
 

@@ -1222,6 +1222,7 @@ async def _agent_stream(
             messages,
             tools=None,
             temperature=agent.temperature,
+            thinking=agent.enable_thinking,
         ):
             if retry_ev["type"] == "content":
                 parts.append(retry_ev["text"])
@@ -1267,6 +1268,7 @@ async def _agent_stream(
                     iteration=_,
                     elapsed_ms=round((time.monotonic() - phase_started_at) * 1000, 1),
                 )
+                stream_kwargs["thinking"] = agent.enable_thinking
                 stream_iter = llm.stream(messages, **stream_kwargs)
                 first_provider_event = True
                 async for ev in stream_iter:

@@ -44,6 +44,7 @@ class ObservableLLMDriver:
         tools: list[dict[str, Any]] | None = None,
         temperature: float = 0.7,
         tool_choice: Any | None = None,
+        thinking: bool | None = None,
     ) -> tuple[str, dict[str, int], list[dict[str, Any]]]:
         handle = self._observability.start_generation(
             name=self._generation_name,
@@ -63,6 +64,7 @@ class ObservableLLMDriver:
                 tools=tools,
                 temperature=temperature,
                 tool_choice=tool_choice,
+                thinking=thinking,
             )
             content, usage, tool_calls = result
             handle.finish_success(output=content, usage=usage, tool_calls=tool_calls)
@@ -80,6 +82,7 @@ class ObservableLLMDriver:
         tools: list[dict[str, Any]] | None = None,
         temperature: float = 0.7,
         tool_choice: Any | None = None,
+        thinking: bool | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         async def _stream() -> AsyncIterator[dict[str, Any]]:
             handle = self._observability.start_generation(
@@ -104,6 +107,7 @@ class ObservableLLMDriver:
                     tools=tools,
                     temperature=temperature,
                     tool_choice=tool_choice,
+                    thinking=thinking,
                 ):
                     event_type = event.get("type")
                     if event_type == "content":

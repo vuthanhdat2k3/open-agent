@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import * as React from "react";
 import { toast } from "sonner";
@@ -51,6 +51,7 @@ type AgentForm = {
   kind: "worker" | "orchestrator";
   max_iterations: number;
   temperature: number;
+  enable_thinking: boolean | null;
   allowed_risk_tiers: string[];
 };
 
@@ -62,6 +63,7 @@ const DEFAULT_FORM: AgentForm = {
   kind: "worker",
   max_iterations: 12,
   temperature: 0.7,
+  enable_thinking: null,
   allowed_risk_tiers: ["safe", "read"],
 };
 
@@ -145,6 +147,7 @@ export default function AgentsPage() {
       kind: agent.kind,
       max_iterations: agent.max_iterations,
       temperature: agent.temperature,
+      enable_thinking: agent.enable_thinking ?? null,
       allowed_risk_tiers: agent.allowed_risk_tiers ?? ["safe", "read"],
     });
     setSelectedTools(agent.tools ?? []);
@@ -253,7 +256,7 @@ export default function AgentsPage() {
             </DialogTrigger>
             <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>{editingAgent ? `Edit — ${editingAgent.name}` : "New Agent"}</DialogTitle>
+                <DialogTitle>{editingAgent ? `Edit â€” ${editingAgent.name}` : "New Agent"}</DialogTitle>
               </DialogHeader>
               <div className="space-y-4 pt-1">
                 <div className="grid grid-cols-2 gap-3">
@@ -321,7 +324,7 @@ export default function AgentsPage() {
                     className="min-h-[120px] font-mono text-xs resize-y"
                     value={form.system_prompt}
                     onChange={(e) => setForm({ ...form, system_prompt: e.target.value })}
-                    placeholder="You are a helpful assistant…"
+                    placeholder="You are a helpful assistantâ€¦"
                   />
                 </div>
 
@@ -361,7 +364,7 @@ export default function AgentsPage() {
                       <Wrench className="h-3.5 w-3.5 text-primary" /> Tools
                     </Label>
                     <Badge variant="outline" className="ml-auto text-[10px]">
-                      {selectedTools.length} selected · {tools.data?.length ?? 0} total
+                      {selectedTools.length} selected Â· {tools.data?.length ?? 0} total
                     </Badge>
                   </div>
                   <div className="relative">
@@ -440,6 +443,15 @@ export default function AgentsPage() {
                     </Label>
                     <Slider value={[form.temperature]} min={0} max={2} step={0.1} onValueChange={([value]) => setForm({ ...form, temperature: value })} aria-label="Temperature" />
                   </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="agent-thinking" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">Thinking</Label>
+                    <Select id="agent-thinking" value={form.enable_thinking === null ? "" : String(form.enable_thinking)} onChange={(event) => setForm({ ...form, enable_thinking: event.target.value === "" ? null : event.target.value === "true" })} aria-label="Enable thinking">
+                      <option value="">Model default</option>
+                      <option value="true">Enabled</option>
+                      <option value="false">Disabled (concise replies)</option>
+                    </Select>
+                    <p className="text-[10px] text-muted-foreground">Disable for routing/orchestration agents to skip verbose reasoning.</p>
+                  </div>
                 </div>
 
                 <Button
@@ -447,7 +459,7 @@ export default function AgentsPage() {
                   onClick={handleSubmit}
                   disabled={create.isPending || update.isPending || !form.name}
                 >
-                  {(create.isPending || update.isPending) ? "Saving…" : editingAgent ? "Update Agent" : "Create Agent"}
+                  {(create.isPending || update.isPending) ? "Savingâ€¦" : editingAgent ? "Update Agent" : "Create Agent"}
                 </Button>
               </div>
             </DialogContent>
@@ -517,7 +529,7 @@ export default function AgentsPage() {
                     </p>
                     <p className="text-[10px] text-muted-foreground/70">
                       {new Date(release.created_at).toLocaleString()}
-                      {" · "}
+                      {" Â· "}
                       {release.config_hash.slice(0, 10)}
                     </p>
                   </div>
