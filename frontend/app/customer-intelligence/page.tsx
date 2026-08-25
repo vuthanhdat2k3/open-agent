@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import * as React from "react";
 import { useDeferredValue, useEffect, useState } from "react";
@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { formatVietnamDateTime } from "@/lib/datetime";
 import { getAccessToken } from "@/lib/auth";
 import { PageHeader } from "@/components/page-header";
-import { useCiConnections, useCiSchedules, useCreateCiSchedule, useCreateManualCustomerIntelligenceCase, useCustomerIntelligenceCase, useCustomerIntelligenceCases, useDeleteCiSchedule, useDeleteCustomerIntelligenceCase, useResearchCustomerIntelligenceCase, useRetryCustomerIntelligenceCase, useRunCiScheduleNow, useUpdateCiSchedule } from "@/hooks";
+import { useCiConnections, useCiSchedules, useCreateCiSchedule, useCreateManualCustomerIntelligenceCase, useCustomerIntelligenceCase, useCustomerIntelligenceCases, useDeleteCiSchedule, useDeleteCustomerIntelligenceCase, useResearchCustomerIntelligenceCase, useRetryCustomerIntelligenceCase, useRunCiScheduleNow, useUpdateCiSchedule, useUrlSearchParam } from "@/hooks";
 import { Input, Label } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { toast } from "sonner";
@@ -81,22 +81,22 @@ function BriefingReport({
           {companies.length ? <div className="space-y-3">{companies.map((company: any, index: number) => <div key={`${company.canonical_name || "company"}-${index}`} className="rounded-lg bg-muted/40 p-3"><p className="font-medium">{company.canonical_name || "Unknown company"}</p>{company.industry && <p className="mt-1 text-sm text-muted-foreground">{company.industry}</p>}{company.domain && <p className="mt-1 text-xs text-muted-foreground">{company.domain}</p>}</div>)}</div> : <p className="text-sm text-muted-foreground">No company matched.</p>}
         </Section>
         <Section icon={CalendarClock} title="Upcoming meetings" count={reportMeetings.length}>
-          {reportMeetings.length ? <div className="space-y-3">{reportMeetings.map((meeting: any, index: number) => <div key={`${meeting.provider_event_id || meeting.title || "meeting"}-${index}`} className="rounded-lg bg-muted/40 p-3"><p className="font-medium">{meeting.title || "Meeting"}</p><p className="mt-1 text-sm text-muted-foreground">{meeting.start_at ? formatVietnamDateTime(meeting.start_at) : "Time not specified"} · Giờ Việt Nam</p>{meeting.attendees?.length ? <p className="mt-1 text-xs text-muted-foreground">{meeting.attendees.join(", ")}</p> : null}</div>)}</div> : <p className="text-sm text-muted-foreground">No upcoming meetings matched.</p>}
+          {reportMeetings.length ? <div className="space-y-3">{reportMeetings.map((meeting: any, index: number) => <div key={`${meeting.provider_event_id || meeting.title || "meeting"}-${index}`} className="rounded-lg bg-muted/40 p-3"><p className="font-medium">{meeting.title || "Meeting"}</p><p className="mt-1 text-sm text-muted-foreground">{meeting.start_at ? formatVietnamDateTime(meeting.start_at) : "Time not specified"} Â· Giá» Viá»‡t Nam</p>{meeting.attendees?.length ? <p className="mt-1 text-xs text-muted-foreground">{meeting.attendees.join(", ")}</p> : null}</div>)}</div> : <p className="text-sm text-muted-foreground">No upcoming meetings matched.</p>}
         </Section>
       </div>
       <Section icon={Link2} title="Recent news" count={news.length}>
-        {news.length ? <div className="space-y-3">{news.map((item: any, index: number) => <a key={`${item.url || "news"}-${index}`} href={item.url} target="_blank" rel="noreferrer" className="block rounded-lg border border-border/60 p-3 transition-colors hover:bg-muted/40"><p className="font-medium">{item.title || item.url}</p><p className="mt-1 line-clamp-2 text-sm leading-5 text-muted-foreground">{item.excerpt || "Open source"}</p><p className="mt-2 text-xs text-primary">{item.publisher || item.domain || "External source"} · Open source</p></a>)}</div> : <p className="text-sm text-muted-foreground">No recent news found.</p>}
+        {news.length ? <div className="space-y-3">{news.map((item: any, index: number) => <a key={`${item.url || "news"}-${index}`} href={item.url} target="_blank" rel="noreferrer" className="block rounded-lg border border-border/60 p-3 transition-colors hover:bg-muted/40"><p className="font-medium">{item.title || item.url}</p><p className="mt-1 line-clamp-2 text-sm leading-5 text-muted-foreground">{item.excerpt || "Open source"}</p><p className="mt-2 text-xs text-primary">{item.publisher || item.domain || "External source"} Â· Open source</p></a>)}</div> : <p className="text-sm text-muted-foreground">No recent news found.</p>}
       </Section>
       <div className="grid gap-4 xl:grid-cols-2">
         <Section icon={Users} title="Contact information" count={contacts.length}>
-          {contacts.length ? <div className="space-y-2">{contacts.map((contact: any, index: number) => <div key={`${contact.email || contact.name || "contact"}-${index}`} className="text-sm"><span className="font-medium">{contact.name || "Unknown"}</span>{contact.role && <span className="text-muted-foreground"> · {contact.role}</span>}{contact.email && <p className="text-xs text-muted-foreground">{contact.email}</p>}</div>)}</div> : <p className="text-sm text-muted-foreground">No contacts found.</p>}
+          {contacts.length ? <div className="space-y-2">{contacts.map((contact: any, index: number) => <div key={`${contact.email || contact.name || "contact"}-${index}`} className="text-sm"><span className="font-medium">{contact.name || "Unknown"}</span>{contact.role && <span className="text-muted-foreground"> Â· {contact.role}</span>}{contact.email && <p className="text-xs text-muted-foreground">{contact.email}</p>}</div>)}</div> : <p className="text-sm text-muted-foreground">No contacts found.</p>}
         </Section>
         <Section icon={HelpCircle} title="Open questions" count={questions.length}>
-          {questions.length ? <ul className="space-y-2 text-sm text-muted-foreground">{questions.map((question: string, index: number) => <li key={`${question}-${index}`} className="flex gap-2"><span className="text-primary">•</span><span>{question}</span></li>)}</ul> : <p className="text-sm text-muted-foreground">No open questions.</p>}
+          {questions.length ? <ul className="space-y-2 text-sm text-muted-foreground">{questions.map((question: string, index: number) => <li key={`${question}-${index}`} className="flex gap-2"><span className="text-primary">â€¢</span><span>{question}</span></li>)}</ul> : <p className="text-sm text-muted-foreground">No open questions.</p>}
         </Section>
       </div>
       <Section icon={Link2} title="Sources" count={reportSources.length}>
-        {reportSources.length ? <div className="grid gap-2 sm:grid-cols-2">{reportSources.map((source: any, index: number) => <a key={`${source.url || "source"}-${index}`} href={source.url} target="_blank" rel="noreferrer" className="rounded-lg border border-border/60 p-3 hover:bg-muted/40"><p className="line-clamp-2 text-sm font-medium">{source.title || source.url}</p><p className="mt-1 text-xs text-muted-foreground">{source.publisher || source.domain || "External source"}{source.published_date ? ` · ${source.published_date}` : ""}</p></a>)}</div> : <p className="text-sm text-muted-foreground">No sources.</p>}
+        {reportSources.length ? <div className="grid gap-2 sm:grid-cols-2">{reportSources.map((source: any, index: number) => <a key={`${source.url || "source"}-${index}`} href={source.url} target="_blank" rel="noreferrer" className="rounded-lg border border-border/60 p-3 hover:bg-muted/40"><p className="line-clamp-2 text-sm font-medium">{source.title || source.url}</p><p className="mt-1 text-xs text-muted-foreground">{source.publisher || source.domain || "External source"}{source.published_date ? ` Â· ${source.published_date}` : ""}</p></a>)}</div> : <p className="text-sm text-muted-foreground">No sources.</p>}
       </Section>
     </div>
   );
@@ -243,13 +243,13 @@ function SchedulesPanel() {
             <div className="flex items-start justify-between gap-3"><div><CardTitle>Schedules</CardTitle><CardDescription>{schedules.data?.length ?? 0} configured daily syncs</CardDescription></div><Button variant="ghost" size="sm" onClick={() => void schedules.refetch()} disabled={schedules.isFetching}><RefreshCw className={schedules.isFetching ? "h-4 w-4 animate-spin" : "h-4 w-4"} /></Button></div>
           </CardHeader>
           <CardContent className="space-y-3">
-            {schedules.isLoading && <p className="text-sm text-muted-foreground">Loading schedules…</p>}
+            {schedules.isLoading && <p className="text-sm text-muted-foreground">Loading schedulesâ€¦</p>}
             {schedules.data?.map((schedule) => (
               <div key={schedule.id} className="rounded-xl border border-border/70 bg-background/30 p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2"><Clock3 className="h-4 w-4 text-primary" /><span className="font-semibold">Daily at {schedule.run_time}</span><Badge variant={schedule.enabled ? "success" : "outline"}>{schedule.enabled ? "Enabled" : "Disabled"}</Badge></div>
-                    <p className="mt-1 truncate text-sm text-muted-foreground">{connectionLabel(schedule.connection_id)} · {schedule.timezone}</p>
+                    <p className="mt-1 truncate text-sm text-muted-foreground">{connectionLabel(schedule.connection_id)} Â· {schedule.timezone}</p>
                   </div>
                   <div className="flex shrink-0 gap-1"><Button variant="ghost" size="sm" onClick={() => setEditing(schedule)} aria-label={`Edit schedule at ${schedule.run_time}`}><Pencil className="h-4 w-4" /></Button><Button variant="ghost" size="sm" onClick={() => void deleteSchedule(schedule.id)} disabled={remove.isPending} aria-label={`Delete schedule at ${schedule.run_time}`}><Trash2 className="h-4 w-4 text-destructive" /></Button></div>
                 </div>
@@ -267,7 +267,7 @@ function SchedulesPanel() {
 
 
 export default function CustomerIntelligencePage() {
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useUrlSearchParam("case");
   const [query, setQuery] = useState("");
   const [showReview, setShowReview] = useState(false);
   const [offset, setOffset] = useState(0);
@@ -328,11 +328,11 @@ export default function CustomerIntelligencePage() {
             <div className="flex gap-2 pt-2"><div className="relative flex-1"><Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" /><Input aria-label="Search research cases" placeholder="Search company or domain" value={query} onChange={(event) => setQuery(event.target.value)} className="pl-8" /></div><Button type="button" variant={showReview ? "secondary" : "outline"} onClick={() => { setShowReview((value) => !value); setSelected(null); }}>{showReview ? "Show briefings" : "Needs review"}</Button></div>
           </CardHeader>
           <CardContent className="space-y-2">
-            {cases.isLoading && <p className="text-sm text-muted-foreground">Loading cases…</p>}
+            {cases.isLoading && <p className="text-sm text-muted-foreground">Loading casesâ€¦</p>}
             {cases.data?.map((item) => (
               <button key={item.id} type="button" onClick={() => setSelected(item.id)} className={`w-full rounded-lg border p-3 text-left transition-colors hover:bg-muted/50 ${selected === item.id ? "border-primary bg-primary/5" : "border-border/60"}`}>
                 <div className="flex items-center justify-between gap-2"><span className="truncate font-medium">{item.company_name || item.company_domain || "Unmatched sender"}</span><Badge variant={statusVariant(item.status)}>{item.status}</Badge></div>
-                <p className="mt-1 text-xs text-muted-foreground">{formatVietnamDateTime(item.created_at)} · Giờ Việt Nam · {item.trigger || "manual"}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{formatVietnamDateTime(item.created_at)} Â· Giá» Viá»‡t Nam Â· {item.trigger || "manual"}</p>
               </button>
             ))}
             {!cases.isLoading && !cases.data?.length && <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">{showReview ? "No emails need review." : "No company briefings yet. New customer emails will appear here after agent classification."}</p>}

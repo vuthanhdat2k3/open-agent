@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { api, ApiError, streamSSE, streamSSEGet } from "@/lib/api";
 import { randomId } from "@/lib/utils";
@@ -32,6 +32,7 @@ import type { UploadedFile } from "@/types";
 
 export default function ChatPage() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const role = useCurrentRole();
   const agents = useAgents();
   const models = useModels();
@@ -273,6 +274,33 @@ export default function ChatPage() {
     if (agentId !== resolvedAgentId) setAgent(resolvedAgentId);
     setAgentReady(true);
   }, [agentId, agents.data, chatHydrated, searchParams, setAgent]);
+
+  // The URL is the shareable record of the active agent + session. The store
+  // mirrors it back once any deep-link adoption has settled; adoption only
+  // accepts sessions that exist and belong to the active agent.
+  const urlSession = searchParams.get("session");
+
+  React.useEffect(() => {
+    if (!agentReady || !agentId) return;
+    if (urlSession && urlSession !== sessionId) return;
+    const params = new URLSearchParams({ agent: agentId });
+    if (sessionId) params.set("session", sessionId);
+    const target = `/chat?${params.toString()}`;
+    if (window.location.pathname + window.location.search !== target) {
+      router.replace(target, { scroll: false });
+    }
+  }, [agentId, agentReady, router, sessionId, urlSession]);
+
+  React.useEffect(() => {
+    if (!agentReady || !sessions.isSuccess) return;
+    if (!urlSession || urlSession === sessionId) return;
+    const session = sessions.data?.find((s) => s.id === urlSession);
+    if (session && session.agent_id === agentId) {
+      setSession(urlSession);
+    } else if (!session) {
+      router.replace(`/chat?agent=${agentId}`, { scroll: false });
+    }
+  }, [agentId, agentReady, router, sessionId, sessions.data, sessions.isSuccess, setSession, urlSession]);
 
   React.useEffect(() => {
     if (!agentReady || !sessions.isSuccess || !sessionId) return;
