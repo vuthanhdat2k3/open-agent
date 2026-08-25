@@ -26,11 +26,6 @@ from app.models.customer_intelligence import (
 from app.models.membership import Membership
 from app.models.refresh_token import RefreshToken
 from app.models.user import User
-from app.repositories.customer_intelligence import (
-    CalendarConnectionRepository,
-    DriveConnectionRepository,
-    EmailConnectionRepository,
-)
 
 logger = structlog.get_logger(__name__)
 
@@ -75,7 +70,6 @@ class UserLifecycleService:
         return True
 
     async def _disconnect_email(self, user_id: str, actor_user_id: str | None) -> None:
-        repo = EmailConnectionRepository(self.db)
         rows = (
             await self.db.execute(
                 select(EmailConnection).where(
@@ -86,7 +80,8 @@ class UserLifecycleService:
         ).scalars().all()
         for conn in rows:
             await self._revoke_email_credentials(conn)
-            await repo.update(conn, {"status": "disconnected", "credentials_enc": None})
+            conn.status = "disconnected"
+            conn.credentials_enc = None
             await self.db.execute(
                 update(CiSchedule)
                 .where(CiSchedule.connection_id == conn.id)
@@ -100,10 +95,10 @@ class UserLifecycleService:
                 resource_type="ci_connection",
                 resource_id=conn.id,
                 metadata={"reason": "owner deactivated"},
+                commit=False,
             )
 
     async def _disconnect_calendar(self, user_id: str, actor_user_id: str | None) -> None:
-        repo = CalendarConnectionRepository(self.db)
         rows = (
             await self.db.execute(
                 select(CalendarConnection).where(
@@ -114,7 +109,8 @@ class UserLifecycleService:
         ).scalars().all()
         for conn in rows:
             await self._revoke_google_credentials(conn)
-            await repo.update(conn, {"status": "disconnected", "credentials_enc": None})
+            conn.status = "disconnected"
+            conn.credentials_enc = None
             await log_action(
                 self.db,
                 org_id=conn.org_id,
@@ -123,10 +119,10 @@ class UserLifecycleService:
                 resource_type="ci_calendar_connection",
                 resource_id=conn.id,
                 metadata={"reason": "owner deactivated"},
+                commit=False,
             )
 
     async def _disconnect_drive(self, user_id: str, actor_user_id: str | None) -> None:
-        repo = DriveConnectionRepository(self.db)
         rows = (
             await self.db.execute(
                 select(DriveConnection).where(
@@ -137,7 +133,8 @@ class UserLifecycleService:
         ).scalars().all()
         for conn in rows:
             await self._revoke_google_credentials(conn)
-            await repo.update(conn, {"status": "disconnected", "credentials_enc": None})
+            conn.status = "disconnected"
+            conn.credentials_enc = None
             await log_action(
                 self.db,
                 org_id=conn.org_id,
@@ -146,6 +143,7 @@ class UserLifecycleService:
                 resource_type="ci_drive_connection",
                 resource_id=conn.id,
                 metadata={"reason": "owner deactivated"},
+                commit=False,
             )
 
     async def _revoke_email_credentials(self, conn: EmailConnection) -> None:

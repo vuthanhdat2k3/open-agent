@@ -2,11 +2,9 @@
 
 import httpx
 import pytest
-from fastapi.testclient import TestClient
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.core.authz.policy import has_permission
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app

@@ -25,20 +25,17 @@ export interface NavGroup {
 }
 
 // Tailored navigation per role persona:
-// - platform_admin: Multi-tenant Platform & Infra Ops (Organizations, Global Providers, Audit)
-// - org_admin (admin): Tenant Administration (Members, Providers, Models, Quotas, Email Ops, Debug)
-// - operator: AI Studio & Builder (Agents, Workflows, MCP, Workspace, Evaluations, Approvals)
-// - user: End-user Consumer (Chat, Run Workflow, Smart Inbox, Automations, Files, Personal Quota)
+// - platform_admin: Multi-tenant Platform & Tenant Provisioning (Organizations)
+// - org_admin (admin): Tenant Administration (Members, Providers, Quotas, Knowledge Base, Usage Logs, Email Ops)
+// - operator: AI Studio & Builder (Agent Studio, Workflow Builder, MCP, Knowledge Base, Workspace, Evaluations, Approvals)
+// - user: End-user Consumer (Chat Assistant with 📎 attachments, Run Workflow, Smart Inbox, Automations, Research Cases, My Approvals)
 export const navGroups: NavGroup[] = [
   // --- Platform Admin ---
   {
-    title: "Platform Infrastructure",
+    title: "Platform Administration",
     roles: ["platform_admin"],
     items: [
-      { href: "/", label: "Dashboard", icon: LayoutDashboard, roles: ["platform_admin"] },
       { href: "/organizations", label: "Organizations", icon: Users, roles: ["platform_admin"], platformOnly: true },
-      { href: "/providers", label: "Global Providers", icon: Server, roles: ["platform_admin"], permission: "providers:read" },
-      { href: "/debug", label: "System Debug & Logs", icon: Bug, roles: ["platform_admin"], permission: "orgs:manage" },
     ],
   },
 
@@ -47,13 +44,12 @@ export const navGroups: NavGroup[] = [
     title: "Organization Management",
     roles: ["admin", "org_admin"],
     items: [
-      { href: "/", label: "Dashboard", icon: LayoutDashboard, roles: ["admin", "org_admin"] },
       { href: "/settings/members", label: "Members & Access", icon: Users, roles: ["admin", "org_admin"], permission: "orgs:manage" },
-      { href: "/providers", label: "AI Providers", icon: Server, roles: ["admin", "org_admin"], permission: "providers:read" },
-      { href: "/models", label: "Models Configuration", icon: Cpu, roles: ["admin", "org_admin"], permission: "models:read" },
+      { href: "/providers", label: "AI Providers & Models", icon: Server, roles: ["admin", "org_admin"], permission: "providers:read" },
       { href: "/settings/quotas", label: "Quotas & Budgets", icon: Gauge, roles: ["admin", "org_admin"], permission: "quota:usage" },
+      { href: "/files", label: "Knowledge Base", icon: FolderKanban, roles: ["admin", "org_admin"], permission: "files:read" },
+      { href: "/debug", label: "Usage & Audit Logs", icon: Bug, roles: ["admin", "org_admin"], permission: "orgs:manage" },
       { href: "/admin/email-intelligence", label: "Email Operations", icon: SlidersHorizontal, roles: ["admin", "org_admin"], permission: "admin:email-intelligence" },
-      { href: "/debug", label: "Org Debug & Logs", icon: Bug, roles: ["admin", "org_admin"], permission: "orgs:manage" },
     ],
   },
 
@@ -62,44 +58,33 @@ export const navGroups: NavGroup[] = [
     title: "AI Studio & Builder",
     roles: ["operator"],
     items: [
-      { href: "/", label: "Dashboard", icon: LayoutDashboard, roles: ["operator"] },
-      { href: "/agents", label: "Agents", icon: Bot, roles: ["operator"], permission: "agents:read" },
-      { href: "/workflows", label: "Workflows", icon: Workflow, roles: ["operator"], permission: "workflows:read" },
-      { href: "/mcp", label: "MCP Servers", icon: Plug, roles: ["operator"], permission: "mcp:read" },
+      { href: "/agents", label: "Agent Studio", icon: Bot, roles: ["operator"], permission: "agents:read" },
+      { href: "/workflows", label: "Workflow Builder", icon: Workflow, roles: ["operator"], permission: "workflows:read" },
+      { href: "/mcp", label: "MCP & Tools", icon: Plug, roles: ["operator"], permission: "mcp:read" },
+      { href: "/files", label: "Knowledge Base", icon: FolderKanban, roles: ["operator"], permission: "files:read" },
     ],
   },
   {
     title: "Testing & Governance",
     roles: ["operator"],
     items: [
-      { href: "/workspace", label: "Workspace", icon: FolderKanban, roles: ["operator"], permission: "files:read" },
+      { href: "/workspace", label: "Workspace & Sandbox", icon: FolderKanban, roles: ["operator"], permission: "files:read" },
       { href: "/evaluations", label: "Evaluations", icon: FlaskConical, roles: ["operator"], permission: "evaluations:read" },
       { href: "/approvals", label: "Technical Approvals", icon: ShieldCheck, roles: ["operator"], permission: "approvals:read" },
-      { href: "/models", label: "Models Explorer", icon: Cpu, roles: ["operator"], permission: "models:read" },
     ],
   },
 
   // --- User (Business Consumer / End-User) ---
   {
-    title: "AI Assistant & Work",
+    title: "AI Workplace",
     roles: ["user"],
     items: [
-      { href: "/chat", label: "Chat", icon: MessageSquare, roles: ["user"] },
+      { href: "/chat", label: "Chat Assistant", icon: MessageSquare, roles: ["user"] },
       { href: "/run-workflow", label: "Run Workflow", icon: PlayCircle, roles: ["user"], permission: "workflows:run" },
-      { href: "/email-intelligence", label: "Smart Inbox", icon: Bell, roles: ["user"], permission: "ci:personal:manage" },
+      { href: "/email-intelligence", label: "Smart Inbox & Rules", icon: Bell, roles: ["user"], permission: "ci:personal:manage" },
       { href: "/automations", label: "Automations", icon: Zap, roles: ["user"], permission: "workflows:read" },
-      { href: "/email-intelligence/rules", label: "Automation Rules", icon: SlidersHorizontal, roles: ["user"], permission: "ci:personal:manage" },
       { href: "/customer-intelligence", label: "Research Cases", icon: Search, roles: ["user"], permission: "ci:read" },
-    ],
-  },
-  {
-    title: "Personal Workspace",
-    roles: ["user"],
-    items: [
-      { href: "/integrations", label: "Integrations", icon: CalendarDays, roles: ["user"], permission: "ci:personal:manage" },
-      { href: "/files", label: "Files", icon: FileUp, roles: ["user"], permission: "files:read" },
-      { href: "/approvals", label: "My Approvals", icon: ShieldCheck, roles: ["user"], permission: "approvals:read" },
-      { href: "/settings/quotas", label: "My Quota", icon: Gauge, roles: ["user"], permission: "quota:usage" },
+      { href: "/approvals", label: "My Approvals & Quota", icon: ShieldCheck, roles: ["user"], permission: "approvals:read" },
     ],
   },
 ];

@@ -105,7 +105,7 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 > #104 chat-streaming-debug-fix, #106 chat-streaming-text-fidelity,
 > #108 chat-scroll-flicker-tool-loading-fix, #110 agent-home-redesign,
 > #111 tool-live-progress-subagent-stream, #114 tool-call-debug-visibility,
-> #118 rbac-matrix-ui-streamline).
+> #118 rbac-matrix-ui-streamline, #120 rbac-clean-personas-knowledge-base).
 > cùng các dòng stale của worktree không còn tồn tại. Branch
 > `docs/enterprise-rbac-zitadel-design` được GIỮ (còn 3 commit chưa merge của Codex).
 > 2026-08-23: Đã dọn dẹp toàn bộ worktree/branch có PR đã merge vào `dev`
