@@ -25,8 +25,10 @@ describe("normalizeLatex", () => {
     expect(normalizeLatex("\\[E = mc^2\\]")).toBe("\n$$\nE = mc^2\n$$\n");
   });
 
-  it("still converts plain-parenthesis math without URLs", () => {
-    expect(normalizeLatex("(a + b)")).toBe("$a + b$");
+  it("keeps regular text in parentheses intact without turning into math", () => {
+    expect(normalizeLatex("(a + b)")).toBe("(a + b)");
+    expect(normalizeLatex("range (1 - 10) or (from A to B)")).toBe("range (1 - 10) or (from A to B)");
+    expect(normalizeLatex("Ví dụ (1 + 2 = 3)")).toBe("Ví dụ (1 + 2 = 3)");
   });
 });
 
