@@ -46,17 +46,62 @@ export default function Dashboard() {
     await Promise.all(resourceQueries.map((query) => query.refetch()));
   }
 
+  const isPlatformAdmin = role === "platform_admin";
+  const isOrgAdmin = role === "admin";
+  const isOperator = role === "operator";
+  const isEndUser = role === "user";
+
+  const heroHeading = isPlatformAdmin
+    ? "Platform Administration & Infra Ops"
+    : isOrgAdmin
+      ? "Quản trị Tổ chức & Phân bổ Tài nguyên"
+      : isOperator
+        ? "AI Studio, Workflow & Evaluator"
+        : "Đội ngũ trợ lý AI của bạn đang sẵn sàng";
+
+  const heroSubtitle = isPlatformAdmin
+    ? "Giám sát hệ thống đa tổ chức, quản lý AI Gateway tổng và kiểm soát tài nguyên toàn platform."
+    : isOrgAdmin
+      ? "Quản lý thành viên, cấu hình API Keys, thiết lập hạn mức Quota và giám sát chi phí của tổ chức."
+      : isOperator
+        ? `${agents.data?.length ?? 0} agent · ${workflows.data?.length ?? 0} workflow đã cấu hình. Thiết kế prompt, xây dựng workflow hoặc chạy evaluation benchmark.`
+        : `${agents.data?.length ?? 0} agent sẵn sàng phục vụ. Bắt đầu trò chuyện hoặc chạy workflow tự động hóa.`;
+
   return (
     <div className="space-y-8">
       <section className="flex flex-col gap-6 rounded-xl border border-primary/20 bg-card/70 p-6 shadow-card sm:p-8 lg:flex-row lg:items-end lg:justify-between">
         <div className="max-w-2xl space-y-3">
           <p className="text-sm font-semibold text-primary">{greeting()}{name ? `, ${name}` : ""}</p>
-          <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Đội ngũ agent của bạn đang sẵn sàng</h1>
-          <p className="max-w-xl text-sm leading-relaxed text-muted-foreground">{agents.data?.length ?? 0} agent · {workflows.data?.length ?? 0} workflow đã cấu hình. Bắt đầu trò chuyện hoặc chạy một workflow.</p>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">{heroHeading}</h1>
+          <p className="max-w-xl text-sm leading-relaxed text-muted-foreground">{heroSubtitle}</p>
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
-          <Button asChild className="gap-2"><Link href="/chat"><MessageSquare className="h-4 w-4" aria-hidden="true" />Bắt đầu Chat</Link></Button>
-          <Button asChild variant="outline" className="gap-2"><Link href={isAdmin ? "/workflows" : "/run-workflow"}><Workflow className="h-4 w-4" aria-hidden="true" />Chạy Workflow</Link></Button>
+          {isPlatformAdmin && (
+            <>
+              <Button asChild className="gap-2"><Link href="/organizations">Quản lý Organizations</Link></Button>
+              <Button asChild variant="outline" className="gap-2"><Link href="/providers">Global Providers</Link></Button>
+              <Button asChild variant="ghost" className="gap-2"><Link href="/debug">Audit & Logs</Link></Button>
+            </>
+          )}
+          {isOrgAdmin && !isPlatformAdmin && (
+            <>
+              <Button asChild className="gap-2"><Link href="/settings/members">Quản lý Thành viên</Link></Button>
+              <Button asChild variant="outline" className="gap-2"><Link href="/providers">AI Providers & Models</Link></Button>
+              <Button asChild variant="ghost" className="gap-2"><Link href="/settings/quotas">Quotas & Budgets</Link></Button>
+            </>
+          )}
+          {isOperator && (
+            <>
+              <Button asChild className="gap-2"><Link href="/agents"><Bot className="h-4 w-4" aria-hidden="true" />Agent Studio</Link></Button>
+              <Button asChild variant="outline" className="gap-2"><Link href="/workflows"><Workflow className="h-4 w-4" aria-hidden="true" />Workflow Builder</Link></Button>
+            </>
+          )}
+          {isEndUser && (
+            <>
+              <Button asChild className="gap-2"><Link href="/chat"><MessageSquare className="h-4 w-4" aria-hidden="true" />Bắt đầu Chat</Link></Button>
+              <Button asChild variant="outline" className="gap-2"><Link href="/run-workflow"><Workflow className="h-4 w-4" aria-hidden="true" />Chạy Workflow</Link></Button>
+            </>
+          )}
           {grafanaUrl && <Button asChild variant="ghost" className="gap-2"><a href={grafanaUrl} target="_blank" rel="noreferrer"><BarChart3 className="h-4 w-4" aria-hidden="true" />Grafana</a></Button>}
         </div>
       </section>

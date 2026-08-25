@@ -7,42 +7,101 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-export interface NavItem { href: string; label: string; icon: LucideIcon; permission?: string; platformOnly?: boolean; }
-export interface NavGroup { title: string; items: NavItem[]; }
+export type UserRole = "platform_admin" | "admin" | "org_admin" | "operator" | "user";
 
-// adminOnly items configure/operate the product (agents, workflows authoring,
-// providers, models, MCP, integrations, evaluations, members, debug) - a
-// plain "user" only ever consumes it (Chat, Dashboard, and their own
-// Workspace/Files/Approvals/Quotas data). See the RBAC design spec.
+export interface NavItem {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+  permission?: string;
+  platformOnly?: boolean;
+  roles?: UserRole[];
+}
+
+export interface NavGroup {
+  title: string;
+  roles?: UserRole[];
+  items: NavItem[];
+}
+
+// Tailored navigation per role persona:
+// - platform_admin: Multi-tenant Platform & Infra Ops (Organizations, Global Providers, Audit)
+// - org_admin (admin): Tenant Administration (Members, Providers, Models, Quotas, Email Ops, Debug)
+// - operator: AI Studio & Builder (Agents, Workflows, MCP, Workspace, Evaluations, Approvals)
+// - user: End-user Consumer (Chat, Run Workflow, Smart Inbox, Automations, Files, Personal Quota)
 export const navGroups: NavGroup[] = [
-  { title: "Overview", items: [
-    { href: "/", label: "Dashboard", icon: LayoutDashboard },
-    { href: "/chat", label: "Chat", icon: MessageSquare },
-    { href: "/run-workflow", label: "Run Workflow", icon: PlayCircle, permission: "workflows:run" },
-  ] },
-  { title: "AI Infrastructure", items: [
-    { href: "/agents", label: "Agents", icon: Bot, permission: "agents:read" },
-    { href: "/workflows", label: "Workflows", icon: Workflow, permission: "workflows:read" },
-    { href: "/workspace", label: "Workspace", icon: FolderKanban, permission: "files:read" },
-    { href: "/mcp", label: "MCP Servers", icon: Plug, permission: "mcp:read" },
-    { href: "/integrations", label: "Integrations", icon: CalendarDays, permission: "ci:personal:manage" },
-    { href: "/email-intelligence", label: "Smart Inbox", icon: Bell, permission: "ci:personal:manage" },
-    { href: "/automations", label: "Automations", icon: Zap, permission: "workflows:read" },
-    { href: "/email-intelligence/rules", label: "Automation Rules", icon: SlidersHorizontal, permission: "ci:personal:manage" },
-    { href: "/customer-intelligence", label: "Research Cases", icon: Search, permission: "ci:read" },
-    { href: "/models", label: "Models", icon: Cpu, permission: "models:read" },
-    { href: "/providers", label: "Providers", icon: Server, permission: "providers:read" },
-    { href: "/files", label: "Files", icon: FileUp, permission: "files:read" },
-  ] },
-  { title: "Governance & Ops", items: [
-    { href: "/approvals", label: "Approvals", icon: ShieldCheck, permission: "approvals:read" },
-    { href: "/evaluations", label: "Evaluations", icon: FlaskConical, permission: "evaluations:read" },
-    { href: "/settings/quotas", label: "Quotas", icon: Gauge, permission: "quota:usage" },
-    { href: "/settings/members", label: "Members", icon: Users, permission: "orgs:manage" },
-    { href: "/debug", label: "Debug", icon: Bug, permission: "orgs:manage" },
-    { href: "/admin/email-intelligence", label: "Email Operations", icon: Gauge, permission: "admin:email-intelligence" },
-    { href: "/organizations", label: "Organizations", icon: Users, permission: "orgs:read", platformOnly: true },
-  ] },
+  // --- Platform Admin ---
+  {
+    title: "Platform Infrastructure",
+    roles: ["platform_admin"],
+    items: [
+      { href: "/", label: "Dashboard", icon: LayoutDashboard, roles: ["platform_admin"] },
+      { href: "/organizations", label: "Organizations", icon: Users, roles: ["platform_admin"], platformOnly: true },
+      { href: "/providers", label: "Global Providers", icon: Server, roles: ["platform_admin"], permission: "providers:read" },
+      { href: "/debug", label: "System Debug & Logs", icon: Bug, roles: ["platform_admin"], permission: "orgs:manage" },
+    ],
+  },
+
+  // --- Organization Admin ---
+  {
+    title: "Organization Management",
+    roles: ["admin", "org_admin"],
+    items: [
+      { href: "/", label: "Dashboard", icon: LayoutDashboard, roles: ["admin", "org_admin"] },
+      { href: "/settings/members", label: "Members & Access", icon: Users, roles: ["admin", "org_admin"], permission: "orgs:manage" },
+      { href: "/providers", label: "AI Providers", icon: Server, roles: ["admin", "org_admin"], permission: "providers:read" },
+      { href: "/models", label: "Models Configuration", icon: Cpu, roles: ["admin", "org_admin"], permission: "models:read" },
+      { href: "/settings/quotas", label: "Quotas & Budgets", icon: Gauge, roles: ["admin", "org_admin"], permission: "quota:usage" },
+      { href: "/admin/email-intelligence", label: "Email Operations", icon: SlidersHorizontal, roles: ["admin", "org_admin"], permission: "admin:email-intelligence" },
+      { href: "/debug", label: "Org Debug & Logs", icon: Bug, roles: ["admin", "org_admin"], permission: "orgs:manage" },
+    ],
+  },
+
+  // --- Operator (AI Engineer / Builder) ---
+  {
+    title: "AI Studio & Builder",
+    roles: ["operator"],
+    items: [
+      { href: "/", label: "Dashboard", icon: LayoutDashboard, roles: ["operator"] },
+      { href: "/agents", label: "Agents", icon: Bot, roles: ["operator"], permission: "agents:read" },
+      { href: "/workflows", label: "Workflows", icon: Workflow, roles: ["operator"], permission: "workflows:read" },
+      { href: "/mcp", label: "MCP Servers", icon: Plug, roles: ["operator"], permission: "mcp:read" },
+    ],
+  },
+  {
+    title: "Testing & Governance",
+    roles: ["operator"],
+    items: [
+      { href: "/workspace", label: "Workspace", icon: FolderKanban, roles: ["operator"], permission: "files:read" },
+      { href: "/evaluations", label: "Evaluations", icon: FlaskConical, roles: ["operator"], permission: "evaluations:read" },
+      { href: "/approvals", label: "Technical Approvals", icon: ShieldCheck, roles: ["operator"], permission: "approvals:read" },
+      { href: "/models", label: "Models Explorer", icon: Cpu, roles: ["operator"], permission: "models:read" },
+    ],
+  },
+
+  // --- User (Business Consumer / End-User) ---
+  {
+    title: "AI Assistant & Work",
+    roles: ["user"],
+    items: [
+      { href: "/chat", label: "Chat", icon: MessageSquare, roles: ["user"] },
+      { href: "/run-workflow", label: "Run Workflow", icon: PlayCircle, roles: ["user"], permission: "workflows:run" },
+      { href: "/email-intelligence", label: "Smart Inbox", icon: Bell, roles: ["user"], permission: "ci:personal:manage" },
+      { href: "/automations", label: "Automations", icon: Zap, roles: ["user"], permission: "workflows:read" },
+      { href: "/email-intelligence/rules", label: "Automation Rules", icon: SlidersHorizontal, roles: ["user"], permission: "ci:personal:manage" },
+      { href: "/customer-intelligence", label: "Research Cases", icon: Search, roles: ["user"], permission: "ci:read" },
+    ],
+  },
+  {
+    title: "Personal Workspace",
+    roles: ["user"],
+    items: [
+      { href: "/integrations", label: "Integrations", icon: CalendarDays, roles: ["user"], permission: "ci:personal:manage" },
+      { href: "/files", label: "Files", icon: FileUp, roles: ["user"], permission: "files:read" },
+      { href: "/approvals", label: "My Approvals", icon: ShieldCheck, roles: ["user"], permission: "approvals:read" },
+      { href: "/settings/quotas", label: "My Quota", icon: Gauge, roles: ["user"], permission: "quota:usage" },
+    ],
+  },
 ];
 
 export const allNavItems = navGroups.flatMap((group) => group.items);
