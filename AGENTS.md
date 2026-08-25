@@ -95,6 +95,7 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 | Branch | Worktree path | Phạm vi/task | Agent/người phụ trách |
 |---|---|---|---|
 | `dev` | `G:\open-agent` | Nhánh tích hợp chính — không code trực tiếp ở đây | — |
+| `fix/member-removal-guards` | `G:\open-agent-worktrees\member-removal-guards` | Guard xóa member: platform_admin/self/last-org_admin (backend + UI) | Sisyphus |
 
 > 2026-08-25: Đã dọn dẹp worktree/branch của các PR đã merge vào `dev`
 > (#86 chat-projection-stream-target, #88 chat-tool-chips, #90 chat-markdown-links).
