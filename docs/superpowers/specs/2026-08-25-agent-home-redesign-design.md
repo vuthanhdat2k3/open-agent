@@ -577,3 +577,103 @@ Each plan can be merged, reviewed, and rolled back independently. This decomposi
 ---
 
 **End of spec.** Ready for user review. Once approved, the next step is `/start-work` (writing-plans skill) to break this into a phased implementation plan with one task per backend endpoint, hook, component, and migration phase.
+
+---
+
+## 12. v2 Constraints (supersedes earlier aesthetics)
+
+**Added 2026-08-25 after Stitch render review.** User direction (verbatim):
+> "chú ý phải redesign theo base UI hiện tại, càng ít page càng tốt, dễ nhìn, dễ quản lý, thao tác và view. Trông hiện đại và tự nhiên để nhìn vào trông không giống tạo bởi AI"
+
+**These constraints override any aesthetic choice above that conflicts with them.** When in doubt: real codebase > Stitch render > spec v1.
+
+### 12.1 Routes — net reduction 22 → 14
+
+| Removed (becomes 302 then 410) | Replacement |
+|---|---|
+| `/email-intelligence` | Home Activity Feed filter + email detail Drawer |
+| `/customer-intelligence` | Home Activity Feed filter + research Drawer |
+| `/approvals` | Notification Inbox Sheet on Home |
+| `/run-workflow` | inline action on `/workflows` |
+| `/files`, `/workspace` | UserNav dropdown (workspace merged with files) |
+| `/automations` | `/builder/automations` |
+| `/mcp` | `/builder/mcp` |
+| `/models` | `/builder/models` |
+| `/providers` | `/builder/providers` |
+| `/organizations` | `/builder/orgs` |
+
+**Final structure (14 top-level):**
+- Public: `/login`, `/register`, `/oauth/[provider]`
+- App: `/` (redirector), `/home`, `/chat`
+- Builder: `/builder`, `/builder/agents`, `/builder/workflows`, `/builder/automations`, `/builder/mcp`, `/builder/models`, `/builder/providers`, `/builder/integrations`, `/builder/orgs`
+- Admin/operator: `/debug`, `/evaluations`, `/admin/email-intelligence`
+- Settings: `/settings/quotas`, `/settings/members`, `/settings/api-keys`
+
+(The exact set will be finalized in the implementation plan; v2 target is "as few as possible".)
+
+### 12.2 Right rail (Quick Glance) on Home — REDUCED to 1 widget
+
+Stitch render had 3 widgets: System Health + Agent Stats + Integrations. v2 rejects this — too dense, looks AI-fabricated.
+
+**v2: single "Today" widget, 2x2 grid of 4 stats:**
+- Emails (count + "X flagged" sub)
+- Approvals (count + "pending" sub)
+- Workflows (count + "done today" sub)
+- Quota (% + "used" sub)
+
+Each stat is tappable → opens the corresponding drawer. No System Health, no Agent Stats, no Integrations on Home (those are operator surface on `/builder`).
+
+### 12.3 Activity Feed copy style
+
+Rejects Stitch's dev-tool jargon ("Agent Deployed", "API Key Generated", "Build Success"). Keeps spec v1's user-facing copy style: "Sarah Chen flagged an email for review", "Approval pending: send calendar invite", "Workflow done: Daily research". One title line, one detail line, optional chip. Real customers from the org's data, not fabricated names.
+
+### 12.4 No fictional metrics
+
+Rejects Stitch's "99.9% uptime / 42ms latency / 2.4GB memory" sample data. If a widget shows numbers, those come from a real API call. Empty state shows `--` or `0`, not sample data.
+
+### 12.5 Branding
+
+Rejects Stitch's "Developer Console" sub-title. Keeps codebase's "OpenAgent" + "Agent Platform" sub-title (matches `app-sidebar.tsx:51`).
+
+### 12.6 Backgrounds
+
+Rejects Stitch's pure `#000000`. Keeps codebase's `#0a0a0a` (hsl 0 0% 4%) — softer, less harsh on OLED.
+
+### 12.7 Active nav state
+
+Rejects Stitch's `bg-white/10` + `font-bold`. Keeps codebase's `bg-sidebar-accent` + `font-medium` (subtle). Loud active states look AI-cliché.
+
+### 12.8 Anti-AI-cliché checklist (apply to every screen, every PR)
+
+Before merging any visual change, run this checklist:
+
+1. **No gradient text** on hero (codebase rule)
+2. **No purple/neon** anywhere (codebase rule)
+3. **No "Powered by AI" / "Intelligent Assistant" / "✨" / "🚀"** in copy
+4. **No centered hero** on internal tools
+5. **No fake round numbers** (99.9%, 50%, 98.2%) — show `--` or real API value
+6. **No 3-column-equal grid** for feature rows
+7. **No filler text** ("Scroll to explore", "Get started in 30 seconds")
+8. **Real data shapes** — not "Acme Co / Stripe Partners / Lumen Health" unless the org actually has those customers
+9. **Vietnamese copy** where the codebase uses Vietnamese; English where codebase uses English (don't switch languages unilaterally)
+10. **Match existing voice** — codebase already has its own greeting ("Đội ngũ agent của bạn đang sẵn sàng" on current Dashboard); don't replace with English marketing copy
+
+A PR that fails any of these checks gets rejected with reference to this section.
+
+### 12.9 Implementation phasing reaffirmed
+
+v2 keeps the 5-plan decomposition from §8.1:
+1. **Plan A — Backend foundation** (no UX impact)
+2. **Plan B — Design system persona primitives** (design system only)
+3. **Plan C — Home + Activity Feed + Drawer** (frontend, v2 spec)
+4. **Plan D — Builder + role-based redirect** (operator surface)
+5. **Plan E — Migration + deprecation** (302 → 410 over 30 days)
+
+Each plan is reviewable + rollbackable independently. Do not ship as a single PR.
+
+### 12.10 Reference
+
+- Stitch render review: `frontend/_mockups/stitch-screens/REVIEW-NOTES.md` (v2 — supersedes v1)
+- Stitch 4 PNG mocks: `frontend/_mockups/stitch-screens/01-home.png` … `04-drawer.png`
+- Stitch gallery: `frontend/_mockups/stitch-gallery.html`
+- HTML mockup v2: `frontend/_mockups/agent-home-v2.html` (Right rail already updated)
