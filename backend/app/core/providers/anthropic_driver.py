@@ -129,6 +129,7 @@ class AnthropicDriver:
         tools: list[dict[str, Any]] | None = None,
         temperature: float = 0.7,
         tool_choice: Any | None = None,
+        thinking: bool | None = None,
     ) -> tuple[str, dict[str, int], list[dict[str, Any]]]:
         async with httpx.AsyncClient(timeout=120.0) as client:
             response = await client.post(
@@ -149,6 +150,7 @@ class AnthropicDriver:
         tools: list[dict[str, Any]] | None = None,
         temperature: float = 0.7,
         tool_choice: Any | None = None,
+        thinking: bool | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         usage = {"input_tokens": 0, "output_tokens": 0}
         tool_buffers: dict[str, dict[str, str]] = {}

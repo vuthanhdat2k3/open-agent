@@ -1,4 +1,4 @@
-from sqlalchemy import (
+﻿from sqlalchemy import (
     JSON,
     Boolean,
     DateTime,
@@ -38,6 +38,7 @@ class Agent(Base):
     kind: Mapped[str] = mapped_column(String(32), default="worker", nullable=False)
     max_iterations: Mapped[int] = mapped_column(Integer, default=12)
     temperature: Mapped[float] = mapped_column(Float, default=0.7)
+    enable_thinking: Mapped[bool | None] = mapped_column(nullable=True)
     active_release_id: Mapped[str | None] = mapped_column(
         String(36),
         ForeignKey("agent_releases.id", ondelete="SET NULL", use_alter=True),

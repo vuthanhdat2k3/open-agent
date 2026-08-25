@@ -217,7 +217,9 @@ async def test_empty_finalization_retries_without_tools_or_duplicate_execution(
 
     calls: list[dict] = []
 
-    async def _empty_then_final(self, messages, tools=None, temperature=0.7, tool_choice=None):
+    async def _empty_then_final(
+        self, messages, tools=None, temperature=0.7, tool_choice=None, thinking=None
+    ):
         calls.append({"tools": tools, "tool_choice": tool_choice})
         if len(calls) == 1:
             yield {
