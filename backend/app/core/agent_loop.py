@@ -1242,6 +1242,9 @@ async def _agent_stream(
         # is only a fallback for providers that do not report it.
         stream_usage: dict[str, int] = {}
         usage_estimated = True
+        # Running totals across steps in this iteration, so a mid-run budget
+        # trip can persist what was actually spent onto the failed task.
+        usage_totals: dict[str, int] = {}
 
         # invoke_agent is the parent of both the chat span and every
         # execute_tool span in this iteration, so a trace viewer shows one
@@ -1351,6 +1354,8 @@ async def _agent_stream(
                         # Feed this step's real cost into the run budget so
                         # max_cost_usd can trip mid-run, not just at the end.
                         if not usage_estimated and stream_usage:
+                            for k in ("input_tokens", "output_tokens"):
+                                usage_totals[k] = usage_totals.get(k, 0) + int(stream_usage.get(k, 0) or 0)
                             step_cost = LLMClient.estimate_cost(model, {
                                 "input_tokens": int(stream_usage.get("input_tokens", 0) or 0),
                                 "output_tokens": int(stream_usage.get("output_tokens", 0) or 0),
@@ -1384,6 +1389,8 @@ async def _agent_stream(
                                     root_task,
                                     status="failed",
                                     result=f"error: run budget exceeded: {cost_reason}",
+                                    cost_usd=budget.cost_usd,
+                                    token_usage={**usage_totals, "estimated": False},
                                 )
                                 yield budget_ev
                                 return
