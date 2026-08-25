@@ -31,15 +31,18 @@
 - Store (`useChatStore`) vẫn persist để khôi phục nhanh, nhưng URL là nguồn
   hiển thị; 2 tab khác nhau có thể mở 2 session độc lập.
 
-## Các trang khác (backlog P2)
+## Các trang khác (P2 — đã triển khai qua `useUrlSearchParam`)
 
-| Trang | Đề xuất | Ghi chú |
+| Trang | Param | Ghi chú |
 |---|---|---|
-| `/evaluations` | `?suite=&run=` | suite/run hiện đang là state |
-| `/customer-intelligence` | `?case=` | case detail hiện là state |
-| `/debug` | `?session=&run=` | cây debug hiện là state |
-| `/workflows` | `?run=` khi xem run detail | run detail hiện là state |
+| `/evaluations` | `?suite=` | chọn suite (auto-chọn suite đầu → URL cập nhật) |
+| `/customer-intelligence` | `?case=` | case detail deep-link được |
+| `/debug` | `?session=&root_run=&run=` | session dropdown + 2 input commit on blur/Enter |
+| `/workflows` | `?run=` | mirror 2 chiều với store `activeRunId` (adoption: deep-link run) |
 | Org context | giữ cookie/localStorage | context xuyên suốt, không đưa vào từng URL |
+
+Hook dùng chung: `useUrlSearchParam(key)` — trả `[value, setValue]`, setter
+rewrite query string in place (không thêm history entry).
 
 ## Đã có sẵn (đúng convention)
 

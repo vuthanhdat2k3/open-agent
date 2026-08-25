@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import * as React from "react";
 import { FlaskConical, Plus, Play, Database, CheckCircle2, XCircle } from "lucide-react";
@@ -10,6 +10,7 @@ import {
   useCreateEvaluationSuite,
   useEvaluationRuns,
   useEvaluationSuites,
+  useUrlSearchParam,
 } from "@/hooks";
 import type { EvaluationSuite } from "@/types";
 import { PageHeader } from "@/components/page-header";
@@ -42,7 +43,7 @@ export default function EvaluationsPage() {
   const createRun = useCreateEvaluationRun();
   const [suiteDialog, setSuiteDialog] = React.useState(false);
   const [caseSuite, setCaseSuite] = React.useState<EvaluationSuite | null>(null);
-  const [selectedSuiteId, setSelectedSuiteId] = React.useState<string | null>(null);
+  const [selectedSuiteId, setSelectedSuiteId] = useUrlSearchParam("suite");
   const runs = useEvaluationRuns(selectedSuiteId);
   const [form, setForm] = React.useState(EMPTY_SUITE);
   const [caseForm, setCaseForm] = React.useState({ input: "", expected_output: "" });
@@ -51,7 +52,7 @@ export default function EvaluationsPage() {
     if (!selectedSuiteId && suites.data?.length) {
       setSelectedSuiteId(suites.data[0].id);
     }
-  }, [selectedSuiteId, suites.data]);
+  }, [selectedSuiteId, setSelectedSuiteId, suites.data]);
 
   React.useEffect(() => {
     if (!form.agent_id && agents.data?.length) {
@@ -159,7 +160,7 @@ export default function EvaluationsPage() {
                         <Badge variant="outline" className="font-mono text-[10px]">v{suite.dataset_version}</Badge>
                       </div>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        {suite.description || "No description"} · <span className="font-medium text-foreground">{agent?.name ?? "Unknown agent"}</span>
+                        {suite.description || "No description"} Â· <span className="font-medium text-foreground">{agent?.name ?? "Unknown agent"}</span>
                       </p>
                     </div>
                     <div className="flex gap-2">
@@ -244,7 +245,7 @@ export default function EvaluationsPage() {
                     <Badge variant="outline" className="font-mono text-[10px]">{run.execution_mode}</Badge>
                   </div>
                   <p className="text-[11px] font-mono text-muted-foreground">
-                    {run.passed_cases}/{run.total_cases} cases · {run.average_latency_ms.toFixed(0)}ms · ${run.total_cost_usd.toFixed(4)}
+                    {run.passed_cases}/{run.total_cases} cases Â· {run.average_latency_ms.toFixed(0)}ms Â· ${run.total_cost_usd.toFixed(4)}
                   </p>
                 </div>
               ))}
