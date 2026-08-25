@@ -10,6 +10,7 @@ import { TextBlock } from "./blocks/text-block";
 import { ReasoningRow } from "./blocks/reasoning-row";
 import { ToolCallCard } from "./blocks/tool-call-card";
 import { ToolCallChip } from "./blocks/tool-call-chip";
+import { ToolChipsGroup } from "./blocks/tool-chips-group";
 import { StatsLine } from "./blocks/stats-line";
 
 export interface ChatMessageItemProps {
@@ -168,11 +169,7 @@ function ChatMessageItemBase({ message: m, debug, onApprovalDecision }: ChatMess
   const flushChips = () => {
     if (chipGroup.length > 0) {
       rendered.push(
-        <div key={`chips-${rendered.length}`} className="flex flex-wrap items-center gap-1.5">
-          {chipGroup.map((b) => (
-            <ToolCallChip key={b.id} block={b} />
-          ))}
-        </div>,
+        <ToolChipsGroup key={`chips-${rendered.length}`} blocks={chipGroup} />,
       );
       chipGroup = [];
     }

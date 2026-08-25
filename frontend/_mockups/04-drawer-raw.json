@@ -1,0 +1,43 @@
+﻿{
+    "outputComponents":  [
+                             {
+                                 "design":  {
+                                                "screens":  [
+                                                                {
+                                                                    "designSystem":  "@{designSystem=; name=assets/eeddfcc795704f4ba5f2567bd5c281cc; version=1}",
+                                                                    "deviceType":  "DESKTOP",
+                                                                    "generatedBy":  "figaro_agent",
+                                                                    "height":  "2048",
+                                                                    "htmlCode":  "@{downloadUrl=https://contribution.usercontent.google.com/download?c=CgthaWRhX2NvZGVmeBJ8Eh1hcHBfY29tcGFuaW9uX2dlbmVyYXRlZF9maWxlcxpbCiVodG1sXzk1NGM0YTY0NDU5YTRlODc5NzhkMWExOWQ5M2M4Y2E2EgsSBxCN3bDIhR0YAZIBJAoKcHJvamVjdF9pZBIWQhQxMTk2Njc1MTYyMDY3NDU1NDgwNA\u0026filename=\u0026opi=96797242; mimeType=text/html; name=projects/11966751620674554804/files/724fe3d9d1284672bec7a7dcd538c976}",
+                                                                    "id":  "5cee6ec61c9e412a81d2597e439d2771",
+                                                                    "name":  "projects/11966751620674554804/screens/5cee6ec61c9e412a81d2597e439d2771",
+                                                                    "prompt":  "A right-side slide-out Activity Detail Drawer, 560px wide, following the Monochrome Logic design system (dark mode, Inter font, 12px radius, white primary). \n\nHeader: \n- 40px square avatar.\n- Bold email subject title: \"Urgent: Pricing Commitment Review\"\n- Sender info: \"John Doe \u003cj.doe@company.com\u003e\"\n- Relative time: \"2 hours ago\"\n- Close \u0027X\u0027 icon in the top right.\n\nContent Sections (Stacked):\n1. Sentinel Insights: A callout box with a subtle border. Label: \"Why Sentinel flagged this\". Body: \"This message contains a high-level pricing commitment that deviates from standard regional guidelines, potentially impacting margin targets.\"\n2. Email Body: Full readable text. \"Hi Team, We need to finalize the Q3 pricing for the EMEA region. Please review the attached commitment regarding the 15% discount for Tier 1 partners. This is critical for our expansion strategy.\" Use bold for \"15% discount\" and \"Tier 1 partners\".\n3. Related Context: A bulleted list. \n   - Previous thread: \"Q3 Strategy Alignment\"\n   - Account: Global Enterprise (Tier 1)\n   - Last contact: 3 days ago\n\nFooter:\n- Three buttons in a row: \"Archive\" (Ghost), \"Ask Atlas\" (Ghost), and \"Reply\" (Primary white background, black text).\n\nStyling:\n- Monochrome dark theme (#131313 surface).\n- 12px border radius on all containers.\n- Subtle 3D elevation/shadow on the drawer itself.\n- Inter font throughout.",
+                                                                    "screenMetadata":  "@{agentType=PRO_AGENT; status=COMPLETE}",
+                                                                    "screenType":  "DESIGN",
+                                                                    "screenshot":  "@{downloadUrl=https://lh3.googleusercontent.com/aida/AEtjO1WEXXOlM_WcsQX3zbWxAveWaRMG6c8pbWQKoeWNLN5W5zT0QaIIlfVCT28vmyXTdPJAtmcgziLhzpt4hy_wD77_ktOCwgf7YOLRWN08GIRyjvevFGLBmxn1-4oKQldQO8Z_CAjSo35gmIbsIdAxwZlMlJsSCtjSmGwb1mp46tsso-tWERdjtFZcKyNQNu19YpmNdyHq21VFUfbKlGRRScv4PvIJ8MbmK67Slms-8DGWBKDpOe7PVFlZnzkr; name=projects/11966751620674554804/files/74810864ea224a52bfaaab7a62b2ae23}",
+                                                                    "theme":  "@{bodyFont=INTER; bodyFontFamily=Inter; colorMode=DARK; colorVariant=FIDELITY; customColor=#ffffff; font=INTER; headlineFont=INTER; headlineFontFamily=Inter; labelFont=INTER; labelFontFamily=Inter; namedColors=; overrideNeutralColor=#000000; overridePrimaryColor=#ffffff; overrideSecondaryColor=#1a1a1a; overrideTertiaryColor=#262626; roundness=ROUND_EIGHT; spacing=; spacingScale=2; typography=}",
+                                                                    "title":  "Activity Detail Drawer",
+                                                                    "width":  "2560"
+                                                                }
+                                                            ],
+                                                "theme":  {
+
+                                                          }
+                                            }
+                             },
+                             {
+                                 "text":  "I\u0027ve designed the Activity Detail Drawer to function as a high-fidelity slide-out interface for investigating flagged activity. \n\n### Key Features:\n- **Consistent Visual Language**: Built using the **Monochrome Logic** design system, utilizing a deep #131313 surface with Inter typography and 12px radii for a professional, developer-centric feel.\n- **Sentinel Insights**: A prominent, bordered callout section at the top provides immediate context on the security risk, ensuring AI summaries are the first thing a user sees.\n- **Information Hierarchy**: The layout cleanly separates the technical alert from the human-readable email content and background context, allowing for rapid triaging.\n- **Action-Oriented Footer**: Strategic placement of ghost and primary actions (\"Archive\", \"Ask Atlas\", \"Reply\") ensures the user has a clear path forward after reviewing the details.\n\nWould you like to adjust the width of the drawer, or perhaps add interactive states to the Sentinel callout box?"
+                             },
+                             {
+                                 "suggestion":  "Change drawer width to 640px"
+                             },
+                             {
+                                 "suggestion":  "Add an \u0027Ignore\u0027 action to the Sentinel box"
+                             },
+                             {
+                                 "suggestion":  "Make the email section collapsible"
+                             }
+                         ],
+    "projectId":  "11966751620674554804",
+    "sessionId":  "2532622805997886777"
+}

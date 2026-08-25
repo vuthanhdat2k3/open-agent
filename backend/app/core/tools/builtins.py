@@ -248,7 +248,82 @@ async def _call_agent(args: dict[str, Any], ctx: ToolContext) -> str:
     await ctx.db.commit()
     await ctx.db.refresh(task)
 
+    async def _handle_subagent_event(ev: dict[str, Any]) -> None:
+        if not ctx.emit:
+            return
+        ev_type = ev.get("event")
+        ev_data = ev.get("data", {})
+        if ev_type == "reasoning":
+            text = ev_data.get("content", "")
+            await ctx.emit({
+                "stage": "subagent_reasoning",
+                "agent_name": agent.name,
+                "agent_id": agent.id,
+                "content": text,
+                "line": text,
+            })
+        elif ev_type == "token":
+            text = ev_data.get("content", "")
+            await ctx.emit({
+                "stage": "subagent_token",
+                "agent_name": agent.name,
+                "agent_id": agent.id,
+                "content": text,
+                "line": text,
+            })
+        elif ev_type == "tool_call":
+            tool_name = ev_data.get("name", "")
+            tool_args = ev_data.get("arguments", {})
+            await ctx.emit({
+                "stage": "subagent_tool_call",
+                "agent_name": agent.name,
+                "agent_id": agent.id,
+                "tool_name": tool_name,
+                "arguments": tool_args,
+                "line": f"\n[Subagent '{agent.name}' calling tool: {tool_name}]\n",
+            })
+        elif ev_type == "tool_progress":
+            await ctx.emit({
+                "stage": "subagent_tool_progress",
+                "agent_name": agent.name,
+                "agent_id": agent.id,
+                **ev_data,
+            })
+        elif ev_type == "tool_result":
+            tool_name = ev_data.get("name", "")
+            await ctx.emit({
+                "stage": "subagent_tool_result",
+                "agent_name": agent.name,
+                "agent_id": agent.id,
+                "tool_name": tool_name,
+                "line": f"[Subagent '{agent.name}' tool {tool_name} completed]\n",
+            })
+        elif ev_type == "message_done":
+            await ctx.emit({
+                "stage": "subagent_done",
+                "agent_name": agent.name,
+                "agent_id": agent.id,
+                "line": f"\n[Subagent '{agent.name}' finished response]\n",
+            })
+        elif ev_type == "error":
+            error_msg = str(ev_data.get("message") or "subagent execution failed")
+            await ctx.emit({
+                "stage": "subagent_error",
+                "agent_name": agent.name,
+                "agent_id": agent.id,
+                "error": error_msg,
+                "line": f"\n[Subagent error: {error_msg}]\n",
+            })
+
     try:
+        if ctx.emit:
+            await ctx.emit({
+                "stage": "subagent_start",
+                "agent_name": agent.name,
+                "agent_id": agent.id,
+                "line": f"Starting subagent '{agent.name}'...\n",
+            })
+
         loop_result = await run_agent_loop(
             agent,
             instruction,
@@ -259,6 +334,9 @@ async def _call_agent(args: dict[str, Any], ctx: ToolContext) -> str:
             user_id=ctx.user_id,
             model_id=ctx.model_id,
             timezone_name=ctx.timezone_name,
+            actor_agent_identity_id=ctx.actor_agent_identity_id,
+            delegation_chain=ctx.delegation_chain,
+            on_event=_handle_subagent_event,
         )
     except Exception as exc:  # noqa: BLE001
         task.status = "failed"
