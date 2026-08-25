@@ -1,5 +1,7 @@
 "use client";
 
+import * as React from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "@/lib/api";
 import { getAccessToken, getActiveOrgId } from "@/lib/auth";
@@ -872,6 +874,30 @@ export function useProfile(enabled: boolean = true) {
     queryFn: () => api.get<UserProfile>("/api/auth/me"),
     enabled,
   });
+}
+
+// One searchParam mirrored as component state: reading returns the current
+// value, the setter rewrites the query string in place (no history entries).
+// Selection params (suite, case, run...) use this so deep links and the
+// back/forward buttons behave like navigation.
+export function useUrlSearchParam(key: string): [string | null, (value: string | null) => void] {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const value = searchParams.get(key);
+
+  const setValue = React.useCallback(
+    (next: string | null) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (next) params.set(key, next);
+      else params.delete(key);
+      const qs = params.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    },
+    [key, pathname, router, searchParams],
+  );
+
+  return [value, setValue];
 }
 
 export function useUpdateProfile() {

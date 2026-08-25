@@ -95,6 +95,7 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 | Branch | Worktree path | Phạm vi/task | Agent/người phụ trách |
 |---|---|---|---|
 | `dev` | `G:\open-agent` | Nhánh tích hợp chính — không code trực tiếp ở đây | — |
+| `feat/chat-url-session` | `G:\open-agent-worktrees\url-analysis` | Chat session vào URL (?agent=&session=) + docs URL conventions | Sisyphus |
 | `feat/dsh-inspired-hardening` | `G:\open-agent-worktrees\dsh-refactor` | Refactor hardening học từ deepseek-harness: tool timeout/retry, budget cost, compaction fallback | ox-alpha |
 
 > 2026-08-25: Đã dọn dẹp worktree/branch của các PR đã merge vào `dev`

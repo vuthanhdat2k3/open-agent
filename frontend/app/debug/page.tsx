@@ -1,8 +1,8 @@
-"use client";
+﻿"use client";
 
 import * as React from "react";
 import { Bug, MessageSquare, BarChart3, GitBranch, Workflow } from "lucide-react";
-import { useDebugSessions, useSessionTree, useTaskTree, useUsageSummary, useWorkflowRun } from "@/hooks";
+import { useDebugSessions, useSessionTree, useTaskTree, useUrlSearchParam, useUsageSummary, useWorkflowRun } from "@/hooks";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select } from "@/components/ui/select";
@@ -21,12 +21,16 @@ import {
 export default function DebugPage() {
   const sessions = useDebugSessions();
   const usage = useUsageSummary();
-  const [sel, setSel] = React.useState<string | null>(null);
-  const [rootRunId, setRootRunId] = React.useState("");
-  const [workflowRunId, setWorkflowRunId] = React.useState("");
+  const [sel, setSel] = useUrlSearchParam("session");
+  const [rootRunParam, setRootRunParam] = useUrlSearchParam("root_run");
+  const [runParam, setRunParam] = useUrlSearchParam("run");
+  const [rootRunDraft, setRootRunDraft] = React.useState(rootRunParam ?? "");
+  const [workflowRunDraft, setWorkflowRunDraft] = React.useState(runParam ?? "");
+  React.useEffect(() => setRootRunDraft(rootRunParam ?? ""), [rootRunParam]);
+  React.useEffect(() => setWorkflowRunDraft(runParam ?? ""), [runParam]);
   const tree = useSessionTree(sel);
-  const taskTree = useTaskTree(rootRunId || null);
-  const workflowRun = useWorkflowRun(workflowRunId || null);
+  const taskTree = useTaskTree(rootRunParam || null);
+  const workflowRun = useWorkflowRun(runParam || null);
 
   return (
     <div className="space-y-6">
@@ -44,7 +48,7 @@ export default function DebugPage() {
             <div className="space-y-1.5">
               <label htmlFor="debug-session" className="text-sm font-semibold text-foreground">Select debug session</label>
               <Select id="debug-session" value={sel || ""} onChange={(e) => setSel(e.target.value || null)}>
-                <option value="">— select session —</option>
+                <option value="">â€” select session â€”</option>
                 {sessions.data?.map((s) => (
                   <option key={s.id} value={s.id}>{s.title}</option>
                 ))}
@@ -62,7 +66,7 @@ export default function DebugPage() {
                       <Badge variant="outline" className="text-[10px] bg-muted/40 font-semibold px-2 py-0.5">{m.role}</Badge>
                       {m.meta?.cost_usd != null && (
                         <span className="font-mono text-[10px] text-muted-foreground/85 bg-muted/30 px-1.5 py-0.5 rounded border border-border/30">
-                          ${Number(m.meta.cost_usd).toFixed(6)} · {m.meta.latency_ms}ms
+                          ${Number(m.meta.cost_usd).toFixed(6)} Â· {m.meta.latency_ms}ms
                         </span>
                       )}
                     </div>
@@ -139,7 +143,7 @@ export default function DebugPage() {
             <CardTitle className="text-sm font-semibold text-foreground">Task Tree</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 pt-6">
-            <Input id="debug-root-run" name="root_run_id" onChange={(e) => setRootRunId(e.target.value)} placeholder="root_run_id" className="font-mono text-xs" />
+            <Input id="debug-root-run" name="root_run_id" value={rootRunDraft} onChange={(e) => setRootRunDraft(e.target.value)} onBlur={() => setRootRunParam(rootRunDraft.trim() || null)} onKeyDown={(e) => { if (e.key === "Enter") setRootRunParam(rootRunDraft.trim() || null); }} placeholder="root_run_id" className="font-mono text-xs" />
             {taskTree.data?.tasks?.map((node) => (
               <div key={node.id} className="rounded-xl border border-border/80 bg-card/50 p-3.5 text-xs shadow-inner-edge">
                 <div className="flex items-center justify-between">
@@ -166,7 +170,7 @@ export default function DebugPage() {
             <CardTitle className="text-sm font-semibold text-foreground">Workflow Run</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 pt-6">
-            <Input id="debug-workflow-run" name="workflow_run_id" onChange={(e) => setWorkflowRunId(e.target.value)} placeholder="workflow_run_id" className="font-mono text-xs" />
+            <Input id="debug-workflow-run" name="workflow_run_id" value={workflowRunDraft} onChange={(e) => setWorkflowRunDraft(e.target.value)} onBlur={() => setRunParam(workflowRunDraft.trim() || null)} onKeyDown={(e) => { if (e.key === "Enter") setRunParam(workflowRunDraft.trim() || null); }} placeholder="workflow_run_id" className="font-mono text-xs" />
             {workflowRun.data && (
               <div className="space-y-2">
                 <Badge variant="outline">{workflowRun.data.status}</Badge>

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import * as React from "react";
 import { toast } from "sonner";
@@ -12,7 +12,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { streamSSE } from "@/lib/api";
-import { useWorkflows, useCreateWorkflow, useAgents, useModels, useGenerateWorkflow, useWorkflowRun } from "@/hooks";
+import { useWorkflows, useCreateWorkflow, useAgents, useModels, useGenerateWorkflow, useUrlSearchParam, useWorkflowRun } from "@/hooks";
 import { useWorkflowStore } from "@/stores";
 import { Button } from "@/components/ui/button";
 import { Input, Label, Textarea } from "@/components/ui/input";
@@ -80,6 +80,13 @@ export default function WorkflowsPage() {
     setActiveRun,
   } = useWorkflowStore();
   const workflowRun = useWorkflowRun(activeRunId);
+  const [runParam, setRunParam] = useUrlSearchParam("run");
+  React.useEffect(() => {
+    if (runParam && runParam !== activeRunId) setActiveRun(runParam);
+  }, [activeRunId, runParam, setActiveRun]);
+  React.useEffect(() => {
+    if (activeRunId !== runParam) setRunParam(activeRunId);
+  }, [activeRunId, runParam, setRunParam]);
 
   const [wfName, setWfName] = React.useState("");
   const [aiPrompt, setAiPrompt] = React.useState("");
@@ -101,7 +108,7 @@ export default function WorkflowsPage() {
   // Fade a node/edge's "done" status back to idle a few seconds after it
   // finishes, so the running-state highlight reads as transient feedback
   // rather than a permanent marker. Only applies while a run is actively
-  // streaming — restoring a past completed run's status (see the
+  // streaming â€” restoring a past completed run's status (see the
   // workflowRun.data effect below) should stay visible, not fade away.
   const fadedNodeIdsRef = React.useRef<Set<string>>(new Set());
   React.useEffect(() => {
@@ -167,7 +174,7 @@ export default function WorkflowsPage() {
     setActiveRun(null);
     setGraph([], []);
     setSelectedNode(null);
-    toast.success("New workflow — canvas cleared");
+    toast.success("New workflow â€” canvas cleared");
   };
 
   const loadWorkflow = (wf: any) => {
@@ -240,7 +247,7 @@ export default function WorkflowsPage() {
     setSelectedNode(null);
     setAiResult(null);
     setAiPrompt("");
-    toast.success("Applied to canvas — review and Save");
+    toast.success("Applied to canvas â€” review and Save");
   };
 
   const handleAutoLayout = () => {
@@ -319,7 +326,7 @@ export default function WorkflowsPage() {
                 id: logId,
                 ts,
                 event: "edge",
-                message: `Edge ${d.from} → ${d.to} taken`,
+                message: `Edge ${d.from} â†’ ${d.to} taken`,
               },
             ]);
           } else if (ev.event === "approval_required") {
@@ -448,7 +455,7 @@ export default function WorkflowsPage() {
                     disabled={!aiPrompt.trim() || !aiModelId || generate.isPending}
                     onClick={handleGenerate}
                   >
-                    <Sparkles className="h-4 w-4" /> {generate.isPending ? "Generating…" : "Generate"}
+                    <Sparkles className="h-4 w-4" /> {generate.isPending ? "Generatingâ€¦" : "Generate"}
                   </Button>
 
                   {aiResult && (
@@ -458,7 +465,7 @@ export default function WorkflowsPage() {
                         <p className="text-xs text-muted-foreground">{aiResult.description}</p>
                       )}
                       <p className="text-[11px] text-muted-foreground">
-                        {aiResult.graph.nodes.length} nodes · {aiResult.graph.edges.length} connections
+                        {aiResult.graph.nodes.length} nodes Â· {aiResult.graph.edges.length} connections
                       </p>
                       <Button size="sm" className="w-full gap-2" onClick={applyGenerated}>
                         Apply to canvas
@@ -491,11 +498,11 @@ export default function WorkflowsPage() {
               className="min-h-[38px] text-xs resize-none"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="JSON or plain text input…"
+              placeholder="JSON or plain text inputâ€¦"
             />
           </div>
           <Button className="gap-2 active-tactile transition-transform self-end text-xs" disabled={running} onClick={run}>
-            <Play className="h-3.5 w-3.5" /> {running ? "Running…" : "Run Workflow"}
+            <Play className="h-3.5 w-3.5" /> {running ? "Runningâ€¦" : "Run Workflow"}
           </Button>
         </div>
 
