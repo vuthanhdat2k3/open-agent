@@ -52,7 +52,7 @@ export default function Dashboard() {
   const isEndUser = role === "user";
 
   const heroHeading = isPlatformAdmin
-    ? "Platform Administration & Infra Ops"
+    ? "Platform Administration & Tenant Management"
     : isOrgAdmin
       ? "Quản trị Tổ chức & Phân bổ Tài nguyên"
       : isOperator
@@ -60,7 +60,7 @@ export default function Dashboard() {
         : "Đội ngũ trợ lý AI của bạn đang sẵn sàng";
 
   const heroSubtitle = isPlatformAdmin
-    ? "Giám sát hệ thống đa tổ chức, quản lý AI Gateway tổng và kiểm soát tài nguyên toàn platform."
+    ? "Quản lý danh sách các Tổ chức (Tenants), bổ nhiệm Org Admin và kiểm soát trạng thái hoạt động toàn platform."
     : isOrgAdmin
       ? "Quản lý thành viên, cấu hình API Keys, thiết lập hạn mức Quota và giám sát chi phí của tổ chức."
       : isOperator
@@ -79,8 +79,6 @@ export default function Dashboard() {
           {isPlatformAdmin && (
             <>
               <Button asChild className="gap-2"><Link href="/organizations">Quản lý Organizations</Link></Button>
-              <Button asChild variant="outline" className="gap-2"><Link href="/providers">Global Providers</Link></Button>
-              <Button asChild variant="ghost" className="gap-2"><Link href="/debug">Audit & Logs</Link></Button>
             </>
           )}
           {isOrgAdmin && !isPlatformAdmin && (

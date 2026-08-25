@@ -72,8 +72,8 @@ export default function FilesPage() {
     <div className="space-y-6">
       <PageHeader
         icon={FileText}
-        title="Files"
-        description="Upload documents and ingest them into the RAG service"
+        title="Knowledge Base"
+        description="Upload company documents and ingest them into the RAG vector service"
         actions={
           <>
             <Input
