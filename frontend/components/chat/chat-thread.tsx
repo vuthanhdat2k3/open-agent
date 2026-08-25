@@ -81,11 +81,20 @@ export function ChatThread({
 }: ChatThreadProps) {
   const hasPendingApproval = messages.some((m) => m.role === "approval" && m.status === "pending");
   const lastMessage = messages[messages.length - 1];
+  // Hide the global ChatStatusRow when the last assistant message is already
+  // showing a loading indicator inline — either a streaming text/reasoning block,
+  // or a tool_call chip that is still "running".  Both render their own spinner,
+  // so showing the status row on top would result in two loading indicators.
   const inMessageStreaming =
     lastMessage?.role === "assistant" &&
-    lastMessage.blocks.some((b) => "streaming" in b && b.streaming);
+    lastMessage.blocks.some(
+      (b) =>
+        (b.kind === "text" || b.kind === "reasoning") && "streaming" in b && b.streaming ||
+        (b.kind === "tool_call" && b.status === "running"),
+    );
   const showStatusRow =
     (streaming || statusPhase === "approval") && !hasPendingApproval && !inMessageStreaming;
+
   const role = useCurrentRole();
   const canSwitchAgent = role === "admin" || role === "platform_admin" || role === "operator";
   const canSwitchModel = Boolean(models?.some((model) => model.active));
