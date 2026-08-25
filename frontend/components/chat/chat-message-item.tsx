@@ -10,7 +10,6 @@ import { TextBlock } from "./blocks/text-block";
 import { ReasoningRow } from "./blocks/reasoning-row";
 import { ToolCallCard } from "./blocks/tool-call-card";
 import { ToolCallChip } from "./blocks/tool-call-chip";
-import { ToolChipsGroup } from "./blocks/tool-chips-group";
 import { StatsLine } from "./blocks/stats-line";
 
 export interface ChatMessageItemProps {
@@ -29,104 +28,80 @@ function ChatMessageItemBase({ message: m, debug, onApprovalDecision }: ChatMess
       } else {
         const textarea = document.createElement("textarea");
         textarea.value = text;
-        textarea.setAttribute("readonly", "");
         textarea.style.position = "fixed";
-        textarea.style.opacity = "0";
+        textarea.style.left = "-9999px";
         document.body.appendChild(textarea);
         textarea.select();
-        const didCopy = document.execCommand("copy");
-        textarea.remove();
-        if (!didCopy) throw new Error("copy command failed");
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
       }
       setCopied(true);
-      window.setTimeout(() => setCopied(false), 1200);
+      setTimeout(() => setCopied(false), 1500);
     } catch {
-      // Ignore clipboard failure
+      // Ignore clipboard errors
     }
   }, []);
 
-  // 1. User message (DeepSeek Harness User_Bubble: r22, max-w-[525px], 16px/24px font)
+  // 1. User message
   if (m.role === "user") {
     return (
-      <div key={m.id} className="group flex w-full flex-col items-end gap-1.5 self-end">
-        <div className="flex max-w-[min(525px,85%)] flex-col items-end gap-1">
-          <div
-            className="cursor-text select-text whitespace-pre-wrap break-words rounded-[22px] px-4 py-2.5 text-[15px] leading-6 text-foreground shadow-sm"
-            style={{ backgroundColor: "var(--dsh-specific-bubble)" }}
-          >
-            {m.content || "…"}
-          </div>
-          <button
-            type="button"
-            onClick={() => void copyText(m.content)}
-            className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none group-hover:opacity-100"
-            aria-label={copied ? "User message copied" : "Copy user message"}
-            title={copied ? "Copied" : "Copy message"}
-          >
-            {copied ? <Check className="h-3 w-3" aria-hidden="true" /> : <Copy className="h-3 w-3" aria-hidden="true" />}
-            {copied ? "Copied" : "Copy"}
-          </button>
+      <div className="flex w-full justify-end">
+        <div className="max-w-[85%] rounded-2xl bg-primary px-4 py-2.5 text-sm text-primary-foreground shadow-sm">
+          <p className="whitespace-pre-wrap break-words">{m.content}</p>
         </div>
       </div>
     );
   }
 
-  // 2. Approval message
+  // 2. Approval card
   if (m.role === "approval") {
-    const status = m.status;
-    const args =
-      typeof m.argsSnapshot === "string"
-        ? m.argsSnapshot
-        : JSON.stringify(m.argsSnapshot ?? {}, null, 2);
-
     return (
       <div
-        key={m.id}
-        className="animate-scale-in self-start w-full max-w-[92%] rounded-xl border border-warning/40 bg-warning/[0.06] p-3 shadow-card my-1"
+        tabIndex={0}
+        role="region"
+        aria-label={`Approval request: ${m.toolName ?? "tool"}`}
+        className="animate-scale-in self-start w-full max-w-[92%] rounded-xl border border-warning/40 bg-warning/[0.06] p-4 text-sm shadow-card my-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
-        <div className="flex items-center gap-2 text-xs font-semibold">
-          {status === "approved" ? (
-            <ShieldCheck className="h-4 w-4 text-success" />
-          ) : status === "rejected" ? (
-            <ShieldX className="h-4 w-4 text-destructive" />
-          ) : (
-            <ShieldAlert className="h-4 w-4 text-warning" />
-          )}
-          <span>
-            {status === "pending"
-              ? "Approval required"
-              : status === "approved"
-              ? "Approved"
-              : "Rejected"}
-          </span>
-          {m.toolName && (
-            <Badge variant="outline" className="font-mono text-[9px]">
-              {m.toolName}
-            </Badge>
-          )}
+        <div className="flex items-center gap-2 font-semibold text-foreground">
+          <ShieldAlert className="h-4 w-4 text-warning" />
+          <span>Approval required</span>
+          <Badge
+            variant={m.status === "approved" ? "success" : m.status === "rejected" ? "destructive" : "warning"}
+            className="ml-auto text-[10px]"
+          >
+            {m.status}
+          </Badge>
         </div>
-        <pre className="mt-2 max-h-48 overflow-auto rounded-lg border border-border/50 bg-black/30 p-2 font-mono text-[10px] leading-relaxed whitespace-pre-wrap break-all">
-          {args}
-        </pre>
-        {status === "pending" && onApprovalDecision ? (
-          <div className="mt-3 flex gap-2">
+        <p className="mt-2 text-xs text-muted-foreground">
+          The agent wants to run <code className="font-mono text-foreground">{m.toolName ?? "a tool"}</code>.
+        </p>
+        {m.argsSnapshot != null && (
+          <pre className="mt-2 max-h-40 overflow-auto rounded-lg bg-background/80 p-2 text-[11px] font-mono text-muted-foreground">
+            {typeof m.argsSnapshot === "string" ? m.argsSnapshot : JSON.stringify(m.argsSnapshot, null, 2)}
+          </pre>
+        )}
+        {m.status === "pending" && onApprovalDecision && (
+          <div className="mt-3 flex items-center gap-2">
             <Button
               size="sm"
-              className="h-8 gap-1.5 text-xs"
-              onClick={() => onApprovalDecision(m.id, "approved")}
+              variant="default"
+              className="gap-1 text-xs"
+              onClick={() => onApprovalDecision(m.approvalId, "approved")}
             >
-              <ShieldCheck className="h-3.5 w-3.5" /> Approve
+              <ShieldCheck className="h-3.5 w-3.5" />
+              Approve
             </Button>
             <Button
               size="sm"
-              variant="outline"
-              className="h-8 gap-1.5 text-xs"
-              onClick={() => onApprovalDecision(m.id, "rejected")}
+              variant="destructive"
+              className="gap-1 text-xs"
+              onClick={() => onApprovalDecision(m.approvalId, "rejected")}
             >
-              <ShieldX className="h-3.5 w-3.5" /> Reject
+              <ShieldX className="h-3.5 w-3.5" />
+              Reject
             </Button>
           </div>
-        ) : null}
+        )}
       </div>
     );
   }
@@ -135,8 +110,9 @@ function ChatMessageItemBase({ message: m, debug, onApprovalDecision }: ChatMess
   if (m.role === "error") {
     return (
       <div
-        key={m.id}
+        tabIndex={0}
         role="alert"
+        aria-label="Model error"
         className="animate-scale-in self-start w-full max-w-[92%] rounded-xl border border-destructive/40 bg-destructive/[0.06] p-3 text-sm text-destructive shadow-card my-1"
       >
         <div className="flex items-center gap-2 font-semibold">
@@ -169,7 +145,11 @@ function ChatMessageItemBase({ message: m, debug, onApprovalDecision }: ChatMess
   const flushChips = () => {
     if (chipGroup.length > 0) {
       rendered.push(
-        <ToolChipsGroup key={`chips-${rendered.length}`} blocks={chipGroup} />,
+        <div key={`chips-${rendered.length}`} className="flex flex-wrap items-center gap-1.5 my-1">
+          {chipGroup.map((b) => (
+            <ToolCallChip key={b.id} block={b} />
+          ))}
+        </div>,
       );
       chipGroup = [];
     }
