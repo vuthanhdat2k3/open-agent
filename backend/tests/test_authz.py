@@ -1,14 +1,18 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.authz.policy import has_permission
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
+from app.models.membership import Membership
 from app.models.role import Role
+from app.models.user import User
 
 # ---------------------------------------------------------------------------
 # Unit: has_permission() matrix
@@ -477,7 +481,125 @@ class TestToolCapabilityGate:
         )
         assert get_resp.status_code == 200
         # The service layer defaults to ["safe", "read"] when update field is set to None;
-        # the update endpoint allows overrides — verify the new value stuck
+        # the update endpoint allows overrides â€” verify the new value stuck
         updated = get_resp.json()
         # We only sent allowed_risk_tiers; verify it's applied
         assert updated.get("allowed_risk_tiers") == ["write"]
+
+
+# ---------------------------------------------------------------------------
+# Member removal guards (platform_admin / self / last org_admin)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+async def api_client(async_session_factory):
+    async def _override():
+        async with async_session_factory() as session:
+            yield session
+
+    app.dependency_overrides[get_db] = _override
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as ac:
+        yield ac
+    app.dependency_overrides.clear()
+
+
+async def _aregister(api_client: httpx.AsyncClient, email: str, org_name: str | None = None) -> tuple[str, str | None]:
+    body: dict[str, str] = {"email": email, "password": PASSWORD}
+    if org_name:
+        body["org_name"] = org_name
+    resp = await api_client.post("/api/auth/register", json=body)
+    assert resp.status_code == 201, f"register failed: {resp.text}"
+    token = resp.json()["access_token"]
+    org_id = None
+    if org_name:
+        me = await api_client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+        org_id = me.json()["memberships"][0]["org_id"]
+    return token, org_id
+
+
+async def _aadd_member(api_client: httpx.AsyncClient, token: str, org_id: str, email: str, role: str) -> None:
+    resp = await api_client.post(
+        f"/api/orgs/{org_id}/members",
+        json={"email": email, "role": role},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 201, f"add member failed: {resp.text}"
+
+
+async def _amember_id(api_client: httpx.AsyncClient, token: str, org_id: str, email: str) -> str:
+    resp = await api_client.get(f"/api/orgs/{org_id}/members", headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 200
+    for member in resp.json():
+        if member["email"] == email:
+            return member["user_id"]
+    raise AssertionError(f"member {email} not found")
+
+
+async def _seed_role(factory, org_id: str, email: str, role: Role) -> str:
+    async with factory() as session:
+        row = await session.execute(select(User).where(User.email == email))
+        user = row.scalar_one()
+        await session.execute(
+            update(Membership)
+            .where(Membership.org_id == org_id, Membership.user_id == user.id)
+            .values(role=role)
+        )
+        await session.commit()
+        return user.id
+
+
+async def test_remove_platform_admin_member_returns_403(api_client, async_session_factory):
+    token, org_id = await _aregister(api_client, "pa-owner@example.com", "PA Guard Org")
+    await _aadd_member(api_client, token, org_id, "pa-target@example.com", "user")
+    target_id = await _seed_role(async_session_factory, org_id, "pa-target@example.com", Role.platform_admin)
+
+    resp = await api_client.delete(
+        f"/api/orgs/{org_id}/members/{target_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 403, resp.text
+    assert "platform_admin" in resp.json()["detail"]
+
+
+async def test_remove_own_membership_returns_400(api_client):
+    token, org_id = await _aregister(api_client, "self-owner@example.com", "Self Guard Org")
+    own_id = await _amember_id(api_client, token, org_id, "self-owner@example.com")
+
+    resp = await api_client.delete(
+        f"/api/orgs/{org_id}/members/{own_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 400, resp.text
+    assert "own membership" in resp.json()["detail"]
+
+
+async def test_remove_last_org_admin_returns_400(api_client, async_session_factory):
+    creator_token, org_id = await _aregister(api_client, "last-owner@example.com", "Last Admin Org")
+    actor_token, _ = await _aregister(api_client, "actor-pa@example.com")
+    await _aadd_member(api_client, creator_token, org_id, "actor-pa@example.com", "user")
+    actor_id = await _seed_role(async_session_factory, org_id, "actor-pa@example.com", Role.platform_admin)
+
+    target_id = await _amember_id(api_client, creator_token, org_id, "last-owner@example.com")
+
+    resp = await api_client.delete(
+        f"/api/orgs/{org_id}/members/{target_id}",
+        headers={"Authorization": f"Bearer {actor_token}"},
+    )
+    assert resp.status_code == 400, resp.text
+    assert "last org_admin" in resp.json()["detail"]
+
+
+async def test_remove_regular_member_still_allowed(api_client):
+    token, org_id = await _aregister(api_client, "ok-owner@example.com", "Regular Removal Org")
+    await _aadd_member(api_client, token, org_id, "regular@example.com", "user")
+    member_id = await _amember_id(api_client, token, org_id, "regular@example.com")
+
+    resp = await api_client.delete(
+        f"/api/orgs/{org_id}/members/{member_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200, resp.text
+    members = (await api_client.get(f"/api/orgs/{org_id}/members", headers={"Authorization": f"Bearer {token}"})).json()
+    assert all(m["email"] != "regular@example.com" for m in members)
