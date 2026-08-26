@@ -5,6 +5,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import { usePathname } from "next/navigation";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "@/lib/i18n";
 import { AppHeader } from "./app-header";
 import { AppSidebar } from "./app-sidebar";
 import { allNavItems, isActive } from "./navigation";
@@ -13,9 +14,11 @@ import { useCurrentRole } from "@/hooks";
 
 export function AppShell({ children, queryClient }: { children: React.ReactNode; queryClient: QueryClient }) {
   const pathname = usePathname();
+  const { t } = useTranslation();
   const role = useCurrentRole();
   const isEndUser = role === "user";
-  const title = [...allNavItems].sort((a, b) => b.href.length - a.href.length).find((item) => isActive(pathname, item.href))?.label ?? "OpenAgent";
+  const matched = [...allNavItems].sort((a, b) => b.href.length - a.href.length).find((item) => isActive(pathname, item.href));
+  const title = matched ? (matched.i18nKey ? t(matched.i18nKey, matched.label) : matched.label) : "OpenAgent";
   // The chat page is a full-bleed, edge-to-edge surface (moon-chat aesthetic)
   // instead of the standard centered max-w-7xl content column other pages use.
   const fullBleed = pathname === "/chat";

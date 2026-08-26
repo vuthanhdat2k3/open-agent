@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "sonner";
 import { usePathname } from "next/navigation";
 import { isAuthenticated, refreshAccessToken, subscribeAuth } from "@/lib/auth";
+import { LanguageProvider } from "@/lib/i18n";
 import { AppShell } from "@/components/layout/app-shell";
 
 function AuthGate({ children }: { children: React.ReactNode }) {
@@ -42,14 +43,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   const isPublic = pathname === "/login" || pathname.startsWith("/oauth/");
 
   return (
-    <html lang="en" className="dark">
+    <html lang="vi" className="dark">
       <head><link rel="icon" href="/openagent-icon.png" type="image/png" /></head>
       <body className="min-h-dvh bg-background font-sans text-foreground antialiased">
         <QueryClientProvider client={client}>
-          <AuthGate>
-            {isPublic ? <main className="min-h-dvh">{children}</main> : <AppShell queryClient={client}>{children}</AppShell>}
-          </AuthGate>
-          <Toaster richColors closeButton position="bottom-right" />
+          <LanguageProvider>
+            <AuthGate>
+              {isPublic ? <main className="min-h-dvh">{children}</main> : <AppShell queryClient={client}>{children}</AppShell>}
+            </AuthGate>
+            <Toaster richColors closeButton position="bottom-right" />
+          </LanguageProvider>
         </QueryClientProvider>
       </body>
     </html>
