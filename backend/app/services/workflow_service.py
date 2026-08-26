@@ -20,22 +20,24 @@ _GENERATE_SYSTEM_PROMPT = """You design workflow graphs for a multi-agent automa
 A workflow graph is JSON: {{"name": str, "description": str, "graph": {{"nodes": [...], "edges": [...]}}}}.
 
 Node shape: {{"id": str, "kind": "input"|"agent"|"tool"|"merge"|"output"|"approval"|"scheduler"|"triager"|"integration", "label": str, "agent_id": str|null, "merge_mode": "all"|"any", "config": dict}}
-- Exactly one entry trigger node ("input" for on-demand requests, or "scheduler" for recurring/periodic automations).
+- Exactly one entry trigger node:
+  * "input" for on-demand interactive requests.
+  * "scheduler" for recurring/scheduled automations (e.g. config: {{"cron": "0 6 * * *", "schedule_label": "Daily at 06:00"}}).
 - At least one "output" node for returning results.
-- "agent" nodes MUST use an agent_id from the list below — never invent one.
-- "scheduler" nodes define automated recurrence or timer triggers (e.g. config: {{"cron": "0 7 * * 1-5", "label": "Weekdays at 07:30"}}).
-- "triager" nodes classify, filter, or branch incoming requests into different paths based on intent or urgency.
-- "integration" nodes connect to Gmail, Google Calendar, Google Drive, or Webhooks (e.g. config: {{"source": "gmail"}}).
-- "approval" nodes pause execution for human sign-off before proceeding with sensitive actions.
-- Use "merge" nodes (merge_mode "all"|"any") to join parallel branches back together.
+- "agent" nodes: if matching agents exist below, use their id. Otherwise set agent_id to null or the best matching agent.
+- "integration" nodes: connect to Gmail, Google Calendar, Google Drive, or Webhook (e.g. config: {{"source": "google_drive"|"gmail"|"google_calendar"|"webhook"}}).
+- "triager" nodes: filter, rank, or route items by urgency/category.
+- "approval" nodes: pause for human sign-off before external side-effects (e.g. config: {{"tool_name": "send_email"}}).
+- "merge" nodes: join parallel branches (merge_mode "all"|"any").
+
 Edge shape: {{"from_": node_id, "to": node_id, "condition": str|null}}.
+
+Examples:
+1. "quét driver 6h sáng hàng ngày" (Scan Google Drive daily at 6am):
+{{"name": "Daily 06:00 Google Drive Scanner", "description": "Scans Google Drive daily at 06:00, classifies updated documents, and synthesizes a digest.", "graph": {{"nodes": [{{"id": "trigger", "kind": "scheduler", "label": "Daily 06:00 Trigger", "config": {{"cron": "0 6 * * *", "schedule_label": "Daily at 06:00"}}}}, {{"id": "fetch_drive", "kind": "integration", "label": "Fetch Google Drive Documents", "config": {{"source": "google_drive"}}}}, {{"id": "triage", "kind": "triager", "label": "Filter New & Modified Files", "config": {{"policy": "filter_recent_docs"}}}}, {{"id": "analyzer", "kind": "agent", "label": "Document Intelligence Agent", "agent_id": null, "config": {{}}}}, {{"id": "output", "kind": "output", "label": "Drive Scan Digest", "config": {{}}}}], "edges": [{{"from_": "trigger", "to": "fetch_drive"}}, {{"from_": "fetch_drive", "to": "triage"}}, {{"from_": "triage", "to": "analyzer"}}, {{"from_": "analyzer", "to": "output"}}]}}}}
 
 Available agents in this organization:
 {agents}
-
-Design a graph that fulfils the user's request. Prefer running independent steps in parallel
-(fan-out to multiple agent nodes from the same source, fan-in via a merge node) over a purely
-sequential chain when the steps do not depend on each other.
 
 Respond with ONLY the JSON object, no markdown fences, no commentary.
 """
@@ -71,11 +73,13 @@ class WorkflowService:
 
     async def generate_graph(self, org_id: str, prompt: str, model_id: str) -> dict:
         agents = await AgentRepository(self.repo.db).list(org_id)
-        if not agents:
-            raise ValueError("create at least one agent before generating a workflow")
-        agents_desc = "\n".join(
-            f'- id="{a.id}" name="{a.name}" kind={a.kind}: {a.description or "(no description)"}'
-            for a in agents
+        agents_desc = (
+            "\n".join(
+                f'- id="{a.id}" name="{a.name}" kind={a.kind}: {a.description or "(no description)"}'
+                for a in agents
+            )
+            if agents
+            else "(No custom agents configured yet; default agent will be utilized)"
         )
 
         res = await self.repo.db.execute(
@@ -127,14 +131,23 @@ class WorkflowService:
         self.validate_graph(graph)
 
         valid_agent_ids = {a.id for a in agents}
+        first_agent_id = agents[0].id if agents else None
+
         for node in graph.get("nodes", []):
-            if node.get("kind") == "agent" and node.get("agent_id") not in valid_agent_ids:
-                raise ValueError(
-                    f"generated graph references unknown agent_id: {node.get('agent_id')}"
-                )
-            # The model sometimes emits explicit nulls for optional fields; drop them so
-            # pydantic falls back to field defaults instead of failing validation
-            # (merge_mode is a non-nullable Literal on the GraphNode schema).
+            if node.get("kind") == "agent":
+                aid = node.get("agent_id")
+                if aid not in valid_agent_ids:
+                    # Match by name if possible, or fallback to first available agent
+                    matched = next(
+                        (
+                            a.id
+                            for a in agents
+                            if a.name.lower() in str(aid or "").lower()
+                            or a.name.lower() in node.get("label", "").lower()
+                        ),
+                        first_agent_id,
+                    )
+                    node["agent_id"] = matched
             if node.get("merge_mode") is None:
                 node.pop("merge_mode", None)
             if node.get("config") is None:

@@ -78,17 +78,96 @@ async def test_automation_dag_validation_and_engine_execution(async_session_fact
         assert wf.id is not None
 
         # 3. Execution test
-        result = await run_workflow(
+        output_text, event_logs, run_id = await run_workflow(
             wf,
             input_text="Daily Morning Run Context",
             db=session,
             stream=False,
             force_inline=True,
         )
-        assert result is not None
+        assert run_id is not None
+        assert output_text is not None
         assert (
-            "Scheduled trigger" in result
-            or "Integration data" in result
-            or "Triage complete" in result
-            or "Daily Morning Run Context" in result
+            "Daily Morning Run Context" in output_text
+            or "Triage routed" in output_text
+            or "Google Workspace" in output_text
+        )
+
+
+@pytest.mark.asyncio
+async def test_google_drive_scan_automation_dag_execution(async_session_factory) -> None:
+    async with async_session_factory() as session:
+        org = Organization(name="Drive Corp", slug="drive-corp")
+        session.add(org)
+        await session.flush()
+
+        drive_dag = {
+            "nodes": [
+                {
+                    "id": "trigger_6am",
+                    "kind": "scheduler",
+                    "label": "Daily 06:00 Trigger",
+                    "config": {"cron": "0 6 * * *", "schedule_label": "Daily at 06:00"},
+                },
+                {
+                    "id": "drive_connector",
+                    "kind": "integration",
+                    "label": "Google Drive Scanner",
+                    "config": {"source": "google_drive"},
+                },
+                {
+                    "id": "doc_triager",
+                    "kind": "triager",
+                    "label": "Filter Recent Documents",
+                    "config": {"policy": "filter_recent_docs"},
+                },
+                {
+                    "id": "doc_analyzer",
+                    "kind": "agent",
+                    "label": "Document Intelligence Agent",
+                    "agent_id": None,
+                    "config": {},
+                },
+                {
+                    "id": "final_output",
+                    "kind": "output",
+                    "label": "Drive Scan Digest",
+                    "config": {},
+                },
+            ],
+            "edges": [
+                {"from_": "trigger_6am", "to": "drive_connector"},
+                {"from_": "drive_connector", "to": "doc_triager"},
+                {"from_": "doc_triager", "to": "doc_analyzer"},
+                {"from_": "doc_analyzer", "to": "final_output"},
+            ],
+        }
+
+        WorkflowService.validate_graph(drive_dag)
+
+        service = WorkflowService(session)
+        wf = await service.create(
+            org.id,
+            {
+                "name": "Daily 06:00 Google Drive Scanner",
+                "description": "Scans Google Drive daily at 06:00",
+                "graph": drive_dag,
+            },
+        )
+        assert wf.id is not None
+
+        # Execute drive scan workflow (with empty on-demand input, as standard for scheduled triggers)
+        output_text, _logs, run_id = await run_workflow(
+            wf,
+            input_text="",
+            db=session,
+            stream=False,
+            force_inline=True,
+        )
+        assert run_id is not None
+        assert output_text is not None
+        assert (
+            "Google Drive" in output_text
+            or "Document Intelligence Agent" in output_text
+            or "Drive Scan Digest" in output_text
         )
