@@ -97,6 +97,7 @@ function TemplateCard({
   onOpen: (item: WorkflowCatalogItem) => void;
   onSetup: (item: WorkflowCatalogItem) => void;
 }) {
+  const { locale } = useTranslation();
   const Icon = workflowIcon(item.icon);
   return (
     <Card
@@ -159,7 +160,7 @@ function TemplateCard({
             size="sm"
             onClick={() => onOpen(item)}
           >
-            View details
+            {locale === "vi" ? "Xem chi tiết" : "View details"}
           </Button>
           <Button
             type="button"
@@ -639,6 +640,7 @@ export default function AutomationsPage() {
     return items.slice(start, start + discoverPageSize);
   }, [items, discoverPage, discoverPageSize]);
 
+  const [activeSubTab, setActiveSubTab] = useState<"routines" | "activity">("routines");
   const [activePage, setActivePage] = useState(1);
   const [activePageSize, setActivePageSize] = useState(5);
   const paginatedInstallations = useMemo(() => {
@@ -655,25 +657,26 @@ export default function AutomationsPage() {
       />
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="rounded-xl border border-border/70 bg-card/60 p-4">
-          <p className="text-xs text-muted-foreground">Available workflows</p>
+          <p className="text-xs text-muted-foreground">{locale === "vi" ? "Quy trình khả dụng" : "Available workflows"}</p>
           <p className="mt-1 text-2xl font-semibold tabular-nums">
             {catalog.isLoading ? "—" : items.length}
           </p>
         </div>
         <div className="rounded-xl border border-border/70 bg-card/60 p-4">
-          <p className="text-xs text-muted-foreground">Recommended for you</p>
+          <p className="text-xs text-muted-foreground">{locale === "vi" ? "Gợi ý cho bạn" : "Recommended for you"}</p>
           <p className="mt-1 text-2xl font-semibold tabular-nums">
             {catalog.isLoading ? "—" : recommended.length}
           </p>
         </div>
         <div className="rounded-xl border border-border/70 bg-card/60 p-4">
-          <p className="text-xs text-muted-foreground">Safety default</p>
+          <p className="text-xs text-muted-foreground">{locale === "vi" ? "Chính sách an toàn" : "Safety default"}</p>
           <p className="mt-1 flex items-center gap-1.5 text-sm font-medium">
             <CheckCircle2 className="h-4 w-4 text-success" aria-hidden="true" />
-            External actions need approval
+            {locale === "vi" ? "Tác vụ bên ngoài cần phê duyệt" : "External actions need approval"}
           </p>
         </div>
       </div>
+
       <div className="flex flex-col gap-3 border-b border-border/70 pb-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div
@@ -692,7 +695,7 @@ export default function AutomationsPage() {
                 className="mr-1.5 inline h-3.5 w-3.5"
                 aria-hidden="true"
               />
-              Discover
+              {locale === "vi" ? "Khám phá" : "Discover"}
             </button>
             <button
               type="button"
@@ -702,13 +705,13 @@ export default function AutomationsPage() {
               className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${view === "active" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
             >
               <Zap className="mr-1.5 inline h-3.5 w-3.5" aria-hidden="true" />
-              Active
+              {locale === "vi" ? "Đang chạy" : "Active"}
             </button>
           </div>
           <p className="mt-3 text-sm text-muted-foreground">
             {view === "discover"
-              ? "Choose a routine by the result you want, not by technical configuration."
-              : "See the routines you have enabled and pause them when needed."}
+              ? (locale === "vi" ? "Chọn quy trình tự động hóa dựa trên kết quả bạn mong muốn." : "Choose a routine by the result you want, not by technical configuration.")
+              : (locale === "vi" ? "Quản lý và điều khiển các quy trình tự động hóa đang hoạt động." : "See the routines you have enabled and pause them when needed.")}
           </p>
         </div>
         {view === "discover" && (
@@ -722,7 +725,7 @@ export default function AutomationsPage() {
                 aria-label="Search workflows"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search workflows"
+                placeholder={locale === "vi" ? "Tìm kiếm quy trình..." : "Search workflows"}
                 className="w-full pl-9 sm:w-56"
               />
             </div>
@@ -741,20 +744,21 @@ export default function AutomationsPage() {
           </div>
         )}
       </div>
+
       {view === "discover" ? (
         catalog.isLoading ? (
           <LoadingSkeleton variant="grid" />
         ) : catalog.isError ? (
           <ErrorState
-            title="Unable to load workflows"
-            description="The workflow catalog could not be loaded."
+            title={locale === "vi" ? "Không thể tải quy trình" : "Unable to load workflows"}
+            description={locale === "vi" ? "Danh mục quy trình chưa sẵn sàng." : "The workflow catalog could not be loaded."}
             onRetry={() => void catalog.refetch()}
           />
         ) : items.length === 0 ? (
           <EmptyState
             icon={LibraryBig}
-            title="No workflows found"
-            description="Try clearing your search or category filter."
+            title={locale === "vi" ? "Không tìm thấy quy trình nào" : "No workflows found"}
+            description={locale === "vi" ? "Thử xóa bộ lọc tìm kiếm hoặc danh mục." : "Try clearing your search or category filter."}
             action={
               <Button
                 type="button"
@@ -764,7 +768,7 @@ export default function AutomationsPage() {
                   setCategory("");
                 }}
               >
-                Clear filters
+                {locale === "vi" ? "Xóa bộ lọc" : "Clear filters"}
               </Button>
             }
           />
@@ -794,162 +798,197 @@ export default function AutomationsPage() {
         <LoadingSkeleton variant="table" />
       ) : installations.isError ? (
         <ErrorState
-          title="Unable to load active automations"
-          description="Your enabled workflows could not be loaded."
+          title={locale === "vi" ? "Không thể tải quy trình tự động" : "Unable to load active automations"}
+          description={locale === "vi" ? "Danh sách quy trình đã kích hoạt chưa sẵn sàng." : "Your enabled workflows could not be loaded."}
           onRetry={() => void installations.refetch()}
         />
       ) : (
         <div className="space-y-6">
-          {installations.data?.length ? (
-            <div className="space-y-4">
-              <div className="space-y-3">
-                {paginatedInstallations.map((installation) => (
-                  <Card key={installation.id} glass>
-                    <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="min-w-0">
+          <div className="flex items-center gap-2 border-b border-border/70 pb-2">
+            <Button
+              type="button"
+              size="sm"
+              variant={activeSubTab === "routines" ? "secondary" : "ghost"}
+              onClick={() => setActiveSubTab("routines")}
+              className="gap-2 font-medium"
+            >
+              <Zap className="h-4 w-4 text-primary" />
+              {locale === "vi" ? "Quy trình đang chạy" : "Active Routines"} ({installations.data?.length ?? 0})
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={activeSubTab === "activity" ? "secondary" : "ghost"}
+              onClick={() => setActiveSubTab("activity")}
+              className="gap-2 font-medium"
+            >
+              <Clock3 className="h-4 w-4 text-primary" />
+              {locale === "vi" ? "Lịch sử thực thi" : "Execution Activity"} ({activity.data?.items?.length ?? 0})
+            </Button>
+          </div>
+
+          {activeSubTab === "routines" && (
+            installations.data?.length ? (
+              <div className="space-y-4">
+                <div className="space-y-3">
+                  {paginatedInstallations.map((installation) => (
+                    <Card key={installation.id} glass className="shadow-card border-border/80">
+                      <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="truncate font-semibold text-sm">
+                              {installation.name}
+                            </h3>
+                            <Badge
+                              variant={
+                                installation.status === "paused"
+                                  ? "warning"
+                                  : "success"
+                              }
+                              className="text-[10px]"
+                            >
+                              {installation.status === "paused"
+                                ? (locale === "vi" ? "Tạm dừng" : "Paused")
+                                : (locale === "vi" ? "Đang bật" : "Enabled")}
+                            </Badge>
+                          </div>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {installation.schedule.kind === "hourly"
+                              ? (locale === "vi" ? "Mỗi giờ" : "Every hour")
+                              : installation.schedule.kind === "event"
+                                ? (locale === "vi" ? "Khi có sự kiện liên quan" : "When a relevant event arrives")
+                                : `${installation.schedule.kind === "weekdays" ? (locale === "vi" ? "Ngày trong tuần" : "Weekdays") : installation.schedule.kind === "weekly" ? (locale === "vi" ? "Hàng tuần" : "Weekly") : (locale === "vi" ? "Hàng ngày" : "Daily")} ${locale === "vi" ? "lúc" : "at"} ${installation.schedule.time ?? "—"}`}{" "}
+                            · {installation.timezone}
+                          </p>
+                          <p className="mt-1 text-[11px] font-mono text-muted-foreground/70">
+                            {locale === "vi" ? "Mẫu:" : "Template:"} {installation.template_key}
+                          </p>
+                        </div>
                         <div className="flex flex-wrap items-center gap-2">
-                          <h3 className="truncate font-semibold">
-                            {installation.name}
-                          </h3>
-                          <Badge
-                            variant={
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={runNow.isPending}
+                            onClick={() => runNow.mutate(installation.id)}
+                            className="text-xs"
+                          >
+                            {locale === "vi" ? "Chạy ngay" : "Run now"}
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={pause.isPending || resume.isPending || runNow.isPending}
+                            onClick={() =>
                               installation.status === "paused"
-                                ? "warning"
-                                : "success"
+                                ? resume.mutate(installation.id)
+                                : pause.mutate(installation.id)
                             }
+                            className="text-xs"
                           >
                             {installation.status === "paused"
-                              ? "Paused"
-                              : "Enabled"}
-                          </Badge>
+                              ? (locale === "vi" ? "Tiếp tục" : "Resume")
+                              : (locale === "vi" ? "Tạm dừng" : "Pause")}
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="destructive"
+                            disabled={remove.isPending}
+                            onClick={() => {
+                              if (window.confirm(locale === "vi" ? `Xóa quy trình ${installation.name}?` : `Remove ${installation.name}?`))
+                                remove.mutate(installation.id);
+                            }}
+                            className="text-xs"
+                          >
+                            {locale === "vi" ? "Xóa" : "Remove"}
+                          </Button>
                         </div>
-                        <p className="mt-1 text-sm text-muted-foreground">
-                          {installation.schedule.kind === "hourly"
-                            ? "Every hour"
-                            : installation.schedule.kind === "event"
-                              ? "When a relevant event arrives"
-                              : `${installation.schedule.kind === "weekdays" ? "Weekdays" : installation.schedule.kind === "weekly" ? "Weekly" : "Daily"} at ${installation.schedule.time ?? "—"}`}{" "}
-                          · {installation.timezone}
-                        </p>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          Template: {installation.template_key}
-                        </p>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          disabled={runNow.isPending}
-                          onClick={() => runNow.mutate(installation.id)}
-                        >
-                          Run now
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          disabled={pause.isPending || resume.isPending || runNow.isPending}
-                          onClick={() =>
-                            installation.status === "paused"
-                              ? resume.mutate(installation.id)
-                              : pause.mutate(installation.id)
-                          }
-                        >
-                          {installation.status === "paused" ? "Resume" : "Pause"}
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="destructive"
-                          disabled={remove.isPending}
-                          onClick={() => {
-                            if (window.confirm(`Remove ${installation.name}?`))
-                              remove.mutate(installation.id);
-                          }}
-                        >
-                          Remove
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-              <DataPagination
-                page={activePage}
-                pageSize={activePageSize}
-                totalItems={installations.data.length}
-                onPageChange={setActivePage}
-                onPageSizeChange={setActivePageSize}
-                pageSizeOptions={[5, 10, 20]}
-              />
-            </div>
-          ) : (
-            <EmptyState
-              icon={Zap}
-              title="No active automations"
-              description="Discover a workflow and enable it to start building your personal command center."
-              action={
-                <Button type="button" onClick={() => setView("discover")}>
-                  Discover workflows
-                </Button>
-              }
-            />
-          )}
-          <Card glass>
-            <CardHeader>
-              <CardTitle className="text-base">Recent activity</CardTitle>
-              <CardDescription>
-                Scheduled runs and their canonical server status.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {activity.isLoading ? (
-                <LoadingSkeleton variant="table" />
-              ) : activity.isError ? (
-                <p className="text-sm text-destructive">
-                  Activity is temporarily unavailable.
-                </p>
-              ) : activity.data?.items.length ? (
-                <div className="space-y-2">
-                  {activity.data.items.map((entry) => (
-                    <div
-                      key={entry.id}
-                      className="flex flex-col gap-1 rounded-lg border border-border/70 p-3 sm:flex-row sm:items-center sm:justify-between"
-                    >
-                      <div>
-                        <p className="text-sm font-medium">{entry.name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {new Date(entry.scheduled_for).toLocaleString(
-                            "vi-VN",
-                            { timeZone: "Asia/Ho_Chi_Minh" },
-                          )}
-                        </p>
-                      </div>
-                      <Badge
-                        variant={
-                          entry.status === "succeeded"
-                            ? "success"
-                            : entry.status === "failed"
-                              ? "danger"
-                              : "warning"
-                        }
-                      >
-                        {entry.status}
-                      </Badge>
-                    </div>
+                      </CardContent>
+                    </Card>
                   ))}
                 </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  No runs yet. The scheduler will show the first occurrence
-                  here.
-                </p>
-              )}
-            </CardContent>
-          </Card>
+                <DataPagination
+                  page={activePage}
+                  pageSize={activePageSize}
+                  totalItems={installations.data.length}
+                  onPageChange={setActivePage}
+                  onPageSizeChange={setActivePageSize}
+                  pageSizeOptions={[5, 10, 20]}
+                />
+              </div>
+            ) : (
+              <EmptyState
+                icon={Zap}
+                title={locale === "vi" ? "Chưa có quy trình tự động nào" : "No active automations"}
+                description={locale === "vi" ? "Khám phá quy trình mẫu và kích hoạt để bắt đầu tự động hóa công việc." : "Discover a workflow and enable it to start building your personal command center."}
+                action={
+                  <Button type="button" onClick={() => setView("discover")}>
+                    {locale === "vi" ? "Khám phá quy trình" : "Discover workflows"}
+                  </Button>
+                }
+              />
+            )
+          )}
+
+          {activeSubTab === "activity" && (
+            <Card glass className="shadow-card border-border/80">
+              <CardHeader>
+                <CardTitle className="text-base">{locale === "vi" ? "Lịch sử thực thi gần đây" : "Recent activity"}</CardTitle>
+                <CardDescription className="text-xs">
+                  {locale === "vi" ? "Các lượt chạy theo lịch và trạng thái máy chủ chuẩn hóa." : "Scheduled runs and their canonical server status."}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {activity.isLoading ? (
+                  <LoadingSkeleton variant="table" />
+                ) : activity.isError ? (
+                  <p className="text-sm text-destructive">
+                    {locale === "vi" ? "Không thể tải dữ liệu hoạt động gần đây." : "Activity is temporarily unavailable."}
+                  </p>
+                ) : activity.data?.items.length ? (
+                  <div className="space-y-2">
+                    {activity.data.items.map((entry) => (
+                      <div
+                        key={entry.id}
+                        className="flex flex-col gap-1 rounded-lg border border-border/70 p-3 sm:flex-row sm:items-center sm:justify-between text-xs"
+                      >
+                        <div>
+                          <p className="font-semibold text-foreground">{entry.name}</p>
+                          <p className="text-[11px] text-muted-foreground font-mono mt-0.5">
+                            {new Date(entry.scheduled_for).toLocaleString(
+                              locale === "vi" ? "vi-VN" : "en-US",
+                              { timeZone: "Asia/Ho_Chi_Minh" },
+                            )}
+                          </p>
+                        </div>
+                        <Badge
+                          variant={
+                            entry.status === "succeeded"
+                              ? "success"
+                              : entry.status === "failed"
+                                ? "danger"
+                                : "warning"
+                          }
+                          className="text-[10px]"
+                        >
+                          {entry.status}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    {locale === "vi" ? "Chưa có lượt chạy nào. Lịch chạy đầu tiên sẽ hiển thị tại đây." : "No runs yet. The scheduler will show the first occurrence here."}
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </div>
       )}
+
       <SetupDialog
         item={setupItem}
         onClose={() => setSetupItem(null)}

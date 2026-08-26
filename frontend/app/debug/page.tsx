@@ -3,37 +3,29 @@
 import * as React from "react";
 import {
   Activity,
-  BarChart3,
-  Bot,
   Bug,
-  ChevronRight,
   Coins,
-  Cpu,
-  Database,
   GitBranch,
   MessageSquare,
   RefreshCw,
   Search,
-  Sparkles,
-  Workflow,
   Zap,
+  BarChart3,
+  Bot,
 } from "lucide-react";
 import {
   useDebugSessions,
+  useUsageSummary,
   useSessionTree,
   useTaskTree,
-  useUrlSearchParam,
-  useUsageSummary,
   useWorkflowRun,
+  useUrlSearchParam,
 } from "@/hooks";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Select } from "@/components/ui/select";
-import { EmptyState, ErrorState, LoadingSkeleton, DataPagination } from "@/components/shared";
 import { PageHeader } from "@/components/page-header";
-import { useTranslation } from "@/lib/i18n";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import {
   Table,
   TableBody,
@@ -42,8 +34,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { EmptyState, ErrorState, LoadingSkeleton, DataPagination } from "@/components/shared";
+import { useTranslation } from "@/lib/i18n";
 
-export default function UsageAndAuditLogsPage() {
+export default function DebugPage() {
   const { t, dict, locale } = useTranslation();
   const [tabParam, setTabParam] = useUrlSearchParam("tab");
   const activeTab = (tabParam as "usage" | "sessions" | "tasks") || "usage";
@@ -93,7 +87,7 @@ export default function UsageAndAuditLogsPage() {
   }, [filteredUsage, usagePage, usagePageSize]);
 
   const [sessionPage, setSessionPage] = React.useState(1);
-  const [sessionPageSize, setSessionPageSize] = React.useState(10);
+  const [sessionPageSize, setSessionPageSize] = React.useState(8);
   const paginatedSessions = React.useMemo(() => {
     const start = (sessionPage - 1) * sessionPageSize;
     return (sessions.data ?? []).slice(start, start + sessionPageSize);
@@ -105,7 +99,7 @@ export default function UsageAndAuditLogsPage() {
       <PageHeader
         icon={Bug}
         title={dict.pages.debug.title}
-        description="Monitor token usage, session audit histories, and task execution trees."
+        description={dict.pages.debug.description}
         actions={
           <Button
             variant="outline"
@@ -120,7 +114,7 @@ export default function UsageAndAuditLogsPage() {
             className="gap-1.5"
           >
             <RefreshCw className={usage.isFetching || sessions.isFetching ? "h-3.5 w-3.5 animate-spin" : "h-3.5 w-3.5"} />
-            Refresh
+            {locale === "vi" ? "Làm mới" : "Refresh"}
           </Button>
         }
       />
@@ -135,7 +129,9 @@ export default function UsageAndAuditLogsPage() {
             <p className="text-2xl font-bold leading-none tabular-nums text-foreground">
               ${totalCost.toFixed(4)}
             </p>
-            <p className="mt-1 text-xs text-muted-foreground font-medium">Total LLM Spend (USD)</p>
+            <p className="mt-1 text-xs text-muted-foreground font-medium">
+              {locale === "vi" ? "Chi phí LLM (USD)" : "Total LLM Spend (USD)"}
+            </p>
           </div>
         </Card>
 
@@ -147,7 +143,9 @@ export default function UsageAndAuditLogsPage() {
             <p className="text-2xl font-bold leading-none tabular-nums text-foreground">
               {totalCalls.toLocaleString()}
             </p>
-            <p className="mt-1 text-xs text-muted-foreground font-medium">Total AI Invocations</p>
+            <p className="mt-1 text-xs text-muted-foreground font-medium">
+              {locale === "vi" ? "Lượt gọi AI" : "Total AI Invocations"}
+            </p>
           </div>
         </Card>
 
@@ -161,7 +159,9 @@ export default function UsageAndAuditLogsPage() {
                 ? `${(totalTokens / 1_000_000).toFixed(2)}M`
                 : `${(totalTokens / 1_000).toFixed(1)}k`}
             </p>
-            <p className="mt-1 text-xs text-muted-foreground font-medium">Tokens Burned</p>
+            <p className="mt-1 text-xs text-muted-foreground font-medium">
+              {locale === "vi" ? "Tokens tiêu thụ" : "Tokens Burned"}
+            </p>
           </div>
         </Card>
 
@@ -173,7 +173,9 @@ export default function UsageAndAuditLogsPage() {
             <p className="text-2xl font-bold leading-none tabular-nums text-foreground">
               {sessions.data?.length ?? 0}
             </p>
-            <p className="mt-1 text-xs text-muted-foreground font-medium">Recorded Sessions</p>
+            <p className="mt-1 text-xs text-muted-foreground font-medium">
+              {locale === "vi" ? "Phiên hội thoại" : "Recorded Sessions"}
+            </p>
           </div>
         </Card>
       </div>
@@ -186,8 +188,8 @@ export default function UsageAndAuditLogsPage() {
           onClick={() => setTabParam("usage")}
           className="gap-2 font-medium"
         >
-          <BarChart3 className="h-4 w-4" />
-          Cost Analytics
+          <BarChart3 className="h-4 w-4 text-primary" />
+          {locale === "vi" ? "Phân tích Chi phí" : "Cost Analytics"}
         </Button>
 
         <Button
@@ -196,8 +198,8 @@ export default function UsageAndAuditLogsPage() {
           onClick={() => setTabParam("sessions")}
           className="gap-2 font-medium"
         >
-          <MessageSquare className="h-4 w-4" />
-          Session Audit
+          <MessageSquare className="h-4 w-4 text-primary" />
+          {locale === "vi" ? "Lịch sử Phiên" : "Session Audit"}
         </Button>
 
         <Button
@@ -206,8 +208,8 @@ export default function UsageAndAuditLogsPage() {
           onClick={() => setTabParam("tasks")}
           className="gap-2 font-medium"
         >
-          <GitBranch className="h-4 w-4" />
-          Task Graph
+          <GitBranch className="h-4 w-4 text-primary" />
+          {locale === "vi" ? "Cây Tác vụ" : "Task Graph"}
         </Button>
       </div>
 
@@ -220,12 +222,12 @@ export default function UsageAndAuditLogsPage() {
               <Input
                 value={usageSearch}
                 onChange={(e) => setUsageSearch(e.target.value)}
-                placeholder="Filter by agent or model..."
+                placeholder={locale === "vi" ? "Lọc theo agent hoặc model..." : "Filter by agent or model..."}
                 className="pl-9 text-xs"
               />
             </div>
             <p className="text-xs text-muted-foreground font-mono">
-              Showing {filteredUsage.length} breakdown records
+              {locale === "vi" ? `Hiển thị ${filteredUsage.length} bản ghi chi tiết` : `Showing ${filteredUsage.length} breakdown records`}
             </p>
           </div>
 
@@ -234,8 +236,8 @@ export default function UsageAndAuditLogsPage() {
               <LoadingSkeleton variant="table" />
             ) : usage.isError ? (
               <ErrorState
-                title="Unable to load usage analytics"
-                description="Usage telemetry data could not be retrieved."
+                title={locale === "vi" ? "Không thể tải phân tích chi phí" : "Unable to load usage analytics"}
+                description={locale === "vi" ? "Dữ liệu đo lường chi phí chưa sẵn sàng." : "Usage telemetry data could not be retrieved."}
                 onRetry={() => void usage.refetch()}
               />
             ) : filteredUsage.length ? (
@@ -243,12 +245,12 @@ export default function UsageAndAuditLogsPage() {
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/40">
-                      <TableHead className="text-xs font-semibold">Agent Name</TableHead>
-                      <TableHead className="text-xs font-semibold">Model Provider</TableHead>
-                      <TableHead className="text-right text-xs font-semibold">Calls</TableHead>
-                      <TableHead className="text-right text-xs font-semibold">Prompt In</TableHead>
-                      <TableHead className="text-right text-xs font-semibold">Completion Out</TableHead>
-                      <TableHead className="text-right text-xs font-semibold">Total Cost</TableHead>
+                      <TableHead className="text-xs font-semibold">{locale === "vi" ? "Tên Agent" : "Agent Name"}</TableHead>
+                      <TableHead className="text-xs font-semibold">{locale === "vi" ? "Mô hình" : "Model Provider"}</TableHead>
+                      <TableHead className="text-right text-xs font-semibold">{locale === "vi" ? "Lượt gọi" : "Calls"}</TableHead>
+                      <TableHead className="text-right text-xs font-semibold">{locale === "vi" ? "Tokens Đầu vào" : "Prompt In"}</TableHead>
+                      <TableHead className="text-right text-xs font-semibold">{locale === "vi" ? "Tokens Đầu ra" : "Completion Out"}</TableHead>
+                      <TableHead className="text-right text-xs font-semibold">{locale === "vi" ? "Tổng Chi phí" : "Total Cost"}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -293,8 +295,8 @@ export default function UsageAndAuditLogsPage() {
             ) : (
               <EmptyState
                 icon={BarChart3}
-                title="No usage recorded yet"
-                description="Run chat sessions or workflows to generate live usage analytics."
+                title={locale === "vi" ? "Không tìm thấy dữ liệu tiêu thụ" : "No usage data found"}
+                description={locale === "vi" ? "Thực hiện các cuộc trò chuyện AI để xem phân tích chi phí." : "Perform AI interactions to inspect token telemetry."}
               />
             )}
           </Card>
@@ -308,10 +310,12 @@ export default function UsageAndAuditLogsPage() {
           <Card className="shadow-card border-border/80 lg:col-span-1 flex flex-col">
             <CardHeader className="border-b border-border/60 pb-3">
               <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <MessageSquare className="h-4 w-4 text-primary" /> Select Audit Session
+                <MessageSquare className="h-4 w-4 text-primary" /> {locale === "vi" ? "Chọn Phiên kiểm toán" : "Select Audit Session"}
               </CardTitle>
               <CardDescription className="text-xs">
-                Inspect raw prompt messages and tool calls for any chat conversation.
+                {locale === "vi"
+                  ? "Kiểm tra raw prompt messages và tool calls của từng hội thoại."
+                  : "Inspect raw prompt messages and tool calls for any chat conversation."}
               </CardDescription>
             </CardHeader>
             <CardContent className="p-3 flex-1 flex flex-col justify-between">
@@ -319,8 +323,8 @@ export default function UsageAndAuditLogsPage() {
                 <LoadingSkeleton variant="table" />
               ) : sessions.isError ? (
                 <ErrorState
-                  title="Unable to load sessions"
-                  description="Session list could not be loaded."
+                  title={locale === "vi" ? "Không thể tải danh sách phiên" : "Unable to load sessions"}
+                  description={locale === "vi" ? "Danh sách phiên chưa sẵn sàng." : "Session list could not be loaded."}
                   onRetry={() => void sessions.refetch()}
                 />
               ) : sessions.data?.length ? (
@@ -340,7 +344,7 @@ export default function UsageAndAuditLogsPage() {
                           }`}
                         >
                           <p className={`text-xs font-semibold truncate ${isSelected ? "text-primary" : "text-foreground"}`}>
-                            {s.title || "Untitled Conversation"}
+                            {s.title || (locale === "vi" ? "Hội thoại không tên" : "Untitled Conversation")}
                           </p>
                           <p className="font-mono text-[10px] text-muted-foreground truncate">
                             ID: {s.id}
@@ -356,10 +360,14 @@ export default function UsageAndAuditLogsPage() {
                     onPageChange={setSessionPage}
                     onPageSizeChange={setSessionPageSize}
                     pageSizeOptions={[5, 10, 20]}
+                    compact
                   />
                 </div>
               ) : (
-                <EmptyState icon={MessageSquare} title="No recorded sessions" />
+                <EmptyState
+                  icon={MessageSquare}
+                  title={locale === "vi" ? "Không có phiên nào được ghi lại" : "No recorded sessions"}
+                />
               )}
             </CardContent>
           </Card>
@@ -368,10 +376,10 @@ export default function UsageAndAuditLogsPage() {
           <Card className="shadow-card border-border/80 lg:col-span-2 flex flex-col">
             <CardHeader className="border-b border-border/60 pb-3">
               <CardTitle className="text-sm font-semibold flex items-center justify-between">
-                <span>Message Stream & Execution Trace</span>
+                <span>{locale === "vi" ? "Luồng Tin nhắn & Truy vết Thực thi" : "Message Stream & Execution Trace"}</span>
                 {tree.data && (
                   <Badge variant="outline" className="font-mono text-[10px]">
-                    {tree.data.messages.length} messages
+                    {tree.data.messages.length} {locale === "vi" ? "tin nhắn" : "messages"}
                   </Badge>
                 )}
               </CardTitle>
@@ -379,14 +387,16 @@ export default function UsageAndAuditLogsPage() {
             <CardContent className="p-4 flex-1">
               {!selSession ? (
                 <div className="py-16 text-center text-xs text-muted-foreground">
-                  Select a session from the list on the left to inspect its messages.
+                  {locale === "vi"
+                    ? "Chọn một phiên hội thoại từ danh sách bên trái để kiểm tra chi tiết."
+                    : "Select a session from the list on the left to inspect its messages."}
                 </div>
               ) : tree.isLoading ? (
                 <LoadingSkeleton variant="table" />
               ) : tree.isError ? (
                 <ErrorState
-                  title="Unable to load session trace"
-                  description="Selected session could not be inspected."
+                  title={locale === "vi" ? "Không thể tải truy vết phiên" : "Unable to load session trace"}
+                  description={locale === "vi" ? "Phiên được chọn không thể kiểm tra." : "Selected session could not be inspected."}
                   onRetry={() => void tree.refetch()}
                 />
               ) : tree.data?.messages.length ? (
@@ -416,7 +426,7 @@ export default function UsageAndAuditLogsPage() {
 
                       {m.meta?.tools?.length > 0 && (
                         <div className="mt-2.5 pt-2 border-t border-border/50 text-[11px] text-muted-foreground flex flex-wrap items-center gap-1.5">
-                          <span className="font-semibold text-foreground">Tools Dispatched:</span>
+                          <span className="font-semibold text-foreground">{locale === "vi" ? "Công cụ đã gọi:" : "Tools Dispatched:"}</span>
                           {m.meta.tools.map((t: any, idx: number) => (
                             <Badge key={idx} variant="outline" className="font-mono text-[10px] bg-primary/5 text-primary border-primary/30">
                               {t.name}
@@ -428,7 +438,10 @@ export default function UsageAndAuditLogsPage() {
                   ))}
                 </div>
               ) : (
-                <EmptyState icon={MessageSquare} title="No messages in session" />
+                <EmptyState
+                  icon={MessageSquare}
+                  title={locale === "vi" ? "Không có tin nhắn nào trong phiên" : "No messages in session"}
+                />
               )}
             </CardContent>
           </Card>
@@ -440,9 +453,13 @@ export default function UsageAndAuditLogsPage() {
         <div className="space-y-4">
           <Card className="shadow-card border-border/80">
             <CardHeader className="pb-3">
-              <CardTitle className="text-base font-semibold">Inspect Task Execution Tree</CardTitle>
+              <CardTitle className="text-base font-semibold">
+                {locale === "vi" ? "Kiểm tra Cây Thực thi Tác vụ" : "Inspect Task Execution Tree"}
+              </CardTitle>
               <CardDescription className="text-xs">
-                Enter a root run ID to inspect hierarchical subagent execution trees and dependency statuses.
+                {locale === "vi"
+                  ? "Nhập ID lượt chạy gốc (root run ID) để xem cây phân cấp subagent và trạng thái phụ thuộc."
+                  : "Enter a root run ID to inspect hierarchical subagent execution trees and dependency statuses."}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -455,7 +472,7 @@ export default function UsageAndAuditLogsPage() {
                   onKeyDown={(e) => {
                     if (e.key === "Enter") setRootRunParam(rootRunDraft.trim() || null);
                   }}
-                  placeholder="Enter root_run_id (e.g. run-98a72...)"
+                  placeholder={locale === "vi" ? "Nhập root_run_id (ví dụ: run-98a72...)" : "Enter root_run_id (e.g. run-98a72...)"}
                   className="font-mono text-xs"
                 />
                 <Button
@@ -463,7 +480,7 @@ export default function UsageAndAuditLogsPage() {
                   onClick={() => setRootRunParam(rootRunDraft.trim() || null)}
                   className="font-semibold text-xs"
                 >
-                  Inspect Run
+                  {locale === "vi" ? "Kiểm tra" : "Inspect Run"}
                 </Button>
               </div>
             </CardContent>
@@ -473,8 +490,8 @@ export default function UsageAndAuditLogsPage() {
             <LoadingSkeleton variant="table" />
           ) : taskTree.isError ? (
             <ErrorState
-              title="Unable to load task tree"
-              description="Task graph could not be retrieved."
+              title={locale === "vi" ? "Không thể tải cây tác vụ" : "Unable to load task tree"}
+              description={locale === "vi" ? "Cây tác vụ không khả dụng." : "Task graph could not be retrieved."}
               onRetry={() => void taskTree.refetch()}
             />
           ) : taskTree.data?.tasks?.length ? (
@@ -492,7 +509,7 @@ export default function UsageAndAuditLogsPage() {
                   </div>
                   <div className="mt-2 text-xs font-mono text-muted-foreground flex items-center gap-4">
                     <span>Task ID: {node.id}</span>
-                    <span>Parent: {node.parent_task_id || "Root"}</span>
+                    <span>{locale === "vi" ? "Tác vụ cha:" : "Parent:"} {node.parent_task_id || "Root"}</span>
                   </div>
                 </Card>
               ))}
@@ -500,8 +517,8 @@ export default function UsageAndAuditLogsPage() {
           ) : (
             <EmptyState
               icon={GitBranch}
-              title="No task tree loaded"
-              description="Provide an active or completed root run ID to visualize its execution graph."
+              title={locale === "vi" ? "Chưa tải cây tác vụ nào" : "No task tree loaded"}
+              description={locale === "vi" ? "Cung cấp root run ID đang chạy hoặc đã hoàn tất để hiển thị biểu đồ." : "Provide an active or completed root run ID to visualize its execution graph."}
             />
           )}
         </div>
