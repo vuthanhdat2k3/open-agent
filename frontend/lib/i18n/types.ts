@@ -42,6 +42,7 @@ export interface TranslationDictionary {
   common: {
     save: string;
     saving: string;
+    processing: string;
     saved: string;
     cancel: string;
     delete: string;
@@ -87,12 +88,18 @@ export interface TranslationDictionary {
     previous: string;
     page: string;
     of: string;
+    to: string;
+    firstPage: string;
+    lastPage: string;
     rowsPerPage: string;
     showing: string;
     results: string;
     noData: string;
     allCaughtUp: string;
     selectOption: string;
+    sidebar: string;
+    toggleSidebar: string;
+    mobileSidebarDescription: string;
   };
   pages: {
     dashboard: {
@@ -137,6 +144,14 @@ export interface TranslationDictionary {
       artifacts: string;
       clearSession: string;
       deleteSessionConfirm: string;
+      composerPlaceholder: string;
+      emptyStateRecentFiles: string;
+      emptyStateRecentFilesPrompt: string;
+      emptyStateTasks: string;
+      emptyStateTasksPrompt: string;
+      emptyStateCapabilities: string;
+      emptyStateCapabilitiesPrompt: string;
+      enlargeSvg: string;
     };
     agents: {
       title: string;
@@ -239,6 +254,14 @@ export interface TranslationDictionary {
       edgeTaken: string;
       waitingApproval: string;
       executionError: string;
+      removeRow: string;
+      addRow: string;
+      eventStart: string;
+      eventDone: string;
+      eventError: string;
+      eventWait: string;
+      eventEdge: string;
+      eventFinish: string;
       nodeField: {
         inputField: string;
         required: string;
@@ -340,6 +363,32 @@ export interface TranslationDictionary {
       btnReject: string;
       allCaughtUp: string;
       allCaughtUpDesc: string;
+      needsAttention: string;
+      urgent: string;
+      btnReview: string;
+      viewAllApprovals: string;
+      allCleared: string;
+      noPendingActions: string;
+      requestsLabel: string;
+      prevCard: string;
+      nextCard: string;
+      confidence: string;
+      toolLabel: string;
+      argsLabel: string;
+      policyLabel: string;
+      verifiedBoundary: string;
+      automatedArgs: string;
+      details: string;
+      approving: string;
+      oneClickApprove: string;
+      fastApproveAll: string;
+      safeActions: string;
+      viewAllQueue: string;
+      vietnamTime: string;
+      expired: string;
+      remainingHM: string;
+      remainingM: string;
+      remainingS: string;
     };
     debug: {
       title: string;
@@ -353,6 +402,9 @@ export interface TranslationDictionary {
       recordedSessions: string;
       selectAuditSession: string;
       messageTrace: string;
+      rawPromptDesc: string;
+      selectSessionDesc: string;
+      rootRunIdDesc: string;
     };
     customerIntelligence: {
       title: string;
@@ -375,6 +427,24 @@ export interface TranslationDictionary {
       trustedRules: string;
       classifierStatus: string;
       markAsRead: string;
+      rulesDesc: string;
+      autoApproveDesc: string;
+      adminDesc: string;
+      correlationIdDesc: string;
+      timeExpired: string;
+      timeRemainingHM: string;
+      timeRemainingM: string;
+      timeRemainingS: string;
+      reasons: {
+        untrustedContent: { title: string; desc: string };
+        routingBlocked: { title: string; desc: string };
+        externalImpact: { title: string; desc: string };
+        approvalExpired: { title: string; desc: string };
+        onlyProposerCancelled: { title: string; desc: string };
+        processed: { title: string; desc: string };
+        missingGooglePerm: { title: string; desc: string };
+        policyLimited: { title: string; desc: string };
+      };
     };
     emailGateway: {
       title: string;
@@ -458,6 +528,18 @@ export interface TranslationDictionary {
       statusConnected: string;
       statusNotConnected: string;
       btnDisconnect: string;
+    };
+    login: {
+      accountNoOrgTitle: string;
+      accountNoOrgDesc: string;
+      accountNotActiveTitle: string;
+      accountNotActiveDesc: string;
+      orgMismatchTitle: string;
+      orgMismatchDesc: string;
+      authFailedTitle: string;
+      authFailedDesc: string;
+      ssoDesc: string;
+      useOrgProviderDesc: string;
     };
   };
 }

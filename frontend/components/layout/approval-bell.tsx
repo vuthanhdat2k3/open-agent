@@ -72,8 +72,8 @@ export function ApprovalBell() {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-[min(24rem,calc(100vw-2rem))] p-2">
         <DropdownMenuLabel className="flex items-center justify-between px-3 py-2">
-          <span>Needs your attention</span>
-          {urgent > 0 && <span className="text-xs font-semibold text-destructive">{urgent} urgent</span>}
+          <span>{t("pages.approvals.needsAttention", "Needs your attention")}</span>
+          {urgent > 0 && <span className="text-xs font-semibold text-destructive">{urgent} {t("pages.approvals.urgent", "urgent")}</span>}
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         {(approvals.data ?? []).slice(0, 5).map((item) => (
@@ -86,15 +86,15 @@ export function ApprovalBell() {
               <div className="mt-1 truncate text-sm font-semibold text-foreground">{approvalTitle(item, locale)}</div>
               <div className="mt-1 flex items-center justify-between gap-2 text-xs text-muted-foreground">
                 <span className="flex items-center gap-1"><Clock3 className="h-3 w-3" aria-hidden="true" />{expiry(item.expires_at, locale)}</span>
-                <span className="flex items-center gap-1 text-primary">Review <ChevronRight className="h-3 w-3" aria-hidden="true" /></span>
+                <span className="flex items-center gap-1 text-primary">{t("pages.approvals.btnReview", "Review")} <ChevronRight className="h-3 w-3" aria-hidden="true" /></span>
               </div>
             </Link>
           </DropdownMenuItem>
         ))}
-        {!approvals.isLoading && !approvals.data?.length && <div className="px-3 py-6 text-center text-sm text-muted-foreground">All caught up</div>}
+        {!approvals.isLoading && !approvals.data?.length && <div className="px-3 py-6 text-center text-sm text-muted-foreground">{t("pages.approvals.allCaughtUp", "All caught up")}</div>}
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild className="justify-center font-semibold text-primary">
-          <Link href="/approvals">View all approvals</Link>
+          <Link href="/approvals">{t("pages.approvals.viewAllApprovals", "View all approvals")}</Link>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

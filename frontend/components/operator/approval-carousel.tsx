@@ -40,9 +40,9 @@ export function ApprovalCarousel({
         <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-500">
           <Check className="h-5 w-5" />
         </div>
-        <p className="mt-3 text-sm font-semibold text-foreground">All Approvals Cleared</p>
+        <p className="mt-3 text-sm font-semibold text-foreground">{t("pages.approvals.allCleared", "All approvals cleared")}</p>
         <p className="mt-1 text-xs text-muted-foreground">
-          No pending actions requiring your review. All background routines are active and safe.
+          {t("pages.approvals.noPendingActions", "No pending actions require your review. All background routines are active and safe.")}
         </p>
       </div>
     );
@@ -94,7 +94,7 @@ export function ApprovalCarousel({
       {/* Carousel Navigation Header */}
       <div className="flex items-center justify-between font-mono text-[10.5px] text-muted-foreground">
         <span>
-          APPROVAL REQUESTS ({currentIndex + 1} / {approvals.length})
+          {t("pages.approvals.requestsLabel", "APPROVAL REQUESTS (")}{currentIndex + 1} / {approvals.length})
         </span>
         <div className="flex items-center gap-1">
           <Button
@@ -102,7 +102,7 @@ export function ApprovalCarousel({
             size="icon"
             className="h-6 w-6 rounded border-border bg-card text-muted-foreground hover:text-foreground"
             onClick={handlePrev}
-            title="Previous card"
+            title={t("pages.approvals.prevCard", "Previous card")}
           >
             <ChevronLeft className="h-3.5 w-3.5" />
           </Button>
@@ -111,7 +111,7 @@ export function ApprovalCarousel({
             size="icon"
             className="h-6 w-6 rounded border-border bg-card text-muted-foreground hover:text-foreground"
             onClick={handleNext}
-            title="Next card"
+            title={t("pages.approvals.nextCard", "Next card")}
           >
             <ChevronRight className="h-3.5 w-3.5" />
           </Button>
@@ -125,7 +125,7 @@ export function ApprovalCarousel({
             {isHighRisk ? "⚡ HIGH RISK" : "STANDARD ACTION"}
           </Badge>
           <span className="font-mono text-[10.5px] text-muted-foreground">
-            98% Confidence · {expiry(current.expires_at, locale)}
+            98% {t("pages.approvals.confidence", "Confidence")} · {expiry(current.expires_at, locale)}
           </span>
         </div>
 
@@ -136,23 +136,23 @@ export function ApprovalCarousel({
         {/* Reasoning Steps (3-Step Micro Steps) */}
         <div className="flex flex-col gap-2 rounded-lg border border-border/70 bg-muted/40 p-3 text-xs leading-relaxed">
           <div className="flex items-start gap-2">
-            <span className="font-mono text-[10px] font-semibold text-muted-foreground">01 / TOOL:</span>
+            <span className="font-mono text-[10px] font-semibold text-muted-foreground">{t("pages.approvals.toolLabel", "01 / TOOL:")}</span>
             <span className="font-mono text-[11px] font-medium text-foreground">
               {current.tool_name || "gmail.send_message"}
             </span>
           </div>
           <div className="flex items-start gap-2">
-            <span className="font-mono text-[10px] font-semibold text-muted-foreground">02 / ARGS:</span>
+            <span className="font-mono text-[10px] font-semibold text-muted-foreground">{t("pages.approvals.argsLabel", "02 / ARGS:")}</span>
             <div className="line-clamp-2 text-muted-foreground font-mono text-[11px]">
               {current.args_snapshot && typeof current.args_snapshot === "object"
                 ? JSON.stringify(current.args_snapshot)
-                : "Automated action synthesized from background routine."}
+                : t("pages.approvals.automatedArgs", "Automated action synthesized from background routine.")}
             </div>
           </div>
           <div className="flex items-start gap-2">
-            <span className="font-mono text-[10px] font-semibold text-muted-foreground">03 / POLICY:</span>
+            <span className="font-mono text-[10px] font-semibold text-muted-foreground">{t("pages.approvals.policyLabel", "03 / POLICY:")}</span>
             <span className="text-muted-foreground text-[11px]">
-              Verified against safety boundary. Requires 1 explicit human confirmation before execution.
+              {t("pages.approvals.verifiedBoundary", "Verified against safety boundary. Requires 1 explicit human confirmation before execution.")}
             </span>
           </div>
         </div>
@@ -167,7 +167,7 @@ export function ApprovalCarousel({
               onClick={handleReject}
               disabled={isDeciding}
             >
-              <X className="mr-1 h-3.5 w-3.5" /> Reject
+              <X className="mr-1 h-3.5 w-3.5" /> {t("pages.approvals.btnReject", "Reject")}
             </Button>
             {onOpenDetail && (
               <Button
@@ -176,7 +176,7 @@ export function ApprovalCarousel({
                 className="h-8 text-xs text-muted-foreground hover:text-foreground"
                 onClick={() => onOpenDetail(current)}
               >
-                <Edit3 className="mr-1 h-3.5 w-3.5" /> Details
+                <Edit3 className="mr-1 h-3.5 w-3.5" /> {t("pages.approvals.details", "Details")}
               </Button>
             )}
           </div>
@@ -188,7 +188,7 @@ export function ApprovalCarousel({
             disabled={isDeciding}
           >
             <Check className="h-3.5 w-3.5" />
-            {isDeciding ? "Approving..." : "1-Click Approve"}
+            {isDeciding ? t("pages.approvals.approving", "Approving...") : t("pages.approvals.oneClickApprove", "1-Click Approve")}
           </Button>
         </div>
       </div>
@@ -199,7 +199,7 @@ export function ApprovalCarousel({
           <div className="flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-primary shrink-0" />
             <span className="font-medium text-foreground">
-              Fast Approve All {approvals.length} Safe Actions
+              {t("pages.approvals.fastApproveAll", "Fast Approve All {n} Safe Actions").replace("{n}", String(approvals.length))}
             </span>
           </div>
           <Button
@@ -209,7 +209,7 @@ export function ApprovalCarousel({
             onClick={handleBatchApprove}
             disabled={isBatchDeciding}
           >
-            {isBatchDeciding ? "Processing..." : `Saves ~${approvals.length * 15}m →`}
+            {isBatchDeciding ? t("common.processing", "Processing...") : `Saves ~${approvals.length * 15}m →`}
           </Button>
         </div>
       )}
@@ -220,7 +220,7 @@ export function ApprovalCarousel({
           href="/approvals"
           className="flex items-center gap-1 font-mono text-[11px] text-muted-foreground hover:text-primary hover:underline transition-colors"
         >
-          View All in Approvals Queue (/approvals) <ArrowRight className="h-3 w-3" />
+          {t("pages.approvals.viewAllQueue", "View All in Approvals Queue (/approvals)")} <ArrowRight className="h-3 w-3" />
         </Link>
       </div>
     </div>
