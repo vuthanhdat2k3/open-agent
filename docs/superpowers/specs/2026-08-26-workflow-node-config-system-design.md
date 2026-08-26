@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-26
 **Status:** Approved (design review)
-**Scope:** Upgrade the workflow DAG node system so every node kind has a real, validated configuration schema (n8n-style `properties`), the agent node supports inline/custom configuration, the scheduler node generates cron from a visual form, the integration node calls real Google APIs, and the triager node does real LLM routing. Add structured data-flow between nodes, a unified node output contract, per-node error semantics, a dedicated run-detail page, and a four-tier test plan.
+**Scope:** Upgrade the workflow DAG node system so every node kind has a real, validated configuration schema (n8n-style `properties`), the agent node supports inline/custom configuration, the scheduler node generates cron from a visual form, the integration node calls real Google APIs, and the triager node does real LLM routing. Add structured data-flow between nodes, a unified node output contract, per-node error semantics, an enriched in-editor run view (KPI strip + per-node trace + event log, single page), and a four-tier test plan.
 
 ---
 
@@ -19,7 +19,7 @@ The current workflow node system is under-realized:
 - **No unified output contract**: the engine returns `str` everywhere and stores `{"text": result}`. Structured outputs (triager category, integration payload) have no home.
 - **No per-node error semantics**: a node failure aborts the whole workflow; there is no `onError: continue`/`fallback`.
 - **No fan-out concurrency limit**: `asyncio.gather` runs every ready node at once, each with its own DB session — a wide fan-out can exhaust the connection pool.
-- **No dedicated run-detail UI**: run history is reconstructed inside the editor console; there is no per-node trace with timing/token/cost/attempt detail.
+- **Run view is under-realized**: run history is reconstructed as a raw text console; there is no KPI summary (duration/tokens/cost), no per-node trace, no canvas status highlight.
 - **Editor workflows with a scheduler node never fire** on the cron tick — only template installations do. The two scheduler paths are not unified.
 - **RBAC**: role `user` cannot create/edit workflows; templates install as an opaque workflow the user cannot edit.
 
@@ -36,7 +36,7 @@ The current workflow node system is under-realized:
 - **Unified output contract** `{text, data, error}` for every node.
 - **Per-node error semantics** `onError: stop|continue|fallback`.
 - **Fan-out concurrency limit** (fixed, configurable via settings).
-- **Dedicated run-detail page** with per-node trace (timing, tokens, cost, attempts, input/output) + replay.
+- **Enriched in-editor run view** (single page): KPI strip (status/progress/duration/tokens/cost), per-node trace (timing/tokens/cost/attempts/input/output), canvas status highlight, and a structured event log + replay.
 - **Scheduling unification**: editor workflows with a scheduler node fire on the cron tick via a hidden `WorkflowInstallation`.
 - Frontend renders node forms dynamically from backend-declared `NodeDefinition`s (single source of truth).
 - Backend validates node parameters on save; clear per-node/per-field errors.
@@ -44,7 +44,7 @@ The current workflow node system is under-realized:
 
 ### Non-Goals
 - No workflow versioning, sharing, or multi-tenant workflow catalog.
-- No visual debugger beyond the run-detail page + existing console.
+- No visual debugger beyond the enriched in-editor run view + existing console.
 - No new integration connectors beyond what exists (Gmail/Calendar/Drive/webhook).
 - No expression/template language (`{{node.field}}`); structured `input_mapping` is the mechanism (see §5.6).
 
@@ -170,7 +170,7 @@ class NodeOutput(BaseModel):
 
 - Internally the engine's `run_node_once` returns `NodeOutput` instead of `str`.
 - Persisted to `WorkflowNodeRun.output` as `{"text": ..., "data": ...}` (JSON dict, matching the existing column type; `error` lives on the node run's `error` column).
-- `WorkflowRun.output` gains `{"text": final_text, "data": final_data}` where `final_data` is a `{node_id: NodeOutput.data}` map for the run-detail page.
+- `WorkflowRun.output` gains `{"text": final_text, "data": final_data}` where `final_data` is a `{node_id: NodeOutput.data}` map for the run view.
 
 ### 4.4 Node parameters per kind (summary)
 
@@ -211,7 +211,7 @@ class NodeOutput(BaseModel):
 
 ### 5.2 Agent node (`engine.py`)
 
-- **`mode=custom`**: build an in-memory `Agent` (not persisted): `Agent(org_id=..., name=f"workflow-node-{node_id}", system_prompt=..., model_id=..., tools=..., temperature=..., max_iterations=..., enable_thinking=...)`; call `run_agent_loop(agent, text, db, ...)`. The loop already records usage/cost to `Task`/`UsageEvent`; we capture `AgentLoopResult` (`content`, `usage`, `cost_usd`, `latency_ms`, `tool_calls`) into `NodeOutput.data` for the run-detail page.
+- **`mode=custom`**: build an in-memory `Agent` (not persisted): `Agent(org_id=..., name=f"workflow-node-{node_id}", system_prompt=..., model_id=..., tools=..., temperature=..., max_iterations=..., enable_thinking=...)`; call `run_agent_loop(agent, text, db, ...)`. The loop already records usage/cost to `Task`/`UsageEvent`; we capture `AgentLoopResult` (`content`, `usage`, `cost_usd`, `latency_ms`, `tool_calls`) into `NodeOutput.data` for the run view.
 - **`mode=inherit`**: load `Agent` by `agent_id`; apply each override field onto a shallow copy of the agent object before the loop (system_prompt, model_id, tools, temperature, max_iterations, enable_thinking). Keep `agent_release_id` write on the node run.
 - Pass `model_id` through to `run_agent_loop` (already supported).
 - No fallback to "first agent in org" when custom mode has no agent — custom mode is self-contained. Inherit mode with no `agent_id` errors clearly.
@@ -311,7 +311,7 @@ Retry/budget/approval/lease/replay/sub_workflow mechanics are retained (retry se
 - `GET /api/workflows/node-definitions` → `dict[kind, NodeDefinition]`.
 - `GET /api/workflows/tool-options` → list of `{name, description, risk_tier, input_schema?}` for tool dropdowns (from `BUILTIN_TOOLS` + MCP tools + CI tools, scoped to org).
 - `GET /api/workflows/node-options?type=models|agents|workflows|connections|users` → dynamic dropdown sources for `load_options_from`.
-- `GET /api/workflows/runs` → paginated run list (for the run-detail/history page) with filters `?workflow_id=&status=&limit=&cursor=`.
+- `GET /api/workflows/runs` → paginated run list (for the editor run history) with filters `?workflow_id=&status=&limit=&cursor=`.
 - `GET /api/workflows/runs/{run_id}` → enriched run detail (see §7.4): run + per-node `{status, attempt, timing_ms, input, output, error, tokens, cost_usd}` + tool call records for the run (for replay inspection).
 - `POST /{id}/run` and `POST /{id}` validation errors return a structured `400` body `{"errors": [{node_id, field, message}]}`.
 
@@ -346,13 +346,17 @@ Retry/budget/approval/lease/replay/sub_workflow mechanics are retained (retry se
 - **Edge**: custom edge click → condition panel with autocomplete + quick category picks from upstream triager.
 - **Run page** (`/run-workflow`): input form reflects input node `input_field`/`required`/`description`.
 
-### 7.4 Run-detail page (new)
+### 7.4 In-editor run view (single page, light-touch)
 
-- New route `/workflows/runs/[runId]` (`frontend/app/workflows/runs/[runId]/page.tsx`).
-- Timeline of nodes: status chip, per-attempt duration, token usage + cost (from agent `AgentLoopResult` / `Task.token_usage` / `ToolCallRecord`), input/output (text + structured `data`), error.
-- "Replay" button → `POST /api/workflows/runs/{id}/replay`; show divergence if any.
-- Deep-linkable (`?run=` already exists in editor; run-detail page replaces the editor-embedded history).
-- The editor's "view history" and `/debug` run inspector are redirected/normalized to this page (keep `/debug` but point its run view at the same data).
+Keep everything on the existing `/workflows` page; do NOT create a separate route. Enrich the existing editor run experience rather than redesigning it:
+
+- **KPI strip**: a slim status bar that appears above the canvas while a run is active (or when viewing a past run): status pill (queued/running/succeeded/failed/waiting_approval), a thin progress bar (`done/total nodes`), and three mono numbers — duration, total tokens, total cost. Reuses existing `WorkflowRunDetail` + `useWorkflowRun` polling (2s).
+- **Canvas status highlight**: `WorkflowCanvas` already receives `nodeStatus`; extend it to render a running-node ring/pulse and color edges that have been traversed. No new canvas library.
+- **Node trace**: replace the raw text `WorkflowConsole` log with a two-column panel under the canvas: left = per-node trace (status chip, per-attempt duration, tokens, cost, input/output summary), right = structured event log (timestamp + level + message, filterable by node). Data comes from the enriched `GET /api/workflows/runs/{run_id}`.
+- **Replay**: a "Replay" button in the run strip → `POST /api/workflows/runs/{id}/replay`; divergence shown inline.
+- The existing `/debug` run inspector reads the same enriched endpoint (no change beyond data shape).
+
+This is a targeted polish of the current editor, not a new surface. No new page, no new route, no `AppShell`/navigation changes for run viewing.
 
 ### 7.5 RBAC / navigation
 
@@ -391,11 +395,11 @@ Retry/budget/approval/lease/replay/sub_workflow mechanics are retained (retry se
 ### Tier 3 — Frontend component + E2E (Playwright)
 
 - Component: `node-config-form` renders per definition; `display` logic; `load_options` fetch; input-mapping editor.
-- E2E (Playwright, against mock backend or with provider/LLM stubbed): create a workflow with custom agent + scheduler + tool via UI → save → run → open run-detail page → assert node timeline + output. Assert a `user` role can create/edit/delete own workflow and open an installed template in the editor.
+- E2E (Playwright, against mock backend or with provider/LLM stubbed): create a workflow with custom agent + scheduler + tool via UI → save → run → assert the in-editor run view (KPI strip, per-node trace, event log, canvas highlight). Assert a `user` role can create/edit/delete own workflow and open an installed template in the editor.
 
 ### Tier 4 — Live smoke test (manual, optional, requires real credentials)
 
-- With a real Google connection (dev org) + a real LLM: install `gmail_monitor_and_triage`, run, verify real emails are fetched and triaged; create a scheduler workflow, verify it fires on the cron tick; open run detail and confirm token/cost are non-zero.
+- With a real Google connection (dev org) + a real LLM: install `gmail_monitor_and_triage`, run, verify real emails are fetched and triaged; create a scheduler workflow, verify it fires on the cron tick; open the in-editor run view and confirm token/cost are non-zero.
 
 ### Test command baseline
 
@@ -409,7 +413,7 @@ Retry/budget/approval/lease/replay/sub_workflow mechanics are retained (retry se
 2. **RBAC**: grant `workflows:create/update/delete` to `user`; ownership-scoped enforcement on update/delete; un-gate `/workflows` UI.
 3. Backend engine: `NodeOutput` contract; agent custom/inherit; scheduler cron helper + hidden `WorkflowInstallation` unification; integration real providers; triager LLM/rules; `input_mapping` resolution; `onError` semantics; fan-out semaphore; `_eval_condition` dict.
 4. Migration: backfill `config` → `parameters`, `WorkflowInstallation` constraint check, update seeded templates, update LLM generation prompt, run-list index.
-5. Frontend: `NodeConfigForm` + types + hook; replace hardcoded config; per-node UI; input-mapping editor; edge condition panel; run-detail page; run page input form; "Open in editor" on installed templates.
+5. Frontend: `NodeConfigForm` + types + hook; replace hardcoded config; per-node UI; input-mapping editor; edge condition panel; in-editor run view (KPI strip + node trace + event log + canvas highlight); run page input form; "Open in editor" on installed templates.
 6. Webhook endpoint + run-list endpoint.
 7. Tests (Tier 1–3) + typecheck/build; document Tier 4 manual checklist.
 
