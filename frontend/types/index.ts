@@ -257,12 +257,45 @@ export interface GraphNode {
   agent_id?: string;
   merge_mode?: "all" | "any";
   config: Record<string, any>;
+  parameters?: Record<string, any>;
 }
 
 export interface GraphEdge {
   from_: string;
   to: string;
   condition?: string;
+}
+
+export interface NodeField {
+  name: string;
+  label: string;
+  type: "string" | "textarea" | "number" | "boolean" | "options" | "multiOptions" | "collection" | "fixedCollection" | "json";
+  default?: any;
+  required?: boolean;
+  description?: string;
+  placeholder?: string;
+  options?: Array<{ name: string; value: string; description?: string }>;
+  load_options_from?: "tools" | "models" | "agents" | "workflows" | "connections" | "users" | "categories";
+  display?: { show?: Record<string, any[]>; hide?: Record<string, any[]> };
+  type_options?: Record<string, any>;
+  multiple?: boolean;
+}
+
+export interface NodeDefinition {
+  kind: string;
+  label: string;
+  description: string;
+  icon: string;
+  fields: NodeField[];
+  default_parameters: Record<string, any>;
+}
+
+export interface NodeOption {
+  name: string;
+  value: string;
+  description?: string;
+  risk_tier?: string;
+  input_schema?: Record<string, any>;
 }
 
 export interface Workflow {
@@ -465,6 +498,10 @@ export interface WorkflowRunDetail {
     error: string | null;
     started_at: string;
     finished_at: string | null;
+    tokens?: number;
+    cost_usd?: number;
+    timing_ms?: number;
+    data?: Record<string, unknown>;
   }>;
 }
 

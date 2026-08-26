@@ -46,6 +46,8 @@ import type {
   CustomerIntelligenceSchedule,
   CustomerIntelligenceNotificationPage,
   EmailIntelligenceNavigationSummary,
+  NodeDefinition,
+  NodeOption,
 } from "@/types";
 
 import { emailIntelligenceQueryKeys } from "@/lib/email-intelligence/query-keys";
@@ -861,6 +863,31 @@ export function useWorkflowRun(runId: string | null) {
         ? false
         : 2000;
     },
+  });
+}
+
+export function useNodeDefinitions() {
+  return useQuery({
+    queryKey: ["workflow-node-definitions"],
+    queryFn: () => api.get<Record<string, NodeDefinition>>("/api/workflows/node-definitions"),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useNodeOptions(type: string) {
+  return useQuery({
+    queryKey: ["workflow-node-options", type],
+    enabled: !!type,
+    queryFn: () => api.get<NodeOption[]>(`/api/workflows/node-options?type=${encodeURIComponent(type)}`),
+    staleTime: 60 * 1000,
+  });
+}
+
+export function useToolOptions() {
+  return useQuery({
+    queryKey: ["workflow-tool-options"],
+    queryFn: () => api.get<NodeOption[]>("/api/workflows/tool-options"),
+    staleTime: 60 * 1000,
   });
 }
 
