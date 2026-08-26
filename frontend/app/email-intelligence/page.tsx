@@ -182,8 +182,8 @@ export default function EmailIntelligencePage() {
       {/* 1. Header with Merged Title */}
       <PageHeader
         icon={Bell}
-        title="Smart Inbox & Rules"
-        description="AI-classified email stream, meeting extraction signals, and trusted auto-dispatch safety rules."
+        title="Smart Inbox & Email Triage"
+        description="AI-classified email inbox, smart meeting extraction signals, and trusted auto-dispatch automation rules."
         actions={
           <Button
             variant="outline"

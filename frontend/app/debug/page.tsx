@@ -85,8 +85,8 @@ export default function UsageAndAuditLogsPage() {
       {/* 1. Page Header */}
       <PageHeader
         icon={Bug}
-        title="Usage & Audit Logs"
-        description="Monitor live LLM token burn, cost analytics per agent, audit message histories, and trace task execution graphs."
+        title="LLM Observability & Execution Traces"
+        description="Monitor live token burn, latency analytics per agent, audit message histories, and inspect distributed task execution trees."
         actions={
           <Button
             variant="outline"

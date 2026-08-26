@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import * as React from "react";
 import { toast } from "sonner";
@@ -385,8 +385,8 @@ export default function WorkflowsPage() {
     <div className="space-y-6">
       <PageHeader
         icon={WorkflowIcon}
-        title="Workflows"
-        description="Connect agents into a parallel graph"
+        title="Multi-Agent Workflow Orchestrator"
+        description="Design, orchestrate, and test complex multi-agent DAG execution graphs with parallel branching and merge logic."
         actions={
           <>
             <Button variant="outline" className="gap-2 active-tactile transition-transform" onClick={newWorkflow}>

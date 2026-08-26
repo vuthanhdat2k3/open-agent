@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import * as React from "react";
 import { FlaskConical, Plus, Play, Database, CheckCircle2, XCircle } from "lucide-react";
@@ -133,8 +133,8 @@ export default function EvaluationsPage() {
     <div className="space-y-6">
       <PageHeader
         icon={FlaskConical}
-        title="Evaluations"
-        description="Versioned test suites and release quality gates"
+        title="Model Quality & Agent Evaluations"
+        description="Run versioned benchmark test suites, track pass rates, and enforce release quality gates for agents."
         actions={
           <Button className="gap-2 active-tactile transition-transform" onClick={() => setSuiteDialog(true)}>
             <Plus className="h-4 w-4" /> New Suite

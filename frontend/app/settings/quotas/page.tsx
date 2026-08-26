@@ -145,7 +145,7 @@ export default function QuotasAndBudgetsPage() {
       {/* 1. Page Header */}
       <PageHeader
         icon={Gauge}
-        title="Quotas & Budgets"
+        title="Resource & Budget Governance"
         description={
           isAdmin
             ? `Configure monthly spend ceilings, admission rate limits, and track live consumption for ${usage.data?.month ?? "current billing cycle"}.`

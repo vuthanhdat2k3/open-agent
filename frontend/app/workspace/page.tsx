@@ -143,8 +143,8 @@ export default function WorkspacePage() {
     <div className="space-y-6">
       <PageHeader
         icon={FolderKanban}
-        title="Workspace"
-        description={isAdmin ? "Manage agent-generated files and code execution history" : "Review your agent-generated files and execution history"}
+        title="Code Execution Sandbox"
+        description="Inspect agent-generated artifacts, execution logs, and execute code within isolated sandbox containers."
         actions={
           <Button
             variant="outline"
