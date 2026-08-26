@@ -22,22 +22,26 @@ _GENERATE_SYSTEM_PROMPT = """You design workflow graphs for a multi-agent automa
 
 A workflow graph is JSON: {{"name": str, "description": str, "graph": {{"nodes": [...], "edges": [...]}}}}.
 
-Node shape: {{"id": str, "kind": "input"|"agent"|"tool"|"merge"|"output"|"approval"|"scheduler"|"triager"|"integration", "label": str, "agent_id": str|null, "merge_mode": "all"|"any", "config": dict}}
+Node shape: {{"id": str, "kind": "input"|"agent"|"tool"|"merge"|"output"|"approval"|"scheduler"|"triager"|"integration"|"sub_workflow", "label": str, "agent_id": str|null, "merge_mode": "all"|"any", "parameters": dict}}
 - Exactly one entry trigger node:
-  * "input" for on-demand interactive requests.
-  * "scheduler" for recurring/scheduled automations (e.g. config: {{"cron": "0 6 * * *", "schedule_label": "Daily at 06:00"}}).
-- At least one "output" node for returning results.
-- "agent" nodes: if matching agents exist below, use their id. Otherwise set agent_id to null or the best matching agent.
-- "integration" nodes: connect to Gmail, Google Calendar, Google Drive, or Webhook (e.g. config: {{"source": "google_drive"|"gmail"|"google_calendar"|"webhook"}}).
-- "triager" nodes: filter, rank, or route items by urgency/category.
-- "approval" nodes: pause for human sign-off before external side-effects (e.g. config: {{"tool_name": "send_email"}}).
+  * "input" for on-demand interactive requests (parameters: {{"input_field": str}}).
+  * "scheduler" for recurring/scheduled automations (parameters: {{"frequency": "daily"|"weekdays"|"weekly"|"hourly"|"custom", "time": "HH:MM", "days_of_week": ["mon"...], "custom_cron": "0 6 * * *"}}).
+- At least one "output" node for returning results (parameters: {{"include": "all_inputs"}}).
+- "agent" nodes: if matching agents exist below, use their id with mode "inherit". Otherwise set parameters {{"mode": "custom", "system_prompt": str, "model_id": null}} (the system will bind a model).
+- "integration" nodes: connect to real data — parameters: {{"source": "google_drive"|"gmail"|"google_calendar"|"webhook", "operation": "list_new"|"search"|"list_events"|"list_files", "max_results": 20}}.
+- "triager" nodes: route/classify — parameters: {{"mode": "llm", "categories": "sales, support, spam"}} or {{"mode": "rules", "rules": [{{"pattern": str, "category": str}}]}}.
+- "tool" nodes: invoke a registered tool — parameters: {{"tool": str, "arguments": dict}}.
+- "approval" nodes: pause for human sign-off — parameters: {{"title": str, "instructions": str}}.
+- "sub_workflow" nodes: run another workflow — parameters: {{"workflow_id": str}}.
 - "merge" nodes: join parallel branches (merge_mode "all"|"any").
+
+Use "parameters" (NOT "config") for node configuration.
 
 Edge shape: {{"from_": node_id, "to": node_id, "condition": str|null}}.
 
 Examples:
 1. "quét driver 6h sáng hàng ngày" (Scan Google Drive daily at 6am):
-{{"name": "Daily 06:00 Google Drive Scanner", "description": "Scans Google Drive daily at 06:00, classifies updated documents, and synthesizes a digest.", "graph": {{"nodes": [{{"id": "trigger", "kind": "scheduler", "label": "Daily 06:00 Trigger", "config": {{"cron": "0 6 * * *", "schedule_label": "Daily at 06:00"}}}}, {{"id": "fetch_drive", "kind": "integration", "label": "Fetch Google Drive Documents", "config": {{"source": "google_drive"}}}}, {{"id": "triage", "kind": "triager", "label": "Filter New & Modified Files", "config": {{"policy": "filter_recent_docs"}}}}, {{"id": "analyzer", "kind": "agent", "label": "Document Intelligence Agent", "agent_id": null, "config": {{}}}}, {{"id": "output", "kind": "output", "label": "Drive Scan Digest", "config": {{}}}}], "edges": [{{"from_": "trigger", "to": "fetch_drive"}}, {{"from_": "fetch_drive", "to": "triage"}}, {{"from_": "triage", "to": "analyzer"}}, {{"from_": "analyzer", "to": "output"}}]}}}}
+{{"name": "Daily 06:00 Google Drive Scanner", "description": "Scans Google Drive daily at 06:00, classifies updated documents, and synthesizes a digest.", "graph": {{"nodes": [{{"id": "trigger", "kind": "scheduler", "label": "Daily 06:00 Trigger", "parameters": {{"frequency": "daily", "time": "06:00"}}}}, {{"id": "fetch_drive", "kind": "integration", "label": "Fetch Google Drive Documents", "parameters": {{"source": "google_drive", "operation": "list_files"}}}}, {{"id": "triage", "kind": "triager", "label": "Filter New & Modified Files", "parameters": {{"mode": "llm", "categories": "updated, unchanged"}}}}, {{"id": "analyzer", "kind": "agent", "label": "Document Intelligence Agent", "parameters": {{"mode": "custom", "system_prompt": "Summarize the documents."}}}}, {{"id": "output", "kind": "output", "label": "Drive Scan Digest", "parameters": {{"include": "all_inputs"}}}}], "edges": [{{"from_": "trigger", "to": "fetch_drive"}}, {{"from_": "fetch_drive", "to": "triage"}}, {{"from_": "triage", "to": "analyzer"}}, {{"from_": "analyzer", "to": "output"}}]}}}}
 
 Available agents in this organization:
 {agents}
@@ -138,21 +142,22 @@ class WorkflowService:
 
         for node in graph.get("nodes", []):
             if node.get("kind") == "agent":
-                aid = node.get("agent_id")
-                if aid not in valid_agent_ids:
-                    # Match by name if possible, or fallback to first available agent
-                    matched = next(
-                        (
-                            a.id
-                            for a in agents
-                            if a.name.lower() in str(aid or "").lower()
-                            or a.name.lower() in node.get("label", "").lower()
-                        ),
-                        first_agent_id,
-                    )
-                    node["agent_id"] = matched
+                parameters = node.get("parameters") or {}
+                if parameters.get("mode") == "custom" and not parameters.get("model_id"):
+                    # The system binds the org's default model for custom agents.
+                    if first_agent_id:
+                        from app.models.model import Model
+
+                        res = await self.repo.db.execute(
+                            select(Model).where(Model.org_id == org_id, Model.enabled.is_(True)).order_by(Model.created_at.asc()).limit(1)
+                        )
+                        model = res.scalar_one_or_none()
+                        if model is not None:
+                            parameters["model_id"] = model.id
             if node.get("merge_mode") is None:
                 node.pop("merge_mode", None)
+            if node.get("parameters") is None:
+                node.pop("parameters", None)
             if node.get("config") is None:
                 node.pop("config", None)
 
@@ -277,6 +282,13 @@ class WorkflowService:
                     parameters.get("cron") or parameters.get("custom_cron")
                 ):
                     continue
+                # Catalog-template input nodes are event/trigger placeholders
+                # (e.g. {"event": "inbound_email"}) — no run-input form field.
+                if kind == "input" and field.name == "input_field" and graph.get("kind") == "catalog_template":
+                    continue
+                # Catalog-template agents leave model binding to runtime.
+                if kind == "agent" and field.name == "model_id" and graph.get("kind") == "catalog_template":
+                    continue
                 value = parameters.get(field.name)
                 if value is None or value == "" or value == [] or value == {}:
                     errors.append(
@@ -291,6 +303,10 @@ class WorkflowService:
             if kind == "agent":
                 mode = parameters.get("mode")
                 legacy_agent_id = n.get("agent_id")
+                # Catalog-template agents leave model binding to runtime (org
+                # default model); the editor UI fills model_id when saved.
+                if graph.get("kind") == "catalog_template":
+                    mode = None
                 if mode == "custom":
                     if not parameters.get("model_id"):
                         errors.append(

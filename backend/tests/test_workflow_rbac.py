@@ -97,10 +97,25 @@ async def test_install_graph_is_editable_workflow(async_session_factory) -> None
         # The materialized workflow holds the real DAG (not a placeholder).
         assert wf.graph.get("kind") == "catalog_template"
         assert len(wf.graph.get("nodes", [])) >= 5
-        # And it can be updated by its owner via the service.
+        # And it can be updated by its owner via the service once the user
+        # provides a model for the custom agent (editor fills this in).
+        updated_graph = {
+            "nodes": [
+                {
+                    **n,
+                    "parameters": (
+                        {**n.get("parameters", {}), "model_id": "model-1"}
+                        if n.get("kind") == "agent"
+                        else n.get("parameters", {})
+                    ),
+                }
+                for n in wf.graph["nodes"]
+            ],
+            "edges": wf.graph["edges"],
+        }
         updated = await service.update(
             org.id,
             wf.id,
-            {"graph": {"nodes": wf.graph["nodes"], "edges": wf.graph["edges"]}},
+            {"graph": updated_graph},
         )
         assert updated.id == wf.id
