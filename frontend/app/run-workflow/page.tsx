@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { useWorkflowRun, useWorkflows } from "@/hooks";
 import { streamSSE } from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
+import { useTranslation } from "@/lib/i18n";
 import { EmptyState, ErrorState, LoadingSkeleton } from "@/components/shared";
 import { WorkflowConsole, type WorkflowLogItem } from "@/components/workflows/workflow-console";
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +24,7 @@ const TERMINAL_STATUSES = new Set([
 ]);
 
 export default function RunWorkflowPage() {
+  const { t, dict, locale } = useTranslation();
   const workflows = useWorkflows();
   const [workflowId, setWorkflowId] = React.useState("");
   const [input, setInput] = React.useState("");
@@ -98,8 +100,8 @@ export default function RunWorkflowPage() {
     <div className="space-y-8">
       <PageHeader
         icon={WorkflowIcon}
-        title="Run Workflow"
-        description="Execute published multi-agent workflows and inspect live node outputs."
+        title={dict.pages.runWorkflow.title}
+        description={dict.pages.runWorkflow.description}
       />
 
       {workflows.isLoading ? (

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { PageHeader } from "@/components/page-header";
+import { useTranslation } from "@/lib/i18n";
 import { LoadingSkeleton } from "@/components/shared";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
@@ -32,6 +33,7 @@ const providerLabel: Record<string, string> = {
 // Integrations sheet already has its own title) and on for the standalone
 // `/integrations` route.
 export function IntegrationsPanel({ withHeader = true }: { withHeader?: boolean }) {
+  const { t, dict, locale } = useTranslation();
   const [email, setEmail] = React.useState<Connection[]>([]);
   const [calendar, setCalendar] = React.useState<Connection[]>([]);
   const [drive, setDrive] = React.useState<Connection[]>([]);
@@ -141,7 +143,7 @@ export function IntegrationsPanel({ withHeader = true }: { withHeader?: boolean 
       {withHeader && (
         <PageHeader
           icon={Plug}
-          title="Integrations"
+          title={dict.pages.integrations.title}
           description="Connect work accounts (Gmail, Google Calendar, Google Drive) via secure OAuth connectors."
         />
       )}

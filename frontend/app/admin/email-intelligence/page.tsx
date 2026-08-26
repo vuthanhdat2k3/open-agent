@@ -4,6 +4,7 @@ import * as React from "react";
 import { Activity, Database, GitBranch, Search, ShieldAlert, Timer } from "lucide-react";
 import { api } from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
+import { useTranslation } from "@/lib/i18n";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,6 +27,7 @@ function useAdminResource<T>(resource: string, enabled: boolean) {
 }
 
 export default function EmailOperationsPage() {
+  const { t, dict, locale } = useTranslation();
   const orgId = getActiveOrgId();
   const overview = useQuery({ queryKey: emailIntelligenceQueryKeys(orgId).adminOverview, queryFn: () => api.get<Overview>("/api/admin/email-intelligence/overview"), refetchInterval: 30_000 });
   const [tab, setTab] = React.useState("overview");
@@ -44,8 +46,8 @@ export default function EmailOperationsPage() {
     <div className="space-y-6">
       <PageHeader
         icon={Activity}
-        title="Email Gateway"
-        description="Operational health signals, dead-letter triage, and trace explorer for email pipelines."
+        title={dict.pages.emailGateway.title}
+        description={dict.pages.emailGateway.description}
       />
       <div className="grid gap-4 md:grid-cols-4">
         <Metric icon={Database} label="Connections" value={`${data.connections.healthy}/${data.connections.total}`} detail={data.connections.unhealthy ? `${data.connections.unhealthy} unhealthy` : "Healthy"} danger={data.connections.unhealthy > 0} />

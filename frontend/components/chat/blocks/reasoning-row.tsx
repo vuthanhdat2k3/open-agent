@@ -21,7 +21,10 @@ function latestLine(text: string): string {
   return newline === -1 ? visible : visible.slice(newline + 1);
 }
 
+import { useTranslation } from "@/lib/i18n";
+
 export function ReasoningRow({ content, streaming }: ReasoningRowProps) {
+  const { t, locale } = useTranslation();
   const [open, setOpen] = React.useState(streaming || !content);
   const summaryRef = React.useRef<HTMLSpanElement>(null);
 
@@ -46,6 +49,8 @@ export function ReasoningRow({ content, streaming }: ReasoningRowProps) {
   if (!content && !streaming) return null;
 
   const summary = streaming ? latestLine(content) : firstLine(content);
+  const thinkingLabel = locale === "vi" ? "Suy luận" : "Think";
+  const defaultThinkingText = locale === "vi" ? "Đang suy luận…" : "Thinking…";
 
   return (
     <div className="w-full" data-variant="think" data-state={streaming ? "running" : "ok"}>
@@ -67,7 +72,7 @@ export function ReasoningRow({ content, streaming }: ReasoningRowProps) {
           <CollapsibleTrigger className="group flex w-full cursor-pointer items-center text-xs font-normal text-muted-foreground focus-visible:outline-none">
             <div className="flex shrink-0 items-center gap-1.5 font-medium text-foreground/80">
               <Sparkles className="h-3.5 w-3.5 text-primary/80" aria-hidden="true" />
-              <span>Think</span>
+              <span>{thinkingLabel}</span>
             </div>
 
             <div className="mx-2 h-1 w-1 shrink-0 rounded-full bg-muted-foreground/40" />
@@ -76,7 +81,7 @@ export function ReasoningRow({ content, streaming }: ReasoningRowProps) {
               ref={summaryRef}
               className="flex-1 truncate text-left text-xs font-normal text-muted-foreground/80"
             >
-              {summary || "Thinking…"}
+              {summary || defaultThinkingText}
             </span>
 
             <ChevronDown
@@ -87,7 +92,7 @@ export function ReasoningRow({ content, streaming }: ReasoningRowProps) {
 
           <CollapsibleContent className="mt-2 border-t border-border/40 pt-2">
             <div className="whitespace-pre-wrap break-words pl-5 font-mono text-xs leading-relaxed text-muted-foreground">
-              {content || "Thinking…"}
+              {content || defaultThinkingText}
             </div>
           </CollapsibleContent>
         </div>

@@ -39,6 +39,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/page-header";
+import { useTranslation } from "@/lib/i18n";
 import { getAccessToken } from "@/lib/auth";
 import { formatVietnamDateTime } from "@/lib/datetime";
 import {
@@ -526,6 +527,7 @@ function SchedulesTabContent() {
 type BusinessFilter = "action_required" | "pre_meeting" | "ready" | "all";
 
 export default function CustomerIntelligencePage() {
+  const { t, dict, locale } = useTranslation();
   const [selected, setSelected] = useUrlSearchParam("case");
   const [query, setQuery] = useState("");
   const [businessFilter, setBusinessFilter] = useState<BusinessFilter>("all");
@@ -723,7 +725,7 @@ export default function CustomerIntelligencePage() {
       {/* 1. Page Header */}
       <PageHeader
         icon={Building2}
-        title="Customer Intelligence"
+        title={dict.pages.customerIntelligence.title}
         description="Automated company background research, market briefings, and pre-meeting dossiers."
         actions={
           <div className="flex items-center gap-2">

@@ -6,6 +6,7 @@ import { Textarea } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useUploadFile } from "@/hooks";
+import { useTranslation } from "@/lib/i18n";
 import type { UploadedFile } from "@/types";
 
 interface ChatComposerProps {
@@ -39,9 +40,14 @@ export function ChatComposer({
   attachments,
   onAttachmentsChange,
   variant = "docked",
-  placeholder = "Type a message… (Enter to send, Shift+Enter for newline)",
+  placeholder,
   className,
 }: ChatComposerProps) {
+  const { t, locale } = useTranslation();
+  const defaultPlaceholder = locale === "vi"
+    ? "Nhập tin nhắn… (Enter để gửi, Shift+Enter để xuống dòng)"
+    : "Type a message… (Enter to send, Shift+Enter for newline)";
+  const activePlaceholder = placeholder || defaultPlaceholder;
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const upload = useUploadFile();
@@ -101,7 +107,7 @@ export function ChatComposer({
             if (!streaming) onSubmit();
           }
         }}
-        placeholder={placeholder}
+        placeholder={activePlaceholder}
         className="min-h-[48px] w-full resize-none border-none bg-transparent px-4 py-3 text-sm shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
         style={{ overflow: "hidden" }}
       />

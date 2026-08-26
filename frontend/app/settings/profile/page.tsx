@@ -10,9 +10,11 @@ import { Input, Label } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/page-header";
+import { useTranslation } from "@/lib/i18n";
 import { ErrorState } from "@/components/shared";
 
 export default function ProfilePage() {
+  const { t, dict, locale } = useTranslation();
   const profile = useProfile();
   const updateProfile = useUpdateProfile();
 
@@ -64,7 +66,7 @@ export default function ProfilePage() {
   if (profile.isLoading) {
     return (
       <div className="space-y-6">
-        <PageHeader icon={User} title="Profile" description="Manage your account profile and security" />
+        <PageHeader icon={User} title={dict.pages.profile.title} description="Manage your account profile and security" />
         <Skeleton className="h-48 w-full rounded-xl" />
         <Skeleton className="h-48 w-full rounded-xl" />
       </div>

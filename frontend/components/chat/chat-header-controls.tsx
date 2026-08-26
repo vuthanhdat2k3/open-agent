@@ -11,6 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useTranslation } from "@/lib/i18n";
 import type { Agent, Model, Session } from "@/types";
 
 interface ChatHeaderControlsProps {
@@ -60,6 +61,7 @@ export function ChatHeaderControls({
   canSwitchAgent,
   canSwitchModel,
 }: ChatHeaderControlsProps) {
+  const { t, locale } = useTranslation();
   const agentSessions = sessions?.filter((s) => s.agent_id === agentId) ?? [];
   const effectiveModelId = pendingSessionModelId || currentAgentModel?.id || "";
   const effectiveModel = models?.find((m) => m.id === effectiveModelId) ?? currentAgentModel;
@@ -72,12 +74,12 @@ export function ChatHeaderControls({
           <DropdownMenuTrigger asChild>
             <Button type="button" variant="ghost" size="sm" className={triggerClass}>
               <Bot className="h-3.5 w-3.5" aria-hidden="true" />
-              <span className="max-w-[8rem] truncate">{currentAgent?.name ?? "Select agent"}</span>
+              <span className="max-w-[8rem] truncate">{currentAgent?.name ?? (locale === "vi" ? "Chọn agent" : "Select agent")}</span>
               <ChevronDown className="h-3 w-3 opacity-60" aria-hidden="true" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-56">
-            <DropdownMenuLabel>Active agent</DropdownMenuLabel>
+            <DropdownMenuLabel>{locale === "vi" ? "Agent đang hoạt động" : "Active agent"}</DropdownMenuLabel>
             <DropdownMenuSeparator />
             {agents?.map((a) => (
               <DropdownMenuItem key={a.id} onSelect={() => onAgentChange(a.id)} className={a.id === agentId ? "font-semibold text-foreground" : undefined}>
@@ -89,7 +91,7 @@ export function ChatHeaderControls({
       ) : (
         <span className={`${triggerClass} pointer-events-none inline-flex`}>
           <Bot className="h-3.5 w-3.5" aria-hidden="true" />
-          <span className="max-w-[8rem] truncate">{currentAgent?.name ?? "Assistant"}</span>
+          <span className="max-w-[8rem] truncate">{currentAgent?.name ?? (locale === "vi" ? "Trợ lý AI" : "Assistant")}</span>
         </span>
       )}
 
@@ -98,12 +100,12 @@ export function ChatHeaderControls({
           <DropdownMenuTrigger asChild>
             <Button type="button" variant="ghost" size="sm" disabled={streaming || updateAgentPending} className={triggerClass}>
               <Cpu className="h-3.5 w-3.5" aria-hidden="true" />
-              <span className="max-w-[9rem] truncate font-mono">{effectiveModel?.display_name || effectiveModel?.name || "Model"}</span>
+              <span className="max-w-[9rem] truncate font-mono">{effectiveModel?.display_name || effectiveModel?.name || (locale === "vi" ? "Mô hình" : "Model")}</span>
               <ChevronDown className="h-3 w-3 opacity-60" aria-hidden="true" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-64">
-            <DropdownMenuLabel>{canSwitchAgent ? "Default model" : "Model"}</DropdownMenuLabel>
+            <DropdownMenuLabel>{canSwitchAgent ? (locale === "vi" ? "Mô hình mặc định" : "Default model") : (locale === "vi" ? "Mô hình AI" : "Model")}</DropdownMenuLabel>
             <DropdownMenuSeparator />
             {models?.filter((m) => m.active).map((m) => (
               <DropdownMenuItem key={m.id} onSelect={() => onDefaultModelChange(m.id)} className={m.id === effectiveModelId ? "font-semibold text-foreground" : undefined}>
@@ -116,7 +118,7 @@ export function ChatHeaderControls({
       ) : !canSwitchAgent ? (
         <span className={`${triggerClass} pointer-events-none inline-flex`}>
           <Cpu className="h-3.5 w-3.5" aria-hidden="true" />
-          <span className="max-w-[9rem] truncate font-mono">{effectiveModel?.display_name || effectiveModel?.name || "Model"}</span>
+          <span className="max-w-[9rem] truncate font-mono">{effectiveModel?.display_name || effectiveModel?.name || (locale === "vi" ? "Mô hình" : "Model")}</span>
         </span>
       ) : null}
 
@@ -124,18 +126,20 @@ export function ChatHeaderControls({
         <DropdownMenuTrigger asChild>
           <Button type="button" variant="ghost" size="sm" className={triggerClass}>
             <MessageSquare className="h-3.5 w-3.5" aria-hidden="true" />
-            <span className="max-w-[9rem] truncate">{currentSession?.title ?? "New chat"}</span>
+            <span className="max-w-[9rem] truncate">{currentSession?.title ?? (locale === "vi" ? "Hội thoại mới" : "New chat")}</span>
             <ChevronDown className="h-3 w-3 opacity-60" aria-hidden="true" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-72">
           <DropdownMenuItem onSelect={onNewSession} className="gap-2 font-medium">
-            <Plus className="h-3.5 w-3.5" aria-hidden="true" /> New session
+            <Plus className="h-3.5 w-3.5" aria-hidden="true" /> {locale === "vi" ? "Tạo phiên mới" : "New session"}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuLabel>Sessions</DropdownMenuLabel>
+          <DropdownMenuLabel>{locale === "vi" ? "Lịch sử phiên hội thoại" : "Sessions"}</DropdownMenuLabel>
           {agentSessions.length === 0 && (
-            <div className="px-2 py-3 text-center text-[11px] text-muted-foreground/60">No sessions yet.</div>
+            <div className="px-2 py-3 text-center text-[11px] text-muted-foreground/60">
+              {locale === "vi" ? "Chưa có phiên hội thoại nào." : "No sessions yet."}
+            </div>
           )}
           {agentSessions.map((s) => (
             <DropdownMenuItem

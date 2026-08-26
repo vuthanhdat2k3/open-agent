@@ -48,6 +48,7 @@ import { Slider } from "@/components/ui/slider";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/page-header";
+import { useTranslation } from "@/lib/i18n";
 import { EmptyState, ErrorState, LoadingSkeleton, DataPagination } from "@/components/shared";
 import { AgentCard } from "@/components/agents/agent-card";
 import {
@@ -115,6 +116,7 @@ const RISK_TIERS = [
 ] as const;
 
 export default function AgentsPage() {
+  const { t, dict, locale } = useTranslation();
   const [tabParam, setTabParam] = useUrlSearchParam("tab");
   const activeTab = (tabParam as "catalog" | "companion") || "catalog";
 
@@ -308,7 +310,7 @@ export default function AgentsPage() {
       {/* 1. Page Header */}
       <PageHeader
         icon={Bot}
-        title="Agents"
+        title={dict.pages.agents.title}
         description="Configure AI agents, system reasoning prompts, models, and tool access control."
         actions={
           <div className="flex items-center gap-2">
@@ -599,7 +601,7 @@ export default function AgentsPage() {
               <Input
                 value={catalogSearch}
                 onChange={(e) => setCatalogSearch(e.target.value)}
-                placeholder="Search agent name, tools, or description..."
+                placeholder={dict.pages.agents.searchPlaceholder}
                 className="pl-9 text-xs"
               />
             </div>

@@ -18,6 +18,7 @@ import {
   Zap,
 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
+import { useTranslation } from "@/lib/i18n";
 import { EmptyState, ErrorState, LoadingSkeleton, DataPagination } from "@/components/shared";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -570,6 +571,7 @@ function TemplateDetails({
 }
 
 export default function AutomationsPage() {
+  const { t, dict, locale } = useTranslation();
   const queryClient = useQueryClient();
   const [view, setView] = useState<"discover" | "active">("discover");
   const [search, setSearch] = useState("");
@@ -648,8 +650,8 @@ export default function AutomationsPage() {
     <div className="space-y-6">
       <PageHeader
         icon={Zap}
-        title="Automations"
-        description="Activate scheduled routines for daily briefings, meeting prep, and workflows."
+        title={dict.pages.automations.title}
+        description={dict.pages.automations.description}
       />
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="rounded-xl border border-border/70 bg-card/60 p-4">

@@ -25,6 +25,7 @@ import {
   useUpdateOrganizationQuota,
 } from "@/hooks";
 import { PageHeader } from "@/components/page-header";
+import { useTranslation } from "@/lib/i18n";
 import { ErrorState, LoadingSkeleton } from "@/components/shared";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
@@ -60,6 +61,7 @@ function optionalNumber(value: string) {
 }
 
 export default function QuotasAndBudgetsPage() {
+  const { t, dict, locale } = useTranslation();
   const me = useMe();
   const role = useCurrentRole();
   const isAdmin = role === "admin" || role === "platform_admin";
@@ -145,7 +147,7 @@ export default function QuotasAndBudgetsPage() {
       {/* 1. Page Header */}
       <PageHeader
         icon={Gauge}
-        title="Quotas"
+        title={dict.pages.quotas.title}
         description={
           isAdmin
             ? `Configure monthly budget limits, admission rate limits, and track usage for ${usage.data?.month ?? "current cycle"}.`

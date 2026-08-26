@@ -41,6 +41,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input, Label } from "@/components/ui/input";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
+import { useTranslation } from "@/lib/i18n";
 import {
   Dialog,
   DialogContent,
@@ -53,6 +54,7 @@ import { ModelForm } from "@/components/models/model-form";
 import { ConfirmDialog, ErrorState, LoadingSkeleton, DataPagination } from "@/components/shared";
 
 export default function ProvidersPage() {
+  const { t, dict, locale } = useTranslation();
   const [tabParam, setTabParam] = useUrlSearchParam("tab");
   const activeTab = (tabParam as "providers" | "models") || "providers";
 
@@ -204,7 +206,7 @@ export default function ProvidersPage() {
       {/* 1. Unified Page Header */}
       <PageHeader
         icon={Server}
-        title="Providers"
+        title={dict.pages.providers.title}
         description="Manage AI model providers, API credentials, and benchmark endpoints."
         actions={
           <div className="flex items-center gap-2">
