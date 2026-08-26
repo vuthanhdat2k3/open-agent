@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import timedelta
+from typing import Any
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession

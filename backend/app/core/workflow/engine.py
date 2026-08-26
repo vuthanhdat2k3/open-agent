@@ -493,7 +493,8 @@ async def _integration_calendar(
     creds = await load_fresh_credentials(db, conn)
     provider = bind_calendar_provider(get_calendar_provider(), creds)
 
-    from datetime import datetime, timedelta, timezone as dt_timezone
+    from datetime import datetime, timedelta
+    from datetime import timezone as dt_timezone
 
     now = datetime.now(dt_timezone.utc)
     time_range = cfg.get("time_range", "7d")

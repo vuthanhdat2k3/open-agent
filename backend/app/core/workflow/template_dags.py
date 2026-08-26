@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-
 TEMPLATE_DAGS = {
     "morning-command-center": {
         "kind": "catalog_template",

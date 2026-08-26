@@ -11,7 +11,6 @@ from app.config import get_settings
 from app.db.base import Base
 from app.models.organization import Organization
 from app.models.outbox import OutboxEvent
-from app.models.workflow import Workflow
 from app.models.workflow_run import WorkflowRun
 from app.services.workflow_service import WorkflowService
 
@@ -53,7 +52,11 @@ async def test_webhook_fires_workflow(async_session_factory, monkeypatch) -> Non
                 "description": "",
                 "graph": {
                     "nodes": [
-                        {"id": "in", "kind": "input", "parameters": {"input_field": "Run input"}},
+                        {
+                            "id": "in",
+                            "kind": "integration",
+                            "parameters": {"source": "webhook", "webhook_path": "deploy"},
+                        },
                         {"id": "out", "kind": "output", "parameters": {"include": "all_inputs"}},
                     ],
                     "edges": [{"from_": "in", "to": "out"}],
@@ -66,13 +69,17 @@ async def test_webhook_fires_workflow(async_session_factory, monkeypatch) -> Non
         assert result["accepted"] is True
         assert result["status"] == "queued"
 
-        run = await session.scalar(select(WorkflowRun).where(WorkflowRun.id == result["workflow_run_id"]))
+        run = await session.scalar(
+            select(WorkflowRun).where(WorkflowRun.id == result["workflow_run_id"])
+        )
         assert run is not None
         assert run.status == "queued"
         assert run.input["webhook_payload"] == {"event": "deploy", "repo": "app"}
         assert run.input["path"] == "deploy"
 
-        outbox = await session.scalar(select(OutboxEvent).where(OutboxEvent.event_type == "workflow.run.requested"))
+        outbox = await session.scalar(
+            select(OutboxEvent).where(OutboxEvent.event_type == "workflow.run.requested")
+        )
         assert outbox is not None
         assert outbox.payload["run_id"] == result["workflow_run_id"]
 
@@ -95,7 +102,11 @@ async def test_webhook_rejects_bad_token(async_session_factory, monkeypatch) -> 
                 "description": "",
                 "graph": {
                     "nodes": [
-                        {"id": "in", "kind": "input", "parameters": {"input_field": "Run input"}},
+                        {
+                            "id": "in",
+                            "kind": "integration",
+                            "parameters": {"source": "webhook", "webhook_path": "x"},
+                        },
                         {"id": "out", "kind": "output", "parameters": {"include": "all_inputs"}},
                     ],
                     "edges": [{"from_": "in", "to": "out"}],
@@ -124,7 +135,11 @@ async def test_webhook_plain_text_payload(async_session_factory, monkeypatch) ->
                 "description": "",
                 "graph": {
                     "nodes": [
-                        {"id": "in", "kind": "input", "parameters": {"input_field": "Run input"}},
+                        {
+                            "id": "in",
+                            "kind": "integration",
+                            "parameters": {"source": "webhook", "webhook_path": "x"},
+                        },
                         {"id": "out", "kind": "output", "parameters": {"include": "all_inputs"}},
                     ],
                     "edges": [{"from_": "in", "to": "out"}],
@@ -133,5 +148,7 @@ async def test_webhook_plain_text_payload(async_session_factory, monkeypatch) ->
         )
         req = _FakeRequest(b"plain text body", "test-token")
         result = await workflow_webhook(wf.id, "x", req, session)
-        run = await session.scalar(select(WorkflowRun).where(WorkflowRun.id == result["workflow_run_id"]))
+        run = await session.scalar(
+            select(WorkflowRun).where(WorkflowRun.id == result["workflow_run_id"])
+        )
         assert run.input["webhook_payload"] == "plain text body"

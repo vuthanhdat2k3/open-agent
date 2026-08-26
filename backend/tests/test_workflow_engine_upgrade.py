@@ -71,8 +71,9 @@ async def test_workflow_output_contract_and_final_data(async_session_factory) ->
         )
         assert "hello world" in output_text
         # final run output stores data map
-        from app.models.workflow_run import WorkflowRun
         from sqlalchemy import select
+
+        from app.models.workflow_run import WorkflowRun
 
         run = await session.scalar(select(WorkflowRun).where(WorkflowRun.id == run_id))
         assert run is not None

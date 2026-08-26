@@ -8,7 +8,6 @@ unauthenticated (webhooks can't send cookies) but requires a shared token in the
 
 from __future__ import annotations
 
-import asyncio
 import hmac
 from typing import Any
 
@@ -52,6 +51,18 @@ async def workflow_webhook(
     workflow = await db.scalar(select(Workflow).where(Workflow.id == workflow_id))
     if workflow is None:
         raise HTTPException(404, "workflow not found")
+
+    webhook_paths = {
+        str((node.get("parameters") or node.get("config") or {}).get("webhook_path")).strip("/")
+        for node in (workflow.graph or {}).get("nodes", [])
+        if isinstance(node, dict)
+        and node.get("kind") == "integration"
+        and str((node.get("parameters") or node.get("config") or {}).get("source", "")).lower()
+        == "webhook"
+        and (node.get("parameters") or node.get("config") or {}).get("webhook_path")
+    }
+    if path.strip("/") not in webhook_paths:
+        raise HTTPException(404, "webhook path not found")
 
     content_length = request.headers.get("content-length")
     if content_length and int(content_length) > _MAX_BODY_BYTES:

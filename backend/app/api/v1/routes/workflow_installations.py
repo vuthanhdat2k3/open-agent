@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.workflow.template_dags import TEMPLATE_DAGS
 from app.db.base import gen_id, utc_now
 from app.db.session import get_db
 from app.dependencies import get_current_org_id, get_current_user, require_permission
@@ -22,7 +23,6 @@ from app.schemas.workflow_installation import (
     InstallationOut,
 )
 from app.workflows.scheduler import next_run_at
-from app.core.workflow.template_dags import TEMPLATE_DAGS
 
 router = APIRouter(prefix="/api/workflow-catalog", tags=["workflow-installations"])
 

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from app.core.workflow.node_definitions import NODE_DEFINITIONS, get_node_definition
 from app.schemas.workflow import WorkflowValidationError
 from app.services.workflow_service import WorkflowService

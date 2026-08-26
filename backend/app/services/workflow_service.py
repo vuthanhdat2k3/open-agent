@@ -9,8 +9,8 @@ from sqlalchemy import select
 from app.config import get_settings
 from app.core.observability.llm_trace import ObservabilityContext, build_trace_context
 from app.core.providers.factory import build_driver
+from app.core.workflow.node_definitions import get_node_definition
 from app.db.base import gen_id
-from app.core.workflow.node_definitions import NODE_DEFINITIONS, get_node_definition
 from app.models.model import Model
 from app.models.provider import Provider
 from app.models.workflow import Workflow
@@ -143,17 +143,21 @@ class WorkflowService:
         for node in graph.get("nodes", []):
             if node.get("kind") == "agent":
                 parameters = node.get("parameters") or {}
-                if parameters.get("mode") == "custom" and not parameters.get("model_id"):
+                if (
+                    parameters.get("mode") == "custom"
+                    and not parameters.get("model_id")
+                    and first_agent_id
+                ):
                     # The system binds the org's default model for custom agents.
-                    if first_agent_id:
-                        from app.models.model import Model
-
-                        res = await self.repo.db.execute(
-                            select(Model).where(Model.org_id == org_id, Model.enabled.is_(True)).order_by(Model.created_at.asc()).limit(1)
-                        )
-                        model = res.scalar_one_or_none()
-                        if model is not None:
-                            parameters["model_id"] = model.id
+                    res = await self.repo.db.execute(
+                        select(Model)
+                        .where(Model.org_id == org_id, Model.enabled.is_(True))
+                        .order_by(Model.created_at.asc())
+                        .limit(1)
+                    )
+                    model = res.scalar_one_or_none()
+                    if model is not None:
+                        parameters["model_id"] = model.id
             if node.get("merge_mode") is None:
                 node.pop("merge_mode", None)
             if node.get("parameters") is None:
@@ -204,7 +208,11 @@ class WorkflowService:
             cond = e.get("condition")
             if cond:
                 try:
-                    simple_eval(cond, names={"output": "", "output_text": "", "output_data": {}}, functions={})
+                    simple_eval(
+                        cond,
+                        names={"output": "", "output_text": "", "output_data": {}},
+                        functions={},
+                    )
                 except Exception:  # noqa: BLE001
                     errors.append(
                         {
@@ -238,9 +246,7 @@ class WorkflowService:
             if color[n["id"]] == WHITE and dfs(n["id"]):
                 break
         if has_cycle:
-            errors.append(
-                {"node_id": "", "field": "graph", "message": "graph contains a cycle"}
-            )
+            errors.append({"node_id": "", "field": "graph", "message": "graph contains a cycle"})
 
         # --- per-node parameters validation ---
         upstream: dict[str, set[str]] = {n["id"]: set() for n in nodes}
@@ -252,7 +258,7 @@ class WorkflowService:
         changed = True
         while changed:
             changed = False
-            for nid, anc in reachable.items():
+            for _nid, anc in reachable.items():
                 for a in list(anc):
                     for ga in reachable.get(a, set()):
                         if ga not in anc:
@@ -263,11 +269,15 @@ class WorkflowService:
             nid = n.get("id")
             kind = n.get("kind")
             if not nid or not kind:
-                errors.append({"node_id": str(nid), "field": "kind", "message": "node missing id or kind"})
+                errors.append(
+                    {"node_id": str(nid), "field": "kind", "message": "node missing id or kind"}
+                )
                 continue
             definition = get_node_definition(kind)
             if definition is None:
-                errors.append({"node_id": nid, "field": "kind", "message": f"unknown node kind: {kind}"})
+                errors.append(
+                    {"node_id": nid, "field": "kind", "message": f"unknown node kind: {kind}"}
+                )
                 continue
             parameters = dict(n.get("parameters") or n.get("config") or {})
 
@@ -278,16 +288,26 @@ class WorkflowService:
                     continue
                 # scheduler legacy compat: a raw `cron`/`custom_cron` in config
                 # satisfies the schedule requirement without `frequency`.
-                if kind == "scheduler" and field.name == "frequency" and (
-                    parameters.get("cron") or parameters.get("custom_cron")
+                if (
+                    kind == "scheduler"
+                    and field.name == "frequency"
+                    and (parameters.get("cron") or parameters.get("custom_cron"))
                 ):
                     continue
                 # Catalog-template input nodes are event/trigger placeholders
                 # (e.g. {"event": "inbound_email"}) — no run-input form field.
-                if kind == "input" and field.name == "input_field" and graph.get("kind") == "catalog_template":
+                if (
+                    kind == "input"
+                    and field.name == "input_field"
+                    and graph.get("kind") == "catalog_template"
+                ):
                     continue
                 # Catalog-template agents leave model binding to runtime.
-                if kind == "agent" and field.name == "model_id" and graph.get("kind") == "catalog_template":
+                if (
+                    kind == "agent"
+                    and field.name == "model_id"
+                    and graph.get("kind") == "catalog_template"
+                ):
                     continue
                 value = parameters.get(field.name)
                 if value is None or value == "" or value == [] or value == {}:
@@ -310,24 +330,41 @@ class WorkflowService:
                 if mode == "custom":
                     if not parameters.get("model_id"):
                         errors.append(
-                            {"node_id": nid, "field": "model_id", "message": "custom agent requires a model"}
+                            {
+                                "node_id": nid,
+                                "field": "model_id",
+                                "message": "custom agent requires a model",
+                            }
                         )
-                elif mode == "inherit" or (mode is None and legacy_agent_id):
-                    if not (parameters.get("agent_id") or legacy_agent_id):
-                        errors.append(
-                            {"node_id": nid, "field": "agent_id", "message": "inherit mode requires an agent"}
-                        )
+                elif (mode == "inherit" or (mode is None and legacy_agent_id)) and not (
+                    parameters.get("agent_id") or legacy_agent_id
+                ):
+                    errors.append(
+                        {
+                            "node_id": nid,
+                            "field": "agent_id",
+                            "message": "inherit mode requires an agent",
+                        }
+                    )
             # tool requires a tool name
             if kind == "tool" and not parameters.get("tool"):
                 errors.append(
-                    {"node_id": nid, "field": "tool", "message": "tool node requires a tool to invoke"}
+                    {
+                        "node_id": nid,
+                        "field": "tool",
+                        "message": "tool node requires a tool to invoke",
+                    }
                 )
             # sub_workflow cannot be itself
             if kind == "sub_workflow":
                 child_id = parameters.get("workflow_id")
                 if child_id == nid:
                     errors.append(
-                        {"node_id": nid, "field": "workflow_id", "message": "sub_workflow cannot reference itself"}
+                        {
+                            "node_id": nid,
+                            "field": "workflow_id",
+                            "message": "sub_workflow cannot reference itself",
+                        }
                     )
 
             # input_mapping source must exist and be upstream
@@ -355,15 +392,18 @@ class WorkflowService:
                         )
 
             # output.include=selected requires selected_from
-            if kind == "output" and parameters.get("include") == "selected":
-                if not parameters.get("selected_from"):
-                    errors.append(
-                        {
-                            "node_id": nid,
-                            "field": "selected_from",
-                            "message": "output with 'selected' include requires selected_from nodes",
-                        }
-                    )
+            if (
+                kind == "output"
+                and parameters.get("include") == "selected"
+                and not parameters.get("selected_from")
+            ):
+                errors.append(
+                    {
+                        "node_id": nid,
+                        "field": "selected_from",
+                        "message": "output with 'selected' include requires selected_from nodes",
+                    }
+                )
 
         if errors:
             raise WorkflowValidationError(errors)

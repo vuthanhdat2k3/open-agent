@@ -9,7 +9,6 @@ from app.core.authz.policy import Role, has_permission
 from app.core.workflow.template_dags import TEMPLATE_DAGS
 from app.db.base import Base
 from app.models.organization import Organization
-from app.models.workflow import Workflow
 from app.services.workflow_service import WorkflowService
 
 
@@ -24,6 +23,7 @@ async def async_session_factory():
 
 
 # --- policy matrix ---
+
 
 def test_user_has_workflow_authoring_permissions() -> None:
     assert has_permission(Role.user, "workflows:create")
@@ -40,6 +40,7 @@ def test_user_still_lacks_admin_scoped_perms() -> None:
 
 # --- template DAG materialization ---
 
+
 def test_all_catalog_templates_have_dag_graphs() -> None:
     assert len(TEMPLATE_DAGS) == 7
     for key, graph in TEMPLATE_DAGS.items():
@@ -49,12 +50,13 @@ def test_all_catalog_templates_have_dag_graphs() -> None:
 
 
 def test_template_dags_pass_validation() -> None:
-    for key, graph in TEMPLATE_DAGS.items():
+    for _key, graph in TEMPLATE_DAGS.items():
         # The template DAG must satisfy the (backward-compatible) validator.
         WorkflowService.validate_graph(graph)
 
 
 # --- ownership scoping through the service ---
+
 
 @pytest.mark.asyncio
 async def test_create_sets_created_by_user(async_session_factory) -> None:

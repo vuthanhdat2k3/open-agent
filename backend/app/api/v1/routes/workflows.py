@@ -14,7 +14,6 @@ from app.core.workflow.queue import enqueue_workflow_run
 from app.db.base import utc_now
 from app.db.session import SessionLocal
 from app.dependencies import get_current_org_id, get_current_user, get_db, require_permission
-from app.models.agent import Agent
 from app.models.model import Model
 from app.models.user import User
 from app.models.workflow import Workflow
