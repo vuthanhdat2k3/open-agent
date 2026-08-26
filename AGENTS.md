@@ -95,6 +95,10 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 | Branch | Worktree path | Phạm vi/task | Agent/người phụ trách |
 |---|---|---|---|
 | `dev` | `G:\open-agent` | Nhánh tích hợp chính — không code trực tiếp ở đây | — |
+| `feat/session-event-log` | `G:\open-agent-worktrees\session-event-log` | Session event log kiểu dsh: tool fidelity qua turn, compaction surface-replacement token-based | ox-alpha |
+| `feat/workflow-node-config-system` | `G:\open-agent-worktrees\workflow-node-system-upgrade` | Workflow node configuration system: n8n-style node schemas, agent custom/inherit, scheduler cron form, real integration, LLM triager | CommandCode |
+
+> 2026-08-26: Đã dọn dẹp worktree/branch `feat/automation-dag-nodes-and-template-graphs` (Standardize Enterprise Page Taxonomy, Tab Labels, DataPagination) sau khi merge vào `dev` và deploy thành công lên `deploy/dev`.
 
 > 2026-08-25: Đã dọn dẹp worktree/branch của các PR đã merge vào `dev`
 > (#86 chat-projection-stream-target, #88 chat-tool-chips, #90 chat-markdown-links,
