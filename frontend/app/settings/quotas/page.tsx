@@ -145,11 +145,11 @@ export default function QuotasAndBudgetsPage() {
       {/* 1. Page Header */}
       <PageHeader
         icon={Gauge}
-        title="Resource & Budget Governance"
+        title="Quotas"
         description={
           isAdmin
-            ? `Configure monthly spend ceilings, admission rate limits, and track live consumption for ${usage.data?.month ?? "current billing cycle"}.`
-            : `Your consumption and monthly quota metrics for ${usage.data?.month ?? "the current billing cycle"}.`
+            ? `Configure monthly budget limits, admission rate limits, and track usage for ${usage.data?.month ?? "current cycle"}.`
+            : `Track consumption and quota metrics for ${usage.data?.month ?? "the current cycle"}.`
         }
         actions={
           isAdmin ? (

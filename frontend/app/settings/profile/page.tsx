@@ -64,7 +64,7 @@ export default function ProfilePage() {
   if (profile.isLoading) {
     return (
       <div className="space-y-6">
-        <PageHeader icon={User} title="Profile Settings" description="Manage your account profile and security" />
+        <PageHeader icon={User} title="Profile" description="Manage your account profile and security" />
         <Skeleton className="h-48 w-full rounded-xl" />
         <Skeleton className="h-48 w-full rounded-xl" />
       </div>
@@ -75,7 +75,7 @@ export default function ProfilePage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader icon={User} title="Profile Settings" description="Manage your account profile and security" />
+      <PageHeader icon={User} title="Profile" description="Manage your account profile and security" />
 
       <div className="grid gap-6 md:grid-cols-2">
         {/* Profile Info Card */}

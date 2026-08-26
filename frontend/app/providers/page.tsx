@@ -50,7 +50,7 @@ import {
 } from "@/components/ui/dialog";
 import { ProviderForm } from "@/components/providers/provider-form";
 import { ModelForm } from "@/components/models/model-form";
-import { ConfirmDialog, ErrorState, LoadingSkeleton } from "@/components/shared";
+import { ConfirmDialog, ErrorState, LoadingSkeleton, DataPagination } from "@/components/shared";
 
 export default function ProvidersPage() {
   const [tabParam, setTabParam] = useUrlSearchParam("tab");
@@ -163,13 +163,49 @@ export default function ProvidersPage() {
     return providers.data?.find((p) => p.id === providerId)?.name || "Provider";
   };
 
+  const [providerPage, setProviderPage] = React.useState(1);
+  const [providerPageSize, setProviderPageSize] = React.useState(9);
+
+  const paginatedProviders = React.useMemo(() => {
+    const start = (providerPage - 1) * providerPageSize;
+    return (providers.data || []).slice(start, start + providerPageSize);
+  }, [providers.data, providerPage, providerPageSize]);
+
+  const [modelPage, setModelPage] = React.useState(1);
+  const [modelPageSize, setModelPageSize] = React.useState(12);
+
+  const filteredModels = React.useMemo(() => {
+    return (models.data || []).filter((m) => {
+      if (modelStatusFilter === "active" && !m.enabled) return false;
+      if (modelStatusFilter === "inactive" && m.enabled) return false;
+      if (modelProviderFilter !== "all" && m.provider_id !== modelProviderFilter) return false;
+      if (modelQuery.trim()) {
+        const q = modelQuery.toLowerCase();
+        const matchName = m.name.toLowerCase().includes(q);
+        const matchDisplay = (m.display_name || "").toLowerCase().includes(q);
+        const matchProv = getProviderName(m.provider_id).toLowerCase().includes(q);
+        return matchName || matchDisplay || matchProv;
+      }
+      return true;
+    });
+  }, [models.data, modelStatusFilter, modelProviderFilter, modelQuery, providers.data]);
+
+  React.useEffect(() => {
+    setModelPage(1);
+  }, [modelQuery, modelStatusFilter, modelProviderFilter]);
+
+  const paginatedModels = React.useMemo(() => {
+    const start = (modelPage - 1) * modelPageSize;
+    return filteredModels.slice(start, start + modelPageSize);
+  }, [filteredModels, modelPage, modelPageSize]);
+
   return (
     <div className="space-y-6">
       {/* 1. Unified Page Header */}
       <PageHeader
         icon={Server}
-        title="LLM Gateway & Model Benchmarks"
-        description="Manage upstream AI provider endpoints, secure API credentials, and run latency/benchmark tests across discovered models."
+        title="Providers"
+        description="Manage AI model providers, API credentials, and benchmark endpoints."
         actions={
           <div className="flex items-center gap-2">
             <Button
@@ -387,7 +423,7 @@ export default function ProvidersPage() {
           className="gap-2 font-medium"
         >
           <Server className="h-4 w-4" />
-          Connected Providers
+          Providers
           <Badge variant="outline" className="ml-1 text-[10px] font-mono">
             {totalProviders}
           </Badge>
@@ -400,7 +436,7 @@ export default function ProvidersPage() {
           className="gap-2 font-medium"
         >
           <Cpu className="h-4 w-4" />
-          Model Catalog & Benchmarks
+          Models
           <Badge variant="outline" className="ml-1 text-[10px] font-mono">
             {totalModels}
           </Badge>
@@ -440,91 +476,101 @@ export default function ProvidersPage() {
               onRetry={() => void providers.refetch()}
             />
           ) : providers.data && providers.data.length > 0 ? (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {providers.data.map((provider) => (
-                <Card key={provider.id} className="shadow-card flex flex-col p-5 border-border/80 transition-colors hover:border-primary/40">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex min-w-0 items-center gap-3">
-                      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-primary/25 bg-primary/10 text-primary">
-                        <Server className="h-5 w-5" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold tracking-tight text-foreground">{provider.name}</p>
-                        <p className="truncate font-mono text-[10px] text-muted-foreground">{provider.key}</p>
-                        <div className="mt-1 flex flex-wrap gap-1">
-                          {provider.is_default && <Badge variant="default" className="text-[9.5px]">Default</Badge>}
-                          {provider.template_key && <Badge variant="outline" className="text-[9.5px]">{provider.template_key}</Badge>}
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {paginatedProviders.map((provider) => (
+                  <Card key={provider.id} className="shadow-card flex flex-col p-5 border-border/80 transition-colors hover:border-primary/40">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-primary/25 bg-primary/10 text-primary">
+                          <Server className="h-5 w-5" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold tracking-tight text-foreground">{provider.name}</p>
+                          <p className="truncate font-mono text-[10px] text-muted-foreground">{provider.key}</p>
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {provider.is_default && <Badge variant="default" className="text-[9.5px]">Default</Badge>}
+                            {provider.template_key && <Badge variant="outline" className="text-[9.5px]">{provider.template_key}</Badge>}
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
 
-                  <div className="mt-4 flex-1 space-y-2 font-mono text-xs text-muted-foreground">
-                    <div className="truncate rounded-lg border border-border/50 bg-muted/30 px-2.5 py-1.5 select-all">
-                      {provider.base_url}
+                    <div className="mt-4 flex-1 space-y-2 font-mono text-xs text-muted-foreground">
+                      <div className="truncate rounded-lg border border-border/50 bg-muted/30 px-2.5 py-1.5 select-all">
+                        {provider.base_url}
+                      </div>
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className={provider.api_key_configured ? "text-emerald-500 font-medium" : "text-amber-500 font-medium"}>
+                          {provider.api_key_configured ? `API Key: •••• ${provider.api_key_last4 ?? "active"}` : "No API key"}
+                        </span>
+                        <Badge variant={provider.discovery_status === "complete" ? "default" : "outline"} className="text-[9.5px]">
+                          {provider.discovery_status}
+                        </Badge>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground">
+                        Discovered: <span className="font-semibold text-foreground">{provider.models_discovered} models</span>
+                      </p>
+                      {provider.discovery_error && (
+                        <p className="line-clamp-2 text-[10px] text-destructive">{provider.discovery_error}</p>
+                      )}
                     </div>
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span className={provider.api_key_configured ? "text-emerald-500 font-medium" : "text-amber-500 font-medium"}>
-                        {provider.api_key_configured ? `API Key: •••• ${provider.api_key_last4 ?? "active"}` : "No API key"}
-                      </span>
-                      <Badge variant={provider.discovery_status === "complete" ? "default" : "outline"} className="text-[9.5px]">
-                        {provider.discovery_status}
-                      </Badge>
-                    </div>
-                    <p className="text-[11px] text-muted-foreground">
-                      Discovered: <span className="font-semibold text-foreground">{provider.models_discovered} models</span>
-                    </p>
-                    {provider.discovery_error && (
-                      <p className="line-clamp-2 text-[10px] text-destructive">{provider.discovery_error}</p>
-                    )}
-                  </div>
 
-                  <div className="mt-5 flex items-center justify-between gap-2 border-t border-border/60 pt-4">
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                      aria-label={`Edit ${provider.name}`}
-                      onClick={() => {
-                        setEditProviderTarget(provider);
-                        setEditProviderOpen(true);
-                      }}
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <div className="flex items-center gap-1.5">
+                    <div className="mt-5 flex items-center justify-between gap-2 border-t border-border/60 pt-4">
                       <Button
-                        size="sm"
-                        variant="outline"
-                        className="gap-1.5"
-                        loading={testProvider.isPending}
-                        onClick={async () => {
-                          try {
-                            const result = await testProvider.mutateAsync(provider.id);
-                            toast[result.ok ? "success" : "error"](`${result.message} · ${result.model_count} models`);
-                          } catch (error: any) {
-                            toast.error(error.message);
-                          }
+                        size="icon"
+                        variant="ghost"
+                        className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                        aria-label={`Edit ${provider.name}`}
+                        onClick={() => {
+                          setEditProviderTarget(provider);
+                          setEditProviderOpen(true);
                         }}
                       >
-                        <CheckCircle2 className="h-3.5 w-3.5" /> Test
+                        <Pencil className="h-4 w-4" />
                       </Button>
-                      <ConfirmDialog
-                        trigger={
-                          <Button size="sm" variant="ghost" className="text-destructive hover:bg-destructive/10">
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        }
-                        title={`Delete ${provider.name}?`}
-                        description="This provider and its connection settings will be permanently removed."
-                        confirmLabel="Delete provider"
-                        destructive
-                        onConfirm={() => deleteProvider.mutateAsync(provider.id).then(() => undefined)}
-                      />
+                      <div className="flex items-center gap-1.5">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="gap-1.5"
+                          loading={testProvider.isPending}
+                          onClick={async () => {
+                            try {
+                              const result = await testProvider.mutateAsync(provider.id);
+                              toast[result.ok ? "success" : "error"](`${result.message} · ${result.model_count} models`);
+                            } catch (error: any) {
+                              toast.error(error.message);
+                            }
+                          }}
+                        >
+                          <Zap className="h-3.5 w-3.5 text-amber-500" /> Test Connection
+                        </Button>
+                        <ConfirmDialog
+                          trigger={
+                            <Button size="sm" variant="ghost" className="text-destructive hover:bg-destructive/10">
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          }
+                          title={`Delete ${provider.name}?`}
+                          description="All models associated with this provider will also be removed."
+                          confirmLabel="Delete"
+                          destructive
+                          onConfirm={() => deleteProvider.mutate(provider.id)}
+                        />
+                      </div>
                     </div>
-                  </div>
-                </Card>
-              ))}
+                  </Card>
+                ))}
+              </div>
+              <DataPagination
+                page={providerPage}
+                pageSize={providerPageSize}
+                totalItems={providers.data.length}
+                onPageChange={setProviderPage}
+                onPageSizeChange={setProviderPageSize}
+                pageSizeOptions={[6, 9, 18, 36]}
+              />
             </div>
           ) : (
             <EmptyState
@@ -614,92 +660,102 @@ export default function ProvidersPage() {
               description="Model data could not be loaded."
               onRetry={() => void models.refetch()}
             />
-          ) : models.data && models.data.length > 0 ? (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {models.data.map((model) => (
-                <Card key={model.id} className="shadow-card flex flex-col p-5 border-border/80 transition-colors hover:border-primary/40">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex min-w-0 items-start gap-3">
-                      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-sky-500/25 bg-sky-500/10 text-sky-500">
-                        <Cpu className="h-5 w-5" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold tracking-tight text-foreground">{model.display_name}</p>
-                        <p className="truncate font-mono text-[10.5px] text-muted-foreground">{model.name}</p>
-                        <div className="mt-1 flex flex-wrap gap-1">
-                          <Badge variant={model.enabled ? "default" : "outline"} className="text-[9.5px]">
-                            {model.enabled ? "Enabled" : "Disabled"}
-                          </Badge>
-                          <Badge variant="outline" className="text-[9.5px] font-mono">
-                            {getProviderName(model.provider_id)}
-                          </Badge>
+          ) : filteredModels.length > 0 ? (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {paginatedModels.map((model) => (
+                  <Card key={model.id} className="shadow-card flex flex-col p-5 border-border/80 transition-colors hover:border-primary/40">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex min-w-0 items-start gap-3">
+                        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-sky-500/25 bg-sky-500/10 text-sky-500">
+                          <Cpu className="h-5 w-5" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold tracking-tight text-foreground">{model.display_name}</p>
+                          <p className="truncate font-mono text-[10.5px] text-muted-foreground">{model.name}</p>
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            <Badge variant={model.enabled ? "default" : "outline"} className="text-[9.5px]">
+                              {model.enabled ? "Enabled" : "Disabled"}
+                            </Badge>
+                            <Badge variant="outline" className="text-[9.5px] font-mono">
+                              {getProviderName(model.provider_id)}
+                            </Badge>
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
 
-                  <div className="mt-4 flex-1 space-y-2 text-xs text-muted-foreground font-mono">
-                    <div className="flex items-center justify-between rounded-lg border border-border/50 bg-muted/20 px-2.5 py-1.5 text-[11px]">
-                      <span>Context Window:</span>
-                      <span className="font-semibold text-foreground">{model.context_window ? `${(model.context_window / 1000).toFixed(0)}k` : "Standard"}</span>
-                    </div>
-                    <div className="flex flex-wrap gap-1.5 pt-1 font-sans">
-                      {model.supports_tools && <Badge variant="outline" className="text-[9.5px]">Tools</Badge>}
-                      {model.supports_vision && <Badge variant="outline" className="text-[9.5px]">Vision</Badge>}
-                      {model.supports_reasoning && <Badge variant="outline" className="text-[9.5px]">Reasoning</Badge>}
-                    </div>
-                  </div>
-
-                  <div className="mt-5 flex items-center justify-between gap-2 border-t border-border/60 pt-4">
-                    <div className="flex items-center gap-1">
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                        aria-label={`Edit ${model.display_name}`}
-                        onClick={() => {
-                          setEditModelTarget(model);
-                          setEditModelOpen(true);
-                        }}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="text-xs text-muted-foreground hover:text-foreground"
-                        onClick={() => toggleModelEnabled(model)}
-                      >
-                        {model.enabled ? "Disable" : "Enable"}
-                      </Button>
+                    <div className="mt-4 flex-1 space-y-2 text-xs text-muted-foreground font-mono">
+                      <div className="flex items-center justify-between rounded-lg border border-border/50 bg-muted/20 px-2.5 py-1.5 text-[11px]">
+                        <span>Context Window:</span>
+                        <span className="font-semibold text-foreground">{model.context_window ? `${(model.context_window / 1000).toFixed(0)}k` : "Standard"}</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 pt-1 font-sans">
+                        {model.supports_tools && <Badge variant="outline" className="text-[9.5px]">Tools</Badge>}
+                        {model.supports_vision && <Badge variant="outline" className="text-[9.5px]">Vision</Badge>}
+                        {model.supports_reasoning && <Badge variant="outline" className="text-[9.5px]">Reasoning</Badge>}
+                      </div>
                     </div>
 
-                    <div className="flex items-center gap-1.5">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="gap-1.5"
-                        loading={testingModelId === model.id}
-                        onClick={() => handleTestModel(model)}
-                      >
-                        <Zap className="h-3.5 w-3.5 text-amber-500" /> Test Chat
-                      </Button>
-                      <ConfirmDialog
-                        trigger={
-                          <Button size="sm" variant="ghost" className="text-destructive hover:bg-destructive/10">
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        }
-                        title={`Delete ${model.display_name}?`}
-                        description="This model will be removed from your catalog."
-                        confirmLabel="Delete model"
-                        destructive
-                        onConfirm={() => deleteModel.mutateAsync(model.id).then(() => undefined)}
-                      />
+                    <div className="mt-5 flex items-center justify-between gap-2 border-t border-border/60 pt-4">
+                      <div className="flex items-center gap-1">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                          aria-label={`Edit ${model.display_name}`}
+                          onClick={() => {
+                            setEditModelTarget(model);
+                            setEditModelOpen(true);
+                          }}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-xs text-muted-foreground hover:text-foreground"
+                          onClick={() => toggleModelEnabled(model)}
+                        >
+                          {model.enabled ? "Disable" : "Enable"}
+                        </Button>
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="gap-1.5"
+                          loading={testingModelId === model.id}
+                          onClick={() => handleTestModel(model)}
+                        >
+                          <Zap className="h-3.5 w-3.5 text-amber-500" /> Test Chat
+                        </Button>
+                        <ConfirmDialog
+                          trigger={
+                            <Button size="sm" variant="ghost" className="text-destructive hover:bg-destructive/10">
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          }
+                          title={`Delete ${model.display_name}?`}
+                          description="This model will be removed from your catalog."
+                          confirmLabel="Delete"
+                          destructive
+                          onConfirm={() => deleteModel.mutate(model.id)}
+                        />
+                      </div>
                     </div>
-                  </div>
-                </Card>
-              ))}
+                  </Card>
+                ))}
+              </div>
+              <DataPagination
+                page={modelPage}
+                pageSize={modelPageSize}
+                totalItems={filteredModels.length}
+                onPageChange={setModelPage}
+                onPageSizeChange={setModelPageSize}
+                pageSizeOptions={[6, 12, 24, 48]}
+              />
             </div>
           ) : (
             <EmptyState

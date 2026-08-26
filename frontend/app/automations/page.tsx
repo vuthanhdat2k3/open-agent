@@ -18,7 +18,7 @@ import {
   Zap,
 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
-import { EmptyState, ErrorState, LoadingSkeleton } from "@/components/shared";
+import { EmptyState, ErrorState, LoadingSkeleton, DataPagination } from "@/components/shared";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -627,12 +627,29 @@ export default function AutomationsPage() {
     [items],
   );
 
+  const [discoverPage, setDiscoverPage] = useState(1);
+  const [discoverPageSize, setDiscoverPageSize] = useState(6);
+  useEffect(() => {
+    setDiscoverPage(1);
+  }, [deferredSearch, category]);
+  const paginatedCatalogItems = useMemo(() => {
+    const start = (discoverPage - 1) * discoverPageSize;
+    return items.slice(start, start + discoverPageSize);
+  }, [items, discoverPage, discoverPageSize]);
+
+  const [activePage, setActivePage] = useState(1);
+  const [activePageSize, setActivePageSize] = useState(5);
+  const paginatedInstallations = useMemo(() => {
+    const start = (activePage - 1) * activePageSize;
+    return (installations.data ?? []).slice(start, start + activePageSize);
+  }, [installations.data, activePage, activePageSize]);
+
   return (
     <div className="space-y-6">
       <PageHeader
         icon={Zap}
-        title="Automated Routines & Schedules"
-        description="Activate scheduled enterprise routines for daily briefings, meeting prep, customer research, and relationship follow-ups."
+        title="Automations"
+        description="Activate scheduled routines for daily briefings, meeting prep, and workflows."
       />
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="rounded-xl border border-border/70 bg-card/60 p-4">
@@ -750,15 +767,25 @@ export default function AutomationsPage() {
             }
           />
         ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 stagger">
-            {items.map((item) => (
-              <TemplateCard
-                key={`${item.key}-${item.version}`}
-                item={item}
-                onOpen={setSelected}
-                onSetup={setSetupItem}
-              />
-            ))}
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 stagger">
+              {paginatedCatalogItems.map((item) => (
+                <TemplateCard
+                  key={`${item.key}-${item.version}`}
+                  item={item}
+                  onOpen={setSelected}
+                  onSetup={setSetupItem}
+                />
+              ))}
+            </div>
+            <DataPagination
+              page={discoverPage}
+              pageSize={discoverPageSize}
+              totalItems={items.length}
+              onPageChange={setDiscoverPage}
+              onPageSizeChange={setDiscoverPageSize}
+              pageSizeOptions={[6, 12, 24]}
+            />
           </div>
         )
       ) : installations.isLoading ? (
@@ -772,78 +799,88 @@ export default function AutomationsPage() {
       ) : (
         <div className="space-y-6">
           {installations.data?.length ? (
-            <div className="space-y-3">
-              {installations.data.map((installation) => (
-                <Card key={installation.id} glass>
-                  <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="min-w-0">
+            <div className="space-y-4">
+              <div className="space-y-3">
+                {paginatedInstallations.map((installation) => (
+                  <Card key={installation.id} glass>
+                    <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="truncate font-semibold">
+                            {installation.name}
+                          </h3>
+                          <Badge
+                            variant={
+                              installation.status === "paused"
+                                ? "warning"
+                                : "success"
+                            }
+                          >
+                            {installation.status === "paused"
+                              ? "Paused"
+                              : "Enabled"}
+                          </Badge>
+                        </div>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {installation.schedule.kind === "hourly"
+                            ? "Every hour"
+                            : installation.schedule.kind === "event"
+                              ? "When a relevant event arrives"
+                              : `${installation.schedule.kind === "weekdays" ? "Weekdays" : installation.schedule.kind === "weekly" ? "Weekly" : "Daily"} at ${installation.schedule.time ?? "—"}`}{" "}
+                          · {installation.timezone}
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Template: {installation.template_key}
+                        </p>
+                      </div>
                       <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="truncate font-semibold">
-                          {installation.name}
-                        </h3>
-                        <Badge
-                          variant={
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={runNow.isPending}
+                          onClick={() => runNow.mutate(installation.id)}
+                        >
+                          Run now
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={pause.isPending || resume.isPending || runNow.isPending}
+                          onClick={() =>
                             installation.status === "paused"
-                              ? "warning"
-                              : "success"
+                              ? resume.mutate(installation.id)
+                              : pause.mutate(installation.id)
                           }
                         >
-                          {installation.status === "paused"
-                            ? "Paused"
-                            : "Enabled"}
-                        </Badge>
+                          {installation.status === "paused" ? "Resume" : "Pause"}
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="destructive"
+                          disabled={remove.isPending}
+                          onClick={() => {
+                            if (window.confirm(`Remove ${installation.name}?`))
+                              remove.mutate(installation.id);
+                          }}
+                        >
+                          Remove
+                        </Button>
                       </div>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        {installation.schedule.kind === "hourly"
-                          ? "Every hour"
-                          : installation.schedule.kind === "event"
-                            ? "When a relevant event arrives"
-                            : `${installation.schedule.kind === "weekdays" ? "Weekdays" : installation.schedule.kind === "weekly" ? "Weekly" : "Daily"} at ${installation.schedule.time ?? "—"}`}{" "}
-                        · {installation.timezone}
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Template: {installation.template_key}
-                      </p>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        disabled={runNow.isPending}
-                        onClick={() => runNow.mutate(installation.id)}
-                      >
-                        Run now
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        disabled={pause.isPending || resume.isPending || runNow.isPending}
-                        onClick={() =>
-                          installation.status === "paused"
-                            ? resume.mutate(installation.id)
-                            : pause.mutate(installation.id)
-                        }
-                      >
-                        {installation.status === "paused" ? "Resume" : "Pause"}
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="destructive"
-                        disabled={remove.isPending}
-                        onClick={() => {
-                          if (window.confirm(`Remove ${installation.name}?`))
-                            remove.mutate(installation.id);
-                        }}
-                      >
-                        Remove
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+              <DataPagination
+                page={activePage}
+                pageSize={activePageSize}
+                totalItems={installations.data.length}
+                onPageChange={setActivePage}
+                onPageSizeChange={setActivePageSize}
+                pageSizeOptions={[5, 10, 20]}
+              />
             </div>
           ) : (
             <EmptyState

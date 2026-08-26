@@ -141,8 +141,8 @@ export function IntegrationsPanel({ withHeader = true }: { withHeader?: boolean 
       {withHeader && (
         <PageHeader
           icon={Plug}
-          title="Connected Accounts & OAuth"
-          description="Connect personal work accounts (Gmail, Google Calendar, Google Drive) through encrypted, approval-aware OAuth connectors."
+          title="Integrations"
+          description="Connect work accounts (Gmail, Google Calendar, Google Drive) via secure OAuth connectors."
         />
       )}
       {error && <Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert>}

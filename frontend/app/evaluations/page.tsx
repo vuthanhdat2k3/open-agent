@@ -14,7 +14,7 @@ import {
 } from "@/hooks";
 import type { EvaluationSuite } from "@/types";
 import { PageHeader } from "@/components/page-header";
-import { EmptyState, ErrorState, LoadingSkeleton } from "@/components/shared";
+import { EmptyState, ErrorState, LoadingSkeleton, DataPagination } from "@/components/shared";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input, Label, Textarea } from "@/components/ui/input";
@@ -47,6 +47,13 @@ export default function EvaluationsPage() {
   const runs = useEvaluationRuns(selectedSuiteId);
   const [form, setForm] = React.useState(EMPTY_SUITE);
   const [caseForm, setCaseForm] = React.useState({ input: "", expected_output: "" });
+  const [suitePage, setSuitePage] = React.useState(1);
+  const [suitePageSize, setSuitePageSize] = React.useState(5);
+
+  const paginatedSuites = React.useMemo(() => {
+    const start = (suitePage - 1) * suitePageSize;
+    return (suites.data || []).slice(start, start + suitePageSize);
+  }, [suites.data, suitePage, suitePageSize]);
 
   React.useEffect(() => {
     if (!selectedSuiteId && suites.data?.length) {
@@ -133,8 +140,8 @@ export default function EvaluationsPage() {
     <div className="space-y-6">
       <PageHeader
         icon={FlaskConical}
-        title="Model Quality & Agent Evaluations"
-        description="Run versioned benchmark test suites, track pass rates, and enforce release quality gates for agents."
+        title="Evaluations"
+        description="Run benchmark test suites, track pass rates, and verify model quality."
         actions={
           <Button className="gap-2 active-tactile transition-transform" onClick={() => setSuiteDialog(true)}>
             <Plus className="h-4 w-4" /> New Suite
@@ -145,7 +152,7 @@ export default function EvaluationsPage() {
       {suites.isLoading ? <LoadingSkeleton variant="table" /> : suites.isError ? <ErrorState title="Unable to load evaluation suites" description="Evaluation data could not be loaded." onRetry={() => void suites.refetch()} /> : suites.data?.length ? (
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px] stagger">
           <div className="space-y-4">
-            {suites.data.map((suite) => {
+            {paginatedSuites.map((suite) => {
               const agent = agents.data?.find((item) => item.id === suite.agent_id);
               return (
                 <Card
@@ -160,7 +167,7 @@ export default function EvaluationsPage() {
                         <Badge variant="outline" className="font-mono text-[10px]">v{suite.dataset_version}</Badge>
                       </div>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        {suite.description || "No description"} Â· <span className="font-medium text-foreground">{agent?.name ?? "Unknown agent"}</span>
+                        {suite.description || "No description"} · <span className="font-medium text-foreground">{agent?.name ?? "Unknown agent"}</span>
                       </p>
                     </div>
                     <div className="flex gap-2">
@@ -219,6 +226,14 @@ export default function EvaluationsPage() {
                 </Card>
               );
             })}
+            <DataPagination
+              page={suitePage}
+              pageSize={suitePageSize}
+              totalItems={suites.data.length}
+              onPageChange={setSuitePage}
+              onPageSizeChange={setSuitePageSize}
+              pageSizeOptions={[3, 5, 10, 20]}
+            />
           </div>
 
           <aside className="rounded-xl border border-border/80 bg-card/45 p-5 space-y-4 backdrop-blur-xl shadow-3d-card">

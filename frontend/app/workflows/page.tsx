@@ -433,8 +433,8 @@ export default function WorkflowsPage() {
     <div className="space-y-6">
       <PageHeader
         icon={WorkflowIcon}
-        title="Multi-Agent Workflow Orchestrator"
-        description="Design, orchestrate, and test complex multi-agent DAG execution graphs with parallel branching and merge logic."
+        title="Workflows"
+        description="Design, orchestrate, and test multi-agent DAG workflows."
         actions={
           <>
             <Button variant="outline" className="gap-2 active-tactile transition-transform" onClick={newWorkflow}>

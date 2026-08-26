@@ -5,3 +5,4 @@ export { LoadingSkeleton } from "./loading-skeleton";
 export { PageHeader } from "./page-header";
 export { SectionHeader } from "./section-header";
 export { StatusBadge } from "./status-badge";
+export { DataPagination } from "./data-pagination";

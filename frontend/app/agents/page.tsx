@@ -48,7 +48,7 @@ import { Slider } from "@/components/ui/slider";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/page-header";
-import { EmptyState, ErrorState, LoadingSkeleton } from "@/components/shared";
+import { EmptyState, ErrorState, LoadingSkeleton, DataPagination } from "@/components/shared";
 import { AgentCard } from "@/components/agents/agent-card";
 import {
   Dialog,
@@ -151,6 +151,9 @@ export default function AgentsPage() {
     setCompanionConfig(getCompanionConfig());
   }, []);
 
+  const [page, setPage] = React.useState(1);
+  const [pageSize, setPageSize] = React.useState(12);
+
   const filteredAgents = React.useMemo(() => {
     return (data || []).filter((a) => {
       if (kindFilter !== "all" && a.kind !== kindFilter) return false;
@@ -164,6 +167,15 @@ export default function AgentsPage() {
       return true;
     });
   }, [data, kindFilter, catalogSearch]);
+
+  React.useEffect(() => {
+    setPage(1);
+  }, [catalogSearch, kindFilter]);
+
+  const paginatedAgents = React.useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filteredAgents.slice(start, start + pageSize);
+  }, [filteredAgents, page, pageSize]);
 
   const handleSaveCompanion = () => {
     setIsSavingCompanion(true);
@@ -296,8 +308,8 @@ export default function AgentsPage() {
       {/* 1. Page Header */}
       <PageHeader
         icon={Bot}
-        title="Agent Studio & Persona Catalog"
-        description="Manage multi-agent orchestrators, worker personas, system reasoning prompts, tool access control, and 3D companion runtime."
+        title="Agents"
+        description="Configure AI agents, system reasoning prompts, models, and tool access control."
         actions={
           <div className="flex items-center gap-2">
             <Button
@@ -319,57 +331,72 @@ export default function AgentsPage() {
                 </DialogTrigger>
                 <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                   <DialogHeader>
-                    <DialogTitle>{editingAgent ? `Edit — ${editingAgent.name}` : "New Agent"}</DialogTitle>
+                    <DialogTitle>{editingAgent ? "Edit Agent" : "Create Agent"}</DialogTitle>
                   </DialogHeader>
-                  <div className="space-y-4 pt-1">
+                  <div className="space-y-4 pt-2">
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1.5">
                         <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Name</Label>
                         <Input
                           value={form.name}
                           onChange={(e) => setForm({ ...form, name: e.target.value })}
-                          placeholder="researcher"
-                          className="text-xs"
+                          placeholder="e.g. Code Reviewer"
                         />
                       </div>
                       <div className="space-y-1.5">
-                        <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Description</Label>
-                        <Input
-                          value={form.description}
-                          onChange={(e) => setForm({ ...form, description: e.target.value })}
-                          placeholder="Brief description"
-                          className="text-xs"
-                        />
+                        <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Kind</Label>
+                        <Select
+                          value={form.kind}
+                          onChange={(e) => setForm({ ...form, kind: e.target.value as "worker" | "orchestrator" })}
+                        >
+                          <option value="worker">Worker</option>
+                          <option value="orchestrator">Orchestrator</option>
+                        </Select>
                       </div>
                     </div>
 
                     <div className="space-y-1.5">
-                      <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Kind</Label>
-                      <Select
-                        value={form.kind}
-                        onChange={(e) => setForm({ ...form, kind: e.target.value as "worker" | "orchestrator" })}
-                        className="w-full text-xs"
-                      >
-                        <option value="worker">Worker (called by other agents, not directly by users)</option>
-                        <option value="orchestrator">Orchestrator (chats with users, delegates to workers via call_agent)</option>
-                      </Select>
+                      <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Description</Label>
+                      <Input
+                        value={form.description}
+                        onChange={(e) => setForm({ ...form, description: e.target.value })}
+                        placeholder="Brief summary of capabilities..."
+                      />
                     </div>
 
-                    <div className="space-y-1.5">
-                      <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                        <Cpu className="h-3.5 w-3.5 text-primary" /> Model
-                      </Label>
-                      <Select
-                        value={form.model_id}
-                        onChange={(e) => setForm({ ...form, model_id: e.target.value })}
-                        className="w-full text-xs font-mono"
-                      >
-                        {models.data?.map((m) => (
-                          <option key={m.id} value={m.id}>
-                            {m.display_name || m.name} ({m.tier})
-                          </option>
-                        ))}
-                      </Select>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Model Engine</Label>
+                        <Select
+                          value={form.model_id}
+                          onChange={(e) => setForm({ ...form, model_id: e.target.value })}
+                        >
+                          <option value="">Default Model</option>
+                          {models.data?.map((m) => (
+                            <option key={m.id} value={m.id}>
+                              {m.display_name || m.name}
+                            </option>
+                          ))}
+                        </Select>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                            <Thermometer className="h-3.5 w-3.5" /> Temp
+                          </Label>
+                          <span className="font-mono text-xs text-foreground font-semibold">{form.temperature}</span>
+                        </div>
+                        <div className="pt-2">
+                          <Slider
+                            value={[form.temperature]}
+                            min={0}
+                            max={2}
+                            step={0.1}
+                            onValueChange={([v]) => setForm({ ...form, temperature: v })}
+                          />
+                        </div>
+                      </div>
                     </div>
 
                     <div className="space-y-1.5">
@@ -448,7 +475,16 @@ export default function AgentsPage() {
                                       <span className="mt-0.5 block line-clamp-1 text-[10px] text-muted-foreground">{tool.description}</span>
                                     </span>
                                     <span className="flex shrink-0 flex-col items-end gap-1">
-                                      {tool.risk_tier && <span className={`rounded-full border px-1.5 py-0.5 text-[9px] ${riskColor[tool.risk_tier]}`}>{tool.risk_tier}</span>}
+                                      {tool.risk_tier && (
+                                        <span className={`rounded px-1 text-[9px] font-mono uppercase ${riskColor[tool.risk_tier] ?? "border-border text-muted-foreground"}`}>
+                                          {tool.risk_tier}
+                                        </span>
+                                      )}
+                                      {!tool.available && (
+                                        <span className="rounded bg-muted px-1 text-[9px] text-muted-foreground">
+                                          Unavailable
+                                        </span>
+                                      )}
                                     </span>
                                   </button>
                                 );
@@ -459,14 +495,19 @@ export default function AgentsPage() {
                       </div>
                     </div>
 
-                    <Button
-                      className="w-full gap-2 font-semibold"
-                      onClick={handleSubmit}
-                      loading={create.isPending || update.isPending}
-                      disabled={!form.name}
-                    >
-                      <Save className="h-4 w-4" /> Save Agent
-                    </Button>
+                    <div className="flex justify-end gap-2 pt-2">
+                      <Button variant="outline" size="sm" onClick={() => setOpen(false)}>
+                        Cancel
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={handleSubmit}
+                        disabled={create.isPending || update.isPending || !form.name.trim()}
+                        className="font-semibold"
+                      >
+                        {editingAgent ? "Save Changes" : "Create Agent"}
+                      </Button>
+                    </div>
                   </div>
                 </DialogContent>
               </Dialog>
@@ -484,7 +525,7 @@ export default function AgentsPage() {
           className="gap-2 font-medium"
         >
           <Bot className="h-4 w-4" />
-          Agent Personas & Catalog
+          Agent Catalog
           <Badge variant="outline" className="ml-1 text-[10px] font-mono">
             {data?.length ?? 0}
           </Badge>
@@ -497,7 +538,7 @@ export default function AgentsPage() {
           className="gap-2 font-medium"
         >
           <Sparkles className="h-4 w-4 text-amber-500" />
-          3D Companion & Live Operator Settings
+          3D Companion
         </Button>
       </div>
 
@@ -591,7 +632,7 @@ export default function AgentsPage() {
             </div>
           </div>
 
-          <Dialog open={Boolean(releaseAgent)} onOpenChange={(open) => !open && setReleaseAgent(null)}>
+          <Dialog open={Boolean(releaseAgent)} onOpenChange={(v) => { if (!v) setReleaseAgent(null); }}>
             <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Releases — {releaseAgent?.name}</DialogTitle>
@@ -658,18 +699,28 @@ export default function AgentsPage() {
               onRetry={() => void refetch()}
             />
           ) : filteredAgents.length > 0 ? (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {filteredAgents.map((a) => (
-                <AgentCard
-                  key={a.id}
-                  agent={a}
-                  models={models.data}
-                  tools={tools.data}
-                  onEdit={openEdit}
-                  onReleases={openReleases}
-                  onDelete={(id) => del.mutate(id)}
-                />
-              ))}
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {paginatedAgents.map((a) => (
+                  <AgentCard
+                    key={a.id}
+                    agent={a}
+                    models={models.data}
+                    tools={tools.data}
+                    onEdit={openEdit}
+                    onReleases={openReleases}
+                    onDelete={(id) => del.mutate(id)}
+                  />
+                ))}
+              </div>
+              <DataPagination
+                page={page}
+                pageSize={pageSize}
+                totalItems={filteredAgents.length}
+                onPageChange={setPage}
+                onPageSizeChange={setPageSize}
+                pageSizeOptions={[6, 12, 24, 48]}
+              />
             </div>
           ) : (
             <EmptyState

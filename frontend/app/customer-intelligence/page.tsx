@@ -723,8 +723,8 @@ export default function CustomerIntelligencePage() {
       {/* 1. Page Header */}
       <PageHeader
         icon={Building2}
-        title="Client Dossiers & Briefings"
-        description="Automated company background research, market briefings, and pre-meeting preparation synthesized from email exchanges and public knowledge graph."
+        title="Customer Intelligence"
+        description="Automated company background research, market briefings, and pre-meeting dossiers."
         actions={
           <div className="flex items-center gap-2">
             <Button
@@ -801,7 +801,7 @@ export default function CustomerIntelligencePage() {
           className="gap-2 font-medium"
         >
           <FileText className="h-4 w-4" />
-          Client Dossiers
+          Dossiers
         </Button>
         <Button
           type="button"
@@ -810,7 +810,7 @@ export default function CustomerIntelligencePage() {
           className="gap-2 font-medium"
         >
           <Clock3 className="h-4 w-4" />
-          Daily Sync Schedules
+          Schedules
         </Button>
       </div>
 
