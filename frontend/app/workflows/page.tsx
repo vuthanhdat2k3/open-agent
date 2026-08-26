@@ -12,7 +12,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { streamSSE } from "@/lib/api";
-import { useWorkflows, useCreateWorkflow, useAgents, useModels, useGenerateWorkflow, useUrlSearchParam, useWorkflowRun } from "@/hooks";
+import { useWorkflows, useCreateWorkflow, useUpdateWorkflow, useAgents, useModels, useGenerateWorkflow, useUrlSearchParam, useWorkflowRun } from "@/hooks";
 import { useWorkflowStore } from "@/stores";
 import { Button } from "@/components/ui/button";
 import { Input, Label, Textarea } from "@/components/ui/input";
@@ -67,6 +67,7 @@ export default function WorkflowsPage() {
   const workflows = useWorkflows();
   const { data } = workflows;
   const create = useCreateWorkflow();
+  const update = useUpdateWorkflow();
   const agents = useAgents();
   const models = useModels();
   const generate = useGenerateWorkflow();
@@ -108,7 +109,7 @@ export default function WorkflowsPage() {
   // Fade a node/edge's "done" status back to idle a few seconds after it
   // finishes, so the running-state highlight reads as transient feedback
   // rather than a permanent marker. Only applies while a run is actively
-  // streaming â€” restoring a past completed run's status (see the
+  // streaming — restoring a past completed run's status (see the
   // workflowRun.data effect below) should stay visible, not fade away.
   const fadedNodeIdsRef = React.useRef<Set<string>>(new Set());
   React.useEffect(() => {
@@ -174,7 +175,7 @@ export default function WorkflowsPage() {
     setActiveRun(null);
     setGraph([], []);
     setSelectedNode(null);
-    toast.success("New workflow â€” canvas cleared");
+    toast.success("New workflow — canvas cleared");
   };
 
   const loadWorkflow = (wf: any) => {
@@ -191,11 +192,22 @@ export default function WorkflowsPage() {
 
   const save = async () => {
     try {
-      await create.mutateAsync({
-        name: wfName || "workflow",
-        description: "",
-        graph: { nodes, edges },
-      });
+      if (editId) {
+        await update.mutateAsync({
+          id: editId,
+          data: {
+            name: wfName || "workflow",
+            graph: { nodes, edges },
+          },
+        });
+      } else {
+        const created = await create.mutateAsync({
+          name: wfName || "workflow",
+          description: "",
+          graph: { nodes, edges },
+        });
+        setEditId(created.id);
+      }
       toast.success("Workflow saved");
     } catch (e: any) {
       toast.error(e.message);

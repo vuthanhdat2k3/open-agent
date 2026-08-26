@@ -525,6 +525,13 @@ export function useCreateWorkflow() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["workflows"] }),
   });
 }
+export function useUpdateWorkflow() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: any }) => api.put<Workflow>(`/api/workflows/${id}`, data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["workflows"] }),
+  });
+}
 export function useGenerateWorkflow() {
   return useMutation({
     mutationFn: (body: { prompt: string; model_id: string }) =>
