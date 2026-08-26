@@ -36,7 +36,7 @@ import { approvalTitle } from "@/components/layout/approval-bell";
 import { getActiveOrgId } from "@/lib/auth";
 
 function ApprovalExpiry({ expiresAt, serverTime }: { expiresAt?: string | null; serverTime?: string | null }) {
-    const { locale } = useTranslation();
+    const { t, locale } = useTranslation();
   const [remaining, setRemaining] = React.useState<number | null>(null);
   React.useEffect(() => {
     if (!expiresAt || !serverTime) return;
@@ -47,7 +47,7 @@ function ApprovalExpiry({ expiresAt, serverTime }: { expiresAt?: string | null; 
     return () => window.clearInterval(timer);
   }, [expiresAt, serverTime]);
   if (remaining === null) return null;
-  return <span className={remaining <= 15 * 60 * 1000 ? "font-semibold text-destructive" : "text-muted-foreground"}>{formatRemaining(remaining)}</span>;
+  return <span className={remaining <= 15 * 60 * 1000 ? "font-semibold text-destructive" : "text-muted-foreground"}>{formatRemaining(remaining, t)}</span>;
 }
 
 function eventDetails(approval: ApprovalRequest, locale: string) {
@@ -62,7 +62,7 @@ function eventDetails(approval: ApprovalRequest, locale: string) {
 }
 
 function ApprovalCard({ approval, onOpen, onSubmit }: { approval: ApprovalRequest; onOpen: () => void; onSubmit: (decision: "approved" | "rejected") => Promise<void> }) {
-  const { locale } = useTranslation();
+  const { t, locale } = useTranslation();
   const details = eventDetails(approval, locale);
   const highRisk = approval.risk_level === "HIGH";
   return (
@@ -85,7 +85,7 @@ function ApprovalCard({ approval, onOpen, onSubmit }: { approval: ApprovalReques
           </div>
         </div>
         <div className="grid gap-3 rounded-xl border border-border/70 bg-muted/20 p-4 text-sm sm:grid-cols-3">
-          <div><dt className="text-xs font-medium text-muted-foreground">{locale === "vi" ? "Khi nào" : "When"}</dt><dd className="mt-1 text-foreground">{details.start ? `${formatVietnamDateTime(details.start)} · Giờ Việt Nam` : (locale === "vi" ? "Chưa xác định" : "Not specified")}</dd></div>
+          <div><dt className="text-xs font-medium text-muted-foreground">{locale === "vi" ? "Khi nào" : "When"}</dt><dd className="mt-1 text-foreground">{details.start ? `${formatVietnamDateTime(details.start)} · ${t("pages.approvals.vietnamTime", "Giờ Việt Nam")}` : (locale === "vi" ? "Chưa xác định" : "Not specified")}</dd></div>
           <div><dt className="text-xs font-medium text-muted-foreground">{locale === "vi" ? "Người tham dự" : "Attendees"}</dt><dd className="mt-1 truncate text-foreground">{details.attendees.length ? details.attendees.join(", ") : (locale === "vi" ? "Chưa xác định" : "Not specified")}</dd></div>
           <div><dt className="text-xs font-medium text-muted-foreground">{locale === "vi" ? "Nguồn" : "Source"}</dt><dd className="mt-1 truncate text-foreground">{approval.run_type === "agent" ? (locale === "vi" ? "Quy trình làm việc của Agent" : "Agent workflow") : (locale === "vi" ? "Chạy quy trình làm việc" : "Workflow run")}</dd></div>
         </div>
@@ -377,7 +377,7 @@ export default function ApprovalsPage() {
                       <div>
                         <span className="text-muted-foreground">{locale === "vi" ? "Khi nào" : "When"}</span>
                         <p className="font-medium text-foreground">
-                          {details.start ? `${formatVietnamDateTime(details.start)} · Giờ Việt Nam` : "Not specified"}
+                          {details.start ? `${formatVietnamDateTime(details.start)} · ${t("pages.approvals.vietnamTime", "Giờ Việt Nam")}` : "Not specified"}
                         </p>
                       </div>
                       <div>

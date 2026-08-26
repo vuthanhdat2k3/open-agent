@@ -105,7 +105,7 @@ export function DataPagination({
         ) : (
           <span>
             {t("common.showing", "Showing")}{" "}
-            <span className="font-medium text-foreground">{startItem}</span> to{" "}
+            <span className="font-medium text-foreground">{startItem}</span> {t("common.to", "to")} {" "}
             <span className="font-medium text-foreground">{endItem}</span>{" "}
             {t("common.of", "of")}{" "}
             <span className="font-medium text-foreground">{totalItems}</span>{" "}

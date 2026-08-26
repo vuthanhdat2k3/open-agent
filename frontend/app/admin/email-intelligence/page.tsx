@@ -160,9 +160,7 @@ export default function EmailOperationsPage() {
           </CardHeader>
           <CardContent className="space-y-3 text-xs text-muted-foreground leading-relaxed">
             <p>
-              {locale === "vi"
-                ? "Sử dụng Correlation ID để kiểm tra vòng đời xử lý sanitized. Không có payload bảo mật của nhà cung cấp nào bị lộ tại đây."
-                : "Use correlation IDs to inspect a sanitized lifecycle trace. No provider payloads or secrets are rendered here."}
+              {t("pages.emailIntelligence.correlationIdDesc", "Sử dụng Correlation ID để kiểm tra vòng đời xử lý sanitized. Không có payload bảo mật của nhà cung cấp nào bị lộ tại đây.")}
             </p>
           </CardContent>
         </Card>

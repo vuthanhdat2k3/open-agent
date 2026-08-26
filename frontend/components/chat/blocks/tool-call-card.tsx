@@ -30,7 +30,7 @@ function sanitizeSvg(html: string): string {
 }
 
 function SvgPreview({ html }: { html: string }) {
-    const { locale } = useTranslation();
+    const { t, locale } = useTranslation();
   const clean = sanitizeSvg(html);
   return (
     <Dialog>
@@ -38,7 +38,7 @@ function SvgPreview({ html }: { html: string }) {
         <button
           type="button"
           className="group relative block max-w-full cursor-zoom-in rounded-lg"
-          aria-label="Phóng to xem ảnh SVG"
+          aria-label={t("pages.chat.enlargeSvg", "Phóng to xem ảnh SVG")}
         >
           <div
             className="max-w-full max-h-[360px] overflow-auto rounded-lg border border-border/40 bg-card p-2 shadow-sm [&>svg]:w-auto [&>svg]:h-auto [&>svg]:max-w-full [&>svg]:max-h-[340px]"

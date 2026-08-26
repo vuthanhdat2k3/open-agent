@@ -15,13 +15,21 @@ export function remainingMs(expiresAt: string, clock: ServerClock, performanceNo
   return Math.max(0, Date.parse(expiresAt) - serverNow(clock, performanceNow));
 }
 
-export function formatRemaining(ms: number): string {
+export function formatRemaining(
+  ms: number,
+  t?: (path: string, defaultValue?: string) => string
+): string {
+  const translate = t ?? ((_p: string, d?: string) => d ?? "");
   const totalSeconds = Math.ceil(ms / 1000);
-  if (totalSeconds <= 0) return "Đã hết hạn";
+  if (totalSeconds <= 0) return translate("pages.approvals.expired", "Đã hết hạn");
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
-  if (hours > 0) return `Còn ${hours} giờ ${minutes} phút`;
-  if (minutes > 0) return `Còn ${minutes} phút`;
-  return `Còn ${seconds} giây`;
+  if (hours > 0)
+    return translate("pages.approvals.remainingHM", "Còn {h} giờ {m} phút")
+      .replace("{h}", String(hours))
+      .replace("{m}", String(minutes));
+  if (minutes > 0)
+    return translate("pages.approvals.remainingM", "Còn {m} phút").replace("{m}", String(minutes));
+  return translate("pages.approvals.remainingS", "Còn {s} giây").replace("{s}", String(seconds));
 }

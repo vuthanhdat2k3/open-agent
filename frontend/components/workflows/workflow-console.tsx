@@ -64,18 +64,18 @@ export function WorkflowConsole({ logs, output, running, run, onReplay }: Workfl
   const getEventBadge = (event: string) => {
     switch (event) {
       case "node_start":
-        return <Badge variant="outline" className="border-info/40 text-info bg-info/10 text-[9px] py-0 font-mono">START</Badge>;
+        return <Badge variant="outline" className="border-info/40 text-info bg-info/10 text-[9px] py-0 font-mono">{t("pages.workflows.eventStart", "START")}</Badge>;
       case "node_done":
-        return <Badge variant="outline" className="border-success/40 text-success bg-success/10 text-[9px] py-0 font-mono">DONE</Badge>;
+        return <Badge variant="outline" className="border-success/40 text-success bg-success/10 text-[9px] py-0 font-mono">{t("pages.workflows.eventDone", "DONE")}</Badge>;
       case "node_error":
       case "error":
-        return <Badge variant="outline" className="border-destructive/40 text-destructive bg-destructive/10 text-[9px] py-0 font-mono">ERROR</Badge>;
+        return <Badge variant="outline" className="border-destructive/40 text-destructive bg-destructive/10 text-[9px] py-0 font-mono">{t("pages.workflows.eventError", "ERROR")}</Badge>;
       case "approval_required":
-        return <Badge variant="outline" className="border-warning/40 text-warning bg-warning/10 text-[9px] py-0 font-mono">WAIT</Badge>;
+        return <Badge variant="outline" className="border-warning/40 text-warning bg-warning/10 text-[9px] py-0 font-mono">{t("pages.workflows.eventWait", "WAIT")}</Badge>;
       case "edge":
-        return <Badge variant="outline" className="border-border text-muted-foreground text-[9px] py-0 font-mono">EDGE</Badge>;
+        return <Badge variant="outline" className="border-border text-muted-foreground text-[9px] py-0 font-mono">{t("pages.workflows.eventEdge", "EDGE")}</Badge>;
       case "done":
-        return <Badge variant="outline" className="border-primary/40 text-primary bg-primary/10 text-[9px] py-0 font-mono font-bold">FINISH</Badge>;
+        return <Badge variant="outline" className="border-primary/40 text-primary bg-primary/10 text-[9px] py-0 font-mono font-bold">{t("pages.workflows.eventFinish", "FINISH")}</Badge>;
       default:
         return <Badge variant="outline" className="text-[9px] py-0 font-mono">{event}</Badge>;
     }

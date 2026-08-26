@@ -42,6 +42,7 @@ function FieldInput({
   options?: Array<{ name: string; value: string; description?: string }>;
   onValue: (value: any) => void;
 }) {
+  const { t } = useTranslation();
   const fieldOptions = field.options ?? options ?? [];
   switch (field.type) {
     case "textarea":
@@ -171,7 +172,7 @@ function FieldInput({
                 className="w-full gap-1 text-destructive border-destructive/40"
                 onClick={() => onValue(rows.filter((_, i) => i !== idx))}
               >
-                <Trash2 className="h-3 w-3" /> Remove
+                <Trash2 className="h-3 w-3" /> {t("pages.workflows.removeRow", "Remove")}
               </Button>
             </div>
           ))}
@@ -182,7 +183,7 @@ function FieldInput({
             className="w-full gap-1"
             onClick={() => onValue([...rows, {}])}
           >
-            <Plus className="h-3 w-3" /> Add row
+            <Plus className="h-3 w-3" /> {t("pages.workflows.addRow", "Add row")}
           </Button>
         </div>
       );

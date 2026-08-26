@@ -52,6 +52,13 @@ const ERROR_MESSAGES_EN: Record<string, { title: string; desc: string }> = {
   },
 };
 
+const ERROR_KEY_MAP: Record<string, string> = {
+  ORGANIZATION_CONTEXT_REQUIRED: "accountNoOrg",
+  ACCOUNT_NOT_PROVISIONED: "accountNotActivated",
+  ORGANIZATION_CONTEXT_MISMATCH: "orgContextMismatch",
+  CODE_EXCHANGE_FAILED: "codeExchangeFailed",
+};
+
 export default function LoginPage() {
   const { t, locale } = useTranslation();
   const searchParams = useSearchParams();
@@ -70,6 +77,7 @@ export default function LoginPage() {
   }, []);
 
   const errDict = locale === "vi" ? ERROR_MESSAGES_VI : ERROR_MESSAGES_EN;
+  const errorKey = errorParam ? (ERROR_KEY_MAP[errorParam] ?? errorParam) : null;
   const errorInfo = errorParam
     ? errDict[errorParam] || {
         title: locale === "vi" ? "Đăng nhập không thành công" : "Sign In Failed",
@@ -114,9 +122,7 @@ export default function LoginPage() {
                 {locale === "vi" ? "Đăng nhập OpenAgent" : "Sign in to OpenAgent"}
               </CardTitle>
               <p className="mt-2 text-sm text-muted-foreground">
-                {locale === "vi"
-                  ? "Xác thực danh tính doanh nghiệp tập trung qua Single Sign-On."
-                  : "Authentication is managed by your organization identity provider."}
+                {t("pages.login.ssoDesc", "Xác thực danh tính doanh nghiệp tập trung qua Single Sign-On.")}
               </p>
             </div>
           </CardHeader>
@@ -124,9 +130,11 @@ export default function LoginPage() {
             {errorInfo && (
               <Alert variant="destructive" className="border-destructive/40 bg-destructive/10 text-left">
                 <AlertCircle className="h-4 w-4" />
-                <AlertTitle className="text-sm font-semibold">{errorInfo.title}</AlertTitle>
+                <AlertTitle className="text-sm font-semibold">
+                  {errorKey ? t(`pages.login.${errorKey}Title`, errorInfo.title) : errorInfo.title}
+                </AlertTitle>
                 <AlertDescription className="mt-1 text-xs leading-relaxed text-destructive/90">
-                  {errorInfo.desc}
+                  {errorKey ? t(`pages.login.${errorKey}Desc`, errorInfo.desc) : errorInfo.desc}
                 </AlertDescription>
               </Alert>
             )}
@@ -160,11 +168,9 @@ export default function LoginPage() {
             <CardTitle className="text-xl">
               {locale === "vi" ? "Đăng nhập nội bộ đã tắt" : "Local authentication is disabled"}
             </CardTitle>
-            <p className="mt-2 text-sm text-muted-foreground">
-              {locale === "vi"
-                ? "Vui lòng sử dụng nhà cung cấp danh tính tổ chức để đăng nhập."
-                : "Use the configured organization identity provider to sign in."}
-            </p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                {t("pages.login.useOrgProviderDesc", "Vui lòng sử dụng nhà cung cấp danh tính tổ chức để đăng nhập.")}
+              </p>
           </div>
         </CardHeader>
       </Card>
