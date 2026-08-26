@@ -27,10 +27,12 @@ import {
 } from "@/lib/chat/projection";
 import { ChatThread } from "@/components/chat/chat-thread";
 import { ChatInput } from "@/components/chat/chat-input";
+import { useTranslation } from "@/lib/i18n";
 import type { ConnectionState } from "@/components/chat/chat-connection-banner";
 import type { UploadedFile } from "@/types";
 
 export default function ChatPage() {
+  const { locale } = useTranslation();
   const searchParams = useSearchParams();
   const router = useRouter();
   const role = useCurrentRole();
@@ -313,7 +315,7 @@ export default function ChatPage() {
       }
       if (run.status !== "waiting_approval") {
         if (run.status === "failed" && run.error) {
-          const message = run.message || "Your request";
+          const message = run.message || (locale === "vi" ? "Yêu cầu của bạn" : "Your request");
           const current = [...projectionRef.current.messages];
           if (!current.some((item) => item.role === "user")) {
             current.unshift({ id: `u-${run.id}`, role: "user", content: message });
@@ -379,7 +381,7 @@ export default function ChatPage() {
         toast.error(side.budgetReason);
       }
       if (side.diverged) {
-        toast.error("Run replay diverged and was stopped");
+        toast.error((locale === "vi" ? "Phát lại bản ghi bị lệch và đã dừng" : "Run replay diverged and was stopped"));
       }
 
       // For tool calls and structural additions, commit immediately for crisp feedback
@@ -542,7 +544,7 @@ export default function ChatPage() {
           ),
         };
         commit();
-        toast.error(error instanceof Error ? error.message : "Could not decide approval");
+        toast.error(error instanceof Error ? error.message : (locale === "vi" ? "Không thể quyết định phê duyệt" : "Could not decide approval"));
       }
     },
     [commit, refetchChatRun, setStreaming],
@@ -564,7 +566,7 @@ export default function ChatPage() {
     const attachmentNote = attachments.length
       ? `\n\n[Attached file${attachments.length > 1 ? "s" : ""}: ${attachments.map((f) => f.original_name).join(", ")}]`
       : "";
-    const sentDraft = (draft.trim() ? draft : "Please review the attached file(s).") + attachmentNote;
+    const sentDraft = (draft.trim() ? draft : (locale === "vi" ? "Vui lòng xem lại (các) tệp đính kèm." : "Please review the attached file(s).")) + attachmentNote;
     const userMsg: ChatMessage = { id: `u-${Date.now()}`, role: "user", content: sentDraft };
     const assistantId = `a-${Date.now()}`;
     assistantIdRef.current = assistantId;
@@ -690,7 +692,7 @@ export default function ChatPage() {
     if (!agentId) return;
     if (role !== "admin" && role !== "platform_admin" && role !== "operator") {
       setPendingSessionModelId(modelId);
-      toast.success("Model selected for this chat");
+      toast.success((locale === "vi" ? "Mô hình đã chọn cho cuộc trò chuyện này" : "Model selected for this chat"));
       return;
     }
     if (modelId === currentAgent?.model_id) return;
@@ -699,11 +701,11 @@ export default function ChatPage() {
       setPendingSessionModelId(modelId);
       toast.success(
         sessionId
-          ? "Agent default model updated. It will be used in this session on the next message."
-          : "Agent default model updated.",
+          ? (locale === "vi" ? "Đã cập nhật mô hình mặc định của Agent. Nó sẽ được sử dụng trong phiên này cho tin nhắn tiếp theo." : "Agent default model updated. It will be used in this session on the next message.")
+          : (locale === "vi" ? "Đã cập nhật mô hình mặc định của Agent." : "Agent default model updated."),
       );
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not update agent model");
+      toast.error(error instanceof Error ? error.message : (locale === "vi" ? "Không thể cập nhật mô hình của Agent" : "Could not update agent model"));
     }
   };
 
@@ -732,9 +734,9 @@ export default function ChatPage() {
           try {
             await delSession.mutateAsync(id);
             if (sessionId === id) clearMessages();
-            toast.success("Session deleted");
+            toast.success((locale === "vi" ? "Phiên đã bị xóa" : "Session deleted"));
           } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Could not delete session");
+            toast.error(error instanceof Error ? error.message : (locale === "vi" ? "Không thể xóa phiên" : "Could not delete session"));
           }
         }}
         onToggleDebug={toggleDebug}

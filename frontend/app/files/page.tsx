@@ -69,7 +69,7 @@ export default function FilesPage() {
     if (!file) return;
     try {
       await upload.mutateAsync(file);
-      toast.success(`Uploaded ${file.name}`);
+      toast.success(locale === "vi" ? `Đã tải lên ${file.name}` : `Uploaded ${file.name}`);
     } catch (err: any) {
       toast.error(err.message);
     } finally {
@@ -82,14 +82,14 @@ export default function FilesPage() {
       <PageHeader
         icon={FileText}
         title={dict.pages.files.title}
-        description="Upload and manage documents, PDFs, and files for semantic search and retrieval."
+        description={locale === "vi" ? "Tải lên và quản lý tài liệu, PDF, và tệp để tìm kiếm và truy xuất ngữ nghĩa." : "Upload and manage documents, PDFs, and files for semantic search and retrieval."}
         actions={
           <>
             <Input
               value={collection}
               onChange={(e) => setCollection(e.target.value)}
               className="h-9 w-36 text-xs font-mono"
-              placeholder="collection"
+              placeholder={locale === "vi" ? "bộ sưu tập" : "collection"}
             />
             <input
               ref={fileRef}
@@ -102,7 +102,7 @@ export default function FilesPage() {
               loading={upload.isPending}
               onClick={() => fileRef.current?.click()}
             >
-              <Upload className="h-4 w-4" /> Upload
+              <Upload className="h-4 w-4" /> {locale === "vi" ? "Tải lên" : "Upload"}
             </Button>
           </>
         }
@@ -110,17 +110,17 @@ export default function FilesPage() {
 
       <Card glass className="shadow-3d-card overflow-hidden">
         <CardContent className="p-0">
-          {isLoading ? <div className="p-6"><LoadingSkeleton variant="table" /></div> : isError ? <div className="p-6"><ErrorState title="Unable to load files" description="File data could not be loaded." onRetry={() => void refetch()} /></div> : data && data.length > 0 ? (
+          {isLoading ? <div className="p-6"><LoadingSkeleton variant="table" /></div> : isError ? <div className="p-6"><ErrorState title={locale === "vi" ? "Không thể tải tệp" : "Unable to load files"} description={locale === "vi" ? "Không thể tải dữ liệu tệp." : "File data could not be loaded."} onRetry={() => void refetch()} /></div> : data && data.length > 0 ? (
             <>
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Size</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Collection</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    <TableHead>{locale === "vi" ? "Tên" : "Name"}</TableHead>
+                    <TableHead>{locale === "vi" ? "Loại" : "Type"}</TableHead>
+                    <TableHead>{locale === "vi" ? "Kích thước" : "Size"}</TableHead>
+                    <TableHead>{locale === "vi" ? "Trạng thái" : "Status"}</TableHead>
+                    <TableHead>{locale === "vi" ? "Bộ sưu tập" : "Collection"}</TableHead>
+                    <TableHead className="text-right">{locale === "vi" ? "Hành động" : "Actions"}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -160,15 +160,15 @@ export default function FilesPage() {
                                   });
                                   toast.success(
                                     r.rag_document_id
-                                      ? `Ingestion accepted ${r.rag_document_id}`
-                                      : "Ingestion submitted",
+                                      ? (locale === "vi" ? `Nạp được chấp nhận ${r.rag_document_id}` : `Ingestion accepted ${r.rag_document_id}`)
+                                      : (locale === "vi" ? "Nạp đã được gửi" : "Ingestion submitted"),
                                   );
                                 } catch (err: any) {
                                   toast.error(err.message);
                                 }
                               }}
                             >
-                              <Loader2 className="h-3.5 w-3.5" /> Ingest
+                              <Loader2 className="h-3.5 w-3.5" /> {locale === "vi" ? "Nạp" : "Ingest"}
                             </Button>
                           )}
                           <ConfirmDialog
@@ -181,14 +181,14 @@ export default function FilesPage() {
                                 <Trash2 className="h-4 w-4" />
                               </Button>
                             }
-                            title="Delete File"
-                            description={`Are you sure you want to delete ${f.original_name}? This action cannot be undone.`}
-                            confirmLabel="Delete"
+                            title={locale === "vi" ? "Xóa tệp" : "Delete File"}
+                            description={locale === "vi" ? `Bạn có chắc chắn muốn xóa ${f.original_name}? Hành động này không thể hoàn tác.` : `Are you sure you want to delete ${f.original_name}? This action cannot be undone.`}
+                            confirmLabel={locale === "vi" ? "Xóa" : "Delete"}
                             destructive
                             onConfirm={async () => {
                               try {
                                 await del.mutateAsync(f.id);
-                                toast.success(`Deleted ${f.original_name}`);
+                                toast.success(locale === "vi" ? `Đã xóa ${f.original_name}` : `Deleted ${f.original_name}`);
                               } catch (err: any) {
                                 toast.error(err.message);
                               }
@@ -212,14 +212,14 @@ export default function FilesPage() {
           ) : (
             <EmptyState
               icon={FileText}
-              title="No files yet"
-              description="Upload a document to ingest it into RAG."
+              title={locale === "vi" ? "Chưa có tệp nào" : "No files yet"}
+              description={locale === "vi" ? "Tải lên tài liệu để nạp vào RAG." : "Upload a document to ingest it into RAG."}
               action={
                 <Button
                   className="gap-2 active-tactile transition-transform"
                   onClick={() => fileRef.current?.click()}
                 >
-                  <Upload className="h-4 w-4" /> Upload
+                  <Upload className="h-4 w-4" /> {locale === "vi" ? "Tải lên" : "Upload"}
                 </Button>
               }
             />
