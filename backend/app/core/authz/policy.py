@@ -33,11 +33,9 @@ PERMISSIONS: dict[Role, set[str]] = {
     Role.platform_admin: {"*"},
     Role.org_admin: {"*"},
     Role.operator: {
-        "agents:read", "agents:create", "agents:update", "agents:publish", "agents:run",
-        "workflows:*", "providers:*", "models:read", "mcp:*", "files:read", "files:write",
-        "sessions:*", "approvals:read", "approvals:manage", "evaluations:*", "ci:*",
-        "tools:use:safe", "tools:use:read", "tools:use:write", "tools:use:execute", "tools:use:network",
-        "usage:read", "quota:usage",
+        "agents:*", "models:*", "providers:*", "workflows:*", "mcp:*", "files:*",
+        "evaluations:*", "usage:*", "debug:*", "sessions:*", "approvals:*", "ci:*",
+        "tools:use:*", "quota:usage",
     },
     Role.user: {
         "agents:read",

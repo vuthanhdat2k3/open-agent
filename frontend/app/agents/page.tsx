@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import * as React from "react";
 import { toast } from "sonner";
@@ -12,6 +12,14 @@ import {
   History,
   Search,
   Upload,
+  Sparkles,
+  Save,
+  CheckCircle2,
+  SlidersHorizontal,
+  Box,
+  Layers,
+  ShieldCheck,
+  RefreshCw,
 } from "lucide-react";
 import {
   useAgents,
@@ -24,13 +32,21 @@ import {
   useCreateAgentRelease,
   usePublishAgentRelease,
   useRollbackAgentRelease,
+  useUrlSearchParam,
 } from "@/hooks";
+import {
+  getCompanionConfig,
+  saveCompanionConfig,
+  AVATAR_3D_PRESETS,
+  type CompanionConfig,
+} from "@/lib/operator/companion-config";
 import { Button } from "@/components/ui/button";
 import { Input, Label, Textarea } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/page-header";
 import { EmptyState, ErrorState, LoadingSkeleton } from "@/components/shared";
 import { AgentCard } from "@/components/agents/agent-card";
@@ -99,43 +115,77 @@ const RISK_TIERS = [
 ] as const;
 
 export default function AgentsPage() {
+  const [tabParam, setTabParam] = useUrlSearchParam("tab");
+  const activeTab = (tabParam as "catalog" | "companion") || "catalog";
+
+  const { data, isLoading, isError, refetch } = useAgents();
+  const tools = useAgentTools();
+  const models = useModels();
+  const create = useCreateAgent();
+  const del = useDeleteAgent();
+  const update = useUpdateAgent();
+
   const [open, setOpen] = React.useState(false);
   const [editingAgent, setEditingAgent] = React.useState<Agent | null>(null);
+  const [form, setForm] = React.useState<AgentForm>(DEFAULT_FORM);
+  const [selectedTools, setSelectedTools] = React.useState<string[]>([]);
+  const [search, setSearch] = React.useState("");
+  const [catalogSearch, setCatalogSearch] = React.useState("");
+  const [kindFilter, setKindFilter] = React.useState<"all" | "orchestrator" | "worker">("all");
+
+  // Release Management state
   const [releaseAgent, setReleaseAgent] = React.useState<Agent | null>(null);
   const [draftPrompt, setDraftPrompt] = React.useState("");
   const [changeNote, setChangeNote] = React.useState("");
-  const { data, isLoading, isError, refetch } = useAgents();
-  const models = useModels(open);
-  const tools = useAgentTools(open);
-  const create = useCreateAgent();
-  const update = useUpdateAgent();
-  const del = useDeleteAgent();
   const releases = useAgentReleases(releaseAgent?.id ?? null);
   const createRelease = useCreateAgentRelease();
   const publishRelease = usePublishAgentRelease();
   const rollbackRelease = useRollbackAgentRelease();
 
-  const [selectedTools, setSelectedTools] = React.useState<string[]>([]);
-  const [toolSearch, setToolSearch] = React.useState("");
-  const [form, setForm] = React.useState<AgentForm>(DEFAULT_FORM);
-
-  const groupedTools = React.useMemo(() => {
-    const query = toolSearch.trim().toLowerCase();
-    const groups: Record<string, AgentToolInfo[]> = {};
-    for (const tool of tools.data ?? []) {
-      if (query && !`${tool.name} ${tool.description}`.toLowerCase().includes(query)) continue;
-      const group = toolGroup(tool.name);
-      (groups[group] ??= []).push(tool);
-    }
-    return groups;
-  }, [tools.data, toolSearch]);
+  // 3D Companion Configuration state
+  const [companionConfig, setCompanionConfig] = React.useState<CompanionConfig>(getCompanionConfig());
+  const [isSavingCompanion, setIsSavingCompanion] = React.useState(false);
+  const previewViewerRef = React.useRef<any>(null);
 
   React.useEffect(() => {
-    if (!models.data?.length || editingAgent) return;
-    setForm((current) =>
-      current.model_id ? current : { ...current, model_id: models.data![0].id }
-    );
-  }, [models.data, editingAgent]);
+    setCompanionConfig(getCompanionConfig());
+  }, []);
+
+  const filteredAgents = React.useMemo(() => {
+    return (data || []).filter((a) => {
+      if (kindFilter !== "all" && a.kind !== kindFilter) return false;
+      if (catalogSearch.trim()) {
+        const q = catalogSearch.toLowerCase();
+        const matchName = a.name.toLowerCase().includes(q);
+        const matchDesc = (a.description || "").toLowerCase().includes(q);
+        const matchTools = (a.tools || []).some((t) => t.toLowerCase().includes(q));
+        return matchName || matchDesc || matchTools;
+      }
+      return true;
+    });
+  }, [data, kindFilter, catalogSearch]);
+
+  const handleSaveCompanion = () => {
+    setIsSavingCompanion(true);
+    try {
+      saveCompanionConfig(companionConfig);
+      toast.success("3D Companion Avatar & Operator settings saved successfully!");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to save companion settings");
+    } finally {
+      setIsSavingCompanion(false);
+    }
+  };
+
+  const groupedTools = React.useMemo(() => {
+    const map: Record<string, AgentToolInfo[]> = {};
+    for (const tool of tools.data ?? []) {
+      if (search && !tool.name.toLowerCase().includes(search.toLowerCase())) continue;
+      const group = toolGroup(tool.name);
+      (map[group] ??= []).push(tool);
+    }
+    return map;
+  }, [tools.data, search]);
 
   const openEdit = (agent: Agent) => {
     setEditingAgent(agent);
@@ -144,9 +194,9 @@ export default function AgentsPage() {
       description: agent.description,
       system_prompt: agent.system_prompt,
       model_id: agent.model_id,
-      kind: agent.kind,
-      max_iterations: agent.max_iterations,
-      temperature: agent.temperature,
+      kind: agent.kind ?? "worker",
+      max_iterations: agent.max_iterations ?? 12,
+      temperature: agent.temperature ?? 0.7,
       enable_thinking: agent.enable_thinking ?? null,
       allowed_risk_tiers: agent.allowed_risk_tiers ?? ["safe", "read"],
     });
@@ -243,351 +293,675 @@ export default function AgentsPage() {
 
   return (
     <div className="space-y-6">
+      {/* 1. Page Header */}
       <PageHeader
         icon={Bot}
-        title="Agents"
-        description="System prompt, model, and granted tool set"
+        title="Agent Studio"
+        description="Configure agent personas, system prompt reasoning, granted tool sets, and customize the live 3D Companion Avatar."
         actions={
-          <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) setEditingAgent(null); }}>
-            <DialogTrigger asChild>
-              <Button className="gap-2 active-tactile transition-transform" onClick={openCreate}>
-                <Plus className="h-4 w-4" /> New Agent
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>{editingAgent ? `Edit â€” ${editingAgent.name}` : "New Agent"}</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4 pt-1">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">Name</Label>
-                    <Input
-                      value={form.name}
-                      onChange={(e) => setForm({ ...form, name: e.target.value })}
-                      placeholder="researcher"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">Description</Label>
-                    <Input
-                      value={form.description}
-                      onChange={(e) => setForm({ ...form, description: e.target.value })}
-                      placeholder="Brief description"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">Kind</Label>
-                  <Select
-                    value={form.kind}
-                    onChange={(e) => setForm({ ...form, kind: e.target.value as "worker" | "orchestrator" })}
-                    className="w-full"
-                  >
-                    <option value="worker">Worker (called by other agents, not directly by users)</option>
-                    <option value="orchestrator">Orchestrator (chats with users, delegates to workers via call_agent)</option>
-                  </Select>
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80 flex items-center gap-1.5">
-                    <Cpu className="h-3.5 w-3.5 text-primary" /> Model
-                  </Label>
-                  <Select
-                    value={form.model_id}
-                    onChange={(e) => setForm({ ...form, model_id: e.target.value })}
-                    className="w-full"
-                  >
-                    {models.data?.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.display_name || m.name} ({m.tier})
-                      </option>
-                    ))}
-                  </Select>
-                  {form.model_id && (() => {
-                    const m = models.data?.find((x) => x.id === form.model_id);
-                    if (!m) return null;
-                    return (
-                      <div className="flex items-center gap-3 px-3 py-1.5 rounded-lg bg-muted/30 border border-border/30 text-[11px] font-mono text-muted-foreground">
-                        <span>ctx: <strong className="text-foreground">{m.context_window.toLocaleString()}</strong></span>
-                        <span>in: <strong className="text-foreground">${m.input_cost_per_1k}/1k</strong></span>
-                        <span>out: <strong className="text-foreground">${m.output_cost_per_1k}/1k</strong></span>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void refetch()}
+              disabled={isLoading}
+              className="gap-1.5"
+            >
+              <RefreshCw className={isLoading ? "h-3.5 w-3.5 animate-spin" : "h-3.5 w-3.5"} />
+              Refresh
+            </Button>
+            {activeTab === "catalog" && (
+              <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) setEditingAgent(null); }}>
+                <DialogTrigger asChild>
+                  <Button size="sm" className="gap-1.5 font-semibold" onClick={openCreate}>
+                    <Plus className="h-4 w-4" /> New Agent
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle>{editingAgent ? `Edit — ${editingAgent.name}` : "New Agent"}</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4 pt-1">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Name</Label>
+                        <Input
+                          value={form.name}
+                          onChange={(e) => setForm({ ...form, name: e.target.value })}
+                          placeholder="researcher"
+                          className="text-xs"
+                        />
                       </div>
-                    );
-                  })()}
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">System Prompt</Label>
-                  <Textarea
-                    className="min-h-[120px] font-mono text-xs resize-y"
-                    value={form.system_prompt}
-                    onChange={(e) => setForm({ ...form, system_prompt: e.target.value })}
-                    placeholder="You are a helpful assistantâ€¦"
-                  />
-                </div>
-
-                <div className="space-y-2 rounded-xl border border-border/50 bg-muted/10 p-3">
-                  <div className="flex items-start gap-2">
-                    <div>
-                      <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">Execution permissions</Label>
-                      <p className="mt-1 text-[11px] text-muted-foreground">Allow risk tiers before selecting tools that require them.</p>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Description</Label>
+                        <Input
+                          value={form.description}
+                          onChange={(e) => setForm({ ...form, description: e.target.value })}
+                          placeholder="Brief description"
+                          className="text-xs"
+                        />
+                      </div>
                     </div>
-                    <Badge variant="outline" className="ml-auto text-[10px]">{form.allowed_risk_tiers.length} / {RISK_TIERS.length} enabled</Badge>
-                  </div>
-                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                    {RISK_TIERS.map((tier) => {
-                      const enabled = form.allowed_risk_tiers.includes(tier.key);
-                      return (
-                        <button
-                          key={tier.key}
-                          type="button"
-                          aria-pressed={enabled}
-                          onClick={() => toggleRiskTier(tier.key)}
-                          className={`rounded-lg border p-2 text-left transition-colors ${enabled ? "border-primary/50 bg-primary/10" : "border-border/50 bg-background/30 hover:border-primary/30"}`}
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <span className={`text-xs font-semibold ${enabled ? "text-foreground" : "text-muted-foreground"}`}>{tier.label}</span>
-                            <span className="text-[9px] uppercase tracking-wider text-muted-foreground">{enabled ? "Allowed" : "Blocked"}</span>
-                          </div>
-                          <span className="mt-1 block text-[10px] text-muted-foreground">{tier.description}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
 
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Label className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">
-                      <Wrench className="h-3.5 w-3.5 text-primary" /> Tools
-                    </Label>
-                    <Badge variant="outline" className="ml-auto text-[10px]">
-                      {selectedTools.length} selected Â· {tools.data?.length ?? 0} total
-                    </Badge>
-                  </div>
-                  <div className="relative">
-                    <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      value={toolSearch}
-                      onChange={(event) => setToolSearch(event.target.value)}
-                      placeholder="Search tools by name or description"
-                      aria-label="Search tools"
-                      className="h-9 pl-9 text-xs"
-                    />
-                  </div>
-                  <div className="max-h-[320px] space-y-3 overflow-y-auto rounded-xl border border-border/40 bg-muted/10 p-3">
-                    {Object.entries(groupedTools).length === 0 ? (
-                      <p className="py-8 text-center text-xs text-muted-foreground">No tools match your search.</p>
-                    ) : (
-                      Object.entries(groupedTools).map(([group, items]) => (
-                        <section key={group} className="space-y-2">
-                          <div className="flex items-center gap-2 border-b border-border/40 pb-1.5">
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{TOOL_GROUPS[group] ?? group}</span>
-                            <span className="text-[10px] text-muted-foreground/60">{items.length}</span>
-                          </div>
-                          <div className="grid gap-2 sm:grid-cols-2">
-                            {items.map((tool) => {
-                              const selected = selectedTools.includes(tool.name);
-                              const tierAllowed = !tool.risk_tier || form.allowed_risk_tiers.includes(tool.risk_tier);
-                              const disabled = (!tool.available || !tierAllowed) && !selected;
-                              return (
-                                <button
-                                  key={tool.name}
-                                  type="button"
-                                  disabled={disabled}
-                                  aria-pressed={selected}
-                                  onClick={() => toggleTool(tool.name)}
-                                  title={tool.available && tierAllowed ? tool.description : !tool.available ? "Connection unavailable. Connect the integration before using this tool." : `Enable the ${tool.risk_tier} permission above before selecting this tool.`}
-                                  className={`flex min-w-0 items-start justify-between gap-2 rounded-lg border p-2 text-left transition-colors ${
-                                    selected ? "border-primary/50 bg-primary/10" : "border-border/50 bg-background/30 hover:border-primary/30"
-                                  } ${disabled ? "cursor-not-allowed opacity-45" : "active-tactile"}`}
-                                >
-                                  <span className="min-w-0">
-                                    <span className="block truncate font-mono text-[11px] font-medium">{tool.name}</span>
-                                    <span className="mt-0.5 block line-clamp-1 text-[10px] text-muted-foreground">{tool.description}</span>
-                                  </span>
-                                  <span className="flex shrink-0 flex-col items-end gap-1">
-                                    {tool.risk_tier && <span className={`rounded-full border px-1.5 py-0.5 text-[9px] ${riskColor[tool.risk_tier]}`}>{tool.risk_tier}</span>}
-                                    {!tool.available && <span className="text-[9px] text-warning">Unavailable</span>}
-                                    {tool.available && !tierAllowed && <span className="text-[9px] text-warning">Permission required</span>}
-                                  </span>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </section>
-                      ))
-                    )}
-                  </div>
-                </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Kind</Label>
+                      <Select
+                        value={form.kind}
+                        onChange={(e) => setForm({ ...form, kind: e.target.value as "worker" | "orchestrator" })}
+                        className="w-full text-xs"
+                      >
+                        <option value="worker">Worker (called by other agents, not directly by users)</option>
+                        <option value="orchestrator">Orchestrator (chats with users, delegates to workers via call_agent)</option>
+                      </Select>
+                    </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80 flex items-center gap-1.5">
-                      <RotateCcw className="h-3.5 w-3.5 text-primary" /> Max Iterations
-                    </Label>
-                    <Input
-                      type="number"
-                      min={1}
-                      max={50}
-                      value={form.max_iterations}
-                      onChange={(e) => setForm({ ...form, max_iterations: +e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80 flex items-center gap-1.5">
-                      <Thermometer className="h-3.5 w-3.5 text-primary" /> Temperature
-                      <span className="ml-auto font-mono text-foreground">{form.temperature.toFixed(2)}</span>
-                    </Label>
-                    <Slider value={[form.temperature]} min={0} max={2} step={0.1} onValueChange={([value]) => setForm({ ...form, temperature: value })} aria-label="Temperature" />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="agent-thinking" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">Thinking</Label>
-                    <Select id="agent-thinking" value={form.enable_thinking === null ? "" : String(form.enable_thinking)} onChange={(event) => setForm({ ...form, enable_thinking: event.target.value === "" ? null : event.target.value === "true" })} aria-label="Enable thinking">
-                      <option value="">Model default</option>
-                      <option value="true">Enabled</option>
-                      <option value="false">Disabled (concise replies)</option>
-                    </Select>
-                    <p className="text-[10px] text-muted-foreground">Disable for routing/orchestration agents to skip verbose reasoning.</p>
-                  </div>
-                </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                        <Cpu className="h-3.5 w-3.5 text-primary" /> Model
+                      </Label>
+                      <Select
+                        value={form.model_id}
+                        onChange={(e) => setForm({ ...form, model_id: e.target.value })}
+                        className="w-full text-xs font-mono"
+                      >
+                        {models.data?.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.display_name || m.name} ({m.tier})
+                          </option>
+                        ))}
+                      </Select>
+                    </div>
 
-                <Button
-                  className="w-full gap-2 active-tactile transition-transform"
-                  onClick={handleSubmit}
-                  disabled={create.isPending || update.isPending || !form.name}
-                >
-                  {(create.isPending || update.isPending) ? "Savingâ€¦" : editingAgent ? "Update Agent" : "Create Agent"}
-                </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">System Prompt</Label>
+                      <Textarea
+                        value={form.system_prompt}
+                        onChange={(e) => setForm({ ...form, system_prompt: e.target.value })}
+                        rows={5}
+                        placeholder="You are a helpful assistant..."
+                        className="font-mono text-xs"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Allowed Risk Tiers</Label>
+                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                        {RISK_TIERS.map((tier) => {
+                          const active = form.allowed_risk_tiers.includes(tier.key);
+                          return (
+                            <button
+                              key={tier.key}
+                              type="button"
+                              onClick={() => toggleRiskTier(tier.key)}
+                              className={`rounded-lg border p-2 text-left text-xs transition-colors ${
+                                active ? "border-primary bg-primary/10" : "border-border bg-background/50 hover:border-primary/40"
+                              }`}
+                            >
+                              <p className="font-semibold text-foreground">{tier.label}</p>
+                              <p className="text-[10px] text-muted-foreground">{tier.description}</p>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                          <Wrench className="h-3.5 w-3.5 text-primary" /> Tools ({selectedTools.length} selected)
+                        </Label>
+                        <div className="relative w-48">
+                          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                          <Input
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                            placeholder="Filter tools..."
+                            className="h-7 pl-8 text-[11px]"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="max-h-[240px] space-y-3 overflow-y-auto rounded-xl border border-border/40 bg-muted/10 p-3">
+                        {Object.entries(groupedTools).map(([group, items]) => (
+                          <section key={group} className="space-y-2">
+                            <div className="flex items-center gap-2 border-b border-border/40 pb-1.5">
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{TOOL_GROUPS[group] ?? group}</span>
+                              <span className="text-[10px] text-muted-foreground/60">{items.length}</span>
+                            </div>
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              {items.map((tool) => {
+                                const selected = selectedTools.includes(tool.name);
+                                const tierAllowed = !tool.risk_tier || form.allowed_risk_tiers.includes(tool.risk_tier);
+                                const disabled = (!tool.available || !tierAllowed) && !selected;
+                                return (
+                                  <button
+                                    key={tool.name}
+                                    type="button"
+                                    disabled={disabled}
+                                    onClick={() => toggleTool(tool.name)}
+                                    className={`flex min-w-0 items-start justify-between gap-2 rounded-lg border p-2 text-left transition-colors ${
+                                      selected ? "border-primary/50 bg-primary/10" : "border-border/50 bg-background/30 hover:border-primary/30"
+                                    } ${disabled ? "cursor-not-allowed opacity-45" : ""}`}
+                                  >
+                                    <span className="min-w-0">
+                                      <span className="block truncate font-mono text-[11px] font-medium">{tool.name}</span>
+                                      <span className="mt-0.5 block line-clamp-1 text-[10px] text-muted-foreground">{tool.description}</span>
+                                    </span>
+                                    <span className="flex shrink-0 flex-col items-end gap-1">
+                                      {tool.risk_tier && <span className={`rounded-full border px-1.5 py-0.5 text-[9px] ${riskColor[tool.risk_tier]}`}>{tool.risk_tier}</span>}
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </section>
+                        ))}
+                      </div>
+                    </div>
+
+                    <Button
+                      className="w-full gap-2 font-semibold"
+                      onClick={handleSubmit}
+                      loading={create.isPending || update.isPending}
+                      disabled={!form.name}
+                    >
+                      <Save className="h-4 w-4" /> Save Agent
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            )}
+          </div>
         }
       />
 
-      <Dialog
-        open={!!releaseAgent}
-        onOpenChange={(value) => {
-          if (!value) setReleaseAgent(null);
-        }}
-      >
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Release history: {releaseAgent?.name}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-5 pt-1">
-            <div className="space-y-3 border-b border-border/50 pb-5">
-              <div className="space-y-1.5">
-                <Label>Draft system prompt</Label>
-                <Textarea
-                  className="min-h-[120px] font-mono text-xs"
-                  value={draftPrompt}
-                  onChange={(event) => setDraftPrompt(event.target.value)}
-                />
+      {/* 2. Segmented Navigation Tabs */}
+      <div className="flex gap-2 border-b border-border/70 pb-2">
+        <Button
+          type="button"
+          variant={activeTab === "catalog" ? "secondary" : "ghost"}
+          onClick={() => setTabParam("catalog")}
+          className="gap-2 font-medium"
+        >
+          <Bot className="h-4 w-4" />
+          Agent Personas & Catalog
+          <Badge variant="outline" className="ml-1 text-[10px] font-mono">
+            {data?.length ?? 0}
+          </Badge>
+        </Button>
+
+        <Button
+          type="button"
+          variant={activeTab === "companion" ? "secondary" : "ghost"}
+          onClick={() => setTabParam("companion")}
+          className="gap-2 font-medium"
+        >
+          <Sparkles className="h-4 w-4 text-amber-500" />
+          3D Companion & Live Operator Settings
+        </Button>
+      </div>
+
+      {/* 3. Tab 1: Agent Personas & Catalog */}
+      {activeTab === "catalog" && (
+        <div className="space-y-5">
+          {/* KPI Ribbon */}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <Card className="flex items-center gap-3.5 p-4 shadow-card">
+              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+                <Bot className="h-5 w-5" />
               </div>
-              <div className="space-y-1.5">
-                <Label>Change note</Label>
-                <Input
-                  value={changeNote}
-                  maxLength={512}
-                  onChange={(event) => setChangeNote(event.target.value)}
-                  placeholder="Why this release is needed"
+              <div>
+                <p className="text-2xl font-bold leading-none tabular-nums text-foreground">{data?.length ?? 0}</p>
+                <p className="mt-1 text-xs text-muted-foreground font-medium">Configured Agents</p>
+              </div>
+            </Card>
+
+            <Card className="flex items-center gap-3.5 p-4 shadow-card">
+              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-sky-500/10 text-sky-500">
+                <Layers className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold leading-none tabular-nums text-foreground">
+                  {data?.filter((a) => a.kind === "orchestrator").length ?? 0}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground font-medium">Orchestrators</p>
+              </div>
+            </Card>
+
+            <Card className="flex items-center gap-3.5 p-4 shadow-card">
+              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-emerald-500/10 text-emerald-500">
+                <Cpu className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold leading-none tabular-nums text-foreground">
+                  {data?.filter((a) => a.kind === "worker").length ?? 0}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground font-medium">Worker Specialists</p>
+              </div>
+            </Card>
+
+            <Card className="flex items-center gap-3.5 p-4 shadow-card">
+              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-amber-500/10 text-amber-500">
+                <Sparkles className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold leading-none tabular-nums text-foreground">{models.data?.length ?? 0}</p>
+                <p className="mt-1 text-xs text-muted-foreground font-medium">Active LLM Engines</p>
+              </div>
+            </Card>
+          </div>
+
+          {/* Search & Kind Filters */}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="relative flex-1 max-w-md">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={catalogSearch}
+                onChange={(e) => setCatalogSearch(e.target.value)}
+                placeholder="Search agent name, tools, or description..."
+                className="pl-9 text-xs"
+              />
+            </div>
+
+            <div className="flex rounded-lg border border-border bg-muted/30 p-0.5">
+              <Button
+                size="sm"
+                variant={kindFilter === "all" ? "secondary" : "ghost"}
+                className="h-7 text-xs font-medium"
+                onClick={() => setKindFilter("all")}
+              >
+                All ({data?.length ?? 0})
+              </Button>
+              <Button
+                size="sm"
+                variant={kindFilter === "orchestrator" ? "secondary" : "ghost"}
+                className="h-7 text-xs font-medium"
+                onClick={() => setKindFilter("orchestrator")}
+              >
+                Orchestrators ({data?.filter((a) => a.kind === "orchestrator").length ?? 0})
+              </Button>
+              <Button
+                size="sm"
+                variant={kindFilter === "worker" ? "secondary" : "ghost"}
+                className="h-7 text-xs font-medium"
+                onClick={() => setKindFilter("worker")}
+              >
+                Workers ({data?.filter((a) => a.kind === "worker").length ?? 0})
+              </Button>
+            </div>
+          </div>
+
+          <Dialog open={Boolean(releaseAgent)} onOpenChange={(open) => !open && setReleaseAgent(null)}>
+            <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Releases — {releaseAgent?.name}</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 pt-2">
+                <div className="space-y-2 rounded-xl border border-border/60 bg-muted/20 p-4">
+                  <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">New Release Draft</Label>
+                  <Textarea
+                    value={draftPrompt}
+                    onChange={(e) => setDraftPrompt(e.target.value)}
+                    rows={4}
+                    className="font-mono text-xs"
+                    placeholder="System prompt for this release..."
+                  />
+                  <Input
+                    value={changeNote}
+                    onChange={(e) => setChangeNote(e.target.value)}
+                    placeholder="Change note (e.g. Added multi-step reasoning)"
+                    className="text-xs"
+                  />
+                  <Button size="sm" onClick={handleCreateDraft} disabled={createRelease.isPending || !draftPrompt}>
+                    Create Draft Version
+                  </Button>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Version History</Label>
+                  {releases.data?.map((release) => (
+                    <div key={release.id} className="flex items-center justify-between gap-3 rounded-lg border border-border/70 p-3 text-xs">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-foreground font-mono">v{release.version}</span>
+                          <Badge variant={release.status === "published" ? "default" : "outline"} className="text-[9.5px]">
+                            {release.status}
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-0.5">{release.change_note || "No note"}</p>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        {release.status === "draft" && (
+                          <Button size="sm" onClick={() => handlePublish(release.version)} disabled={publishRelease.isPending} className="text-xs h-7">
+                            <Upload className="h-3 w-3 mr-1" /> Publish
+                          </Button>
+                        )}
+                        {release.status === "archived" && (
+                          <Button size="sm" variant="outline" onClick={() => handleRollback(release.version)} disabled={rollbackRelease.isPending} className="text-xs h-7">
+                            <RotateCcw className="h-3 w-3 mr-1" /> Rollback
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          {isLoading ? (
+            <LoadingSkeleton variant="grid" />
+          ) : isError ? (
+            <ErrorState
+              title="Unable to load agents"
+              description="Agent catalog data could not be retrieved."
+              onRetry={() => void refetch()}
+            />
+          ) : filteredAgents.length > 0 ? (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {filteredAgents.map((a) => (
+                <AgentCard
+                  key={a.id}
+                  agent={a}
+                  models={models.data}
+                  tools={tools.data}
+                  onEdit={openEdit}
+                  onReleases={openReleases}
+                  onDelete={(id) => del.mutate(id)}
                 />
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              icon={Bot}
+              title="No agents match your criteria"
+              description="Try adjusting your search query or role filter."
+              action={
+                <Button className="gap-2" onClick={openCreate}>
+                  <Plus className="h-4 w-4" /> New Agent
+                </Button>
+              }
+            />
+          )}
+        </div>
+      )}
+
+      {/* 4. Tab 2: 3D Companion Avatar & Operator Settings */}
+      {activeTab === "companion" && (
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          {/* Left Column: Live 3D Avatar Preview Box */}
+          <Card className="shadow-card border-border/80 lg:col-span-1 flex flex-col p-5 bg-gradient-to-b from-card via-card to-primary/[0.04]">
+            <CardHeader className="p-0 pb-3">
+              <CardTitle className="text-base font-semibold flex items-center gap-2">
+                <Box className="h-4 w-4 text-primary" /> Live 3D Avatar Preview
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Real-time visual rendering of the companion avatar for end-users.
+              </CardDescription>
+            </CardHeader>
+
+            <CardContent className="p-0 flex-1 flex flex-col items-center justify-center pt-2">
+              {/* Simulated 3D Avatar Container with HUD Ring */}
+              <div className="relative h-64 w-full flex items-center justify-center">
+                {/* Simulated Floating Thought Bubble */}
+                {companionConfig.showThoughtBubbles && (
+                  <div className="animate-bounce-subtle absolute top-2 z-10 flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-card/95 px-3 py-1 text-[10px] font-medium text-amber-500 shadow-md">
+                    <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                    <span>⚡ 2 actions need your review →</span>
+                  </div>
+                )}
+
+                {/* Simulated 3D Model HUD */}
+                <div className="relative h-56 w-56">
+                  <svg className="pointer-events-none absolute inset-0 animate-spin-slow opacity-65" viewBox="0 0 200 200" fill="none" stroke="currentColor">
+                    <circle cx="100" cy="100" r="94" stroke="currentColor" className="text-primary" strokeWidth="1" strokeDasharray="4 8" opacity="0.6" />
+                    <circle cx="100" cy="100" r="86" stroke="currentColor" className="text-primary" strokeWidth="1.5" strokeDasharray="24 16 8 16" opacity="0.8" />
+                    <circle cx="100" cy="100" r="76" stroke="currentColor" className="text-sky-400" strokeWidth="0.8" strokeDasharray="6 12" opacity="0.5" />
+                  </svg>
+
+                  <div className="h-full w-full">
+                    {/* @ts-ignore */}
+                    <model-viewer
+                      ref={previewViewerRef}
+                      src={companionConfig.modelUrl || "/agent-service-robot.glb"}
+                      alt="3D Companion Preview"
+                      camera-orbit="0deg 75deg 2.2m"
+                      field-of-view="24deg"
+                      auto-rotate
+                      rotation-per-second="15deg"
+                      style={{ width: "100%", height: "100%", background: "transparent" }}
+                    />
+                  </div>
+                </div>
+
+                {/* Status Pill Preview */}
+                <div className="absolute bottom-2 flex items-center gap-2 rounded-full border border-border/90 bg-card/95 px-3 py-1 text-xs text-muted-foreground shadow-sm backdrop-blur-md">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_8px_#10b981]" />
+                  <span className="font-semibold text-foreground">{companionConfig.name || "Personal Operator"}</span>
+                  <span className="font-mono text-[10.5px] text-primary font-medium">ready</span>
+                </div>
+              </div>
+
+              <div className="w-full mt-4 border-t border-border/60 pt-3 text-center text-xs text-muted-foreground">
+                <p className="font-medium text-foreground">{companionConfig.name}</p>
+                <p className="text-[11px] text-muted-foreground">{companionConfig.tagline}</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Right Column: Companion Configuration Form */}
+          <Card className="shadow-card border-border/80 lg:col-span-2 p-6 space-y-6">
+            <div className="flex items-center justify-between border-b border-border/60 pb-4">
+              <div>
+                <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
+                  <SlidersHorizontal className="h-5 w-5 text-primary" /> 3D Companion & Executive Operator Config
+                </h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Operators and Org Admins configure this persona to maintain, develop, and customize the live assistant for users.
+                </p>
               </div>
               <Button
-                className="gap-2"
-                onClick={handleCreateDraft}
-                disabled={createRelease.isPending || !changeNote.trim()}
+                className="gap-2 font-semibold"
+                onClick={handleSaveCompanion}
+                loading={isSavingCompanion}
               >
-                <Plus className="h-4 w-4" />
-                {createRelease.isPending ? "Creating..." : "Create draft"}
+                <Save className="h-4 w-4" /> Save Configuration
               </Button>
             </div>
 
-            <div className="space-y-2">
-              {releases.isLoading && <Skeleton className="h-24 w-full" />}
-              {releases.data?.map((release) => (
-                <div
-                  key={release.id}
-                  className="flex items-start justify-between gap-4 rounded-md border border-border/50 p-3"
-                >
-                  <div className="min-w-0 space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-sm font-semibold">
-                        v{release.version}
-                      </span>
-                      <Badge
-                        variant={release.status === "published" ? "default" : "outline"}
-                      >
-                        {release.status}
-                      </Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {release.change_note || "No change note"}
-                    </p>
-                    <p className="text-[10px] text-muted-foreground/70">
-                      {new Date(release.created_at).toLocaleString()}
-                      {" Â· "}
-                      {release.config_hash.slice(0, 10)}
-                    </p>
+            <div className="space-y-5">
+              {/* Section A: Identity & Brain Binding */}
+              <div className="space-y-3">
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-primary">
+                  1. Identity & Brain Persona Binding
+                </h3>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">Companion Display Name</Label>
+                    <Input
+                      value={companionConfig.name}
+                      onChange={(e) => setCompanionConfig({ ...companionConfig, name: e.target.value })}
+                      placeholder="e.g. Personal Operator, Executive Chief of Staff"
+                      className="text-xs"
+                    />
                   </div>
-                  <div className="flex shrink-0 gap-1">
-                    {release.status === "draft" && (
-                      <Button
-                        size="sm"
-                        className="gap-1.5"
-                        onClick={() => handlePublish(release.version)}
-                        disabled={publishRelease.isPending}
-                      >
-                        <Upload className="h-3.5 w-3.5" /> Publish
-                      </Button>
-                    )}
-                    {release.status === "archived" && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="gap-1.5"
-                        onClick={() => handleRollback(release.version)}
-                        disabled={rollbackRelease.isPending}
-                      >
-                        <RotateCcw className="h-3.5 w-3.5" /> Rollback
-                      </Button>
-                    )}
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">Tagline / Role Description</Label>
+                    <Input
+                      value={companionConfig.tagline}
+                      onChange={(e) => setCompanionConfig({ ...companionConfig, tagline: e.target.value })}
+                      placeholder="e.g. Personal Executive Chief of Staff"
+                      className="text-xs"
+                    />
                   </div>
                 </div>
-              ))}
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
 
-      {isLoading ? <LoadingSkeleton variant="grid" /> : isError ? <ErrorState title="Unable to load agents" description="Agent data could not be loaded." onRetry={() => void refetch()} /> : data && data.length > 0 ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 stagger">
-          {data.map((a) => (
-            <AgentCard
-              key={a.id}
-              agent={a}
-              models={models.data}
-              tools={tools.data}
-              onEdit={openEdit}
-              onReleases={openReleases}
-              onDelete={(id) => del.mutate(id)}
-            />
-          ))}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Underlying Brain Agent (Studio Agent Persona)</Label>
+                  <Select
+                    value={companionConfig.brainAgentId || ""}
+                    onChange={(e) => setCompanionConfig({ ...companionConfig, brainAgentId: e.target.value || null })}
+                    className="text-xs"
+                  >
+                    <option value="">Default Organization Orchestrator</option>
+                    {data?.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.name} — {a.description || "Active Agent Persona"}
+                      </option>
+                    ))}
+                  </Select>
+                  <p className="text-[11px] text-muted-foreground">
+                    When users send prompts or dispatch actions to the 3D Companion, this agent persona and its system prompts will process the request.
+                  </p>
+                </div>
+              </div>
+
+              {/* Section B: 3D Avatar Asset Model */}
+              <div className="space-y-3 border-t border-border/60 pt-4">
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-primary">
+                  2. 3D Model Asset & Visual Avatar
+                </h3>
+
+                <div className="grid gap-3 sm:grid-cols-3">
+                  {AVATAR_3D_PRESETS.map((preset) => {
+                    const isSelected =
+                      preset.id === "custom"
+                        ? companionConfig.modelUrl !== "/agent-service-robot.glb" &&
+                          companionConfig.modelUrl !== "https://modelviewer.dev/shared-assets/models/Astronaut.glb"
+                        : companionConfig.modelUrl === preset.url;
+                    return (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => {
+                          if (preset.url) {
+                            setCompanionConfig({ ...companionConfig, modelUrl: preset.url });
+                          }
+                        }}
+                        className={`rounded-xl border p-3.5 text-left transition-all ${
+                          isSelected
+                            ? "border-primary bg-primary/10 shadow-sm ring-1 ring-primary/30"
+                            : "border-border/80 bg-card hover:border-border hover:bg-muted/30"
+                        }`}
+                      >
+                        <p className="text-xs font-semibold text-foreground">{preset.name}</p>
+                        <p className="mt-1 text-[10.5px] text-muted-foreground leading-relaxed">
+                          {preset.description}
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Custom 3D Model Asset URL (.glb / .gltf)</Label>
+                  <Input
+                    value={companionConfig.modelUrl}
+                    onChange={(e) => setCompanionConfig({ ...companionConfig, modelUrl: e.target.value })}
+                    placeholder="/agent-service-robot.glb or https://your-cdn.com/avatar.glb"
+                    className="text-xs font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* Section C: Docking Position & Screen Placement */}
+              <div className="space-y-3 border-t border-border/60 pt-4">
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-primary">
+                  3. Default Screen Placement & Docking
+                </h3>
+                <div className="grid gap-3 sm:grid-cols-4">
+                  {[
+                    { id: "bottom-right", label: "Bottom-Right (Default)" },
+                    { id: "middle-right", label: "Middle-Right" },
+                    { id: "top-right", label: "Top-Right" },
+                    { id: "bottom-left", label: "Bottom-Left" },
+                  ].map((pos) => {
+                    const isSelected = companionConfig.defaultPosition === pos.id;
+                    return (
+                      <button
+                        key={pos.id}
+                        type="button"
+                        onClick={() =>
+                          setCompanionConfig({
+                            ...companionConfig,
+                            defaultPosition: pos.id as any,
+                          })
+                        }
+                        className={`rounded-lg border p-2.5 text-center text-xs font-medium transition-all ${
+                          isSelected
+                            ? "border-primary bg-primary/10 text-foreground font-semibold"
+                            : "border-border/70 bg-card hover:bg-muted/40 text-muted-foreground"
+                        }`}
+                      >
+                        {pos.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Section D: Feature Toggles & Capabilities */}
+              <div className="space-y-3 border-t border-border/60 pt-4">
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-primary">
+                  4. Interactive Capabilities & Surface Controls
+                </h3>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="flex items-center gap-2.5 rounded-lg border border-border/70 p-3 text-xs text-foreground cursor-pointer hover:bg-muted/30">
+                    <input
+                      type="checkbox"
+                      checked={companionConfig.showThoughtBubbles}
+                      onChange={(e) => setCompanionConfig({ ...companionConfig, showThoughtBubbles: e.target.checked })}
+                      className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
+                    />
+                    <div>
+                      <p className="font-semibold">Live Thought Bubble Alerts</p>
+                      <p className="text-[10px] text-muted-foreground">Show urgent action notifications above avatar head</p>
+                    </div>
+                  </label>
+
+                  <label className="flex items-center gap-2.5 rounded-lg border border-border/70 p-3 text-xs text-foreground cursor-pointer hover:bg-muted/30">
+                    <input
+                      type="checkbox"
+                      checked={companionConfig.enableApprovals}
+                      onChange={(e) => setCompanionConfig({ ...companionConfig, enableApprovals: e.target.checked })}
+                      className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
+                    />
+                    <div>
+                      <p className="font-semibold">1-Click Technical Approvals</p>
+                      <p className="text-[10px] text-muted-foreground">Allow instant approving from floating operator surface</p>
+                    </div>
+                  </label>
+
+                  <label className="flex items-center gap-2.5 rounded-lg border border-border/70 p-3 text-xs text-foreground cursor-pointer hover:bg-muted/30">
+                    <input
+                      type="checkbox"
+                      checked={companionConfig.enableEmailTriage}
+                      onChange={(e) => setCompanionConfig({ ...companionConfig, enableEmailTriage: e.target.checked })}
+                      className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
+                    />
+                    <div>
+                      <p className="font-semibold">Email Triage Feed</p>
+                      <p className="text-[10px] text-muted-foreground">Expose incoming classified emails in operator surface</p>
+                    </div>
+                  </label>
+
+                  <label className="flex items-center gap-2.5 rounded-lg border border-border/70 p-3 text-xs text-foreground cursor-pointer hover:bg-muted/30">
+                    <input
+                      type="checkbox"
+                      checked={companionConfig.enableDirectPrompt}
+                      onChange={(e) => setCompanionConfig({ ...companionConfig, enableDirectPrompt: e.target.checked })}
+                      className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
+                    />
+                    <div>
+                      <p className="font-semibold">Direct Operator Dispatch</p>
+                      <p className="text-[10px] text-muted-foreground">Enable natural language command dispatch bar</p>
+                    </div>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </Card>
         </div>
-      ) : (
-        <EmptyState
-          icon={Bot}
-          title="No agents yet"
-          description="Create one with a model, system prompt, and a tool set."
-          action={
-            <Button className="gap-2 active-tactile transition-transform" onClick={openCreate}>
-              <Plus className="h-4 w-4" /> New Agent
-            </Button>
-          }
-        />
       )}
     </div>
   );
