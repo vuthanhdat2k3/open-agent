@@ -12,7 +12,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { streamSSE } from "@/lib/api";
-import { useWorkflows, useCreateWorkflow, useUpdateWorkflow, useAgents, useModels, useGenerateWorkflow, useUrlSearchParam, useWorkflowRun } from "@/hooks";
+import { useWorkflows, useCreateWorkflow, useUpdateWorkflow, useAgents, useModels, useGenerateWorkflow, useWorkflowRun } from "@/hooks";
 import { useWorkflowStore } from "@/stores";
 import { Button } from "@/components/ui/button";
 import { Input, Label, Textarea } from "@/components/ui/input";
@@ -38,15 +38,17 @@ function layout(nodes: GraphNode[], edges: GraphEdge[]) {
   edges.forEach((e) => (adj[e.from_] = adj[e.from_] || []).push(e.to));
   const layer: Record<string, number> = {};
   const input = nodes.find((n) => n.kind === "input");
-  if (!input) return {};
-  const q: [string, number][] = [[input.id, 0]];
-  layer[input.id] = 0;
-  while (q.length) {
-    const [id, d] = q.shift()!;
-    (adj[id] || []).forEach((t) => {
-      if (layer[t] === undefined || layer[t] < d + 1) {
-        layer[t] = d + 1;
-        q.push([t, d + 1]);
+  const queue: string[] = input ? [input.id] : nodes.length ? [nodes[0].id] : [];
+  queue.forEach((id) => (layer[id] = 0));
+  const visited = new Set<string>(queue);
+  while (queue.length) {
+    const cur = queue.shift()!;
+    const curL = layer[cur] ?? 0;
+    (adj[cur] || []).forEach((nxt) => {
+      if (!visited.has(nxt)) {
+        visited.add(nxt);
+        layer[nxt] = curL + 1;
+        queue.push(nxt);
       }
     });
   }
@@ -81,13 +83,31 @@ export default function WorkflowsPage() {
     setActiveRun,
   } = useWorkflowStore();
   const workflowRun = useWorkflowRun(activeRunId);
-  const [runParam, setRunParam] = useUrlSearchParam("run");
+
+  // Initialize activeRunId once on mount if 'run' is present in URL
   React.useEffect(() => {
-    if (runParam && runParam !== activeRunId) setActiveRun(runParam);
-  }, [activeRunId, runParam, setActiveRun]);
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    const initialRun = url.searchParams.get("run");
+    if (initialRun && initialRun !== activeRunId) {
+      setActiveRun(initialRun);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Update browser URL silently without triggering Next.js router re-render or scrolling reset
   React.useEffect(() => {
-    if (activeRunId !== runParam) setRunParam(activeRunId);
-  }, [activeRunId, runParam, setRunParam]);
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    const currentRun = url.searchParams.get("run");
+    if (activeRunId && currentRun !== activeRunId) {
+      url.searchParams.set("run", activeRunId);
+      window.history.replaceState(null, "", url.toString());
+    } else if (!activeRunId && currentRun) {
+      url.searchParams.delete("run");
+      window.history.replaceState(null, "", url.toString());
+    }
+  }, [activeRunId]);
 
   const [wfName, setWfName] = React.useState("");
   const [aiPrompt, setAiPrompt] = React.useState("");
@@ -221,7 +241,9 @@ export default function WorkflowsPage() {
   React.useEffect(() => {
     const run = workflowRun.data;
     if (!run) return;
-    setActiveRun(run.id, run.status);
+    if (activeRunId !== run.id) {
+      setActiveRun(run.id, run.status);
+    }
     const statuses: Record<string, string> = {};
     const restoredLogs: WorkflowLogItem[] = [];
     for (const node of run.nodes || []) {
@@ -239,7 +261,7 @@ export default function WorkflowsPage() {
     if (run.output?.text) setOutput(String(run.output.text));
     setRunning(!["succeeded", "failed", "diverged", "cancelled", "waiting_approval"].includes(run.status));
     setLogs((previous) => (previous.length === 0 ? restoredLogs : previous));
-  }, [workflowRun.data, setActiveRun]);
+  }, [workflowRun.data, setActiveRun, activeRunId]);
 
   const handleGenerate = async () => {
     if (!aiPrompt.trim() || !aiModelId) return;
