@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -16,6 +16,7 @@ from app.db.base import utc_now
 from app.db.session import get_db
 from app.dependencies import get_current_user, require_permission
 from app.models.api_key import ApiKey
+from app.models.application_session import ApplicationSession
 from app.models.membership import Membership
 from app.models.organization import Organization
 from app.models.role import Role
@@ -226,11 +227,16 @@ async def add_org_member(
             email=body.email.lower(),
             display_name=body.email.split("@", 1)[0],
             hashed_password=hash_password(initial_pass),
+            is_active=True,
+            lifecycle_status="active",
         )
         db.add(invited_user)
         await db.flush()
-    elif not invited_user.hashed_password:
-        invited_user.hashed_password = hash_password(initial_pass)
+    else:
+        invited_user.is_active = True
+        invited_user.lifecycle_status = "active"
+        if body.initial_password or not invited_user.hashed_password:
+            invited_user.hashed_password = hash_password(initial_pass)
         await db.flush()
 
     res_mem = await db.execute(
@@ -322,6 +328,32 @@ async def remove_org_member(
             )
 
     await db.delete(mem)
+
+    # 1. Invalidate active sessions for this user within this organization
+    await db.execute(
+        update(ApplicationSession)
+        .where(
+            ApplicationSession.user_id == user_id,
+            ApplicationSession.organization_id == id,
+            ApplicationSession.revoked_at.is_(None),
+        )
+        .values(revoked_at=utc_now())
+    )
+
+    # 2. If user has no remaining active memberships, deactivate account
+    res_other_mems = await db.execute(
+        select(Membership).where(
+            Membership.user_id == user_id,
+            Membership.org_id != id,
+            Membership.lifecycle_status == "active",
+        )
+    )
+    if res_other_mems.first() is None:
+        target_u = await db.get(User, user_id)
+        if target_u:
+            target_u.is_active = False
+            target_u.lifecycle_status = "disabled"
+
     await db.commit()
     await log_action(
         db,
