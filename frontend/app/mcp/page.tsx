@@ -42,8 +42,8 @@ export default function McpPage() {
     <div className="space-y-6">
       <PageHeader
         icon={Network}
-        title="MCP Servers"
-        description="Expose external tools to your agents"
+        title="Tool Registry & MCP Integrations"
+        description="Register Model Context Protocol (MCP) servers, inspect capabilities, and grant external tools to AI agents."
         actions={
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>

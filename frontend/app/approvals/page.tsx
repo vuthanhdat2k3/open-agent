@@ -137,11 +137,11 @@ export default function ApprovalsPage() {
       {/* 1. Page Header */}
       <PageHeader
         icon={ShieldCheck}
-        title={isUserRole ? "My Approvals & Quota" : "Technical Approvals"}
+        title={isUserRole ? "Action Approvals & Usage Quota" : "Technical Action Approvals"}
         description={
           isUserRole
-            ? "Review pending AI dispatch decisions and monitor your organization monthly usage limits."
-            : "Review and govern automated agent tool dispatches across your organization."
+            ? "Review pending AI actions, dispatches, and monitor your personal/organization consumption limits."
+            : "Review and govern high-risk automated agent tool executions and dispatch policies across the organization."
         }
         actions={
           <Button
