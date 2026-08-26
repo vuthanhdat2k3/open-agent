@@ -13,12 +13,14 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
+import { useTranslation } from "@/lib/i18n";
+
 export function ConfirmDialog({
   trigger,
   title,
   description,
-  confirmLabel = "Continue",
-  cancelLabel = "Cancel",
+  confirmLabel,
+  cancelLabel,
   destructive = false,
   loading = false,
   onConfirm,
@@ -32,8 +34,11 @@ export function ConfirmDialog({
   loading?: boolean;
   onConfirm: () => void | Promise<void>;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = React.useState(false);
   const [pending, setPending] = React.useState(false);
+  const resolvedConfirmLabel = confirmLabel || t("common.confirm", "Xác nhận");
+  const resolvedCancelLabel = cancelLabel || t("common.cancel", "Hủy bỏ");
 
   async function confirm() {
     setPending(true);
@@ -54,7 +59,7 @@ export function ConfirmDialog({
           <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={pending || loading}>{cancelLabel}</AlertDialogCancel>
+          <AlertDialogCancel disabled={pending || loading}>{resolvedCancelLabel}</AlertDialogCancel>
           <AlertDialogAction
             disabled={pending || loading}
             className={destructive ? "bg-destructive text-destructive-foreground hover:bg-destructive/90" : undefined}
@@ -63,7 +68,7 @@ export function ConfirmDialog({
               void confirm();
             }}
           >
-            {pending || loading ? "Working…" : confirmLabel}
+            {pending || loading ? (t ? t("common.loading", "Đang xử lý...") : "Working…") : resolvedConfirmLabel}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
+import { useTranslation } from "@/lib/i18n";
 import { McpServerForm } from "@/components/mcp/mcp-server-form";
 import { ConfirmDialog, ErrorState, LoadingSkeleton, DataPagination } from "@/components/shared";
 import type { McpServer } from "@/types";
@@ -28,6 +29,7 @@ import {
 } from "@/components/ui/dialog";
 
 export default function McpPage() {
+  const { t, dict, locale } = useTranslation();
   const { data, isLoading, isError, refetch } = useMcpServers();
   const create = useCreateMcp();
   const del = useDeleteMcp();
@@ -49,7 +51,7 @@ export default function McpPage() {
     <div className="space-y-6">
       <PageHeader
         icon={Network}
-        title="MCP Servers"
+        title={dict.pages.mcp.title}
         description="Register Model Context Protocol (MCP) servers and manage external tool integrations."
         actions={
           <Dialog open={open} onOpenChange={setOpen}>

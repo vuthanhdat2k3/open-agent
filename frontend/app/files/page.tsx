@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
+import { useTranslation } from "@/lib/i18n";
 import { ConfirmDialog, ErrorState, LoadingSkeleton, DataPagination } from "@/components/shared";
 import {
   Table,
@@ -47,6 +48,7 @@ function formatSize(bytes: number) {
 }
 
 export default function FilesPage() {
+  const { t, dict, locale } = useTranslation();
   const { data, isLoading, isError, refetch } = useFiles();
   const upload = useUploadFile();
   const del = useDeleteFile();
@@ -79,7 +81,7 @@ export default function FilesPage() {
     <div className="space-y-6">
       <PageHeader
         icon={FileText}
-        title="Knowledge Base"
+        title={dict.pages.files.title}
         description="Upload and manage documents, PDFs, and files for semantic search and retrieval."
         actions={
           <>

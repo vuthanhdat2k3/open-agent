@@ -36,6 +36,7 @@ import {
 import { EmptyState } from "@/components/empty-state";
 import { ConfirmDialog, ErrorState, LoadingSkeleton, DataPagination } from "@/components/shared";
 import { PageHeader } from "@/components/page-header";
+import { useTranslation } from "@/lib/i18n";
 import {
   Table,
   TableBody,
@@ -101,6 +102,7 @@ async function downloadArtifact(artifact: WorkspaceArtifact) {
 }
 
 export default function WorkspacePage() {
+  const { t, dict, locale } = useTranslation();
   const isAdmin = useCurrentRole() === "admin";
   const artifacts = useWorkspaceArtifacts();
   const executions = useSandboxExecutions();
@@ -157,7 +159,7 @@ export default function WorkspacePage() {
     <div className="space-y-6">
       <PageHeader
         icon={FolderKanban}
-        title="Sandbox"
+        title={dict.pages.workspace.title}
         description="Inspect agent artifacts, execution logs, and run isolated sandbox containers."
         actions={
           <Button

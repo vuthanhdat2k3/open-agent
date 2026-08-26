@@ -5,6 +5,7 @@ import { Building2, Plus, Users, UserPlus, Trash2, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { useCreateOrganization, useOrganizations, useCurrentRole, useMembers, useInviteMember, useRemoveMember } from "@/hooks";
 import { PageHeader } from "@/components/page-header";
+import { useTranslation } from "@/lib/i18n";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
@@ -162,6 +163,7 @@ function OrgMembersDialog({ organization, open, onOpenChange }: OrgMembersDialog
 }
 
 export default function OrganizationsPage() {
+  const { t, dict, locale } = useTranslation();
   const role = useCurrentRole();
   const organizations = useOrganizations(role === "platform_admin");
   const create = useCreateOrganization();
@@ -203,7 +205,7 @@ export default function OrganizationsPage() {
     <div className="space-y-6">
       <PageHeader
         icon={Building2}
-        title="Organizations"
+        title={dict.pages.organizations.title}
         description="Create, provision, and oversee tenant organizations and initial administrators."
       />
       <Card glass>

@@ -14,6 +14,7 @@ import {
 } from "@/hooks";
 import type { EvaluationSuite } from "@/types";
 import { PageHeader } from "@/components/page-header";
+import { useTranslation } from "@/lib/i18n";
 import { EmptyState, ErrorState, LoadingSkeleton, DataPagination } from "@/components/shared";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -36,6 +37,7 @@ const EMPTY_SUITE = {
 };
 
 export default function EvaluationsPage() {
+  const { t, dict, locale } = useTranslation();
   const suites = useEvaluationSuites();
   const agents = useAgents();
   const createSuite = useCreateEvaluationSuite();
@@ -140,7 +142,7 @@ export default function EvaluationsPage() {
     <div className="space-y-6">
       <PageHeader
         icon={FlaskConical}
-        title="Evaluations"
+        title={dict.pages.evaluations.title}
         description="Run benchmark test suites, track pass rates, and verify model quality."
         actions={
           <Button className="gap-2 active-tactile transition-transform" onClick={() => setSuiteDialog(true)}>
