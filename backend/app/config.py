@@ -69,6 +69,7 @@ class Settings(BaseSettings):
     max_iterations: int = 12
     workflow_execution_mode: Literal["inline", "queued"] = "inline"
     workflow_max_concurrency: int = 8
+    workflow_webhook_shared_token: str = ""
     redis_url: str = "redis://127.0.0.1:6379/0"
     quota_requests_per_minute: int = 600
     quota_agent_runs_per_minute: int = 60
