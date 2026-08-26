@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { GraphNode } from "@/types";
+import { useTranslation } from "@/lib/i18n";
 
 const PALETTE_ITEMS: { kind: GraphNode["kind"]; icon: typeof Box; label: string; description: string }[] = [
   { kind: "input", icon: Box, label: "Input", description: "Entry point for on-demand requests" },
@@ -39,6 +40,7 @@ interface WorkflowNodePaletteProps {
 }
 
 export function WorkflowNodePalette({ className, onAddNode }: WorkflowNodePaletteProps) {
+    const { locale } = useTranslation();
   const [collapsed, setCollapsed] = React.useState(false);
 
   const onDragStart = (e: React.DragEvent, kind: GraphNode["kind"]) => {
@@ -57,8 +59,7 @@ export function WorkflowNodePalette({ className, onAddNode }: WorkflowNodePalett
       <div className="flex items-center justify-between">
         {!collapsed && (
           <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">
-            Node palette
-          </span>
+            {locale === "vi" ? "Node palette" : "Node palette"}</span>
         )}
         <button
           type="button"

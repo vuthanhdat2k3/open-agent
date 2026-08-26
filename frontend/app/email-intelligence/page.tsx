@@ -1,83 +1,88 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
+import { toast } from "sonner";
 import {
-  Bell,
-  Check,
-  ChevronLeft,
-  ChevronRight,
-  Inbox,
+  CalendarDays,
+  CheckCheck,
+  Clock3,
+  ExternalLink,
+  Filter,
   Mail,
-  MailOpen,
   Plus,
   RefreshCw,
   Search,
   ShieldAlert,
   ShieldCheck,
-  Sparkles,
+  Trash2,
+  Inbox,
+  UserCheck,
+  ChevronRight,
 } from "lucide-react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Badge } from "@/components/ui/badge";
+import { useTranslation } from "@/lib/i18n";
+import { useCustomerIntelligenceNotifications, useMarkCustomerIntelligenceNotificationRead, useUrlSearchParam } from "@/hooks";
+import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
-import { PageHeader } from "@/components/page-header";
-import { EmptyState, ErrorState, LoadingSkeleton } from "@/components/shared";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { formatVietnamDateTime, vietnamDateRangeStart } from "@/lib/datetime";
-import {
-  useCustomerIntelligenceNotifications,
-  useMarkCustomerIntelligenceNotificationRead,
-  useUrlSearchParam,
-} from "@/hooks";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { EmptyState, ErrorState, LoadingSkeleton, DataPagination, ConfirmDialog } from "@/components/shared";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { getActiveOrgId } from "@/lib/auth";
-import { createIdempotencyKey } from "@/lib/email-intelligence/idempotency";
 import { emailIntelligenceQueryKeys } from "@/lib/email-intelligence/query-keys";
-import { toast } from "sonner";
+import type { CustomerIntelligenceNotification } from "@/types";
 
 type DateRange = "all" | "today" | "7d" | "30d";
 
 type Rule = {
   id: string;
   name: string;
-  status: string;
-  match: { type: string; value: string };
-  action: { type: string };
-  conditions: Record<string, unknown>;
-  capabilities: Record<string, boolean>;
-  policy_version: string;
+  match_type: string;
+  match_value: string;
+  action: string;
+  calendar_connection_id: string;
+  expires_at: string;
+  is_active: boolean;
 };
 
 type RuleResponse = {
-  items: Rule[];
-  policy: Record<string, number | string>;
-  meta: { server_time: string };
+  rules: Rule[];
 };
 
 function dateRange(range: DateRange) {
   if (range === "all") return {};
-  return { receivedAfter: vietnamDateRangeStart(range) };
+  const end = new Date();
+  const start = new Date();
+  if (range === "today") {
+    start.setHours(0, 0, 0, 0);
+  } else if (range === "7d") {
+    start.setDate(end.getDate() - 7);
+  } else if (range === "30d") {
+    start.setDate(end.getDate() - 30);
+  }
+  return {
+    from_date: start.toISOString(),
+    to_date: end.toISOString(),
+  };
 }
 
-function relativeTime(value: string) {
-  const seconds = Math.round((new Date(value).getTime() - Date.now()) / 1000);
-  const absolute = Math.abs(seconds);
-  const unit = absolute < 60 ? "second" : absolute < 3600 ? "minute" : absolute < 86400 ? "hour" : "day";
-  const divisor = unit === "second" ? 1 : unit === "minute" ? 60 : unit === "hour" ? 3600 : 86400;
-  return new Intl.RelativeTimeFormat("en", { numeric: "auto" }).format(Math.round(seconds / divisor), unit);
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
-function preview(body: string, subject: string) {
-  const lines = body.split("\n");
-  return lines[0].trim() === subject.trim() ? lines.slice(1).join(" ").trim() : body.replace(/\s+/g, " ").trim();
-}
-
-function initials(sender: string) {
-  return sender.split("@")[0].slice(0, 2).toUpperCase();
+function createIdempotencyKey() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `idemp-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 export default function EmailIntelligencePage() {
+  const { t, dict, locale } = useTranslation();
   const [tabParam, setTabParam] = useUrlSearchParam("tab");
   const activeTab = (tabParam as "inbox" | "rules") || "inbox";
 
@@ -86,7 +91,7 @@ export default function EmailIntelligencePage() {
   const [notificationType, setNotificationType] = React.useState("");
   const [searchInput, setSearchInput] = React.useState("");
   const [query, setQuery] = React.useState("");
-  const [pageSize, setPageSize] = React.useState(6);
+  const [pageSize, setPageSize] = React.useState(10);
   const [pageIndex, setPageIndex] = React.useState(0);
   const [pageCursors, setPageCursors] = React.useState<(string | null)[]>([null]);
   const markRead = useMarkCustomerIntelligenceNotificationRead();
@@ -103,6 +108,9 @@ export default function EmailIntelligencePage() {
   const [calendarConnectionId, setCalendarConnectionId] = React.useState("");
   const [ruleExpiry, setRuleExpiry] = React.useState("");
   const [ruleError, setRuleError] = React.useState("");
+
+  const [rulePage, setRulePage] = React.useState(1);
+  const [rulePageSize, setRulePageSize] = React.useState(10);
 
   const createRule = useMutation({
     mutationFn: () =>
@@ -124,10 +132,10 @@ export default function EmailIntelligencePage() {
       setRuleDomain("");
       setCalendarConnectionId("");
       setRuleExpiry("");
-      toast.success("Trusted calendar rule created");
+      toast.success(locale === "vi" ? "Đã tạo quy tắc phê duyệt tự động" : "Trusted calendar rule created");
       void qc.invalidateQueries({ queryKey: emailIntelligenceQueryKeys(orgId).rules() });
     },
-    onError: (value) => setRuleError(value instanceof Error ? value.message : "Failed to create rule"),
+    onError: (value) => setRuleError(value instanceof Error ? value.message : (locale === "vi" ? "Lỗi khi tạo quy tắc" : "Failed to create rule")),
   });
 
   React.useEffect(() => {
@@ -158,93 +166,49 @@ export default function EmailIntelligencePage() {
     [notifications.data?.items],
   );
 
-  const totalNotifications = notifications.data?.total ?? items.length;
-  const unreadCount = notifications.data?.unread ?? 0;
-  const totalRules = rules.data?.items?.length ?? 0;
+  const paginatedRules = React.useMemo(() => {
+    const start = (rulePage - 1) * rulePageSize;
+    return (rules.data?.rules ?? []).slice(start, start + rulePageSize);
+  }, [rules.data?.rules, rulePage, rulePageSize]);
 
-  function changeUnread(value: boolean) {
-    setUnreadOnly(value);
+  function changeUnread(val: boolean) {
+    setUnreadOnly(val);
     resetPaging();
   }
 
-  function changeRange(value: DateRange) {
-    setRange(value);
+  function changeRange(val: DateRange) {
+    setRange(val);
     resetPaging();
   }
 
-  function changeType(value: string) {
-    setNotificationType(value);
+  function changeType(val: string) {
+    setNotificationType(val);
     resetPaging();
   }
 
   return (
     <div className="space-y-6">
-      {/* 1. Header with Merged Title */}
       <PageHeader
-        icon={Bell}
-        title="Email Intelligence"
-        description="AI-classified email inbox, meeting extraction signals, and auto-dispatch rules."
+        icon={Mail}
+        title={dict.pages.emailIntelligence.title}
+        description={dict.pages.emailIntelligence.description}
         actions={
           <Button
             variant="outline"
             size="sm"
             onClick={() => {
               void notifications.refetch();
-              void rules.refetch();
+              if (activeTab === "rules") void rules.refetch();
             }}
-            disabled={notifications.isFetching || rules.isFetching}
-            className="gap-1.5"
+            className="gap-2"
           >
-            <RefreshCw className={notifications.isFetching || rules.isFetching ? "h-3.5 w-3.5 animate-spin" : "h-3.5 w-3.5"} />
-            Refresh
+            <RefreshCw className="h-4 w-4" />
+            {locale === "vi" ? "Làm mới" : "Refresh"}
           </Button>
         }
       />
 
-      {/* 2. Metrics Ribbon */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Card className="flex items-center gap-3.5 p-4 shadow-card">
-          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
-            <Inbox className="h-5 w-5" />
-          </div>
-          <div>
-            <p className="text-2xl font-bold leading-none tabular-nums text-foreground">{totalNotifications}</p>
-            <p className="mt-1 text-xs text-muted-foreground font-medium">Triage Queue</p>
-          </div>
-        </Card>
-
-        <Card className="flex items-center gap-3.5 p-4 shadow-card">
-          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-sky-500/10 text-sky-500">
-            <Mail className="h-5 w-5" />
-          </div>
-          <div>
-            <p className="text-2xl font-bold leading-none tabular-nums text-foreground">{unreadCount}</p>
-            <p className="mt-1 text-xs text-muted-foreground font-medium">Unread Items</p>
-          </div>
-        </Card>
-
-        <Card className="flex items-center gap-3.5 p-4 shadow-card">
-          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-emerald-500/10 text-emerald-500">
-            <ShieldCheck className="h-5 w-5" />
-          </div>
-          <div>
-            <p className="text-2xl font-bold leading-none tabular-nums text-foreground">{totalRules}</p>
-            <p className="mt-1 text-xs text-muted-foreground font-medium">Trusted Rules</p>
-          </div>
-        </Card>
-
-        <Card className="flex items-center gap-3.5 p-4 shadow-card">
-          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-amber-500/10 text-amber-500">
-            <Sparkles className="h-5 w-5" />
-          </div>
-          <div>
-            <p className="text-lg font-bold leading-none capitalize text-foreground">Active</p>
-            <p className="mt-1 text-xs text-muted-foreground font-medium">Classifier Status</p>
-          </div>
-        </Card>
-      </div>
-
-      {/* 3. Navigation Segmented Tabs */}
+      {/* Segmented Navigation Tabs */}
       <div className="flex gap-2 border-b border-border/70 pb-2">
         <Button
           type="button"
@@ -252,11 +216,8 @@ export default function EmailIntelligencePage() {
           onClick={() => setTabParam("inbox")}
           className="gap-2 font-medium"
         >
-          <Inbox className="h-4 w-4" />
-          Inbox
-          <Badge variant="outline" className="ml-1 text-[10px] font-mono">
-            {totalNotifications}
-          </Badge>
+          <Mail className="h-4 w-4 text-primary" />
+          {locale === "vi" ? "Hộp thư thông minh" : "Inbox"}
         </Button>
 
         <Button
@@ -265,38 +226,35 @@ export default function EmailIntelligencePage() {
           onClick={() => setTabParam("rules")}
           className="gap-2 font-medium"
         >
-          <ShieldCheck className="h-4 w-4" />
-          Rules
-          <Badge variant="outline" className="ml-1 text-[10px] font-mono">
-            {totalRules}
-          </Badge>
+          <ShieldCheck className="h-4 w-4 text-primary" />
+          {locale === "vi" ? "Quy tắc Tự động duyệt" : "Trusted Rules"}
         </Button>
       </div>
 
-      {/* 4. Tab 1: Smart Inbox View */}
+      {/* Tab 1: Email Inbox View */}
       {activeTab === "inbox" && (
         <div className="space-y-4">
-          {/* Search & Filters */}
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div className="relative flex-1 max-w-md">
+          {/* Filter Bar */}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="relative flex-1 max-w-sm">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 value={searchInput}
-                onChange={(event) => setSearchInput(event.target.value)}
-                placeholder="Search subject, sender, or content..."
+                onChange={(e) => setSearchInput(e.target.value)}
+                placeholder={locale === "vi" ? "Tìm theo người gửi, tiêu đề, công ty..." : "Search sender, subject, company..."}
                 className="pl-9 text-xs"
               />
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <div className="flex rounded-lg border border-border bg-muted/30 p-0.5">
+              <div className="inline-flex rounded-lg border border-border bg-muted/40 p-0.5">
                 <Button
                   size="sm"
                   variant={!unreadOnly ? "secondary" : "ghost"}
                   className="h-7 text-xs font-medium"
                   onClick={() => changeUnread(false)}
                 >
-                  All
+                  {locale === "vi" ? "Tất cả" : "All"}
                 </Button>
                 <Button
                   size="sm"
@@ -304,7 +262,7 @@ export default function EmailIntelligencePage() {
                   className="h-7 text-xs font-medium"
                   onClick={() => changeUnread(true)}
                 >
-                  Unread
+                  {locale === "vi" ? "Chưa đọc" : "Unread"}
                 </Button>
               </div>
 
@@ -313,10 +271,10 @@ export default function EmailIntelligencePage() {
                 onChange={(e) => changeRange(e.target.value as DateRange)}
                 className="flex h-8 cursor-pointer rounded-lg border border-border bg-background px-2.5 py-1 text-xs text-foreground shadow-sm hover:border-primary/40 focus-visible:outline-none"
               >
-                <option value="all">All Time</option>
-                <option value="today">Today</option>
-                <option value="7d">Last 7 Days</option>
-                <option value="30d">Last 30 Days</option>
+                <option value="all">{locale === "vi" ? "Toàn thời gian" : "All Time"}</option>
+                <option value="today">{locale === "vi" ? "Hôm nay" : "Today"}</option>
+                <option value="7d">{locale === "vi" ? "7 ngày qua" : "Last 7 Days"}</option>
+                <option value="30d">{locale === "vi" ? "30 ngày qua" : "Last 30 Days"}</option>
               </select>
 
               <select
@@ -324,10 +282,10 @@ export default function EmailIntelligencePage() {
                 onChange={(e) => changeType(e.target.value)}
                 className="flex h-8 cursor-pointer rounded-lg border border-border bg-background px-2.5 py-1 text-xs text-foreground shadow-sm hover:border-primary/40 focus-visible:outline-none"
               >
-                <option value="">All Categories</option>
-                <option value="CONTRACT_UPDATE">Contract Updates</option>
-                <option value="CALENDAR_INVITE">Calendar Invites</option>
-                <option value="GENERAL">General</option>
+                <option value="">{locale === "vi" ? "Tất cả danh mục" : "All Categories"}</option>
+                <option value="CONTRACT_UPDATE">{locale === "vi" ? "Cập nhật hợp đồng" : "Contract Updates"}</option>
+                <option value="CALENDAR_INVITE">{locale === "vi" ? "Lời mời họp lịch" : "Calendar Invites"}</option>
+                <option value="GENERAL">{locale === "vi" ? "Tổng hợp thông thường" : "General"}</option>
               </select>
             </div>
           </div>
@@ -337,15 +295,16 @@ export default function EmailIntelligencePage() {
             <LoadingSkeleton variant="table" />
           ) : notifications.isError ? (
             <ErrorState
-              title="Unable to load notifications"
-              description="Email triage feed could not be retrieved."
+              title={locale === "vi" ? "Không thể tải thông báo email" : "Unable to load notifications"}
+              description={locale === "vi" ? "Luồng dữ liệu email chưa sẵn sàng." : "Email triage feed could not be retrieved."}
               onRetry={() => void notifications.refetch()}
             />
           ) : items.length ? (
-            <div className="space-y-2.5">
+            <div className="space-y-3">
               {items.map((n) => (
                 <Card
                   key={n.id}
+                  glass
                   className={`shadow-card border-border/80 p-4 transition-all hover:border-primary/40 ${
                     !n.read_at ? "bg-primary/[0.02] border-primary/30 ring-1 ring-primary/10" : ""
                   }`}
@@ -355,36 +314,46 @@ export default function EmailIntelligencePage() {
                       <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-border bg-muted/40 font-semibold text-primary text-xs">
                         {initials(n.sender_email || "Client")}
                       </div>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className="truncate text-sm font-semibold text-foreground">
-                            {n.subject || "(No subject)"}
-                          </p>
+                      <div className="min-w-0 space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="font-semibold text-xs text-foreground">{n.sender_email}</p>
+                          {n.type && (
+                            <Badge variant="outline" className="text-[10px] uppercase font-mono">
+                              {n.type}
+                            </Badge>
+                          )}
                           {!n.read_at && (
-                            <span className="h-2 w-2 rounded-full bg-primary shrink-0" />
+                            <span className="inline-flex h-2 w-2 rounded-full bg-primary" aria-label="Unread" />
                           )}
                         </div>
-                        <p className="truncate text-xs text-muted-foreground mt-0.5">
-                          {n.sender_name ? `${n.sender_name} <${n.sender_email}>` : n.sender_email} · {formatVietnamDateTime(n.received_at)} ({relativeTime(n.received_at)})
-                        </p>
-                        <p className="line-clamp-2 text-xs text-muted-foreground mt-2 leading-relaxed font-sans">
-                          {preview(n.body, n.subject)}
-                        </p>
+                        <p className="font-medium text-xs text-foreground/90">{n.subject}</p>
+                        <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">{n.body}</p>
+                        {n.classification && (
+                          <div className="mt-2 rounded bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 text-[11px] text-amber-600 dark:text-amber-400 font-medium">
+                            🏷️ {locale === "vi" ? "Phân loại:" : "Classification:"} {n.classification}
+                          </div>
+                        )}
                       </div>
                     </div>
 
                     <div className="flex flex-col items-end gap-2 shrink-0">
-                      <Badge variant="outline" className="text-[9.5px] uppercase font-mono">
-                        {n.classification || n.type || "GENERAL"}
-                      </Badge>
+                      <span className="text-[11px] text-muted-foreground font-mono">
+                        {new Date(n.received_at).toLocaleDateString(locale === "vi" ? "vi-VN" : "en-US", {
+                          month: "short",
+                          day: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </span>
                       {!n.read_at && (
                         <Button
                           size="sm"
                           variant="ghost"
-                          className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground gap-1"
+                          className="h-7 gap-1 text-[11px] text-muted-foreground hover:text-foreground"
                           onClick={() => markRead.mutate(n.id)}
                         >
-                          <Check className="h-3.5 w-3.5" /> Mark read
+                          <CheckCheck className="h-3.5 w-3.5" />
+                          {locale === "vi" ? "Đã xem" : "Mark read"}
                         </Button>
                       )}
                     </div>
@@ -392,44 +361,25 @@ export default function EmailIntelligencePage() {
                 </Card>
               ))}
 
-              {/* Pagination Controls */}
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-border/60 pt-4 text-xs text-muted-foreground">
-                <div className="flex items-center gap-3">
-                  <span className="font-mono">
-                    Page {pageIndex + 1} ({items.length} items)
-                  </span>
-                  <div className="flex items-center gap-1.5 font-sans">
-                    <span className="text-[11px] text-muted-foreground">Per page:</span>
-                    <select
-                      value={pageSize}
-                      onChange={(e) => {
-                        setPageSize(Number(e.target.value));
-                        resetPaging();
-                      }}
-                      className="h-7 rounded-md border border-border bg-background px-2 text-xs text-foreground cursor-pointer hover:border-primary/40 focus:outline-none"
-                    >
-                      <option value={5}>5</option>
-                      <option value={6}>6</option>
-                      <option value={8}>8</option>
-                      <option value={10}>10</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
+              {/* Standard Pager Navigation */}
+              <div className="flex items-center justify-between border-t border-border/60 pt-3 text-xs text-muted-foreground">
+                <span>
+                  {locale === "vi" ? `Trang ${pageIndex + 1}` : `Page ${pageIndex + 1}`}
+                </span>
+                <div className="flex items-center gap-1.5">
                   <Button
                     size="sm"
                     variant="outline"
-                    className="h-8 gap-1 text-xs"
+                    className="h-8 text-xs"
                     disabled={pageIndex === 0 || notifications.isLoading}
                     onClick={() => setPageIndex((p) => Math.max(0, p - 1))}
                   >
-                    <ChevronLeft className="h-4 w-4" /> Previous
+                    {locale === "vi" ? "Trang trước" : "Previous"}
                   </Button>
                   <Button
                     size="sm"
                     variant="outline"
-                    className="h-8 gap-1 text-xs"
+                    className="h-8 text-xs"
                     disabled={!notifications.data?.next_cursor || notifications.isLoading}
                     onClick={() => {
                       if (notifications.data?.next_cursor) {
@@ -442,7 +392,7 @@ export default function EmailIntelligencePage() {
                       }
                     }}
                   >
-                    Next <ChevronRight className="h-4 w-4" />
+                    {locale === "vi" ? "Trang sau" : "Next"}
                   </Button>
                 </div>
               </div>
@@ -450,32 +400,38 @@ export default function EmailIntelligencePage() {
           ) : (
             <EmptyState
               icon={Inbox}
-              title="All caught up in your inbox"
-              description="No incoming emails matched your active filters."
+              title={locale === "vi" ? "Hộp thư đã xử lý gọn gàng" : "All caught up in your inbox"}
+              description={locale === "vi" ? "Không có email nào khớp với bộ lọc đang chọn." : "No incoming emails matched your active filters."}
             />
           )}
         </div>
       )}
 
-      {/* 5. Tab 2: Trusted Rules View */}
+      {/* Tab 2: Trusted Rules View */}
       {activeTab === "rules" && (
         <div className="space-y-4">
           <Card className="border-amber-500/30 bg-amber-500/[0.04] shadow-card">
             <CardContent className="space-y-1.5 p-4 text-xs">
               <p className="font-semibold text-amber-500 flex items-center gap-1.5">
-                <ShieldCheck className="h-4 w-4" /> Production Safety Policy Defaults
+                <ShieldCheck className="h-4 w-4" /> {locale === "vi" ? "Chính sách An toàn Doanh nghiệp" : "Production Safety Policy Defaults"}
               </p>
               <p className="text-muted-foreground leading-relaxed">
-                Rules currently operate with strict safety boundaries (CALENDAR_AUTO_CREATE). Rules require a verified exact company domain, expiration date, daily execution caps, and SPF/DKIM/DMARC authentication.
+                {locale === "vi"
+                  ? "Các quy tắc tự động đặt lịch chạy trong phạm vi nghiêm ngặt (CALENDAR_AUTO_CREATE). Yêu cầu tên miền doanh nghiệp chính xác, ngày hết hạn, giới hạn số sự kiện mỗi ngày và xác thực SPF/DKIM/DMARC."
+                  : "Rules currently operate with strict safety boundaries (CALENDAR_AUTO_CREATE). Rules require a verified exact company domain, expiration date, daily execution caps, and SPF/DKIM/DMARC authentication."}
               </p>
             </CardContent>
           </Card>
 
-          <Card className="shadow-card border-border/80">
+          <Card glass className="shadow-card border-border/80">
             <CardHeader className="pb-3">
-              <CardTitle className="text-base font-semibold text-foreground">Create Trusted Calendar Rule</CardTitle>
+              <CardTitle className="text-base font-semibold text-foreground">
+                {locale === "vi" ? "Tạo Quy tắc Phê duyệt Lịch tự động" : "Create Trusted Calendar Rule"}
+              </CardTitle>
               <CardDescription className="text-xs">
-                Auto-approve calendar invites from trusted partner domains that satisfy strict verification policies.
+                {locale === "vi"
+                  ? "Tự động chấp thuận lời mời họp từ tên miền đối tác uy tín đáp ứng tiêu chuẩn an toàn."
+                  : "Auto-approve calendar invites from trusted partner domains that satisfy strict verification policies."}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -487,115 +443,131 @@ export default function EmailIntelligencePage() {
                 }}
                 className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 items-end"
               >
-                <div className="space-y-1.5">
-                  <Label htmlFor="rule-name" className="text-xs font-medium">Rule Name</Label>
+                <div className="space-y-1">
+                  <Label className="text-xs">{locale === "vi" ? "Tên quy tắc" : "Rule Name"}</Label>
                   <Input
-                    id="rule-name"
-                    placeholder="e.g. Acme Corp Auto-Meeting"
                     value={ruleName}
                     onChange={(e) => setRuleName(e.target.value)}
+                    placeholder={locale === "vi" ? "ví dụ: Khách hàng VIP" : "e.g. Strategic Partner"}
                     required
                     className="text-xs"
                   />
                 </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="rule-domain" className="text-xs font-medium">Trusted Domain</Label>
+                <div className="space-y-1">
+                  <Label className="text-xs">{locale === "vi" ? "Tên miền đối tác" : "Partner Domain"}</Label>
                   <Input
-                    id="rule-domain"
-                    placeholder="customer.example.com"
                     value={ruleDomain}
                     onChange={(e) => setRuleDomain(e.target.value)}
+                    placeholder={locale === "vi" ? "partner.com" : "partner.com"}
                     required
                     className="text-xs font-mono"
                   />
                 </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="rule-cal-id" className="text-xs font-medium">Calendar Connection ID</Label>
+                <div className="space-y-1">
+                  <Label className="text-xs">{locale === "vi" ? "ID Kết nối Lịch" : "Calendar Connection ID"}</Label>
                   <Input
-                    id="rule-cal-id"
-                    placeholder="e.g. primary-google-cal"
                     value={calendarConnectionId}
                     onChange={(e) => setCalendarConnectionId(e.target.value)}
+                    placeholder={locale === "vi" ? "conn-google-..." : "conn-google-..."}
                     required
                     className="text-xs font-mono"
                   />
                 </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="rule-expiry" className="text-xs font-medium">Expiry Date & Time</Label>
+                <div className="space-y-1">
+                  <Label className="text-xs">{locale === "vi" ? "Ngày hết hạn" : "Expiration Date"}</Label>
                   <Input
-                    id="rule-expiry"
-                    type="datetime-local"
+                    type="date"
                     value={ruleExpiry}
                     onChange={(e) => setRuleExpiry(e.target.value)}
                     required
                     className="text-xs"
                   />
                 </div>
-
-                <div className="sm:col-span-2 lg:col-span-4 pt-1 flex items-center justify-between">
-                  {ruleError ? (
-                    <p className="text-xs text-destructive">{ruleError}</p>
-                  ) : <span />}
-                  <Button
-                    type="submit"
-                    loading={createRule.isPending}
-                    disabled={!ruleName || !ruleDomain || !calendarConnectionId || !ruleExpiry}
-                    className="gap-1.5 font-semibold text-xs h-9"
-                  >
-                    <Plus className="h-4 w-4" /> Create Trusted Rule
-                  </Button>
+                <div className="sm:col-span-2 lg:col-span-4 flex items-center justify-between pt-2">
+                  {ruleError && <p className="text-xs text-destructive">{ruleError}</p>}
+                  <div className="ml-auto">
+                    <Button type="submit" disabled={createRule.isPending} className="gap-1.5 font-medium text-xs">
+                      <Plus className="h-4 w-4" />
+                      {locale === "vi" ? "Lưu quy tắc" : "Create Rule"}
+                    </Button>
+                  </div>
                 </div>
               </form>
             </CardContent>
           </Card>
 
-          {rules.isLoading ? (
-            <LoadingSkeleton variant="table" />
-          ) : rules.isError ? (
-            <ErrorState
-              title="Unable to load rules"
-              description="Trusted automation rules could not be loaded."
-              onRetry={() => void rules.refetch()}
-            />
-          ) : rules.data?.items?.length ? (
-            <div className="space-y-2.5">
-              {rules.data.items.map((rule) => (
-                <Card key={rule.id} className="shadow-card border-border/80 p-4 transition-colors hover:border-primary/40">
-                  <div className="flex flex-wrap items-center justify-between gap-4">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-sm text-foreground">{rule.name}</span>
-                        <Badge variant={rule.status === "ACTIVE" ? "default" : "outline"} className="text-[9.5px]">
-                          {rule.status}
-                        </Badge>
-                        <Badge variant="outline" className="text-[9.5px] font-mono">
-                          Shadow Policy
-                        </Badge>
-                      </div>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {rule.match.type}: <span className="font-mono text-primary">{rule.match.value}</span> · Action: {rule.action.type}
-                      </p>
-                      <p className="mt-0.5 text-[10px] text-muted-foreground font-mono">
-                        Policy version: {rule.policy_version}
-                      </p>
-                    </div>
-
-                    <div className="text-right text-xs text-muted-foreground font-mono">
-                      <span>Daily Cap: {String(rule.conditions.maximum_events_per_day || 0)} events</span>
-                      <br />
-                      <span>Min Confidence: {String(rule.conditions.minimum_classification_confidence || 0)}</span>
-                    </div>
+          {/* Rules List Table */}
+          <Card glass className="overflow-hidden shadow-card border-border/80">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base font-semibold text-foreground">
+                {locale === "vi" ? "Danh sách Quy tắc đang hiệu lực" : "Active Trusted Rules"}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              {rules.isLoading ? (
+                <div className="p-6"><LoadingSkeleton variant="table" /></div>
+              ) : rules.isError ? (
+                <div className="p-6">
+                  <ErrorState
+                    title={locale === "vi" ? "Không thể tải quy tắc" : "Unable to load rules"}
+                    description={locale === "vi" ? "Dữ liệu quy tắc tin cậy chưa sẵn sàng." : "Trusted rules could not be loaded."}
+                    onRetry={() => void rules.refetch()}
+                  />
+                </div>
+              ) : rules.data?.rules?.length ? (
+                <div>
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/40">
+                        <TableHead className="text-xs font-semibold">{locale === "vi" ? "Tên quy tắc" : "Name"}</TableHead>
+                        <TableHead className="text-xs font-semibold">{locale === "vi" ? "Tên miền" : "Domain"}</TableHead>
+                        <TableHead className="text-xs font-semibold">{locale === "vi" ? "Hành động" : "Action"}</TableHead>
+                        <TableHead className="text-xs font-semibold">{locale === "vi" ? "Hết hạn" : "Expires"}</TableHead>
+                        <TableHead className="text-xs font-semibold">{locale === "vi" ? "Trạng thái" : "Status"}</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {paginatedRules.map((r) => (
+                        <TableRow key={r.id} className="hover:bg-muted/20 transition-colors">
+                          <TableCell className="font-medium text-xs text-foreground">{r.name}</TableCell>
+                          <TableCell className="font-mono text-xs text-muted-foreground">{r.match_value}</TableCell>
+                          <TableCell className="font-mono text-[10px] text-muted-foreground">
+                            <Badge variant="outline">{r.action}</Badge>
+                          </TableCell>
+                          <TableCell className="text-xs font-mono text-muted-foreground">
+                            {new Date(r.expires_at).toLocaleDateString(locale === "vi" ? "vi-VN" : "en-US")}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={r.is_active ? "success" : "secondary"} className="text-[10px]">
+                              {r.is_active ? (locale === "vi" ? "Đang chạy" : "active") : (locale === "vi" ? "Tắt" : "disabled")}
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                  <div className="p-3 border-t border-border/60">
+                    <DataPagination
+                      page={rulePage}
+                      pageSize={rulePageSize}
+                      totalItems={rules.data.rules.length}
+                      onPageChange={setRulePage}
+                      onPageSizeChange={setRulePageSize}
+                      pageSizeOptions={[5, 10, 25]}
+                    />
                   </div>
-                </Card>
-              ))}
-            </div>
-          ) : (
-            <EmptyState
-              icon={ShieldCheck}
-              title="No automation rules configured"
-              description="Create a trusted domain rule to enable automatic scheduling for key partners."
-            />
-          )}
+                </div>
+              ) : (
+                <div className="p-6">
+                  <EmptyState
+                    icon={ShieldAlert}
+                    title={locale === "vi" ? "Chưa có quy tắc tin cậy nào" : "No trusted rules yet"}
+                    description={locale === "vi" ? "Thêm tên miền đối tác để kích hoạt tự động đặt lịch an toàn." : "Add a partner domain to enable automated meeting approvals."}
+                  />
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
       )}
     </div>

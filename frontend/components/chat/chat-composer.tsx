@@ -6,6 +6,7 @@ import { Textarea } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useUploadFile } from "@/hooks";
+import { useTranslation } from "@/lib/i18n";
 import type { UploadedFile } from "@/types";
 
 interface ChatComposerProps {
@@ -39,9 +40,14 @@ export function ChatComposer({
   attachments,
   onAttachmentsChange,
   variant = "docked",
-  placeholder = "Type a message… (Enter to send, Shift+Enter for newline)",
+  placeholder,
   className,
 }: ChatComposerProps) {
+  const { t, locale } = useTranslation();
+  const defaultPlaceholder = locale === "vi"
+    ? "Nhập tin nhắn… (Enter để gửi, Shift+Enter để xuống dòng)"
+    : "Type a message… (Enter to send, Shift+Enter for newline)";
+  const activePlaceholder = placeholder || defaultPlaceholder;
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const upload = useUploadFile();
@@ -86,7 +92,7 @@ export function ChatComposer({
         </div>
       )}
 
-      <label htmlFor="chat-composer" className="sr-only">Message</label>
+      <label htmlFor="chat-composer" className="sr-only">{locale === "vi" ? "Message" : "Message"}</label>
       <Textarea
         id="chat-composer"
         ref={textareaRef}
@@ -101,7 +107,7 @@ export function ChatComposer({
             if (!streaming) onSubmit();
           }
         }}
-        placeholder={placeholder}
+        placeholder={activePlaceholder}
         className="min-h-[48px] w-full resize-none border-none bg-transparent px-4 py-3 text-sm shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
         style={{ overflow: "hidden" }}
       />
@@ -116,7 +122,7 @@ export function ChatComposer({
           onClick={() => fileInputRef.current?.click()}
           disabled={upload.isPending}
           aria-label="Attach file"
-          title="Attach file"
+          title={locale === "vi" ? "Attach file" : "Attach file"}
         >
           {upload.isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Paperclip className="h-4 w-4" aria-hidden="true" />}
         </Button>

@@ -19,6 +19,7 @@ import { Input, Label, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { PageHeader } from "@/components/page-header";
 import { ErrorState, LoadingSkeleton } from "@/components/shared";
+import { useTranslation } from "@/lib/i18n";
 import { WorkflowNodePalette } from "@/components/workflows/workflow-node-palette";
 import { WorkflowCanvas } from "@/components/workflows/workflow-canvas";
 import { WorkflowNodeConfig } from "@/components/workflows/workflow-node-config";
@@ -66,14 +67,15 @@ function layout(nodes: GraphNode[], edges: GraphEdge[]) {
   return pos;
 }
 
-export default function WorkflowsPage() {
+export default function WorkflowEditor() {
+  const { t, dict, locale } = useTranslation();
   const workflows = useWorkflows();
-  const { data } = workflows;
   const create = useCreateWorkflow();
   const update = useUpdateWorkflow();
-  const agents = useAgents();
-  const models = useModels();
   const generate = useGenerateWorkflow();
+  const agents = useAgents();
+  const models = useModels(true);
+  const data = workflows.data;
   const {
     nodes,
     edges,
@@ -210,7 +212,7 @@ export default function WorkflowsPage() {
     setActiveRun(null);
     setGraph([], []);
     setSelectedNode(null);
-    toast.success("New workflow — canvas cleared");
+    toast.success(locale === "vi" ? "Workflow mới — đã xóa canvas" : "New workflow — canvas cleared");
   };
 
   const loadWorkflow = (wf: any) => {
@@ -243,7 +245,7 @@ export default function WorkflowsPage() {
         });
         setEditId(created.id);
       }
-      toast.success("Workflow saved");
+      toast.success(locale === "vi" ? "Đã lưu workflow" : "Workflow saved");
     } catch (e: any) {
       toast.error(e.message);
     }
@@ -293,13 +295,17 @@ export default function WorkflowsPage() {
           ts: Date.now(),
           event: "done",
           message: divergence
-            ? `Replay completed with divergence at node "${divergence.node_id}"`
-            : "Replay completed (deterministic, no side effects)",
+            ? t("pages.workflows.replayDiverged", "Replay diverged from original run")
+            : t("pages.workflows.replayCompleted", "Replay completed (deterministic, no side effects)"),
         },
       ]);
-      toast.success(divergence ? "Replay diverged from original run" : "Replay completed");
+      toast.success(
+        divergence
+          ? t("pages.workflows.replayDiverged", "Replay diverged from original run")
+          : t("pages.workflows.replayCompleted", "Replay completed"),
+      );
     } catch (e: any) {
-      toast.error(e.message || "Replay failed");
+      toast.error(e.message || t("pages.workflows.replay", "Replay failed"));
     } finally {
       setRunning(false);
     }
@@ -328,7 +334,7 @@ export default function WorkflowsPage() {
     setSelectedNode(null);
     setAiResult(null);
     setAiPrompt("");
-    toast.success("Applied to canvas — review and Save");
+    toast.success(locale === "vi" ? "Đã áp dụng vào canvas — hãy xem lại và Lưu" : "Applied to canvas — review and Save");
   };
 
   const handleAutoLayout = () => {
@@ -338,7 +344,7 @@ export default function WorkflowsPage() {
       position: calculatedPos[n.id] || { x: 40, y: 40 },
     }));
     setGraph(updatedNodes, edges);
-    toast.success("Graph auto-layout applied");
+    toast.success(locale === "vi" ? "Đã áp dụng tự động sắp xếp Graph" : "Graph auto-layout applied");
   };
 
   const handleDeleteNode = (id: string) => {
@@ -347,7 +353,7 @@ export default function WorkflowsPage() {
       edges.filter((e) => e.from_ !== id && e.to !== id),
     );
     if (selectedNodeId === id) setSelectedNode(null);
-    toast.success("Node deleted");
+    toast.success(locale === "vi" ? "Đã xóa Node" : "Node deleted");
   };
 
   const handleEditEdgeCondition = (edgeId: string) => {
@@ -356,7 +362,10 @@ export default function WorkflowsPage() {
     const edge = edges.find((e) => e.from_ === fromId && e.to === toId);
     const current = edge?.condition ?? "";
     const input = window.prompt(
-      "Edge condition (leave empty to clear).\n\nExamples:\n  output.category == 'sales'\n  'urgent' in output.text\n  true",
+      t(
+        "pages.workflows.edgeConditionPrompt",
+        "Edge condition (leave empty to clear).\n\nExamples:\n  output.category == 'sales'\n  'urgent' in output.text\n  true",
+      ),
       current,
     );
     if (input === null) return;
@@ -368,7 +377,7 @@ export default function WorkflowsPage() {
 
   const run = async () => {
     if (!editId) {
-      toast.error("Save the workflow first to run it");
+      toast.error(locale === "vi" ? "Lưu workflow trước khi chạy" : "Save the workflow first to run it");
       return;
     }
     setRunning(true);
@@ -432,7 +441,7 @@ export default function WorkflowsPage() {
                 id: logId,
                 ts,
                 event: "edge",
-                message: `Edge ${d.from} â†’ ${d.to} taken`,
+                message: `Edge ${d.from} → ${d.to} taken`,
               },
             ]);
           } else if (ev.event === "approval_required") {
@@ -491,45 +500,55 @@ export default function WorkflowsPage() {
     <div className="space-y-6">
       <PageHeader
         icon={WorkflowIcon}
-        title="Workflows"
-        description="Design, orchestrate, and test multi-agent DAG workflows."
+        title={dict.pages.workflows.title}
+        description={dict.pages.workflows.description}
         actions={
           <>
             <Button variant="outline" className="gap-2 active-tactile transition-transform" onClick={newWorkflow}>
-              <FilePlus className="h-4 w-4" /> New
+              <FilePlus className="h-4 w-4" /> {dict.pages.workflows.btnNew}
             </Button>
             <Dialog>
               <DialogTrigger asChild>
                 <Button variant="outline" className="gap-2 active-tactile transition-transform">
-                  <FolderOpen className="h-4 w-4" /> Load
+                  <FolderOpen className="h-4 w-4" /> {dict.pages.workflows.btnLoad}
                 </Button>
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>Load workflow</DialogTitle>
+                  <DialogTitle>{locale === "vi" ? "Tải Workflow đã lưu" : "Load Saved Workflow"}</DialogTitle>
                 </DialogHeader>
                 <div className="space-y-2">
-                  {workflows.isLoading ? <LoadingSkeleton variant="table" /> : workflows.isError ? <ErrorState title="Unable to load workflows" description="Saved workflows could not be loaded." onRetry={() => void workflows.refetch()} /> : data?.map((wf) => (
-                    <DialogClose asChild key={wf.id}>
-                      <Button
-                        variant="outline"
-                        className="w-full justify-start"
-                        onClick={() => loadWorkflow(wf)}
-                      >
-                        {wf.name}
-                      </Button>
-                    </DialogClose>
-                  ))}
+                  {workflows.isLoading ? (
+                    <LoadingSkeleton variant="table" />
+                  ) : workflows.isError ? (
+                    <ErrorState
+                      title={locale === "vi" ? "Không thể tải workflow" : "Unable to load workflows"}
+                      description={locale === "vi" ? "Danh sách workflow chưa sẵn sàng." : "Saved workflows could not be loaded."}
+                      onRetry={() => void workflows.refetch()}
+                    />
+                  ) : (
+                    data?.map((wf) => (
+                      <DialogClose asChild key={wf.id}>
+                        <Button
+                          variant="outline"
+                          className="w-full justify-start"
+                          onClick={() => loadWorkflow(wf)}
+                        >
+                          {wf.name}
+                        </Button>
+                      </DialogClose>
+                    ))
+                  )}
                 </div>
               </DialogContent>
             </Dialog>
             <Button variant="outline" className="gap-2 active-tactile transition-transform" onClick={handleAutoLayout}>
-              <RefreshCw className="h-4 w-4" /> Auto-Layout
+              <RefreshCw className="h-4 w-4" /> {dict.pages.workflows.btnAutoLayout}
             </Button>
             <Dialog>
               <DialogTrigger asChild>
                 <Button variant="outline" className="gap-2 active-tactile transition-transform border-primary/40 bg-primary/5 hover:bg-primary/10">
-                  <Sparkles className="h-4 w-4 text-primary animate-pulse" /> AI Generate
+                  <Sparkles className="h-4 w-4 text-primary animate-pulse" /> {dict.pages.workflows.btnAiGenerate}
                 </Button>
               </DialogTrigger>
               <DialogContent className="sm:max-w-[540px] bg-card/95 backdrop-blur-2xl border-border/80 shadow-2xl">
@@ -539,8 +558,12 @@ export default function WorkflowsPage() {
                       <Sparkles className="h-5 w-5" />
                     </div>
                     <div>
-                      <DialogTitle className="text-base font-bold">Generate Workflow with AI</DialogTitle>
-                      <p className="text-xs text-muted-foreground">Describe your automation routine in natural language</p>
+                      <DialogTitle className="text-base font-bold">
+                        {locale === "vi" ? "AI Thiết kế Workflow Tự động" : "Generate Workflow with AI"}
+                      </DialogTitle>
+                      <p className="text-xs text-muted-foreground">
+                        {locale === "vi" ? "Mô tả quy trình tự động hóa của bạn bằng ngôn ngữ tự nhiên" : "Describe your automation routine in natural language"}
+                      </p>
                     </div>
                   </div>
                 </DialogHeader>
@@ -548,34 +571,34 @@ export default function WorkflowsPage() {
                 <div className="space-y-4 pt-2">
                   <div className="space-y-1.5">
                     <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">
-                      Describe what the workflow should do
+                      {locale === "vi" ? "Mô tả quy trình mong muốn" : "Describe what the workflow should do"}
                     </Label>
                     <Textarea
                       className="min-h-[110px] text-xs leading-relaxed"
                       value={aiPrompt}
                       onChange={(e) => setAiPrompt(e.target.value)}
-                      placeholder="e.g. Tự động quét Google Drive 6h sáng hàng ngày, lọc các tài liệu mới và tổng hợp báo cáo gửi cho tôi..."
+                      placeholder={dict.pages.workflows.aiPromptPlaceholder}
                     />
                     <div className="flex flex-wrap gap-1.5 pt-1">
                       <button
                         type="button"
-                        onClick={() => setAiPrompt("Quét Google Drive 6h sáng hàng ngày, lọc các file mới cập nhật và phân tích tổng hợp báo cáo")}
+                        onClick={() => setAiPrompt(locale === "vi" ? "Quét Google Drive 6h sáng hàng ngày, lọc các file mới cập nhật và phân tích tổng hợp báo cáo" : "Scan Google Drive daily at 6 AM, filter updated files and synthesize summary report")}
                         className="rounded-full border border-border/60 bg-muted/40 px-2 py-0.5 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                       >
-                        ⚡ Quét Drive 6h sáng hàng ngày
+                        {locale === "vi" ? "⚡ Quét Drive 6h sáng hàng ngày" : "⚡ Daily Drive Scan 6 AM"}
                       </button>
                       <button
                         type="button"
-                        onClick={() => setAiPrompt("Đọc Gmail mỗi sáng lúc 8h, lọc email khẩn cấp và tạo bản nháp phản hồi để tôi duyệt")}
+                        onClick={() => setAiPrompt(locale === "vi" ? "Đọc Gmail mỗi sáng lúc 8h, lọc email khẩn cấp và tạo bản nháp phản hồi để tôi duyệt" : "Read Gmail daily at 8 AM, filter urgent emails and draft response for my approval")}
                         className="rounded-full border border-border/60 bg-muted/40 px-2 py-0.5 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                       >
-                        ⚡ Triage Gmail & Phê duyệt
+                        {locale === "vi" ? "⚡ Triage Gmail & Phê duyệt" : "⚡ Gmail Triage & Approvals"}
                       </button>
                     </div>
                   </div>
 
                   <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">AI Model</Label>
+                    <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">{locale === "vi" ? "AI Model" : "AI Model"}</Label>
                     <Select className="text-xs w-full" value={aiModelId} onChange={(e) => setAiModelId(e.target.value)}>
                       {models.data?.map((m) => (
                         <option key={m.id} value={m.id}>{m.display_name || m.name}</option>
@@ -587,14 +610,13 @@ export default function WorkflowsPage() {
                     <div className="space-y-2.5 rounded-xl border border-primary/40 bg-primary/10 p-4 animate-pulse">
                       <div className="flex items-center gap-2.5 text-xs font-semibold text-primary">
                         <Sparkles className="h-4 w-4 animate-spin" />
-                        <span>AI is architecting your multi-agent workflow DAG...</span>
+                        <span>{locale === "vi" ? "AI is architecting your multi-agent workflow DAG..." : "AI is architecting your multi-agent workflow DAG..."}</span>
                       </div>
                       <div className="h-1.5 w-full overflow-hidden rounded-full bg-primary/20">
                         <div className="h-full w-2/3 animate-[shimmer_1.5s_infinite] bg-primary rounded-full" />
                       </div>
                       <p className="text-[11px] text-muted-foreground">
-                        Synthesizing triggers, connectors, triage policies, and agent routing graph...
-                      </p>
+                        {locale === "vi" ? "Synthesizing triggers, connectors, triage policies, and agent routing graph..." : "Synthesizing triggers, connectors, triage policies, and agent routing graph..."}</p>
                     </div>
                   )}
 
@@ -604,8 +626,7 @@ export default function WorkflowsPage() {
                       disabled={!aiPrompt.trim() || !aiModelId}
                       onClick={handleGenerate}
                     >
-                      <Sparkles className="h-4 w-4 text-primary-foreground" /> Generate Workflow
-                    </Button>
+                      <Sparkles className="h-4 w-4 text-primary-foreground" /> {locale === "vi" ? "Generate Workflow" : "Generate Workflow"}</Button>
                   )}
 
                   {aiResult && (
@@ -618,8 +639,7 @@ export default function WorkflowsPage() {
                           )}
                         </div>
                         <span className="shrink-0 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
-                          {aiResult.graph.nodes.length} nodes · {aiResult.graph.edges.length} edges
-                        </span>
+                          {aiResult.graph.nodes.length} {locale === "vi" ? "nodes ·" : "nodes ·"}{aiResult.graph.edges.length} {locale === "vi" ? "edges" : "edges"}</span>
                       </div>
 
                       {/* Visual node flow chain preview */}
@@ -638,8 +658,7 @@ export default function WorkflowsPage() {
 
                       <DialogClose asChild>
                         <Button size="sm" className="w-full gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-medium" onClick={applyGenerated}>
-                          Apply to canvas
-                        </Button>
+                          {locale === "vi" ? "Apply to canvas" : "Apply to canvas"}</Button>
                       </DialogClose>
                     </div>
                   )}
@@ -647,8 +666,7 @@ export default function WorkflowsPage() {
               </DialogContent>
             </Dialog>
             <Button onClick={save} className="gap-2 active-tactile transition-transform">
-              <Save className="h-4 w-4" /> Save
-            </Button>
+              <Save className="h-4 w-4" />{locale === "vi" ? "Lưu" : "Save"}</Button>
           </>
         }
       />
@@ -657,20 +675,16 @@ export default function WorkflowsPage() {
         {activeRunId && <RunKpiStrip run={workflowRun.data} />}
         <div className="flex items-center gap-2 rounded-xl border border-border/80 bg-card/50 p-3 backdrop-blur-xl shadow-3d-card">
           <div className="flex-1 space-y-1">
-            <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">
-              Workflow name
-            </Label>
-            <Input className="text-xs" value={wfName} onChange={(e) => setWfName(e.target.value)} placeholder="Workflow name" />
+            <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">{locale === "vi" ? "Tên workflow" : "Workflow name"}</Label>
+            <Input className="text-xs" value={wfName} onChange={(e) => setWfName(e.target.value)} placeholder={locale === "vi" ? "Tên workflow" : "Workflow name"} />
           </div>
           <div className="flex-[2] space-y-1">
-            <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">
-              Run input
-            </Label>
+            <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">{locale === "vi" ? "Đầu vào chạy" : "Run input"}</Label>
             <Textarea
               className="min-h-[38px] text-xs resize-none"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="JSON or plain text input…"
+              placeholder={locale === "vi" ? "Đầu vào JSON hoặc văn bản thuần túy…" : "JSON or plain text input…"}
             />
           </div>
           <Button className="gap-2 active-tactile transition-transform self-end text-xs" disabled={running} onClick={run}>

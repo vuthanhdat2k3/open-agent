@@ -36,6 +36,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { useTranslation } from "@/lib/i18n";
 
 interface WorkflowCanvasProps {
   graphNodes: GraphNode[];
@@ -106,6 +107,7 @@ function WorkflowCanvasInner({
   onCreateNode,
   onEditEdgeCondition,
 }: WorkflowCanvasProps) {
+    const { locale } = useTranslation();
   const { screenToFlowPosition } = useReactFlow();
   const [showMiniMap, setShowMiniMap] = React.useState(true);
   const [pendingDelete, setPendingDelete] = React.useState<PendingDelete | null>(null);
@@ -292,7 +294,7 @@ function WorkflowCanvasInner({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{locale === "vi" ? "Hủy" : "Cancel"}</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={() => {
@@ -302,8 +304,7 @@ function WorkflowCanvasInner({
                 setPendingDelete(null);
               }}
             >
-              Delete
-            </AlertDialogAction>
+              {locale === "vi" ? "Xóa" : "Delete"}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -312,6 +313,7 @@ function WorkflowCanvasInner({
 }
 
 export function WorkflowCanvas(props: WorkflowCanvasProps) {
+    const { locale } = useTranslation();
   return (
     <ReactFlowProvider>
       <WorkflowCanvasInner {...props} />

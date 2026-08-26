@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import { useTranslation } from "@/lib/i18n";
 import type { WorkflowRunDetail } from "@/types";
 
 export type WorkflowLogItem = {
@@ -25,13 +26,13 @@ interface WorkflowConsoleProps {
   onReplay?: () => void;
 }
 
-const NODE_STATUS: Record<string, { label: string; className: string }> = {
-  succeeded: { label: "done", className: "bg-success/12 text-success" },
-  failed: { label: "failed", className: "bg-destructive/12 text-destructive" },
-  running: { label: "running", className: "bg-info/12 text-info" },
-  skipped: { label: "skipped", className: "bg-muted/20 text-muted-foreground" },
-  waiting_approval: { label: "waiting", className: "bg-warning/12 text-warning" },
-  pending: { label: "pending", className: "bg-muted/20 text-muted-foreground" },
+const NODE_STATUS: Record<string, { labelKey: string; className: string }> = {
+  succeeded: { labelKey: "pages.workflows.statusDone", className: "bg-success/12 text-success" },
+  failed: { labelKey: "pages.workflows.statusFailed", className: "bg-destructive/12 text-destructive" },
+  running: { labelKey: "pages.workflows.statusRunning", className: "bg-info/12 text-info" },
+  skipped: { labelKey: "pages.workflows.statusSkipped", className: "bg-muted/20 text-muted-foreground" },
+  waiting_approval: { labelKey: "pages.workflows.statusWaiting", className: "bg-warning/12 text-warning" },
+  pending: { labelKey: "pages.workflows.statusPending", className: "bg-muted/20 text-muted-foreground" },
 };
 
 function fmtDurationMs(ms?: number) {
@@ -41,6 +42,7 @@ function fmtDurationMs(ms?: number) {
 }
 
 export function WorkflowConsole({ logs, output, running, run, onReplay }: WorkflowConsoleProps) {
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = React.useState<"logs" | "trace" | "output">("logs");
   const [copied, setCopied] = React.useState(false);
   const logEndRef = React.useRef<HTMLDivElement>(null);
@@ -55,7 +57,7 @@ export function WorkflowConsole({ logs, output, running, run, onReplay }: Workfl
     if (!output) return;
     navigator.clipboard.writeText(output);
     setCopied(true);
-    toast.success("Output copied to clipboard");
+    toast.success(t("pages.workflows.outputCopied", "Output copied to clipboard"));
     setTimeout(() => setCopied(false), 2000);
   };
 
@@ -106,7 +108,9 @@ export function WorkflowConsole({ logs, output, running, run, onReplay }: Workfl
             <Terminal className="h-4 w-4" />
           </div>
           <div>
-            <CardTitle className="text-sm font-semibold tracking-tight text-foreground">Workflow Run</CardTitle>
+            <CardTitle className="text-sm font-semibold tracking-tight text-foreground">
+              {t("pages.workflows.consoleLogs", "Workflow Run")}
+            </CardTitle>
           </div>
         </div>
 
@@ -119,7 +123,7 @@ export function WorkflowConsole({ logs, output, running, run, onReplay }: Workfl
               }`}
             >
               <Clock className="h-3 w-3" />
-              Live Logs
+              {t("pages.workflows.liveLogsTab", "Live Logs")}
             </button>
             <button
               onClick={() => setActiveTab("trace")}
@@ -128,7 +132,7 @@ export function WorkflowConsole({ logs, output, running, run, onReplay }: Workfl
               }`}
             >
               <Terminal className="h-3 w-3" />
-              Node Trace
+              {t("pages.workflows.traceTab", "Node Trace")}
             </button>
             <button
               onClick={() => setActiveTab("output")}
@@ -137,19 +141,19 @@ export function WorkflowConsole({ logs, output, running, run, onReplay }: Workfl
               }`}
             >
               <CheckCircle2 className="h-3 w-3" />
-              Final Output
+              {t("pages.workflows.finalOutput", "Final Output")}
             </button>
           </div>
 
           {onReplay && run && !running && (
             <Button size="sm" variant="outline" className="h-7 gap-1 text-[11px]" onClick={onReplay}>
-              <RefreshCw className="h-3 w-3" /> Replay
+              <RefreshCw className="h-3 w-3" /> {t("pages.workflows.replay", "Replay")}
             </Button>
           )}
           {activeTab === "output" && output && (
             <Button size="sm" variant="outline" className="h-7 gap-1 text-[11px]" onClick={copyOutput}>
               {copied ? <Check className="h-3 w-3 text-success" /> : <Copy className="h-3 w-3" />}
-              {copied ? "Copied" : "Copy"}
+              {copied ? t("common.copied", "Copied") : t("common.copy", "Copy")}
             </Button>
           )}
         </div>
@@ -179,10 +183,10 @@ export function WorkflowConsole({ logs, output, running, run, onReplay }: Workfl
                 {running ? (
                   <span className="flex items-center justify-center gap-2 text-info">
                     <span className="h-2 w-2 rounded-full bg-info animate-ping" />
-                    Executing workflow and streaming live events…
+                    {t("pages.workflows.runningStreaming", "Executing workflow and streaming live events…")}
                   </span>
                 ) : (
-                  "No execution logs yet. Run workflow to stream real-time events."
+                  t("pages.workflows.noLogsYet", "No execution logs yet. Run workflow to stream real-time events.")
                 )}
               </div>
             )}
@@ -192,7 +196,7 @@ export function WorkflowConsole({ logs, output, running, run, onReplay }: Workfl
           <div className="max-h-80 overflow-auto p-3 space-y-1.5 scrollbar-thin">
             {run?.nodes?.length ? (
               run.nodes.map((node, idx) => {
-                const status = NODE_STATUS[node.status] ?? { label: node.status, className: "bg-muted/20 text-muted-foreground" };
+                const status = NODE_STATUS[node.status] ?? { labelKey: node.status, className: "bg-muted/20 text-muted-foreground" };
                 const timing = node.timing_ms ?? (node.finished_at && node.started_at ? new Date(node.finished_at).getTime() - new Date(node.started_at).getTime() : undefined);
                 return (
                   <div key={node.id} className="flex items-center gap-3 rounded-lg border border-border/40 bg-white/[0.03] px-2.5 py-2">
@@ -206,20 +210,22 @@ export function WorkflowConsole({ logs, output, running, run, onReplay }: Workfl
                       {node.cost_usd ? `$${node.cost_usd.toFixed(4)}` : "—"}
                     </span>
                     <Badge variant="outline" className={`text-[9px] py-0 font-mono ${status.className}`}>
-                      {status.label}
+                      {t(status.labelKey, status.labelKey)}
                     </Badge>
                   </div>
                 );
               })
             ) : (
               <div className="py-12 text-center text-muted-foreground/60 text-xs font-sans">
-                {running ? "Waiting for node results…" : "Run a workflow to see per-node trace."}
+                {running
+                  ? t("pages.workflows.waitingNodeResults", "Waiting for node results…")
+                  : t("pages.workflows.noTraceYet", "Run a workflow to see per-node trace.")}
               </div>
             )}
           </div>
         ) : (
           <pre className="max-h-80 overflow-auto whitespace-pre-wrap p-4 text-foreground leading-relaxed scrollbar-thin">
-            {output || "Console waiting for workflow execution output…"}
+            {output || t("pages.workflows.noLogsYet", "Console waiting for workflow execution output…")}
           </pre>
         )}
       </CardContent>

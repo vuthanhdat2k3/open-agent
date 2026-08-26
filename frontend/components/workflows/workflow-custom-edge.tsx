@@ -10,6 +10,7 @@ import {
 import { X, GitBranch } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { NodeStatus } from "./workflow-node-types";
+import { useTranslation } from "@/lib/i18n";
 
 export type WorkflowEdgeData = {
   sourceStatus: NodeStatus;
@@ -29,6 +30,7 @@ export function WorkflowCustomEdge({
   data,
   label,
 }: EdgeProps & { data?: WorkflowEdgeData }) {
+  const { t } = useTranslation();
   const [hovered, setHovered] = React.useState(false);
   const [edgePath, labelX, labelY] = getBezierPath({
     sourceX,
@@ -85,8 +87,8 @@ export function WorkflowCustomEdge({
         )}
         <button
           type="button"
-          aria-label="Edit condition"
-          title="Edit condition"
+          aria-label={t("pages.workflows.nodeCondition", "Edit condition")}
+          title={t("pages.workflows.nodeCondition", "Edit condition")}
           onMouseEnter={() => setHovered(true)}
           onMouseLeave={() => setHovered(false)}
           onClick={(e) => {
@@ -103,8 +105,8 @@ export function WorkflowCustomEdge({
         </button>
         <button
           type="button"
-          aria-label="Delete connection"
-          title="Delete connection"
+          aria-label={t("common.delete", "Delete connection")}
+          title={t("common.delete", "Delete connection")}
           onMouseEnter={() => setHovered(true)}
           onMouseLeave={() => setHovered(false)}
           onClick={(e) => {

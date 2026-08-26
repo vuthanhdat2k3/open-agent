@@ -5,6 +5,7 @@ import { Building2, Plus, Users, UserPlus, Trash2, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { useCreateOrganization, useOrganizations, useCurrentRole, useMembers, useInviteMember, useRemoveMember } from "@/hooks";
 import { PageHeader } from "@/components/page-header";
+import { useTranslation } from "@/lib/i18n";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
@@ -21,6 +22,7 @@ interface OrgMembersDialogProps {
 }
 
 function OrgMembersDialog({ organization, open, onOpenChange }: OrgMembersDialogProps) {
+  const { locale } = useTranslation();
   const members = useMembers(organization.id);
   const invite = useInviteMember(organization.id);
   const remove = useRemoveMember(organization.id);
@@ -59,46 +61,42 @@ function OrgMembersDialog({ organization, open, onOpenChange }: OrgMembersDialog
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Users className="h-5 w-5 text-primary" />
-            Org Admins of {organization.name}
+            {locale === "vi" ? "Org Admins of" : "Org Admins of"}{organization.name}
           </DialogTitle>
-          <DialogDescription>
-            Appoint or manage Org Admins for this tenant. Org Admins will manage their own operators and users.
-          </DialogDescription>
+          <DialogDescription>{locale === "vi" ? "Bổ nhiệm hoặc quản lý Org Admins cho tenant này. Org Admins sẽ tự quản lý operator và người dùng của họ." : "Appoint or manage Org Admins for this tenant. Org Admins will manage their own operators and users."}</DialogDescription>
         </DialogHeader>
 
         {/* Add Member Form - Fixed to org_admin */}
         <form onSubmit={handleAddMember} className="grid gap-3 pt-2 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
           <div className="space-y-1.5">
-            <Label htmlFor="new-member-email" className="text-xs">Admin Email</Label>
+            <Label htmlFor="new-member-email" className="text-xs">{locale === "vi" ? "Email Quản trị" : "Admin Email"}</Label>
             <Input
               id="new-member-email"
               type="email"
-              placeholder="admin@example.com"
+              placeholder={locale === "vi" ? "admin@example.com" : "admin@example.com"}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="new-member-password" className="text-xs">Initial Password (optional)</Label>
+            <Label htmlFor="new-member-password" className="text-xs">{locale === "vi" ? "Mật khẩu ban đầu (tùy chọn)" : "Initial Password (optional)"}</Label>
             <Input
               id="new-member-password"
               type="text"
-              placeholder="Default: OpenAgent@2026"
+              placeholder={locale === "vi" ? "Mặc định: OpenAgent@2026" : "Default: OpenAgent@2026"}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
           </div>
           <Button type="submit" size="sm" className="gap-1.5" loading={invite.isPending}>
-            <UserPlus className="h-4 w-4" />
-            Add Admin
-          </Button>
+            <UserPlus className="h-4 w-4" />{locale === "vi" ? "Thêm Quản trị viên" : "Add Admin"}</Button>
         </form>
 
         {/* Members List */}
         <div className="space-y-2 pt-3 border-t border-border">
           <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-            Current Admins ({members.data?.length ?? 0})
+            {locale === "vi" ? "Current Admins (" : "Current Admins ("}{members.data?.length ?? 0})
           </Label>
           {members.isLoading ? (
             <LoadingSkeleton variant="table" />
@@ -113,7 +111,7 @@ function OrgMembersDialog({ organization, open, onOpenChange }: OrgMembersDialog
                         {m.role}
                       </Badge>
                       <span className="text-xs text-muted-foreground">
-                        Joined {new Date(m.created_at).toLocaleDateString()}
+                        {locale === "vi" ? "Joined" : "Joined"}{new Date(m.created_at).toLocaleDateString()}
                       </span>
                     </div>
                   </div>
@@ -130,9 +128,9 @@ function OrgMembersDialog({ organization, open, onOpenChange }: OrgMembersDialog
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         }
-                        title="Remove Admin"
+                        title={locale === "vi" ? "Xóa Quản trị viên" : "Remove Admin"}
                         description={`Remove ${m.email} from ${organization.name}?`}
-                        confirmLabel="Remove"
+                        confirmLabel={locale === "vi" ? "Xóa" : "Remove"}
                         destructive
                         onConfirm={async () => {
                           try {
@@ -145,15 +143,14 @@ function OrgMembersDialog({ organization, open, onOpenChange }: OrgMembersDialog
                       />
                     ) : (
                       <span className="text-xs text-muted-foreground italic flex items-center gap-1">
-                        <Lock className="h-3 w-3" /> Protected
-                      </span>
+                        <Lock className="h-3 w-3" />{locale === "vi" ? "Được bảo vệ" : "Protected"}</span>
                     )}
                   </div>
                 </div>
               ))}
             </div>
           ) : (
-            <p className="text-xs text-muted-foreground">No members found.</p>
+            <p className="text-xs text-muted-foreground">{locale === "vi" ? "Không tìm thấy thành viên." : "No members found."}</p>
           )}
         </div>
       </DialogContent>
@@ -162,6 +159,7 @@ function OrgMembersDialog({ organization, open, onOpenChange }: OrgMembersDialog
 }
 
 export default function OrganizationsPage() {
+  const { t, dict, locale } = useTranslation();
   const role = useCurrentRole();
   const organizations = useOrganizations(role === "platform_admin");
   const create = useCreateOrganization();
@@ -178,7 +176,7 @@ export default function OrganizationsPage() {
   }, [organizations.data, page, pageSize]);
 
   if (role !== "platform_admin") {
-    return <ErrorState title="Access denied" description="Only platform administrators can manage organizations." />;
+    return <ErrorState title={locale === "vi" ? "Truy cập bị từ chối" : "Access denied"} description={locale === "vi" ? "Chỉ có quản trị viên nền tảng mới có thể quản lý các tổ chức." : "Only platform administrators can manage organizations."} />;
   }
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
@@ -193,7 +191,7 @@ export default function OrganizationsPage() {
       setName("");
       setAdminEmail("");
       setPassword("");
-      toast.success("Organization created");
+      toast.success(locale === "vi" ? "Đã tạo tổ chức" : "Organization created");
     } catch (error: any) {
       toast.error(error.message || "Unable to create organization");
     }
@@ -203,29 +201,29 @@ export default function OrganizationsPage() {
     <div className="space-y-6">
       <PageHeader
         icon={Building2}
-        title="Organizations"
-        description="Create, provision, and oversee tenant organizations and initial administrators."
+        title={dict.pages.organizations.title}
+        description={locale === "vi" ? "Tạo, cấp phép và giám sát các tổ chức tenant và quản trị viên ban đầu." : "Create, provision, and oversee tenant organizations and initial administrators."}
       />
       <Card glass>
         <CardContent className="p-5">
           <form onSubmit={submit} className="grid gap-4 md:grid-cols-[1fr_1fr_1fr_auto] md:items-end">
             <div className="space-y-2">
-              <Label htmlFor="organization-name">Organization name</Label>
-              <Input id="organization-name" value={name} onChange={(event) => setName(event.target.value)} placeholder="Acme Corporation" required />
+              <Label htmlFor="organization-name">{locale === "vi" ? "Tên tổ chức" : "Organization name"}</Label>
+              <Input id="organization-name" value={name} onChange={(event) => setName(event.target.value)} placeholder={locale === "vi" ? "Acme Corporation" : "Acme Corporation"} required />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="admin-email">Initial Org Admin Email (optional)</Label>
-              <Input id="admin-email" type="email" value={adminEmail} onChange={(event) => setAdminEmail(event.target.value)} placeholder="admin@acme.com" />
+              <Label htmlFor="admin-email">{locale === "vi" ? "Email Org Admin ban đầu (tùy chọn)" : "Initial Org Admin Email (optional)"}</Label>
+              <Input id="admin-email" type="email" value={adminEmail} onChange={(event) => setAdminEmail(event.target.value)} placeholder={locale === "vi" ? "admin@acme.com" : "admin@acme.com"} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="admin-password">Initial Password (optional)</Label>
-              <Input id="admin-password" type="text" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Default: OpenAgent@2026" />
+              <Label htmlFor="admin-password">{locale === "vi" ? "Mật khẩu ban đầu (tùy chọn)" : "Initial Password (optional)"}</Label>
+              <Input id="admin-password" type="text" value={password} onChange={(event) => setPassword(event.target.value)} placeholder={locale === "vi" ? "Mặc định: OpenAgent@2026" : "Default: OpenAgent@2026"} />
             </div>
-            <Button type="submit" className="gap-2" loading={create.isPending} disabled={!name.trim()}><Plus className="h-4 w-4" />Create organization</Button>
+            <Button type="submit" className="gap-2" loading={create.isPending} disabled={!name.trim()}><Plus className="h-4 w-4" />{locale === "vi" ? "Tạo tổ chức" : "Create organization"}</Button>
           </form>
         </CardContent>
       </Card>
-      {organizations.isLoading ? <LoadingSkeleton variant="table" /> : organizations.isError ? <ErrorState title="Unable to load organizations" description="Organization data could not be loaded." onRetry={() => void organizations.refetch()} /> : (
+      {organizations.isLoading ? <LoadingSkeleton variant="table" /> : organizations.isError ? <ErrorState title={locale === "vi" ? "Không thể tải tổ chức" : "Unable to load organizations"} description={locale === "vi" ? "Dữ liệu tổ chức không thể được tải." : "Organization data could not be loaded."} onRetry={() => void organizations.refetch()} /> : (
         <div className="space-y-4">
           <div className="grid gap-3 md:grid-cols-2">
             {paginatedOrgs.map((organization) => (
@@ -242,10 +240,8 @@ export default function OrganizationsPage() {
                       className="gap-1.5 text-xs"
                       onClick={() => setSelectedOrg(organization)}
                     >
-                      <Users className="h-3.5 w-3.5" />
-                      Members
-                    </Button>
-                    <Badge variant="outline">active</Badge>
+                      <Users className="h-3.5 w-3.5" />{locale === "vi" ? "Thành viên" : "Members"}</Button>
+                    <Badge variant="outline">{locale === "vi" ? "hoạt động" : "active"}</Badge>
                   </div>
                 </CardContent>
               </Card>

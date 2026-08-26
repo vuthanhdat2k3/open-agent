@@ -20,10 +20,12 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { useTranslation } from "@/lib/i18n";
 import { isActive, navGroups, prefetchTab, type UserRole } from "./navigation";
 
 export function AppSidebar({ queryClient }: { queryClient: QueryClient }) {
   const pathname = usePathname();
+  const { t, locale } = useTranslation();
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const summary = useEmailIntelligenceNavigationSummary();
@@ -54,8 +56,8 @@ export function AppSidebar({ queryClient }: { queryClient: QueryClient }) {
             />
           </div>
           <div className="min-w-0 group-data-[collapsible=icon]:hidden">
-            <div className="truncate text-base font-bold tracking-tight text-foreground">OpenAgent</div>
-            <div className="truncate text-xs text-muted-foreground">Agent Platform</div>
+            <div className="truncate text-base font-bold tracking-tight text-foreground">{locale === "vi" ? "OpenAgent" : "OpenAgent"}</div>
+            <div className="truncate text-xs text-muted-foreground">{locale === "vi" ? "Agent Platform" : "Agent Platform"}</div>
           </div>
         </div>
         <div className="group-data-[collapsible=icon]:hidden">
@@ -74,30 +76,32 @@ export function AppSidebar({ queryClient }: { queryClient: QueryClient }) {
               return hasPerm && passPlatform && passRole;
             });
             if (items.length === 0) return null;
+            const groupTitle = group.i18nKey ? t(group.i18nKey, group.title) : group.title;
             return (
           <SidebarGroup key={group.title}>
-            <SidebarGroupLabel>{group.title}</SidebarGroupLabel>
+            <SidebarGroupLabel>{groupTitle}</SidebarGroupLabel>
             <SidebarMenu>
               {items.map((item) => {
                 const Icon = item.icon;
                 const active = isActive(pathname, item.href);
+                const itemLabel = item.i18nKey ? t(item.i18nKey, item.label) : item.label;
                 return (
                   <SidebarMenuItem key={item.href}>
                     <SidebarMenuButton
                       asChild
                       isActive={active}
-                      tooltip={item.label}
+                      tooltip={itemLabel}
                       onMouseEnter={() => prefetchTab(queryClient, item.href)}
                       onFocus={() => prefetchTab(queryClient, item.href)}
                     >
                       <Link href={item.href} aria-current={active ? "page" : undefined}>
                         <Icon aria-hidden="true" />
-                        <span>{item.label}</span>
+                        <span>{itemLabel}</span>
                       </Link>
                     </SidebarMenuButton>
                     {item.href === "/approvals" && pending > 0 && (
                       <SidebarMenuBadge aria-label={`${pending} pending approvals${urgent ? `, ${urgent} urgent` : ""}`}>
-                        <span>{pending}</span>{urgent > 0 && <span className="ml-1 text-[9px] text-destructive">· {urgent} urgent</span>}
+                        <span>{pending}</span>{urgent > 0 && <span className="ml-1 text-[9px] text-destructive">· {urgent} {locale === "vi" ? "urgent" : "urgent"}</span>}
                       </SidebarMenuBadge>
                     )}
                   </SidebarMenuItem>

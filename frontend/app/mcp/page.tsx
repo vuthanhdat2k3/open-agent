@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
+import { useTranslation } from "@/lib/i18n";
 import { McpServerForm } from "@/components/mcp/mcp-server-form";
 import { ConfirmDialog, ErrorState, LoadingSkeleton, DataPagination } from "@/components/shared";
 import type { McpServer } from "@/types";
@@ -28,6 +29,7 @@ import {
 } from "@/components/ui/dialog";
 
 export default function McpPage() {
+  const { t, dict, locale } = useTranslation();
   const { data, isLoading, isError, refetch } = useMcpServers();
   const create = useCreateMcp();
   const del = useDeleteMcp();
@@ -49,24 +51,24 @@ export default function McpPage() {
     <div className="space-y-6">
       <PageHeader
         icon={Network}
-        title="MCP Servers"
-        description="Register Model Context Protocol (MCP) servers and manage external tool integrations."
+        title={dict.pages.mcp.title}
+        description={locale === "vi" ? "Đăng ký máy chủ Model Context Protocol (MCP) và quản lý các công cụ tích hợp bên ngoài." : "Register Model Context Protocol (MCP) servers and manage external tool integrations."}
         actions={
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
               <Button className="gap-2 active-tactile transition-transform">
-                <Plus className="h-4 w-4" /> New Server
+                <Plus className="h-4 w-4" /> {locale === "vi" ? "Máy chủ mới" : "New Server"}
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>New MCP Server</DialogTitle>
+                <DialogTitle>{locale === "vi" ? "Máy chủ MCP mới" : "New MCP Server"}</DialogTitle>
               </DialogHeader>
               <McpServerForm
                 onSubmit={async (values) => {
                   try {
                     await create.mutateAsync(values);
-                    toast.success("Server registered");
+                    toast.success(locale === "vi" ? "Đã đăng ký máy chủ" : "Server registered");
                     setOpen(false);
                   } catch (e: any) {
                     toast.error(e.message);
@@ -81,7 +83,7 @@ export default function McpPage() {
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit MCP Server</DialogTitle>
+            <DialogTitle>{locale === "vi" ? "Chỉnh sửa máy chủ MCP" : "Edit MCP Server"}</DialogTitle>
           </DialogHeader>
           {editTarget && (
             <McpServerForm
@@ -89,7 +91,7 @@ export default function McpPage() {
               onSubmit={async (values) => {
                 try {
                   await update.mutateAsync({ id: editTarget.id, ...values });
-                  toast.success("Server updated");
+                  toast.success(locale === "vi" ? "Đã cập nhật máy chủ" : "Server updated");
                   setEditOpen(false);
                   setEditTarget(null);
                 } catch (e: any) {
@@ -101,7 +103,7 @@ export default function McpPage() {
         </DialogContent>
       </Dialog>
 
-      {isLoading ? <LoadingSkeleton variant="grid" /> : isError ? <ErrorState title="Unable to load MCP servers" description="MCP server data could not be loaded." onRetry={() => void refetch()} /> : data && data.length > 0 ? (
+      {isLoading ? <LoadingSkeleton variant="grid" /> : isError ? <ErrorState title={locale === "vi" ? "Không thể tải máy chủ MCP" : "Unable to load MCP servers"} description={locale === "vi" ? "Không thể tải dữ liệu máy chủ MCP." : "MCP server data could not be loaded."} onRetry={() => void refetch()} /> : data && data.length > 0 ? (
         <div className="space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 stagger">
             {paginatedServers.map((s) => {
@@ -128,7 +130,7 @@ export default function McpPage() {
                   </div>
                   
                   <div className="mt-4 flex-1 space-y-1">
-                    <div className="font-semibold text-[10px] uppercase tracking-wider text-muted-foreground/80">Command / transport</div>
+                    <div className="font-semibold text-[10px] uppercase tracking-wider text-muted-foreground/80">{locale === "vi" ? "Lệnh / truyền tải" : "Command / transport"}</div>
                     <div className="truncate rounded-lg border border-border/40 bg-muted/30 px-2.5 py-1.5 font-mono text-xs text-muted-foreground select-all shadow-inner-edge">
                       <span className="text-foreground font-semibold">{s.transport}</span>{" "}
                       {s.command} {s.args.join(" ")} {s.url}
@@ -137,7 +139,7 @@ export default function McpPage() {
 
                   {s.tools.length > 0 && (
                     <div className="mt-4 pt-3 border-t border-border/40 space-y-1.5">
-                      <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/80">Tools exposed</div>
+                      <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/80">{locale === "vi" ? "Các công cụ được hiển thị" : "Tools exposed"}</div>
                       <div className="flex flex-wrap gap-1.5">
                         {s.tools.map((t) => (
                           <Badge key={t.id} variant="outline" className="gap-1 font-mono text-[10px] bg-muted/30 border-border/60">
@@ -153,7 +155,7 @@ export default function McpPage() {
                       size="icon"
                       variant="ghost"
                       className="h-8 w-8 text-muted-foreground hover:text-foreground active-tactile transition-transform"
-                      aria-label={`Edit ${s.name}`}
+                      aria-label={locale === "vi" ? `Chỉnh sửa ${s.name}` : `Edit ${s.name}`}
                       onClick={() => {
                         setEditTarget(s);
                         setEditOpen(true);
@@ -168,7 +170,7 @@ export default function McpPage() {
                         className="gap-1.5 active-tactile transition-transform ml-auto"
                         onClick={() => disconnect.mutate(s.id)}
                       >
-                        <Unplug className="h-3.5 w-3.5" /> Disconnect
+                        <Unplug className="h-3.5 w-3.5" /> {locale === "vi" ? "Ngắt kết nối" : "Disconnect"}
                       </Button>
                     ) : (
                       <Button
@@ -180,14 +182,14 @@ export default function McpPage() {
                           toast[r.ok ? "success" : "error"](r.message);
                         }}
                       >
-                        <Plug className="h-3.5 w-3.5" /> Connect
+                        <Plug className="h-3.5 w-3.5" /> {locale === "vi" ? "Kết nối" : "Connect"}
                       </Button>
                     )}
                     <ConfirmDialog
-                      trigger={<Button size="sm" variant="destructive" className="gap-1.5"><Trash2 className="h-3.5 w-3.5" /> Delete</Button>}
-                      title={`Delete ${s.name}?`}
-                      description="This MCP server configuration will be permanently removed."
-                      confirmLabel="Delete server"
+                      trigger={<Button size="sm" variant="destructive" className="gap-1.5"><Trash2 className="h-3.5 w-3.5" /> {locale === "vi" ? "Xóa" : "Delete"}</Button>}
+                      title={locale === "vi" ? `Xóa ${s.name}?` : `Delete ${s.name}?`}
+                      description={locale === "vi" ? "Cấu hình máy chủ MCP này sẽ bị xóa vĩnh viễn." : "This MCP server configuration will be permanently removed."}
+                      confirmLabel={locale === "vi" ? "Xóa máy chủ" : "Delete server"}
                       destructive
                       onConfirm={() => del.mutateAsync(s.id).then(() => undefined)}
                     />
@@ -208,11 +210,11 @@ export default function McpPage() {
       ) : (
         <EmptyState
           icon={Network}
-          title="No MCP servers yet"
-          description="Add one to expose external tools."
+          title={locale === "vi" ? "Chưa có máy chủ MCP nào" : "No MCP servers yet"}
+          description={locale === "vi" ? "Thêm một cái để hiển thị các công cụ bên ngoài." : "Add one to expose external tools."}
           action={
             <Button className="gap-2 active-tactile transition-transform" onClick={() => setOpen(true)}>
-              <Plus className="h-4 w-4" /> New Server
+              <Plus className="h-4 w-4" /> {locale === "vi" ? "Máy chủ mới" : "New Server"}
             </Button>
           }
         />

@@ -48,6 +48,7 @@ import { Slider } from "@/components/ui/slider";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/page-header";
+import { useTranslation } from "@/lib/i18n";
 import { EmptyState, ErrorState, LoadingSkeleton, DataPagination } from "@/components/shared";
 import { AgentCard } from "@/components/agents/agent-card";
 import {
@@ -115,6 +116,7 @@ const RISK_TIERS = [
 ] as const;
 
 export default function AgentsPage() {
+  const { t, dict, locale } = useTranslation();
   const [tabParam, setTabParam] = useUrlSearchParam("tab");
   const activeTab = (tabParam as "catalog" | "companion") || "catalog";
 
@@ -181,9 +183,9 @@ export default function AgentsPage() {
     setIsSavingCompanion(true);
     try {
       saveCompanionConfig(companionConfig);
-      toast.success("3D Companion Avatar & Operator settings saved successfully!");
+      toast.success((locale === "vi" ? "Cài đặt Avatar & Operator Đồng hành 3D đã được lưu thành công!" : "3D Companion Avatar & Operator settings saved successfully!"));
     } catch (err: any) {
-      toast.error(err.message || "Failed to save companion settings");
+      toast.error(err.message || (locale === "vi" ? "Lưu cài đặt đồng hành thất bại" : "Failed to save companion settings"));
     } finally {
       setIsSavingCompanion(false);
     }
@@ -238,7 +240,7 @@ export default function AgentsPage() {
         change_note: changeNote,
       });
       setChangeNote("");
-      toast.success("Draft release created");
+      toast.success((locale === "vi" ? "Bản nháp phát hành đã được tạo" : "Draft release created"));
     } catch (error: any) {
       toast.error(error.message);
     }
@@ -248,7 +250,7 @@ export default function AgentsPage() {
     if (!releaseAgent) return;
     try {
       await publishRelease.mutateAsync({ agentId: releaseAgent.id, version });
-      toast.success(`Version ${version} published`);
+      toast.success(locale === "vi" ? `Phiên bản ${version} đã được xuất bản` : `Version ${version} published`);
     } catch (error: any) {
       toast.error(error.message);
     }
@@ -261,7 +263,7 @@ export default function AgentsPage() {
         agentId: releaseAgent.id,
         version,
       });
-      toast.success(`Rolled back as version ${release.version}`);
+      toast.success(locale === "vi" ? `Đã khôi phục về phiên bản ${release.version}` : `Rolled back as version ${release.version}`);
     } catch (error: any) {
       toast.error(error.message);
     }
@@ -282,10 +284,10 @@ export default function AgentsPage() {
     try {
       if (editingAgent) {
         await update.mutateAsync({ id: editingAgent.id, ...form, tools: selectedTools });
-        toast.success("Agent updated");
+        toast.success((locale === "vi" ? "Agent đã được cập nhật" : "Agent updated"));
       } else {
         await create.mutateAsync({ ...form, tools: selectedTools });
-        toast.success("Agent created");
+        toast.success((locale === "vi" ? "Agent đã được tạo" : "Agent created"));
       }
       setOpen(false);
       setEditingAgent(null);
@@ -308,8 +310,8 @@ export default function AgentsPage() {
       {/* 1. Page Header */}
       <PageHeader
         icon={Bot}
-        title="Agents"
-        description="Configure AI agents, system reasoning prompts, models, and tool access control."
+        title={dict.pages.agents.title}
+        description={locale === "vi" ? "Cấu hình AI agents, lời nhắc suy luận hệ thống, mô hình và kiểm soát truy cập công cụ." : "Configure AI agents, system reasoning prompts, models, and tool access control."}
         actions={
           <div className="flex items-center gap-2">
             <Button
@@ -320,58 +322,58 @@ export default function AgentsPage() {
               className="gap-1.5"
             >
               <RefreshCw className={isLoading ? "h-3.5 w-3.5 animate-spin" : "h-3.5 w-3.5"} />
-              Refresh
+              {locale === "vi" ? "Làm mới" : "Refresh"}
             </Button>
             {activeTab === "catalog" && (
               <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) setEditingAgent(null); }}>
                 <DialogTrigger asChild>
                   <Button size="sm" className="gap-1.5 font-semibold" onClick={openCreate}>
-                    <Plus className="h-4 w-4" /> New Agent
+                    <Plus className="h-4 w-4" /> {locale === "vi" ? "Agent mới" : "New Agent"}
                   </Button>
                 </DialogTrigger>
                 <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                   <DialogHeader>
-                    <DialogTitle>{editingAgent ? "Edit Agent" : "Create Agent"}</DialogTitle>
+                    <DialogTitle>{editingAgent ? (locale === "vi" ? "Chỉnh sửa Agent" : "Edit Agent") : (locale === "vi" ? "Tạo Agent" : "Create Agent")}</DialogTitle>
                   </DialogHeader>
                   <div className="space-y-4 pt-2">
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1.5">
-                        <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Name</Label>
+                        <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{locale === "vi" ? "Tên" : "Name"}</Label>
                         <Input
                           value={form.name}
                           onChange={(e) => setForm({ ...form, name: e.target.value })}
-                          placeholder="e.g. Code Reviewer"
+                          placeholder={locale === "vi" ? "vd: Code Reviewer" : "e.g. Code Reviewer"}
                         />
                       </div>
                       <div className="space-y-1.5">
-                        <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Kind</Label>
+                        <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{locale === "vi" ? "Loại" : "Kind"}</Label>
                         <Select
                           value={form.kind}
                           onChange={(e) => setForm({ ...form, kind: e.target.value as "worker" | "orchestrator" })}
                         >
-                          <option value="worker">Worker</option>
-                          <option value="orchestrator">Orchestrator</option>
+                          <option value="worker">{locale === "vi" ? "Công nhân" : "Worker"}</option>
+                          <option value="orchestrator">{locale === "vi" ? "Điều phối viên" : "Orchestrator"}</option>
                         </Select>
                       </div>
                     </div>
 
                     <div className="space-y-1.5">
-                      <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Description</Label>
+                      <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{locale === "vi" ? "Mô tả" : "Description"}</Label>
                       <Input
                         value={form.description}
                         onChange={(e) => setForm({ ...form, description: e.target.value })}
-                        placeholder="Brief summary of capabilities..."
+                        placeholder={locale === "vi" ? "Tóm tắt ngắn gọn các khả năng..." : "Brief summary of capabilities..."}
                       />
                     </div>
 
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1.5">
-                        <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Model Engine</Label>
+                        <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{locale === "vi" ? "Công cụ Mô hình" : "Model Engine"}</Label>
                         <Select
                           value={form.model_id}
                           onChange={(e) => setForm({ ...form, model_id: e.target.value })}
                         >
-                          <option value="">Default Model</option>
+                          <option value="">{locale === "vi" ? "Mô hình mặc định" : "Default Model"}</option>
                           {models.data?.map((m) => (
                             <option key={m.id} value={m.id}>
                               {m.display_name || m.name}
@@ -383,7 +385,7 @@ export default function AgentsPage() {
                       <div className="space-y-1.5">
                         <div className="flex items-center justify-between">
                           <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
-                            <Thermometer className="h-3.5 w-3.5" /> Temp
+                            <Thermometer className="h-3.5 w-3.5" /> {locale === "vi" ? "Nhiệt độ" : "Temp"}
                           </Label>
                           <span className="font-mono text-xs text-foreground font-semibold">{form.temperature}</span>
                         </div>
@@ -400,18 +402,18 @@ export default function AgentsPage() {
                     </div>
 
                     <div className="space-y-1.5">
-                      <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">System Prompt</Label>
+                      <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{locale === "vi" ? "Lời nhắc hệ thống" : "System Prompt"}</Label>
                       <Textarea
                         value={form.system_prompt}
                         onChange={(e) => setForm({ ...form, system_prompt: e.target.value })}
                         rows={5}
-                        placeholder="You are a helpful assistant..."
+                        placeholder={locale === "vi" ? "Bạn là một trợ lý hữu ích..." : "You are a helpful assistant..."}
                         className="font-mono text-xs"
                       />
                     </div>
 
                     <div className="space-y-2">
-                      <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Allowed Risk Tiers</Label>
+                      <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{locale === "vi" ? "Mức độ rủi ro cho phép" : "Allowed Risk Tiers"}</Label>
                       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                         {RISK_TIERS.map((tier) => {
                           const active = form.allowed_risk_tiers.includes(tier.key);
@@ -435,14 +437,14 @@ export default function AgentsPage() {
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
                         <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                          <Wrench className="h-3.5 w-3.5 text-primary" /> Tools ({selectedTools.length} selected)
+                          <Wrench className="h-3.5 w-3.5 text-primary" /> {locale === "vi" ? `Công cụ (${selectedTools.length} đã chọn)` : `Tools (${selectedTools.length} selected)`}
                         </Label>
                         <div className="relative w-48">
                           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                           <Input
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
-                            placeholder="Filter tools..."
+                            placeholder={locale === "vi" ? "Lọc công cụ..." : "Filter tools..."}
                             className="h-7 pl-8 text-[11px]"
                           />
                         </div>
@@ -482,7 +484,7 @@ export default function AgentsPage() {
                                       )}
                                       {!tool.available && (
                                         <span className="rounded bg-muted px-1 text-[9px] text-muted-foreground">
-                                          Unavailable
+                                          {locale === "vi" ? "Không khả dụng" : "Unavailable"}
                                         </span>
                                       )}
                                     </span>
@@ -497,7 +499,7 @@ export default function AgentsPage() {
 
                     <div className="flex justify-end gap-2 pt-2">
                       <Button variant="outline" size="sm" onClick={() => setOpen(false)}>
-                        Cancel
+                        {locale === "vi" ? "Hủy" : "Cancel"}
                       </Button>
                       <Button
                         size="sm"
@@ -505,7 +507,7 @@ export default function AgentsPage() {
                         disabled={create.isPending || update.isPending || !form.name.trim()}
                         className="font-semibold"
                       >
-                        {editingAgent ? "Save Changes" : "Create Agent"}
+                        {editingAgent ? (locale === "vi" ? "Lưu thay đổi" : "Save Changes") : (locale === "vi" ? "Tạo Agent" : "Create Agent")}
                       </Button>
                     </div>
                   </div>
@@ -525,7 +527,7 @@ export default function AgentsPage() {
           className="gap-2 font-medium"
         >
           <Bot className="h-4 w-4" />
-          Agent Catalog
+          {locale === "vi" ? "Danh mục Agent" : "Agent Catalog"}
           <Badge variant="outline" className="ml-1 text-[10px] font-mono">
             {data?.length ?? 0}
           </Badge>
@@ -538,7 +540,7 @@ export default function AgentsPage() {
           className="gap-2 font-medium"
         >
           <Sparkles className="h-4 w-4 text-amber-500" />
-          3D Companion
+          {locale === "vi" ? "Đồng hành 3D" : "3D Companion"}
         </Button>
       </div>
 
@@ -553,7 +555,7 @@ export default function AgentsPage() {
               </div>
               <div>
                 <p className="text-2xl font-bold leading-none tabular-nums text-foreground">{data?.length ?? 0}</p>
-                <p className="mt-1 text-xs text-muted-foreground font-medium">Configured Agents</p>
+                <p className="mt-1 text-xs text-muted-foreground font-medium">{locale === "vi" ? "Agent đã cấu hình" : "Configured Agents"}</p>
               </div>
             </Card>
 
@@ -565,7 +567,7 @@ export default function AgentsPage() {
                 <p className="text-2xl font-bold leading-none tabular-nums text-foreground">
                   {data?.filter((a) => a.kind === "orchestrator").length ?? 0}
                 </p>
-                <p className="mt-1 text-xs text-muted-foreground font-medium">Orchestrators</p>
+                <p className="mt-1 text-xs text-muted-foreground font-medium">{locale === "vi" ? "Điều phối viên" : "Orchestrators"}</p>
               </div>
             </Card>
 
@@ -577,7 +579,7 @@ export default function AgentsPage() {
                 <p className="text-2xl font-bold leading-none tabular-nums text-foreground">
                   {data?.filter((a) => a.kind === "worker").length ?? 0}
                 </p>
-                <p className="mt-1 text-xs text-muted-foreground font-medium">Worker Specialists</p>
+                <p className="mt-1 text-xs text-muted-foreground font-medium">{locale === "vi" ? "Chuyên gia Công nhân" : "Worker Specialists"}</p>
               </div>
             </Card>
 
@@ -587,7 +589,7 @@ export default function AgentsPage() {
               </div>
               <div>
                 <p className="text-2xl font-bold leading-none tabular-nums text-foreground">{models.data?.length ?? 0}</p>
-                <p className="mt-1 text-xs text-muted-foreground font-medium">Active LLM Engines</p>
+                <p className="mt-1 text-xs text-muted-foreground font-medium">{locale === "vi" ? "Công cụ LLM đang hoạt động" : "Active LLM Engines"}</p>
               </div>
             </Card>
           </div>
@@ -599,7 +601,7 @@ export default function AgentsPage() {
               <Input
                 value={catalogSearch}
                 onChange={(e) => setCatalogSearch(e.target.value)}
-                placeholder="Search agent name, tools, or description..."
+                placeholder={dict.pages.agents.searchPlaceholder}
                 className="pl-9 text-xs"
               />
             </div>
@@ -611,7 +613,7 @@ export default function AgentsPage() {
                 className="h-7 text-xs font-medium"
                 onClick={() => setKindFilter("all")}
               >
-                All ({data?.length ?? 0})
+                {locale === "vi" ? `Tất cả (${data?.length ?? 0})` : `All (${data?.length ?? 0})`}
               </Button>
               <Button
                 size="sm"
@@ -619,7 +621,7 @@ export default function AgentsPage() {
                 className="h-7 text-xs font-medium"
                 onClick={() => setKindFilter("orchestrator")}
               >
-                Orchestrators ({data?.filter((a) => a.kind === "orchestrator").length ?? 0})
+                {locale === "vi" ? `Điều phối viên (${data?.filter((a) => a.kind === "orchestrator").length ?? 0})` : `Orchestrators (${data?.filter((a) => a.kind === "orchestrator").length ?? 0})`}
               </Button>
               <Button
                 size="sm"
@@ -627,7 +629,7 @@ export default function AgentsPage() {
                 className="h-7 text-xs font-medium"
                 onClick={() => setKindFilter("worker")}
               >
-                Workers ({data?.filter((a) => a.kind === "worker").length ?? 0})
+                {locale === "vi" ? `Công nhân (${data?.filter((a) => a.kind === "worker").length ?? 0})` : `Workers (${data?.filter((a) => a.kind === "worker").length ?? 0})`}
               </Button>
             </div>
           </div>
@@ -635,31 +637,31 @@ export default function AgentsPage() {
           <Dialog open={Boolean(releaseAgent)} onOpenChange={(v) => { if (!v) setReleaseAgent(null); }}>
             <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>Releases — {releaseAgent?.name}</DialogTitle>
+                <DialogTitle>{locale === "vi" ? "Releases —" : "Releases —"}{releaseAgent?.name}</DialogTitle>
               </DialogHeader>
               <div className="space-y-4 pt-2">
                 <div className="space-y-2 rounded-xl border border-border/60 bg-muted/20 p-4">
-                  <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">New Release Draft</Label>
+                  <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{locale === "vi" ? "Bản nháp phát hành mới" : "New Release Draft"}</Label>
                   <Textarea
                     value={draftPrompt}
                     onChange={(e) => setDraftPrompt(e.target.value)}
                     rows={4}
                     className="font-mono text-xs"
-                    placeholder="System prompt for this release..."
+                    placeholder={locale === "vi" ? "Lời nhắc hệ thống cho bản phát hành này..." : "System prompt for this release..."}
                   />
                   <Input
                     value={changeNote}
                     onChange={(e) => setChangeNote(e.target.value)}
-                    placeholder="Change note (e.g. Added multi-step reasoning)"
+                    placeholder={locale === "vi" ? "Ghi chú thay đổi (vd: Đã thêm suy luận nhiều bước)" : "Change note (e.g. Added multi-step reasoning)"}
                     className="text-xs"
                   />
                   <Button size="sm" onClick={handleCreateDraft} disabled={createRelease.isPending || !draftPrompt}>
-                    Create Draft Version
+                    {locale === "vi" ? "Tạo Phiên bản Nháp" : "Create Draft Version"}
                   </Button>
                 </div>
 
                 <div className="space-y-2">
-                  <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Version History</Label>
+                  <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{locale === "vi" ? "Lịch sử phiên bản" : "Version History"}</Label>
                   {releases.data?.map((release) => (
                     <div key={release.id} className="flex items-center justify-between gap-3 rounded-lg border border-border/70 p-3 text-xs">
                       <div>
@@ -669,17 +671,17 @@ export default function AgentsPage() {
                             {release.status}
                           </Badge>
                         </div>
-                        <p className="text-xs text-muted-foreground mt-0.5">{release.change_note || "No note"}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{release.change_note || (locale === "vi" ? "Không có ghi chú" : "No note")}</p>
                       </div>
                       <div className="flex items-center gap-1.5">
                         {release.status === "draft" && (
                           <Button size="sm" onClick={() => handlePublish(release.version)} disabled={publishRelease.isPending} className="text-xs h-7">
-                            <Upload className="h-3 w-3 mr-1" /> Publish
+                            <Upload className="h-3 w-3 mr-1" /> {locale === "vi" ? "Xuất bản" : "Publish"}
                           </Button>
                         )}
                         {release.status === "archived" && (
                           <Button size="sm" variant="outline" onClick={() => handleRollback(release.version)} disabled={rollbackRelease.isPending} className="text-xs h-7">
-                            <RotateCcw className="h-3 w-3 mr-1" /> Rollback
+                            <RotateCcw className="h-3 w-3 mr-1" /> {locale === "vi" ? "Khôi phục" : "Rollback"}
                           </Button>
                         )}
                       </div>
@@ -694,8 +696,8 @@ export default function AgentsPage() {
             <LoadingSkeleton variant="grid" />
           ) : isError ? (
             <ErrorState
-              title="Unable to load agents"
-              description="Agent catalog data could not be retrieved."
+              title={locale === "vi" ? "Không thể tải agent" : "Unable to load agents"}
+              description={locale === "vi" ? "Không thể truy xuất dữ liệu danh mục agent." : "Agent catalog data could not be retrieved."}
               onRetry={() => void refetch()}
             />
           ) : filteredAgents.length > 0 ? (
@@ -725,11 +727,11 @@ export default function AgentsPage() {
           ) : (
             <EmptyState
               icon={Bot}
-              title="No agents match your criteria"
-              description="Try adjusting your search query or role filter."
+              title={locale === "vi" ? "Không có agent nào khớp với tiêu chí của bạn" : "No agents match your criteria"}
+              description={locale === "vi" ? "Hãy thử điều chỉnh truy vấn tìm kiếm hoặc bộ lọc vai trò của bạn." : "Try adjusting your search query or role filter."}
               action={
                 <Button className="gap-2" onClick={openCreate}>
-                  <Plus className="h-4 w-4" /> New Agent
+                  <Plus className="h-4 w-4" /> {locale === "vi" ? "Agent mới" : "New Agent"}
                 </Button>
               }
             />
@@ -744,10 +746,10 @@ export default function AgentsPage() {
           <Card className="shadow-card border-border/80 lg:col-span-1 flex flex-col p-5 bg-gradient-to-b from-card via-card to-primary/[0.04]">
             <CardHeader className="p-0 pb-3">
               <CardTitle className="text-base font-semibold flex items-center gap-2">
-                <Box className="h-4 w-4 text-primary" /> Live 3D Avatar Preview
+                <Box className="h-4 w-4 text-primary" /> {locale === "vi" ? "Xem trước Avatar 3D trực tiếp" : "Live 3D Avatar Preview"}
               </CardTitle>
               <CardDescription className="text-xs">
-                Real-time visual rendering of the companion avatar for end-users.
+                {locale === "vi" ? "Kết xuất hình ảnh trực tiếp của avatar đồng hành cho người dùng cuối." : "Real-time visual rendering of the companion avatar for end-users."}
               </CardDescription>
             </CardHeader>
 
@@ -758,7 +760,7 @@ export default function AgentsPage() {
                 {companionConfig.showThoughtBubbles && (
                   <div className="animate-bounce-subtle absolute top-2 z-10 flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-card/95 px-3 py-1 text-[10px] font-medium text-amber-500 shadow-md">
                     <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-                    <span>⚡ 2 actions need your review →</span>
+                    <span>{locale === "vi" ? "⚡ 2 actions need your review →" : "⚡ 2 actions need your review →"}</span>
                   </div>
                 )}
 
@@ -788,8 +790,8 @@ export default function AgentsPage() {
                 {/* Status Pill Preview */}
                 <div className="absolute bottom-2 flex items-center gap-2 rounded-full border border-border/90 bg-card/95 px-3 py-1 text-xs text-muted-foreground shadow-sm backdrop-blur-md">
                   <span className="h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_8px_#10b981]" />
-                  <span className="font-semibold text-foreground">{companionConfig.name || "Personal Operator"}</span>
-                  <span className="font-mono text-[10.5px] text-primary font-medium">ready</span>
+                  <span className="font-semibold text-foreground">{companionConfig.name || (locale === "vi" ? "Người điều hành Cá nhân" : "Personal Operator")}</span>
+                  <span className="font-mono text-[10.5px] text-primary font-medium">{locale === "vi" ? "ready" : "ready"}</span>
                 </div>
               </div>
 
@@ -805,56 +807,52 @@ export default function AgentsPage() {
             <div className="flex items-center justify-between border-b border-border/60 pb-4">
               <div>
                 <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
-                  <SlidersHorizontal className="h-5 w-5 text-primary" /> 3D Companion & Executive Operator Config
-                </h2>
+                  <SlidersHorizontal className="h-5 w-5 text-primary" /> {locale === "vi" ? "3D Companion & Executive Operator Config" : "3D Companion & Executive Operator Config"}</h2>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Operators and Org Admins configure this persona to maintain, develop, and customize the live assistant for users.
-                </p>
+                  {locale === "vi" ? "Operators and Org Admins configure this persona to maintain, develop, and customize the live assistant for users." : "Operators and Org Admins configure this persona to maintain, develop, and customize the live assistant for users."}</p>
               </div>
               <Button
                 className="gap-2 font-semibold"
                 onClick={handleSaveCompanion}
                 loading={isSavingCompanion}
               >
-                <Save className="h-4 w-4" /> Save Configuration
-              </Button>
+                <Save className="h-4 w-4" /> {locale === "vi" ? "Save Configuration" : "Save Configuration"}</Button>
             </div>
 
             <div className="space-y-5">
               {/* Section A: Identity & Brain Binding */}
               <div className="space-y-3">
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-primary">
-                  1. Identity & Brain Persona Binding
-                </h3>
+                  {locale === "vi" ? "1. Identity & Brain Persona Binding" : "1. Identity & Brain Persona Binding"}</h3>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="space-y-1.5">
-                    <Label className="text-xs font-medium">Companion Display Name</Label>
+                    <Label className="text-xs font-medium">{locale === "vi" ? "Companion Display Name" : "Companion Display Name"}</Label>
                     <Input
                       value={companionConfig.name}
                       onChange={(e) => setCompanionConfig({ ...companionConfig, name: e.target.value })}
-                      placeholder="e.g. Personal Operator, Executive Chief of Staff"
+                      placeholder={locale === "vi" ? "e.g. Personal Operator, Executive Chief of Staff" : "e.g. Personal Operator, Executive Chief of Staff"}
                       className="text-xs"
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-xs font-medium">Tagline / Role Description</Label>
+                    <Label className="text-xs font-medium">{locale === "vi" ? "Tagline / Role Description" : "Tagline / Role Description"}</Label>
                     <Input
                       value={companionConfig.tagline}
                       onChange={(e) => setCompanionConfig({ ...companionConfig, tagline: e.target.value })}
-                      placeholder="e.g. Personal Executive Chief of Staff"
+                      placeholder={locale === "vi" ? "e.g. Personal Executive Chief of Staff" : "e.g. Personal Executive Chief of Staff"}
                       className="text-xs"
                     />
                   </div>
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">Underlying Brain Agent (Studio Agent Persona)</Label>
+                  <Label className="text-xs font-medium">{locale === "vi" ? "Underlying Brain Agent (Studio Agent Persona)" : "Underlying Brain Agent (Studio Agent Persona)"}</Label>
                   <Select
                     value={companionConfig.brainAgentId || ""}
                     onChange={(e) => setCompanionConfig({ ...companionConfig, brainAgentId: e.target.value || null })}
                     className="text-xs"
                   >
-                    <option value="">Default Organization Orchestrator</option>
+                    <option value="">{locale === "vi" ? "Default Organization Orchestrator" : "Default Organization Orchestrator"}</option>
                     {data?.map((a) => (
                       <option key={a.id} value={a.id}>
                         {a.name} — {a.description || "Active Agent Persona"}
@@ -862,16 +860,14 @@ export default function AgentsPage() {
                     ))}
                   </Select>
                   <p className="text-[11px] text-muted-foreground">
-                    When users send prompts or dispatch actions to the 3D Companion, this agent persona and its system prompts will process the request.
-                  </p>
+                    {locale === "vi" ? "When users send prompts or dispatch actions to the 3D Companion, this agent persona and its system prompts will process the request." : "When users send prompts or dispatch actions to the 3D Companion, this agent persona and its system prompts will process the request."}</p>
                 </div>
               </div>
 
               {/* Section B: 3D Avatar Asset Model */}
               <div className="space-y-3 border-t border-border/60 pt-4">
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-primary">
-                  2. 3D Model Asset & Visual Avatar
-                </h3>
+                  {locale === "vi" ? "2. 3D Model Asset & Visual Avatar" : "2. 3D Model Asset & Visual Avatar"}</h3>
 
                 <div className="grid gap-3 sm:grid-cols-3">
                   {AVATAR_3D_PRESETS.map((preset) => {
@@ -905,11 +901,11 @@ export default function AgentsPage() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">Custom 3D Model Asset URL (.glb / .gltf)</Label>
+                  <Label className="text-xs font-medium">{locale === "vi" ? "Custom 3D Model Asset URL (.glb / .gltf)" : "Custom 3D Model Asset URL (.glb / .gltf)"}</Label>
                   <Input
                     value={companionConfig.modelUrl}
                     onChange={(e) => setCompanionConfig({ ...companionConfig, modelUrl: e.target.value })}
-                    placeholder="/agent-service-robot.glb or https://your-cdn.com/avatar.glb"
+                    placeholder={locale === "vi" ? "/agent-service-robot.glb or https://your-cdn.com/avatar.glb" : "/agent-service-robot.glb or https://your-cdn.com/avatar.glb"}
                     className="text-xs font-mono"
                   />
                 </div>
@@ -918,8 +914,7 @@ export default function AgentsPage() {
               {/* Section C: Docking Position & Screen Placement */}
               <div className="space-y-3 border-t border-border/60 pt-4">
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-primary">
-                  3. Default Screen Placement & Docking
-                </h3>
+                  {locale === "vi" ? "3. Default Screen Placement & Docking" : "3. Default Screen Placement & Docking"}</h3>
                 <div className="grid gap-3 sm:grid-cols-4">
                   {[
                     { id: "bottom-right", label: "Bottom-Right (Default)" },
@@ -954,8 +949,7 @@ export default function AgentsPage() {
               {/* Section D: Feature Toggles & Capabilities */}
               <div className="space-y-3 border-t border-border/60 pt-4">
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-primary">
-                  4. Interactive Capabilities & Surface Controls
-                </h3>
+                  {locale === "vi" ? "4. Interactive Capabilities & Surface Controls" : "4. Interactive Capabilities & Surface Controls"}</h3>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="flex items-center gap-2.5 rounded-lg border border-border/70 p-3 text-xs text-foreground cursor-pointer hover:bg-muted/30">
                     <input
@@ -965,8 +959,8 @@ export default function AgentsPage() {
                       className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
                     />
                     <div>
-                      <p className="font-semibold">Live Thought Bubble Alerts</p>
-                      <p className="text-[10px] text-muted-foreground">Show urgent action notifications above avatar head</p>
+                      <p className="font-semibold">{locale === "vi" ? "Live Thought Bubble Alerts" : "Live Thought Bubble Alerts"}</p>
+                      <p className="text-[10px] text-muted-foreground">{locale === "vi" ? "Show urgent action notifications above avatar head" : "Show urgent action notifications above avatar head"}</p>
                     </div>
                   </label>
 
@@ -978,8 +972,8 @@ export default function AgentsPage() {
                       className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
                     />
                     <div>
-                      <p className="font-semibold">1-Click Technical Approvals</p>
-                      <p className="text-[10px] text-muted-foreground">Allow instant approving from floating operator surface</p>
+                      <p className="font-semibold">{locale === "vi" ? "1-Click Technical Approvals" : "1-Click Technical Approvals"}</p>
+                      <p className="text-[10px] text-muted-foreground">{locale === "vi" ? "Allow instant approving from floating operator surface" : "Allow instant approving from floating operator surface"}</p>
                     </div>
                   </label>
 
@@ -991,8 +985,8 @@ export default function AgentsPage() {
                       className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
                     />
                     <div>
-                      <p className="font-semibold">Email Triage Feed</p>
-                      <p className="text-[10px] text-muted-foreground">Expose incoming classified emails in operator surface</p>
+                      <p className="font-semibold">{locale === "vi" ? "Email Triage Feed" : "Email Triage Feed"}</p>
+                      <p className="text-[10px] text-muted-foreground">{locale === "vi" ? "Expose incoming classified emails in operator surface" : "Expose incoming classified emails in operator surface"}</p>
                     </div>
                   </label>
 
@@ -1004,8 +998,8 @@ export default function AgentsPage() {
                       className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
                     />
                     <div>
-                      <p className="font-semibold">Direct Operator Dispatch</p>
-                      <p className="text-[10px] text-muted-foreground">Enable natural language command dispatch bar</p>
+                      <p className="font-semibold">{locale === "vi" ? "Direct Operator Dispatch" : "Direct Operator Dispatch"}</p>
+                      <p className="text-[10px] text-muted-foreground">{locale === "vi" ? "Enable natural language command dispatch bar" : "Enable natural language command dispatch bar"}</p>
                     </div>
                   </label>
                 </div>

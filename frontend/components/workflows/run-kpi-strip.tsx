@@ -1,21 +1,22 @@
 "use client";
 
 import * as React from "react";
-import { Activity, Clock3, Coins, Gauge } from "lucide-react";
+import { Activity, Clock3, Coins } from "lucide-react";
+import { useTranslation } from "@/lib/i18n";
 import type { WorkflowRunDetail } from "@/types";
 
 interface RunKpiStripProps {
   run: WorkflowRunDetail | undefined;
 }
 
-const STATUS_STYLES: Record<string, { label: string; className: string; pulse?: boolean }> = {
-  running: { label: "Running", className: "border-info/40 bg-info/10 text-info", pulse: true },
-  queued: { label: "Queued", className: "border-muted/40 bg-muted/10 text-muted-foreground" },
-  succeeded: { label: "Succeeded", className: "border-success/40 bg-success/10 text-success" },
-  failed: { label: "Failed", className: "border-destructive/40 bg-destructive/10 text-destructive" },
-  waiting_approval: { label: "Waiting approval", className: "border-warning/40 bg-warning/10 text-warning" },
-  diverged: { label: "Diverged", className: "border-warning/40 bg-warning/10 text-warning" },
-  cancelled: { label: "Cancelled", className: "border-muted/40 bg-muted/10 text-muted-foreground" },
+const STATUS_STYLES: Record<string, { labelKey: string; className: string; pulse?: boolean }> = {
+  running: { labelKey: "pages.workflows.statusRunning", className: "border-info/40 bg-info/10 text-info", pulse: true },
+  queued: { labelKey: "pages.workflows.statusQueued", className: "border-muted/40 bg-muted/10 text-muted-foreground" },
+  succeeded: { labelKey: "pages.workflows.statusSucceeded", className: "border-success/40 bg-success/10 text-success" },
+  failed: { labelKey: "pages.workflows.statusFailed", className: "border-destructive/40 bg-destructive/10 text-destructive" },
+  waiting_approval: { labelKey: "pages.workflows.statusWaitingApproval", className: "border-warning/40 bg-warning/10 text-warning" },
+  diverged: { labelKey: "pages.workflows.statusDiverged", className: "border-warning/40 bg-warning/10 text-warning" },
+  cancelled: { labelKey: "pages.workflows.statusCancelled", className: "border-muted/40 bg-muted/10 text-muted-foreground" },
 };
 
 function fmtDuration(started?: string | null, finished?: string | null) {
@@ -41,6 +42,7 @@ function totalCost(run: WorkflowRunDetail | undefined) {
 }
 
 export function RunKpiStrip({ run }: RunKpiStripProps) {
+  const { t } = useTranslation();
   if (!run) return null;
   const style = STATUS_STYLES[run.status] ?? STATUS_STYLES.queued;
   const done = run.nodes?.filter((n) => n.status === "succeeded").length ?? 0;
@@ -51,7 +53,7 @@ export function RunKpiStrip({ run }: RunKpiStripProps) {
     <div className="flex flex-wrap items-center gap-4 rounded-xl border border-border/80 bg-card/50 px-4 py-3 backdrop-blur-xl shadow-3d-card">
       <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${style.className}`}>
         {style.pulse && <span className="h-2 w-2 rounded-full bg-current animate-pulse" />}
-        {style.label}
+        {t(style.labelKey, style.labelKey)}
       </span>
       <div className="flex min-w-[160px] flex-1 items-center gap-2.5">
         <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted/40">
@@ -61,7 +63,7 @@ export function RunKpiStrip({ run }: RunKpiStripProps) {
           />
         </div>
         <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
-          {done}/{total} nodes
+          {t("pages.workflows.kpiNodes", "{done}/{total} nodes").replace("{done}", String(done)).replace("{total}", String(total))}
         </span>
       </div>
       <div className="flex items-center gap-5">

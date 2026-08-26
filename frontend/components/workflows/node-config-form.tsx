@@ -5,7 +5,8 @@ import { useNodeDefinitions, useNodeOptions, useToolOptions } from "@/hooks";
 import { Input, Label, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Plus, Trash2, ChevronDown } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
+import { useTranslation } from "@/lib/i18n";
 import type { GraphNode, NodeDefinition, NodeField } from "@/types";
 
 interface NodeConfigFormProps {
@@ -223,15 +224,19 @@ function SubField({
   value: any;
   onValue: (v: any) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-1">
-      <Label className="text-[11px] font-medium text-muted-foreground">{field.label}</Label>
+      <Label className="text-[11px] font-medium text-muted-foreground">
+        {t(`pages.workflows.nodeField.${field.name}`, field.label)}
+      </Label>
       <FieldInput field={field} value={value} onValue={onValue} />
     </div>
   );
 }
 
 export function NodeConfigForm({ node, onUpdate }: NodeConfigFormProps) {
+  const { t } = useTranslation();
   const definitions = useNodeDefinitions();
   const toolOptions = useToolOptions();
   const [modelOptions, setModelOptions] = React.useState<Array<{ name: string; value: string }>>([]);
@@ -298,7 +303,7 @@ export function NodeConfigForm({ node, onUpdate }: NodeConfigFormProps) {
         .map((field) => (
           <div key={field.name} className="space-y-1.5">
             <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">
-              {field.label}
+              {t(`pages.workflows.nodeField.${field.name}`, field.label)}
               {field.required && <span className="text-destructive"> *</span>}
             </Label>
             <FieldInput

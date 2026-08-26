@@ -9,6 +9,7 @@ import type { ApprovalRequest, CustomerIntelligenceNotification, CustomerIntelli
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { useTranslation } from "@/lib/i18n";
 
 export type OperatorTab = "approvals" | "inbox" | "reports";
 
@@ -43,6 +44,7 @@ export function OperatorSurface({
   onOpenEmailDetail,
   onSendDirection,
 }: OperatorSurfaceProps) {
+    const { locale } = useTranslation();
   const [activeTab, setActiveTab] = React.useState<OperatorTab>("approvals");
   const [directionPrompt, setDirectionPrompt] = React.useState("");
   const surfaceRef = React.useRef<HTMLDivElement>(null);
@@ -153,18 +155,16 @@ export function OperatorSurface({
             </div>
             <div>
               <h3 className="text-sm font-semibold tracking-tight text-foreground">{companionName}</h3>
-              <p className="text-[11px] text-muted-foreground">Personal Executive Chief of Staff</p>
+              <p className="text-[11px] text-muted-foreground">{locale === "vi" ? "Personal Executive Chief of Staff" : "Personal Executive Chief of Staff"}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 font-mono text-[10px] text-emerald-400">
               <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-emerald-400" />
-              {activeRoutinesCount} Routines Active
-            </Badge>
+              {activeRoutinesCount} {locale === "vi" ? "Routines Active" : "Routines Active"}</Badge>
             <div className="flex items-center gap-1">
               <kbd className="hidden sm:inline-block rounded border border-border/80 bg-muted/60 px-1.5 py-0.5 font-mono text-[9px] text-muted-foreground">
-                Esc
-              </kbd>
+                {locale === "vi" ? "Esc" : "Esc"}</kbd>
               <Button
                 variant="ghost"
                 size="icon"
@@ -189,7 +189,7 @@ export function OperatorSurface({
                 : "text-muted-foreground hover:bg-muted/80 hover:text-foreground"
             }`}
           >
-            <span>⚡ Approvals</span>
+            <span>{locale === "vi" ? "⚡ Approvals" : "⚡ Approvals"}</span>
             <span
               className={`rounded px-1.5 py-0.5 font-mono text-[9.5px] font-semibold ${
                 approvals.length > 0
@@ -210,7 +210,7 @@ export function OperatorSurface({
                 : "text-muted-foreground hover:bg-muted/80 hover:text-foreground"
             }`}
           >
-            <span>✉ Email Triage</span>
+            <span>{locale === "vi" ? "✉ Email Triage" : "✉ Email Triage"}</span>
             <span
               className={`rounded px-1.5 py-0.5 font-mono text-[9.5px] font-semibold ${
                 notifications.length > 0
@@ -231,7 +231,7 @@ export function OperatorSurface({
                 : "text-muted-foreground hover:bg-muted/80 hover:text-foreground"
             }`}
           >
-            <span>📋 Briefings</span>
+            <span>{locale === "vi" ? "📋 Briefings" : "📋 Briefings"}</span>
             <span className="rounded border border-emerald-500/40 bg-emerald-500/15 px-1.5 py-0.5 font-mono text-[9.5px] font-semibold text-emerald-400">
               {cases.length || 4}
             </span>
@@ -264,13 +264,12 @@ export function OperatorSurface({
           <Input
             value={directionPrompt}
             onChange={(e) => setDirectionPrompt(e.target.value)}
-            placeholder="Direct operator: 'Approve all', 'Brief me on Acme', 'Prep tomorrow meeting'..."
+            placeholder={locale === "vi" ? "Direct operator: 'Approve all', 'Brief me on Acme', 'Prep tomorrow meeting'..." : "Direct operator: 'Approve all', 'Brief me on Acme', 'Prep tomorrow meeting'..."}
             className="h-8 border-0 bg-transparent px-0 text-xs text-foreground placeholder:text-muted-foreground focus-visible:ring-0"
           />
           <Button type="submit" size="sm" className="h-7 px-3 text-xs font-semibold gap-1.5">
             <Send className="h-3 w-3" />
-            Direct
-          </Button>
+            {locale === "vi" ? "Direct" : "Direct"}</Button>
         </div>
 
         {/* Quick Suggestion Chips */}
@@ -283,7 +282,7 @@ export function OperatorSurface({
               onClick={() => onBatchDecideAllApprovals()}
               className="h-6 rounded-md border-amber-500/40 bg-amber-500/10 px-2 py-0 text-[11px] font-medium text-amber-400 hover:bg-amber-500/20"
             >
-              <Sparkles className="mr-1 h-3 w-3 text-amber-400" /> Approve All ({approvals.length})
+              <Sparkles className="mr-1 h-3 w-3 text-amber-400" /> {locale === "vi" ? "Approve All (" : "Approve All ("}{approvals.length})
             </Button>
           )}
           <Button
@@ -293,8 +292,7 @@ export function OperatorSurface({
             onClick={() => setActiveTab("inbox")}
             className="h-6 rounded-md border-border/80 bg-secondary/60 px-2 py-0 text-[11px] text-muted-foreground hover:bg-secondary hover:text-foreground"
           >
-            ✉ View Emails
-          </Button>
+            {locale === "vi" ? "✉ View Emails" : "✉ View Emails"}</Button>
           <Button
             type="button"
             variant="outline"
@@ -302,14 +300,13 @@ export function OperatorSurface({
             onClick={() => setActiveTab("reports")}
             className="h-6 rounded-md border-border/80 bg-secondary/60 px-2 py-0 text-[11px] text-muted-foreground hover:bg-secondary hover:text-foreground"
           >
-            📋 View Briefings
-          </Button>
+            {locale === "vi" ? "📋 View Briefings" : "📋 View Briefings"}</Button>
           <Link
             href="/chat"
             className="ml-auto flex items-center gap-0.5 text-[11px] font-semibold text-primary transition-colors hover:underline"
             onClick={onClose}
           >
-            Chat Workspace <ChevronRight className="h-3 w-3" />
+            {locale === "vi" ? "Chat Workspace" : "Chat Workspace"}<ChevronRight className="h-3 w-3" />
           </Link>
         </div>
       </form>

@@ -11,6 +11,7 @@ import {
 import { Input, Label } from "@/components/ui/input";
 import { Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useTranslation } from "@/lib/i18n";
 import type { GraphNode } from "@/types";
 import { NodeConfigForm } from "@/components/workflows/node-config-form";
 
@@ -29,14 +30,17 @@ export function WorkflowNodeConfig({
   onUpdate,
   onDeleteNode,
 }: WorkflowNodeConfigProps) {
+  const { t } = useTranslation();
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="bg-card/95 backdrop-blur-xl flex flex-col justify-between overflow-y-auto">
         <div>
           <SheetHeader>
-            <SheetTitle>Node configuration</SheetTitle>
+            <SheetTitle>{t("pages.workflows.nodeConfigTitle", "Node configuration")}</SheetTitle>
             <SheetDescription>
-              {node ? `Editing "${node.label || node.id}" (${node.kind})` : "No node selected"}
+              {node
+                ? t("pages.workflows.nodeConfigEditing", 'Editing "{label}" ({kind})').replace("{label}", node.label || node.id).replace("{kind}", node.kind)
+                : t("pages.workflows.nodeConfigTitle", "No node selected")}
             </SheetDescription>
           </SheetHeader>
 
@@ -44,13 +48,13 @@ export function WorkflowNodeConfig({
           <div className="mt-6 space-y-4">
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">
-                Label name
+                {t("pages.workflows.labelName", "Label name")}
               </Label>
               <Input
                 className="text-xs"
                 value={node.label}
                 onChange={(e) => onUpdate({ label: e.target.value })}
-                placeholder="Label name"
+                placeholder={t("pages.workflows.labelName", "Label name")}
               />
             </div>
 
@@ -69,7 +73,7 @@ export function WorkflowNodeConfig({
                 onOpenChange(false);
               }}
             >
-              <Trash2 className="h-4 w-4" /> Delete node
+              <Trash2 className="h-4 w-4" /> {t("pages.workflows.deleteNode", "Delete node")}
             </Button>
           </div>
         )}

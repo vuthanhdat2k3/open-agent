@@ -2,16 +2,18 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { ChevronUp, LogOut, Settings, User } from "lucide-react";
+import { ChevronUp, Globe, LogOut, Settings, User } from "lucide-react";
 import { useCan, useProfile } from "@/hooks";
 import { setAccessToken } from "@/lib/auth";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 export function UserNav({ collapsed }: { collapsed?: boolean }) {
   const profile = useProfile();
+  const { t, dict, locale, setLocale } = useTranslation();
   const user = profile.data;
   const displayName = user?.display_name || user?.email?.split("@")[0] || "User";
   const email = user?.email || "";
@@ -24,6 +26,10 @@ export function UserNav({ collapsed }: { collapsed?: boolean }) {
     window.location.href = "/login";
   }
 
+  const toggleLanguage = () => {
+    setLocale(locale === "vi" ? "en" : "vi");
+  };
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -35,10 +41,14 @@ export function UserNav({ collapsed }: { collapsed?: boolean }) {
       <DropdownMenuContent side={collapsed ? "right" : "top"} align={collapsed ? "end" : "start"} className="w-56">
         <DropdownMenuLabel><span className="block truncate">{displayName}</span><span className="block truncate text-xs font-normal text-muted-foreground">{email}</span></DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuItem asChild><Link href="/settings/profile"><User className="h-4 w-4" aria-hidden="true" />Profile Settings</Link></DropdownMenuItem>
-        {canManageOrg && <DropdownMenuItem asChild><Link href="/settings/members"><Settings className="h-4 w-4" aria-hidden="true" />Organization Settings</Link></DropdownMenuItem>}
+        <DropdownMenuItem asChild><Link href="/settings/profile"><User className="h-4 w-4" aria-hidden="true" />{dict.nav.profile}</Link></DropdownMenuItem>
+        {canManageOrg && <DropdownMenuItem asChild><Link href="/settings/members"><Settings className="h-4 w-4" aria-hidden="true" />{dict.nav.members}</Link></DropdownMenuItem>}
+        <DropdownMenuItem onSelect={toggleLanguage} className="cursor-pointer">
+          <Globe className="h-4 w-4" aria-hidden="true" />
+          <span>{locale === "vi" ? "Ngôn ngữ: Tiếng Việt 🇻🇳" : "Language: English 🇬🇧"}</span>
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={() => void handleLogout()} className="text-destructive focus:bg-destructive/10 focus:text-destructive"><LogOut className="h-4 w-4" aria-hidden="true" />Sign Out</DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => void handleLogout()} className="text-destructive focus:bg-destructive/10 focus:text-destructive"><LogOut className="h-4 w-4" aria-hidden="true" />{locale === "vi" ? "Đăng xuất" : "Sign Out"}</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );

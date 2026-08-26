@@ -5,6 +5,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import { usePathname } from "next/navigation";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "@/lib/i18n";
 import { AppHeader } from "./app-header";
 import { AppSidebar } from "./app-sidebar";
 import { allNavItems, isActive } from "./navigation";
@@ -13,16 +14,18 @@ import { useCurrentRole } from "@/hooks";
 
 export function AppShell({ children, queryClient }: { children: React.ReactNode; queryClient: QueryClient }) {
   const pathname = usePathname();
+  const { t, locale } = useTranslation();
   const role = useCurrentRole();
   const isEndUser = role === "user";
-  const title = [...allNavItems].sort((a, b) => b.href.length - a.href.length).find((item) => isActive(pathname, item.href))?.label ?? "OpenAgent";
+  const matched = [...allNavItems].sort((a, b) => b.href.length - a.href.length).find((item) => isActive(pathname, item.href));
+  const title = matched ? (matched.i18nKey ? t(matched.i18nKey, matched.label) : matched.label) : "OpenAgent";
   // The chat page is a full-bleed, edge-to-edge surface (moon-chat aesthetic)
   // instead of the standard centered max-w-7xl content column other pages use.
   const fullBleed = pathname === "/chat";
 
   return (
     <SidebarProvider>
-      <a href="#main-content" className="sr-only z-[100] rounded-md bg-background px-4 py-2 text-sm font-semibold text-foreground focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:ring-2 focus:ring-ring">Skip to main content</a>
+      <a href="#main-content" className="sr-only z-[100] rounded-md bg-background px-4 py-2 text-sm font-semibold text-foreground focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:ring-2 focus:ring-ring">{locale === "vi" ? "Skip to main content" : "Skip to main content"}</a>
       <AppSidebar queryClient={queryClient} />
       <SidebarInset
         id="main-content"

@@ -95,6 +95,14 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 | Branch | Worktree path | Phạm vi/task | Agent/người phụ trách |
 |---|---|---|---|
 | `dev` | `G:\open-agent` | Nhánh tích hợp chính — không code trực tiếp ở đây | — |
+| `feat/session-event-log` | `G:\open-agent-worktrees\session-event-log` | Session event log kiểu dsh: tool fidelity qua turn, compaction surface-replacement token-based | ox-alpha |
+| `feat/workflow-node-config-system` | `G:\open-agent-worktrees\workflow-node-system-upgrade` | Workflow node configuration system: n8n-style node schemas, agent custom/inherit, scheduler cron form, real integration, LLM triager | CommandCode |
+
+> 2026-08-26: Đã dọn dẹp worktree/branch `feat/ui-pagination-and-deep-i18n` (Đồng bộ phân trang thông minh ẩn khi <= 1 trang, sửa layout automations/workspace/debug/email-intelligence, bản địa hóa sâu 100%) sau khi merge vào `dev` và deploy thành công lên `deploy/dev`.
+
+> 2026-08-26: Đã dọn dẹp worktree/branch `feat/ui-full-i18n-localization` (Bản địa hóa 100% giao diện vi/en toàn diện cho tất cả các trang, dialogs, forms và tables) sau khi merge vào `dev` và deploy thành công lên `deploy/dev`.
+> 2026-08-26: Đã dọn dẹp worktree/branch `feat/ui-i18n-vietnamese-english` (Quét toàn bộ UI, sửa lỗi chính tả ký tự và triển khai đa ngôn ngữ vi/en toàn diện) sau khi merge vào `dev` và deploy thành công lên `deploy/dev`.
+> 2026-08-26: Đã dọn dẹp worktree/branch `feat/automation-dag-nodes-and-template-graphs` (Standardize Enterprise Page Taxonomy, Tab Labels, DataPagination) sau khi merge vào `dev` và deploy thành công lên `deploy/dev`.
 
 > 2026-08-25: Đã dọn dẹp worktree/branch của các PR đã merge vào `dev`
 > (#86 chat-projection-stream-target, #88 chat-tool-chips, #90 chat-markdown-links,
@@ -117,8 +125,35 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 - Không commit file `.env`, credential, database dump, backup chứa dữ liệu thật.
 - Stage file cụ thể (`git add <file>`), không dùng `git add .` khi không chắc phạm vi thay đổi.
 - Message commit ngắn gọn, mô tả đúng thay đổi, theo convention hiện có trong `git log` (`feat:`, `fix:`, `docs:`...).
+- **Không thêm co-author trailer (ví dụ `Co-authored-by: ...`) vào commit message.** Mọi commit do agent tạo chỉ ghi tác giả thực của commit (git config), không gắn tên agent làm đồng tác giả.
 - **Khi merge PR: dùng "Create a merge commit", KHÔNG dùng "Squash and merge".** Squash phá lịch sử
   atomic mà các file task yêu cầu, làm branch feature không xóa được bằng `git branch -d` sau merge,
   và gây phân kỳ `deploy/dev` so với `dev` (phải merge commit hòa giải mỗi lần sync).
 - Không amend commit không phải của mình.
 - Nếu phát hiện file `.kiro/` hoặc file debug tạm (`_debug_*.py`) không thuộc phạm vi task của mình xuất hiện trong `git status`, không xóa hay commit chúng — để lại cho agent/người tạo ra chúng xử lý.
+
+## 9. Quy tắc bắt buộc về Đa ngôn ngữ (i18n vi/en) khi sửa hoặc thêm mới UI
+
+Hệ thống giao diện của OpenAgent hỗ trợ đa ngôn ngữ đầy đủ (`vi` - Tiếng Việt và `en` - Tiếng Anh). Mọi agent khi tạo mới hoặc sửa đổi code Frontend **bắt buộc tuân thủ**:
+
+1. **Tuyệt đối không hardcode chuỗi hiển thị** (User-facing text) chỉ bằng một ngôn ngữ hoặc chuỗi cứng trong JSX/TSX.
+2. **Sử dụng Hook đa ngôn ngữ**:
+   ```tsx
+   import { useTranslation } from "@/lib/i18n";
+
+   export function MyComponent() {
+     const { t, dict, locale } = useTranslation();
+     // Sử dụng qua dictionary có type-checking:
+     // {dict.pages.agents.title}
+     // Hoặc qua helper:
+     // {t("pages.agents.title", "Agents")}
+     // Hoặc điều kiện locale đối với câu ngắn:
+     // {locale === "vi" ? "Lưu thay đổi" : "Save changes"}
+   }
+   ```
+3. **Cập nhật đầy đủ cả 2 từ điển**: Khi thêm tính năng, trang hoặc trường mới, phải bổ sung đồng thời vào:
+   - `frontend/lib/i18n/locales/vi.ts` (Từ điển Tiếng Việt)
+   - `frontend/lib/i18n/locales/en.ts` (Từ điển Tiếng Anh)
+   - `frontend/lib/i18n/types.ts` (Type definition tương ứng)
+4. **Kiểm tra trước khi hoàn thành**: Luôn chạy `npm run typecheck && npm run build` trong `frontend/` để bảo đảm không thiếu translation key và toàn bộ các trang biên dịch thành công.
+

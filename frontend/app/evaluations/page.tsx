@@ -14,6 +14,7 @@ import {
 } from "@/hooks";
 import type { EvaluationSuite } from "@/types";
 import { PageHeader } from "@/components/page-header";
+import { useTranslation } from "@/lib/i18n";
 import { EmptyState, ErrorState, LoadingSkeleton, DataPagination } from "@/components/shared";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -36,6 +37,7 @@ const EMPTY_SUITE = {
 };
 
 export default function EvaluationsPage() {
+  const { t, dict, locale } = useTranslation();
   const suites = useEvaluationSuites();
   const agents = useAgents();
   const createSuite = useCreateEvaluationSuite();
@@ -140,16 +142,15 @@ export default function EvaluationsPage() {
     <div className="space-y-6">
       <PageHeader
         icon={FlaskConical}
-        title="Evaluations"
-        description="Run benchmark test suites, track pass rates, and verify model quality."
+        title={dict.pages.evaluations.title}
+        description={locale === "vi" ? "Run benchmark test suites, track pass rates, and verify model quality." : "Run benchmark test suites, track pass rates, and verify model quality."}
         actions={
           <Button className="gap-2 active-tactile transition-transform" onClick={() => setSuiteDialog(true)}>
-            <Plus className="h-4 w-4" /> New Suite
-          </Button>
+            <Plus className="h-4 w-4" /> {locale === "vi" ? "New Suite" : "New Suite"}</Button>
         }
       />
 
-      {suites.isLoading ? <LoadingSkeleton variant="table" /> : suites.isError ? <ErrorState title="Unable to load evaluation suites" description="Evaluation data could not be loaded." onRetry={() => void suites.refetch()} /> : suites.data?.length ? (
+      {suites.isLoading ? <LoadingSkeleton variant="table" /> : suites.isError ? <ErrorState title={locale === "vi" ? "Unable to load evaluation suites" : "Unable to load evaluation suites"} description={locale === "vi" ? "Evaluation data could not be loaded." : "Evaluation data could not be loaded."} onRetry={() => void suites.refetch()} /> : suites.data?.length ? (
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px] stagger">
           <div className="space-y-4">
             {paginatedSuites.map((suite) => {
@@ -180,8 +181,7 @@ export default function EvaluationsPage() {
                           setSelectedSuiteId(suite.id);
                         }}
                       >
-                        <Plus className="h-3.5 w-3.5" /> Case
-                      </Button>
+                        <Plus className="h-3.5 w-3.5" /> {locale === "vi" ? "Case" : "Case"}</Button>
                       <Button
                         size="sm"
                         variant="outline"
@@ -189,16 +189,14 @@ export default function EvaluationsPage() {
                         onClick={() => runSuite(suite, "recorded")}
                         disabled={createRun.isPending || !suite.cases.length}
                       >
-                        <Database className="h-3.5 w-3.5" /> Baseline
-                      </Button>
+                        <Database className="h-3.5 w-3.5" /> {locale === "vi" ? "Baseline" : "Baseline"}</Button>
                       <Button
                         size="sm"
                         className="gap-1.5 active-tactile transition-transform text-xs"
                         onClick={() => runSuite(suite, "live")}
                         disabled={createRun.isPending || !suite.cases.length}
                       >
-                        <Play className="h-3.5 w-3.5" /> Live
-                      </Button>
+                        <Play className="h-3.5 w-3.5" /> {locale === "vi" ? "Live" : "Live"}</Button>
                     </div>
                   </div>
                   <div className="overflow-hidden rounded-xl border border-border/60 bg-muted/20">
@@ -219,8 +217,7 @@ export default function EvaluationsPage() {
                     ))}
                     {!suite.cases.length && (
                       <p className="px-4 py-4 text-xs text-muted-foreground text-center">
-                        No test cases.
-                      </p>
+                        {locale === "vi" ? "No test cases." : "No test cases."}</p>
                     )}
                   </div>
                 </Card>
@@ -238,8 +235,7 @@ export default function EvaluationsPage() {
 
           <aside className="rounded-xl border border-border/80 bg-card/45 p-5 space-y-4 backdrop-blur-xl shadow-3d-card">
             <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground/80">
-              Recent runs
-            </h2>
+              {locale === "vi" ? "Recent runs" : "Recent runs"}</h2>
             <div className="space-y-3">
               {runs.data?.map((run) => (
                 <div
@@ -260,12 +256,12 @@ export default function EvaluationsPage() {
                     <Badge variant="outline" className="font-mono text-[10px]">{run.execution_mode}</Badge>
                   </div>
                   <p className="text-[11px] font-mono text-muted-foreground">
-                    {run.passed_cases}/{run.total_cases} cases Â· {run.average_latency_ms.toFixed(0)}ms Â· ${run.total_cost_usd.toFixed(4)}
+                    {run.passed_cases}/{run.total_cases} {locale === "vi" ? "cases ·" : "cases ·"}{run.average_latency_ms.toFixed(0)}{locale === "vi" ? "ms · $" : "ms · $"}{run.total_cost_usd.toFixed(4)}
                   </p>
                 </div>
               ))}
               {!runs.data?.length && (
-                <p className="text-xs text-muted-foreground/80 py-4 text-center">No runs recorded.</p>
+                <p className="text-xs text-muted-foreground/80 py-4 text-center">{locale === "vi" ? "No runs recorded." : "No runs recorded."}</p>
               )}
             </div>
           </aside>
@@ -273,12 +269,11 @@ export default function EvaluationsPage() {
       ) : (
         <EmptyState
           icon={FlaskConical}
-          title="No evaluation suites"
-          description="Create a repeatable quality gate for an agent release."
+          title={locale === "vi" ? "No evaluation suites" : "No evaluation suites"}
+          description={locale === "vi" ? "Create a repeatable quality gate for an agent release." : "Create a repeatable quality gate for an agent release."}
           action={
             <Button className="gap-2 active-tactile transition-transform" onClick={() => setSuiteDialog(true)}>
-              <Plus className="h-4 w-4" /> New Suite
-            </Button>
+              <Plus className="h-4 w-4" /> {locale === "vi" ? "New Suite" : "New Suite"}</Button>
           }
         />
       )}
@@ -286,18 +281,18 @@ export default function EvaluationsPage() {
       <Dialog open={suiteDialog} onOpenChange={setSuiteDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>New evaluation suite</DialogTitle>
+            <DialogTitle>{locale === "vi" ? "New evaluation suite" : "New evaluation suite"}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-1">
             <div className="space-y-1.5">
-              <Label>Name</Label>
+              <Label>{locale === "vi" ? "Tên" : "Name"}</Label>
               <Input
                 value={form.name}
                 onChange={(event) => setForm({ ...form, name: event.target.value })}
               />
             </div>
             <div className="space-y-1.5">
-              <Label>Agent</Label>
+              <Label>{locale === "vi" ? "Agent" : "Agent"}</Label>
               <Select
                 value={form.agent_id}
                 onChange={(event) =>
@@ -306,13 +301,13 @@ export default function EvaluationsPage() {
               >
                 {agents.data?.map((agent) => (
                   <option key={agent.id} value={agent.id}>
-                    {agent.name} | v{agent.latest_release_number}
+                    {agent.name} {locale === "vi" ? "| v" : "| v"}{agent.latest_release_number}
                   </option>
                 ))}
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label>Description</Label>
+              <Label>{locale === "vi" ? "Mô tả" : "Description"}</Label>
               <Input
                 value={form.description}
                 onChange={(event) =>
@@ -322,14 +317,14 @@ export default function EvaluationsPage() {
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
-                <Label>First input</Label>
+                <Label>{locale === "vi" ? "First input" : "First input"}</Label>
                 <Textarea
                   value={form.input}
                   onChange={(event) => setForm({ ...form, input: event.target.value })}
                 />
               </div>
               <div className="space-y-1.5">
-                <Label>Expected output</Label>
+                <Label>{locale === "vi" ? "Expected output" : "Expected output"}</Label>
                 <Textarea
                   value={form.expected_output}
                   onChange={(event) =>
@@ -352,11 +347,11 @@ export default function EvaluationsPage() {
       <Dialog open={!!caseSuite} onOpenChange={(value) => !value && setCaseSuite(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add case to {caseSuite?.name}</DialogTitle>
+            <DialogTitle>{locale === "vi" ? "Add case to" : "Add case to"}{caseSuite?.name}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-1">
             <div className="space-y-1.5">
-              <Label>Input</Label>
+              <Label>{locale === "vi" ? "Input" : "Input"}</Label>
               <Textarea
                 value={caseForm.input}
                 onChange={(event) =>
@@ -365,7 +360,7 @@ export default function EvaluationsPage() {
               />
             </div>
             <div className="space-y-1.5">
-              <Label>Expected output</Label>
+              <Label>{locale === "vi" ? "Expected output" : "Expected output"}</Label>
               <Textarea
                 value={caseForm.expected_output}
                 onChange={(event) =>

@@ -16,19 +16,23 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useTranslation } from "@/lib/i18n";
 
-function approvalTitle(item: ApprovalRequest) {
+function approvalTitle(item: ApprovalRequest, locale: string) {
   const args = item.args_snapshot || {};
-  if (item.tool_name === "calendar_create_event" || args.start || args.attendees) return "Create calendar event";
-  if (item.tool_name === "drive_create_file") return "Save research briefing";
-  return item.action || item.tool_name || item.node_id || "Review requested action";
+  if (item.tool_name === "calendar_create_event" || args.start || args.attendees) return locale === "vi" ? "Tạo sự kiện" : "Create calendar event";
+  if (item.tool_name === "drive_create_file") return locale === "vi" ? "Lưu tài liệu" : "Save research briefing";
+  return item.action || item.tool_name || item.node_id || (locale === "vi" ? "Xem xét hành động" : "Review requested action");
 }
 
-function expiry(expiresAt?: string | null) {
-  if (!expiresAt) return "No expiry";
+function expiry(expiresAt: string | null | undefined, locale: string) {
+  if (!expiresAt) return locale === "vi" ? "Không hết hạn" : "No expiry";
   const ms = new Date(expiresAt).getTime() - Date.now();
-  if (ms <= 0) return "Expired";
+  if (ms <= 0) return locale === "vi" ? "Đã hết hạn" : "Expired";
   const minutes = Math.ceil(ms / 60000);
+  if (locale === "vi") {
+    return minutes < 60 ? `Hết hạn sau ${minutes} phút` : `Hết hạn sau ${Math.ceil(minutes / 60)} giờ`;
+  }
   return minutes < 60 ? `Expires in ${minutes} minute${minutes === 1 ? "" : "s"}` : `Expires in ${Math.ceil(minutes / 60)} hour${minutes < 120 ? "" : "s"}`;
 }
 
@@ -39,20 +43,23 @@ export function ApprovalBell() {
   const pending = summary.data?.user_workspace.approvals.pending ?? approvals.data?.length ?? 0;
   const urgent = summary.data?.user_workspace.approvals.urgent ?? approvals.data?.filter((item) => item.risk_level === "HIGH").length ?? 0;
 
+  const { t, locale } = useTranslation();
+
   React.useEffect(() => {
-    const current = new Set((approvals.data ?? []).map((item) => item.id));
+    if (!approvals.data) return;
+    const current = new Set(approvals.data.map((a) => a.id));
     if (previousIds.current) {
-      const fresh = (approvals.data ?? []).find((item) => !previousIds.current?.has(item.id));
-      if (fresh) {
-        toast("Approval required", {
-          description: approvalTitle(fresh),
+      for (const fresh of approvals.data) {
+        if (previousIds.current.has(fresh.id)) continue;
+        toast(locale === "vi" ? "Cần phê duyệt" : "Approval required", {
+          description: approvalTitle(fresh, locale),
           duration: 5000,
-          action: { label: "Review now", onClick: () => { window.location.href = `/approvals?approval_id=${encodeURIComponent(fresh.id)}`; } },
+          action: { label: locale === "vi" ? "Xem ngay" : "Review now", onClick: () => { window.location.href = `/approvals?approval_id=${encodeURIComponent(fresh.id)}`; } },
         });
       }
     }
     previousIds.current = current;
-  }, [approvals.data]);
+  }, [approvals.data, locale]);
 
   return (
     <DropdownMenu>
@@ -76,9 +83,9 @@ export function ApprovalBell() {
                 {item.risk_level === "HIGH" && <ShieldAlert className="h-3.5 w-3.5 text-destructive" aria-hidden="true" />}
                 <span className={item.risk_level === "HIGH" ? "text-destructive" : "text-muted-foreground"}>{item.risk_level || "STANDARD"} · {item.approval_mode || "EXPLICIT"}</span>
               </div>
-              <div className="mt-1 truncate text-sm font-semibold text-foreground">{approvalTitle(item)}</div>
+              <div className="mt-1 truncate text-sm font-semibold text-foreground">{approvalTitle(item, locale)}</div>
               <div className="mt-1 flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                <span className="flex items-center gap-1"><Clock3 className="h-3 w-3" aria-hidden="true" />{expiry(item.expires_at)}</span>
+                <span className="flex items-center gap-1"><Clock3 className="h-3 w-3" aria-hidden="true" />{expiry(item.expires_at, locale)}</span>
                 <span className="flex items-center gap-1 text-primary">Review <ChevronRight className="h-3 w-3" aria-hidden="true" /></span>
               </div>
             </Link>
