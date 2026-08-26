@@ -95,6 +95,7 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 | Branch | Worktree path | Phạm vi/task | Agent/người phụ trách |
 |---|---|---|---|
 | `dev` | `G:\open-agent` | Nhánh tích hợp chính — không code trực tiếp ở đây | — |
+| `feat/ui-pagination-and-deep-i18n` | `G:\open-agent-worktrees\ui-pagination-and-deep-i18n` | Đồng bộ phân trang thông minh (ẩn khi <= 1 trang), sửa layout automations/workspace/debug/email-intelligence, bản địa hóa sâu 100% | Antigravity |
 | `feat/session-event-log` | `G:\open-agent-worktrees\session-event-log` | Session event log kiểu dsh: tool fidelity qua turn, compaction surface-replacement token-based | ox-alpha |
 | `feat/workflow-node-config-system` | `G:\open-agent-worktrees\workflow-node-system-upgrade` | Workflow node configuration system: n8n-style node schemas, agent custom/inherit, scheduler cron form, real integration, LLM triager | CommandCode |
 
