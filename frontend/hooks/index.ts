@@ -182,6 +182,7 @@ export function useCreateManualCustomerIntelligenceCase() {
 export interface CustomerIntelligenceNotificationFilters {
   unreadOnly?: boolean;
   cursor?: string | null;
+  limit?: number;
   query?: string;
   receivedAfter?: string;
   receivedBefore?: string;
@@ -190,7 +191,8 @@ export interface CustomerIntelligenceNotificationFilters {
 
 export function useCustomerIntelligenceNotifications(filters: CustomerIntelligenceNotificationFilters = {}) {
   const orgId = getActiveOrgId();
-  const params = new URLSearchParams({ limit: "25" });
+  const limitStr = filters.limit ? String(filters.limit) : "8";
+  const params = new URLSearchParams({ limit: limitStr });
   if (filters.unreadOnly) params.set("unread_only", "true");
   if (filters.cursor) params.set("cursor", filters.cursor);
   if (filters.query) params.set("q", filters.query);
@@ -198,7 +200,15 @@ export function useCustomerIntelligenceNotifications(filters: CustomerIntelligen
   if (filters.receivedBefore) params.set("received_before", filters.receivedBefore);
   if (filters.notificationType) params.set("notification_type", filters.notificationType);
   return useQuery({
-    queryKey: emailIntelligenceQueryKeys(orgId).notifications(filters),
+    queryKey: [
+      ...emailIntelligenceQueryKeys(orgId).notifications(filters.cursor ?? null),
+      filters.unreadOnly ?? false,
+      limitStr,
+      filters.query ?? "",
+      filters.receivedAfter ?? "",
+      filters.receivedBefore ?? "",
+      filters.notificationType ?? "",
+    ],
     queryFn: () => api.get<CustomerIntelligenceNotificationPage>(`/api/customer-intelligence/notifications?${params.toString()}`),
     refetchInterval: 30_000,
   });

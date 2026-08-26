@@ -2,7 +2,7 @@ import type { QueryClient, QueryKey } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import type { Agent, AgentToolInfo, McpServer, Model, Provider, Session, SandboxExecution, UploadedFile, UsageSummary, Workflow as WorkflowT, WorkspaceArtifact } from "@/types";
 import {
-  Bell, Bot, Bug, CalendarDays, Cpu, FileUp, FlaskConical, FolderKanban,
+  Bell, Bot, Bug, Building2, CalendarDays, Cpu, FileUp, FlaskConical, FolderKanban,
   Gauge, LayoutDashboard, MessageSquare, PlayCircle, Plug, Search, Server, SlidersHorizontal, ShieldCheck, Users, Workflow, Zap,
   type LucideIcon,
 } from "lucide-react";
@@ -39,35 +39,35 @@ export const navGroups: NavGroup[] = [
     ],
   },
 
-  // --- Organization Admin ---
+  // --- Organization Admin (Members, Quotas, System Governance, Email Ops) ---
   {
-    title: "Organization Management",
+    title: "Organization & Governance",
     roles: ["admin", "org_admin"],
     items: [
       { href: "/settings/members", label: "Members & Access", icon: Users, roles: ["admin", "org_admin"], permission: "orgs:manage" },
-      { href: "/providers", label: "AI Providers & Models", icon: Server, roles: ["admin", "org_admin"], permission: "providers:read" },
       { href: "/settings/quotas", label: "Quotas & Budgets", icon: Gauge, roles: ["admin", "org_admin"], permission: "quota:usage" },
-      { href: "/files", label: "Knowledge Base", icon: FolderKanban, roles: ["admin", "org_admin"], permission: "files:read" },
-      { href: "/debug", label: "Usage & Audit Logs", icon: Bug, roles: ["admin", "org_admin"], permission: "orgs:manage" },
       { href: "/admin/email-intelligence", label: "Email Operations", icon: SlidersHorizontal, roles: ["admin", "org_admin"], permission: "admin:email-intelligence" },
+      { href: "/debug", label: "Audit Logs & Security", icon: Bug, roles: ["admin", "org_admin"], permission: "orgs:manage" },
     ],
   },
 
-  // --- Operator (AI Engineer / Builder) ---
+  // --- Operator (AI Engineer / AI Operations Stack) ---
   {
-    title: "AI Studio & Builder",
+    title: "AI Studio & Engineering",
     roles: ["operator"],
     items: [
       { href: "/agents", label: "Agent Studio", icon: Bot, roles: ["operator"], permission: "agents:read" },
+      { href: "/providers", label: "AI Providers & Models", icon: Server, roles: ["operator"], permission: "providers:read" },
       { href: "/workflows", label: "Workflow Builder", icon: Workflow, roles: ["operator"], permission: "workflows:read" },
       { href: "/mcp", label: "MCP & Tools", icon: Plug, roles: ["operator"], permission: "mcp:read" },
       { href: "/files", label: "Knowledge Base", icon: FolderKanban, roles: ["operator"], permission: "files:read" },
     ],
   },
   {
-    title: "Testing & Governance",
+    title: "Testing & Observability",
     roles: ["operator"],
     items: [
+      { href: "/debug", label: "Usage & Audit Traces", icon: Bug, roles: ["operator"], permission: "usage:read" },
       { href: "/workspace", label: "Workspace & Sandbox", icon: FolderKanban, roles: ["operator"], permission: "files:read" },
       { href: "/evaluations", label: "Evaluations", icon: FlaskConical, roles: ["operator"], permission: "evaluations:read" },
       { href: "/approvals", label: "Technical Approvals", icon: ShieldCheck, roles: ["operator"], permission: "approvals:read" },
@@ -83,7 +83,7 @@ export const navGroups: NavGroup[] = [
       { href: "/run-workflow", label: "Run Workflow", icon: PlayCircle, roles: ["user"], permission: "workflows:run" },
       { href: "/email-intelligence", label: "Smart Inbox & Rules", icon: Bell, roles: ["user"], permission: "ci:personal:manage" },
       { href: "/automations", label: "Automations", icon: Zap, roles: ["user"], permission: "workflows:read" },
-      { href: "/customer-intelligence", label: "Research Cases", icon: Search, roles: ["user"], permission: "ci:read" },
+      { href: "/customer-intelligence", label: "Client Intelligence", icon: Building2, roles: ["user"], permission: "ci:read" },
       { href: "/approvals", label: "My Approvals & Quota", icon: ShieldCheck, roles: ["user"], permission: "approvals:read" },
     ],
   },

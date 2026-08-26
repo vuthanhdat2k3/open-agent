@@ -39,14 +39,7 @@ async def list_agents(
     org_id: str = Depends(get_current_org_id),
     db: AsyncSession = Depends(get_db),
 ):
-    agents = await AgentService(db).list(org_id)
-    # A plain "user" role only ever sees the org's primary (orchestrator-kind)
-    # agent(s) - worker agents are implementation detail the orchestrator
-    # delegates to internally via call_agent, not something a user picks
-    # directly. Admin sees everything (needed to build/test each agent).
-    if not authz.allows("agents:manage"):
-        agents = [a for a in agents if a.kind == "orchestrator"]
-    return agents
+    return await AgentService(db).list(org_id)
 
 
 @router.get("/tools", response_model=list[AgentToolInfo], dependencies=[Depends(require_permission("agents:read"))])

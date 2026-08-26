@@ -1,8 +1,9 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import logging
 import os
 from typing import Any
+
 import httpx
 
 from app.config import get_settings
@@ -19,7 +20,7 @@ class ZitadelProvisioningService:
             return self.settings.zitadel_admin_pat
         if self.settings.zitadel_pat_path and os.path.exists(self.settings.zitadel_pat_path):
             try:
-                with open(self.settings.zitadel_pat_path, "r", encoding="utf-8") as f:
+                with open(self.settings.zitadel_pat_path, encoding="utf-8") as f:
                     return f.read().strip()
             except Exception as e:
                 logger.warning("Failed to read Zitadel PAT from %s: %s", self.settings.zitadel_pat_path, e)
