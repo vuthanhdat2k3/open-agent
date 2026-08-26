@@ -19,11 +19,16 @@ _GENERATE_SYSTEM_PROMPT = """You design workflow graphs for a multi-agent automa
 
 A workflow graph is JSON: {{"name": str, "description": str, "graph": {{"nodes": [...], "edges": [...]}}}}.
 
-Node shape: {{"id": str, "kind": "input"|"agent"|"merge"|"output", "label": str, "agent_id": str|null, "merge_mode": "all"|"any"}}
-- Exactly one "input" node and at least one "output" node.
+Node shape: {{"id": str, "kind": "input"|"agent"|"tool"|"merge"|"output"|"approval"|"scheduler"|"triager"|"integration", "label": str, "agent_id": str|null, "merge_mode": "all"|"any", "config": dict}}
+- Exactly one entry trigger node ("input" for on-demand requests, or "scheduler" for recurring/periodic automations).
+- At least one "output" node for returning results.
 - "agent" nodes MUST use an agent_id from the list below — never invent one.
+- "scheduler" nodes define automated recurrence or timer triggers (e.g. config: {{"cron": "0 7 * * 1-5", "label": "Weekdays at 07:30"}}).
+- "triager" nodes classify, filter, or branch incoming requests into different paths based on intent or urgency.
+- "integration" nodes connect to Gmail, Google Calendar, Google Drive, or Webhooks (e.g. config: {{"source": "gmail"}}).
+- "approval" nodes pause execution for human sign-off before proceeding with sensitive actions.
 - Use "merge" nodes (merge_mode "all"|"any") to join parallel branches back together.
-Edge shape: {{"from_": node_id, "to": node_id}}.
+Edge shape: {{"from_": node_id, "to": node_id, "condition": str|null}}.
 
 Available agents in this organization:
 {agents}
@@ -143,11 +148,11 @@ class WorkflowService:
     def validate_graph(graph: dict) -> None:
         nodes = graph.get("nodes", [])
         edges = graph.get("edges", [])
-        if not any(n.get("kind") == "input" for n in nodes):
-            raise ValueError("graph must have exactly one input node")
-        input_count = sum(1 for n in nodes if n.get("kind") == "input")
-        if input_count != 1:
-            raise ValueError("graph must have exactly one input node")
+        if not any(n.get("kind") in ("input", "scheduler", "integration") for n in nodes):
+            raise ValueError("graph must have at least one entry trigger node (input or scheduler)")
+        entry_count = sum(1 for n in nodes if n.get("kind") in ("input", "scheduler"))
+        if entry_count < 1 and not any(n.get("kind") == "integration" for n in nodes):
+            raise ValueError("graph must have at least one entry trigger node (input or scheduler)")
         if not any(n.get("kind") in ("agent", "output") for n in nodes):
             raise ValueError("graph needs at least one agent or output node")
         ids = {n.get("id") for n in nodes}

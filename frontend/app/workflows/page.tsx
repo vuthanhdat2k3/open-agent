@@ -180,10 +180,13 @@ export default function WorkflowsPage() {
   const loadWorkflow = (wf: any) => {
     setWfName(wf.name);
     setEditId(wf.id);
-    setGraph(wf.graph.nodes, wf.graph.edges);
+    const loadedNodes: GraphNode[] = Array.isArray(wf.graph?.nodes) ? wf.graph.nodes : [];
+    const loadedEdges: GraphEdge[] = Array.isArray(wf.graph?.edges) ? wf.graph.edges : [];
+    setGraph(loadedNodes, loadedEdges);
     setSelectedNode(null);
     setLogs([]);
     setOutput("");
+    toast.success(`Loaded workflow: ${wf.name}`);
   };
 
   const save = async () => {

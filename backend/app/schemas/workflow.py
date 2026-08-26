@@ -3,7 +3,18 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict
 
-NodeKind = Literal["input", "agent", "tool", "merge", "output"]
+NodeKind = Literal[
+    "input",
+    "agent",
+    "tool",
+    "merge",
+    "output",
+    "approval",
+    "sub_workflow",
+    "scheduler",
+    "triager",
+    "integration",
+]
 MergeMode = Literal["all", "any"]
 
 

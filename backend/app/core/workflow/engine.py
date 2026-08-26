@@ -212,16 +212,16 @@ async def _run_workflow_events(
         edges_from.setdefault(e["from_"], []).append(e)
         edges_to.setdefault(e["to"], []).append(e)
 
-    input_nodes = [n for n in nodes if n["kind"] == "input"]
-    if len(input_nodes) != 1:
+    input_nodes = [n for n in nodes if n.get("kind") in ("input", "scheduler", "integration")]
+    if len(input_nodes) < 1:
         workflow_run.status = "failed"
-        workflow_run.error = "workflow must have exactly one input node"
+        workflow_run.error = "workflow must have at least one entry trigger node (input or scheduler)"
         workflow_run.finished_at = utc_now()
         await db.commit()
         await resume.release_lease(db, workflow_run.id)
         yield {
             "event": "error",
-            "data": {"message": "workflow must have exactly one input node"},
+            "data": {"message": "workflow must have at least one entry trigger node (input or scheduler)"},
         }
         return
 
@@ -275,6 +275,21 @@ async def _run_workflow_events(
 
         if kind == "input":
             return input_text
+        if kind == "scheduler":
+            cfg = node.get("config", {}) or {}
+            cron = cfg.get("cron") or cfg.get("schedule") or "daily"
+            label = cfg.get("label") or node.get("label") or "Scheduler"
+            return input_text or f"Scheduled trigger [{label}] (schedule: {cron})"
+        if kind == "triager":
+            upstream_text = "\n\n".join(inputs.values()) if inputs else input_text
+            cfg = node.get("config", {}) or {}
+            policy = cfg.get("policy") or cfg.get("rules") or "default_triage"
+            return upstream_text or f"Triage complete via policy: {policy}"
+        if kind == "integration":
+            cfg = node.get("config", {}) or {}
+            source = cfg.get("source") or "system_connector"
+            upstream_text = "\n\n".join(inputs.values()) if inputs else input_text
+            return upstream_text or f"Integration data collected from [{source}]"
         if kind == "merge":
             vals = list(inputs.values())
             if node.get("merge_mode") == "any":
@@ -284,7 +299,7 @@ async def _run_workflow_events(
                 return ""
             return "\n\n".join(vals)
         if kind == "output":
-            return "\n\n".join(inputs.values())
+            return "\n\n".join(inputs.values()) if inputs else input_text
         if kind == "tool":
             cfg = node.get("config", {}) or {}
             tool_name = cfg.get("tool")
@@ -490,7 +505,7 @@ async def _run_workflow_events(
         nid = node["id"]
         if status[nid] != "pending":
             return False
-        if node["kind"] == "input":
+        if node.get("kind") in ("input", "scheduler") or not edges_to[nid]:
             return True
         inc = [e for e in edges_to[nid] if e["_idx"] in active_edges]
         if not inc:

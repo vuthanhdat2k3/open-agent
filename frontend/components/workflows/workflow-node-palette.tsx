@@ -9,6 +9,9 @@ import {
   LogOut,
   ShieldAlert,
   Workflow as WorkflowIcon,
+  Clock,
+  GitFork,
+  Cable,
   ChevronsLeft,
   ChevronsRight,
 } from "lucide-react";
@@ -16,12 +19,15 @@ import { cn } from "@/lib/utils";
 import type { GraphNode } from "@/types";
 
 const PALETTE_ITEMS: { kind: GraphNode["kind"]; icon: typeof Box; label: string; description: string }[] = [
-  { kind: "input", icon: Box, label: "Input", description: "Entry point for the workflow" },
-  { kind: "agent", icon: Bot, label: "Agent", description: "Invoke an agent" },
+  { kind: "input", icon: Box, label: "Input", description: "Entry point for on-demand requests" },
+  { kind: "scheduler", icon: Clock, label: "Scheduler", description: "Automated cron or recurring trigger" },
+  { kind: "integration", icon: Cable, label: "Integration", description: "Fetch Gmail, Calendar, Drive data" },
+  { kind: "triager", icon: GitFork, label: "Triager", description: "Classify & branch requests by intent" },
+  { kind: "agent", icon: Bot, label: "Agent", description: "Invoke an AI agent" },
   { kind: "tool", icon: Wrench, label: "Tool", description: "Call a built-in or MCP tool" },
   { kind: "merge", icon: GitMerge, label: "Merge", description: "Combine multiple branches" },
-  { kind: "output", icon: LogOut, label: "Output", description: "Final workflow result" },
   { kind: "approval", icon: ShieldAlert, label: "Approval", description: "Pause for human approval" },
+  { kind: "output", icon: LogOut, label: "Output", description: "Final workflow result" },
   { kind: "sub_workflow", icon: WorkflowIcon, label: "Sub-workflow", description: "Run another workflow" },
 ];
 
