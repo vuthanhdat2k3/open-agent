@@ -121,6 +121,79 @@ export function WorkflowNodeConfig({
               </div>
             )}
 
+            {node.kind === "scheduler" && (
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">
+                    Schedule Expression (Cron or Interval)
+                  </Label>
+                  <Input
+                    className="text-xs"
+                    value={node.config?.cron || ""}
+                    onChange={(e) => onUpdate({ config: { ...node.config, cron: e.target.value } })}
+                    placeholder="e.g. 0 7 * * 1-5 (Weekdays 07:30)"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">
+                    Schedule Display Label
+                  </Label>
+                  <Input
+                    className="text-xs"
+                    value={node.config?.schedule_label || ""}
+                    onChange={(e) => onUpdate({ config: { ...node.config, schedule_label: e.target.value } })}
+                    placeholder="e.g. Weekdays at 07:30"
+                  />
+                </div>
+              </div>
+            )}
+
+            {node.kind === "integration" && (
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">
+                  Data Source / Integration
+                </Label>
+                <Select
+                  className="text-xs w-full"
+                  value={node.config?.source || "gmail"}
+                  onChange={(e) => onUpdate({ config: { ...node.config, source: e.target.value } })}
+                >
+                  <option value="gmail">Gmail Inbound & Threads</option>
+                  <option value="google_calendar">Google Calendar Meetings</option>
+                  <option value="google_drive">Google Drive Documents</option>
+                  <option value="gmail_and_calendar">Gmail + Google Calendar</option>
+                  <option value="webhook">Custom Webhook Event</option>
+                </Select>
+              </div>
+            )}
+
+            {node.kind === "triager" && (
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">
+                    Triage Policy / Routing Rules
+                  </Label>
+                  <Input
+                    className="text-xs"
+                    value={node.config?.policy || ""}
+                    onChange={(e) => onUpdate({ config: { ...node.config, policy: e.target.value } })}
+                    placeholder="e.g. rank_by_urgency, classify_intent"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">
+                    Target Categories (comma-separated)
+                  </Label>
+                  <Input
+                    className="text-xs"
+                    value={node.config?.categories || ""}
+                    onChange={(e) => onUpdate({ config: { ...node.config, categories: e.target.value } })}
+                    placeholder="e.g. sales, support, inquiry, spam"
+                  />
+                </div>
+              </div>
+            )}
+
             {node.kind === "sub_workflow" && (
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">

@@ -251,7 +251,7 @@ export interface McpServer {
 
 export interface GraphNode {
   id: string;
-  kind: "input" | "agent" | "tool" | "merge" | "output" | "approval" | "sub_workflow";
+  kind: "input" | "agent" | "tool" | "merge" | "output" | "approval" | "sub_workflow" | "scheduler" | "triager" | "integration";
   label: string;
   position?: { x: number; y: number };
   agent_id?: string;
