@@ -7,7 +7,7 @@ on:
 
 jobs:
   backend:
-    runs-on: [self-hosted, Windows, X64, deploy-windows]
+    runs-on: self-hosted
     env:
       OPENAGENT_REDIS_URL: redis://localhost:6379/0
     defaults:
@@ -29,7 +29,7 @@ jobs:
         run: docker rm -f openagent-ci-redis-${{ github.run_id }}
 
   frontend:
-    runs-on: [self-hosted, Windows, X64, deploy-windows]
+    runs-on: self-hosted
     defaults:
       run:
         working-directory: frontend
@@ -44,7 +44,7 @@ jobs:
       - run: npm run build
 
   build-images:
-    runs-on: [self-hosted, Windows, X64, deploy-windows]
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
       - run: docker build -t openagent-api ./backend
@@ -52,7 +52,7 @@ jobs:
       - run: docker compose --env-file .env.example config
 
   compose-e2e:
-    runs-on: [self-hosted, Windows, X64, deploy-windows]
+    runs-on: self-hosted
     timeout-minutes: 20
     env:
       OPENAGENT_DB_URL: postgresql+asyncpg://openagent:openagent@postgres:5432/openagent
