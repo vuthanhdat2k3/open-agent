@@ -10,6 +10,9 @@ import {
   LogOut,
   ShieldAlert,
   Workflow as WorkflowIcon,
+  Clock,
+  GitFork,
+  Cable,
   AlertCircle,
   type LucideIcon,
 } from "lucide-react";
@@ -32,6 +35,9 @@ const KIND_META: Record<GraphNode["kind"], { icon: LucideIcon; description: stri
   output: { icon: LogOut, description: "Output" },
   approval: { icon: ShieldAlert, description: "Approval" },
   sub_workflow: { icon: WorkflowIcon, description: "Sub-workflow" },
+  scheduler: { icon: Clock, description: "Scheduler" },
+  triager: { icon: GitFork, description: "Triager" },
+  integration: { icon: Cable, description: "Integration" },
 };
 
 const statusBorderClass: Record<NodeStatus, string> = {

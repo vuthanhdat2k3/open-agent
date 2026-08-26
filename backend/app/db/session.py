@@ -55,17 +55,33 @@ async def init_db() -> None:
         has_agents = await _has_table(conn, "agents")
         has_alembic = await _has_table(conn, "alembic_version")
 
+    import os
+
+    import structlog
     from alembic.config import Config
 
     from alembic import command
 
-    cfg = Config("alembic.ini")
-    cfg.set_main_option("script_location", "alembic")
-    cfg.set_main_option("sqlalchemy.url", engine.url.render_as_string(hide_password=False).replace("%", "%%"))
+    log = structlog.get_logger(__name__)
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+    ini_path = os.path.join(base_dir, "alembic.ini")
+    if not os.path.exists(ini_path):
+        ini_path = "alembic.ini"
+    cfg = Config(ini_path)
+    script_loc = os.path.join(base_dir, "alembic")
+    if not os.path.exists(script_loc):
+        script_loc = "alembic"
+    cfg.set_main_option("script_location", script_loc)
+    cfg.set_main_option(
+        "sqlalchemy.url", engine.url.render_as_string(hide_password=False).replace("%", "%%")
+    )
 
-    if not has_agents or not has_alembic:
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-        await asyncio.to_thread(command.stamp, cfg, "head")
-    else:
-        await asyncio.to_thread(command.upgrade, cfg, "head")
+    try:
+        if not has_agents or not has_alembic:
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+            await asyncio.to_thread(command.stamp, cfg, "head")
+        else:
+            await asyncio.to_thread(command.upgrade, cfg, "head")
+    except Exception as exc:
+        log.warning("init_db_alembic_warning", error=str(exc))
