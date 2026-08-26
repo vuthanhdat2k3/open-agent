@@ -29,6 +29,10 @@ class ZitadelProvisioningService:
     def get_api_base_url(self) -> str:
         return (self.settings.zitadel_internal_url or self.settings.zitadel_issuer_url or "http://127.0.0.1.sslip.io").rstrip("/")
 
+    def get_host_header(self) -> str:
+        issuer = self.settings.zitadel_issuer_url or "http://127.0.0.1.sslip.io"
+        return issuer.removeprefix("http://").removeprefix("https://").split("/", 1)[0].split(":", 1)[0]
+
     async def provision_user(
         self,
         email: str,
@@ -69,6 +73,7 @@ class ZitadelProvisioningService:
         headers = {
             "Authorization": f"Bearer {pat}",
             "Content-Type": "application/json",
+            "Host": self.get_host_header(),
         }
 
         try:
