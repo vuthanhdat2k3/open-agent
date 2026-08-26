@@ -16,9 +16,6 @@ jobs:
         working-directory: backend
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
       - name: Start Redis
         run: docker run -d --name openagent-ci-redis-${{ github.run_id }} -p 6379:6379 redis:7
       - run: pip install -e ".[dev]"
@@ -36,9 +33,6 @@ jobs:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
@@ -60,9 +54,6 @@ jobs:
       OPENAGENT_JWT_SECRET_KEY: ci-secret-change-me-32-bytes-minimum
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
       - run: docker compose -f docker-compose.yml -f .github/ci-compose.yml --env-file .env.example up -d --build postgres redis api worker frontend
       - run: python scripts/e2e_agent_releases.py
       - run: python scripts/e2e_evaluations.py
