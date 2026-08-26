@@ -25,6 +25,7 @@ import { createServerClock, formatRemaining, remainingMs } from "@/lib/email-int
 import { createIdempotencyKey } from "@/lib/email-intelligence/idempotency";
 import type { ApprovalRequest } from "@/types";
 import { PageHeader } from "@/components/page-header";
+import { useTranslation } from "@/lib/i18n";
 import { formatVietnamDateTime } from "@/lib/datetime";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -99,6 +100,7 @@ function ApprovalCard({ approval, onOpen, onSubmit }: { approval: ApprovalReques
 }
 
 export default function ApprovalsPage() {
+  const { t, dict, locale } = useTranslation();
   const [tabParam, setTabParam] = useUrlSearchParam("tab");
   const activeTab = (tabParam as "approvals" | "quota") || "approvals";
 
@@ -148,8 +150,8 @@ export default function ApprovalsPage() {
       {/* 1. Page Header */}
       <PageHeader
         icon={ShieldCheck}
-        title="Approvals"
-        description="Review and govern high-risk automated actions and dispatch requests."
+        title={dict.pages.approvals.title}
+        description={dict.pages.approvals.description}
         actions={
           <Button
             variant="outline"

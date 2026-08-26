@@ -22,6 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 import { PageHeader } from "@/components/page-header";
+import { useTranslation } from "@/lib/i18n";
 import { EmptyState, ErrorState, LoadingSkeleton } from "@/components/shared";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatVietnamDateTime, vietnamDateRangeStart } from "@/lib/datetime";
@@ -78,6 +79,7 @@ function initials(sender: string) {
 }
 
 export default function EmailIntelligencePage() {
+  const { t, dict, locale } = useTranslation();
   const [tabParam, setTabParam] = useUrlSearchParam("tab");
   const activeTab = (tabParam as "inbox" | "rules") || "inbox";
 
@@ -182,7 +184,7 @@ export default function EmailIntelligencePage() {
       {/* 1. Header with Merged Title */}
       <PageHeader
         icon={Bell}
-        title="Email Intelligence"
+        title={dict.pages.emailIntelligence.title}
         description="AI-classified email inbox, meeting extraction signals, and auto-dispatch rules."
         actions={
           <Button

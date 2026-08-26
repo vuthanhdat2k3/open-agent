@@ -25,6 +25,7 @@ import {
   useUrlSearchParam,
 } from "@/hooks";
 import { PageHeader } from "@/components/page-header";
+import { useTranslation } from "@/lib/i18n";
 import { ConfirmDialog, EmptyState, ErrorState, LoadingSkeleton, DataPagination } from "@/components/shared";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -34,6 +35,7 @@ import { Badge } from "@/components/ui/badge";
 import { getActiveOrgId } from "@/lib/auth";
 
 export default function MembersAndAccessPage() {
+  const { t, dict, locale } = useTranslation();
   const [tabParam, setTabParam] = useUrlSearchParam("tab");
   const activeTab = (tabParam as "members" | "keys") || "members";
 
@@ -118,7 +120,7 @@ export default function MembersAndAccessPage() {
     <div className="space-y-6">
       <PageHeader
         icon={Users}
-        title="Members"
+        title={dict.pages.members.title}
         description="Manage organization team members, role-based access, and API integration keys."
       />
 

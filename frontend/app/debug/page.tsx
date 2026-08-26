@@ -33,6 +33,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { EmptyState, ErrorState, LoadingSkeleton, DataPagination } from "@/components/shared";
 import { PageHeader } from "@/components/page-header";
+import { useTranslation } from "@/lib/i18n";
 import {
   Table,
   TableBody,
@@ -43,6 +44,7 @@ import {
 } from "@/components/ui/table";
 
 export default function UsageAndAuditLogsPage() {
+  const { t, dict, locale } = useTranslation();
   const [tabParam, setTabParam] = useUrlSearchParam("tab");
   const activeTab = (tabParam as "usage" | "sessions" | "tasks") || "usage";
 
@@ -102,7 +104,7 @@ export default function UsageAndAuditLogsPage() {
       {/* 1. Page Header */}
       <PageHeader
         icon={Bug}
-        title="Audit Logs"
+        title={dict.pages.debug.title}
         description="Monitor token usage, session audit histories, and task execution trees."
         actions={
           <Button
