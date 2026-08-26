@@ -215,13 +215,17 @@ async def _run_workflow_events(
     input_nodes = [n for n in nodes if n.get("kind") in ("input", "scheduler", "integration")]
     if len(input_nodes) < 1:
         workflow_run.status = "failed"
-        workflow_run.error = "workflow must have at least one entry trigger node (input or scheduler)"
+        workflow_run.error = (
+            "workflow must have at least one entry trigger node (input or scheduler)"
+        )
         workflow_run.finished_at = utc_now()
         await db.commit()
         await resume.release_lease(db, workflow_run.id)
         yield {
             "event": "error",
-            "data": {"message": "workflow must have at least one entry trigger node (input or scheduler)"},
+            "data": {
+                "message": "workflow must have at least one entry trigger node (input or scheduler)"
+            },
         }
         return
 
@@ -547,11 +551,7 @@ async def _run_workflow_events(
                 "event": "node_start",
                 "data": {"node_id": n["id"], "kind": n["kind"]},
             }
-            coro = (
-                run_node_in_new_session(n, node_sessionmaker)
-                if fan_out
-                else run_node(n, db)
-            )
+            coro = run_node_in_new_session(n, node_sessionmaker) if fan_out else run_node(n, db)
             tasks[n["id"]] = asyncio.create_task(coro)
 
         results = await asyncio.gather(*tasks.values(), return_exceptions=True)
@@ -612,9 +612,7 @@ async def _run_workflow_events(
     workflow_run.finished_at = utc_now()
     await db.commit()
     await resume.release_lease(db, workflow_run.id)
-    workflow_run_duration_seconds.observe(
-        max(0.0, time.monotonic() - budget.started_at)
-    )
+    workflow_run_duration_seconds.observe(max(0.0, time.monotonic() - budget.started_at))
 
 
 async def run_workflow_events(

@@ -129,7 +129,9 @@ class WorkflowService:
         valid_agent_ids = {a.id for a in agents}
         for node in graph.get("nodes", []):
             if node.get("kind") == "agent" and node.get("agent_id") not in valid_agent_ids:
-                raise ValueError(f"generated graph references unknown agent_id: {node.get('agent_id')}")
+                raise ValueError(
+                    f"generated graph references unknown agent_id: {node.get('agent_id')}"
+                )
             # The model sometimes emits explicit nulls for optional fields; drop them so
             # pydantic falls back to field defaults instead of failing validation
             # (merge_mode is a non-nullable Literal on the GraphNode schema).

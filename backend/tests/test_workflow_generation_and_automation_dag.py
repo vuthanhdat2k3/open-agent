@@ -1,18 +1,11 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import pytest
-from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.workflow.engine import run_workflow
 from app.db.base import Base
-from app.db.session import get_db
-from app.main import app
 from app.models.organization import Organization
-from app.models.role import Role
-from app.models.user import User
-from app.models.workflow import Workflow
-from app.schemas.workflow import GraphNode, WorkflowGraph
 from app.services.workflow_service import WorkflowService
 
 
@@ -93,4 +86,9 @@ async def test_automation_dag_validation_and_engine_execution(async_session_fact
             force_inline=True,
         )
         assert result is not None
-        assert "Scheduled trigger" in result or "Integration data" in result or "Triage complete" in result or "Daily Morning Run Context" in result
+        assert (
+            "Scheduled trigger" in result
+            or "Integration data" in result
+            or "Triage complete" in result
+            or "Daily Morning Run Context" in result
+        )
