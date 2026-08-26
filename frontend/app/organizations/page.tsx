@@ -61,7 +61,7 @@ function OrgMembersDialog({ organization, open, onOpenChange }: OrgMembersDialog
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Users className="h-5 w-5 text-primary" />
-            Org Admins of {organization.name}
+            {locale === "vi" ? "Org Admins of" : "Org Admins of"}{organization.name}
           </DialogTitle>
           <DialogDescription>{locale === "vi" ? "Bổ nhiệm hoặc quản lý Org Admins cho tenant này. Org Admins sẽ tự quản lý operator và người dùng của họ." : "Appoint or manage Org Admins for this tenant. Org Admins will manage their own operators and users."}</DialogDescription>
         </DialogHeader>
@@ -73,7 +73,7 @@ function OrgMembersDialog({ organization, open, onOpenChange }: OrgMembersDialog
             <Input
               id="new-member-email"
               type="email"
-              placeholder="admin@example.com"
+              placeholder={locale === "vi" ? "admin@example.com" : "admin@example.com"}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
@@ -96,7 +96,7 @@ function OrgMembersDialog({ organization, open, onOpenChange }: OrgMembersDialog
         {/* Members List */}
         <div className="space-y-2 pt-3 border-t border-border">
           <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-            Current Admins ({members.data?.length ?? 0})
+            {locale === "vi" ? "Current Admins (" : "Current Admins ("}{members.data?.length ?? 0})
           </Label>
           {members.isLoading ? (
             <LoadingSkeleton variant="table" />
@@ -111,7 +111,7 @@ function OrgMembersDialog({ organization, open, onOpenChange }: OrgMembersDialog
                         {m.role}
                       </Badge>
                       <span className="text-xs text-muted-foreground">
-                        Joined {new Date(m.created_at).toLocaleDateString()}
+                        {locale === "vi" ? "Joined" : "Joined"}{new Date(m.created_at).toLocaleDateString()}
                       </span>
                     </div>
                   </div>
@@ -213,7 +213,7 @@ export default function OrganizationsPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="admin-email">{locale === "vi" ? "Email Org Admin ban đầu (tùy chọn)" : "Initial Org Admin Email (optional)"}</Label>
-              <Input id="admin-email" type="email" value={adminEmail} onChange={(event) => setAdminEmail(event.target.value)} placeholder="admin@acme.com" />
+              <Input id="admin-email" type="email" value={adminEmail} onChange={(event) => setAdminEmail(event.target.value)} placeholder={locale === "vi" ? "admin@acme.com" : "admin@acme.com"} />
             </div>
             <div className="space-y-2">
               <Label htmlFor="admin-password">{locale === "vi" ? "Mật khẩu ban đầu (tùy chọn)" : "Initial Password (optional)"}</Label>

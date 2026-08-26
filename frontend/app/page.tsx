@@ -103,7 +103,7 @@ export default function Dashboard() {
               <Button asChild variant="outline" className="gap-2"><Link href="/run-workflow"><Workflow className="h-4 w-4" aria-hidden="true" />{dict.pages.dashboard.btnRunWorkflow}</Link></Button>
             </>
           )}
-          {grafanaUrl && <Button asChild variant="ghost" className="gap-2"><a href={grafanaUrl} target="_blank" rel="noreferrer"><BarChart3 className="h-4 w-4" aria-hidden="true" />Grafana</a></Button>}
+          {grafanaUrl && <Button asChild variant="ghost" className="gap-2"><a href={grafanaUrl} target="_blank" rel="noreferrer"><BarChart3 className="h-4 w-4" aria-hidden="true" />{locale === "vi" ? "Grafana" : "Grafana"}</a></Button>}
         </div>
       </section>
 
@@ -139,9 +139,9 @@ export default function Dashboard() {
                   <Badge variant={approval.risk_level === "HIGH" ? "destructive" : "outline"}>
                     {approval.risk_level === "HIGH" ? "HIGH RISK" : "STANDARD"}
                   </Badge>
-                  <span className="text-xs text-muted-foreground">{expiry(approval.expires_at)}</span>
+                  <span className="text-xs text-muted-foreground">{expiry(approval.expires_at, locale)}</span>
                 </div>
-                <p className="mt-3 font-semibold text-foreground">{approvalTitle(approval)}</p>
+                <p className="mt-3 font-semibold text-foreground">{approvalTitle(approval, locale)}</p>
                 <p className="mt-1 truncate text-sm text-muted-foreground">
                   {String(approval.args_snapshot?.summary || approval.args_snapshot?.title || "Review before execution")}
                 </p>
@@ -260,12 +260,12 @@ export default function Dashboard() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Agent</TableHead>
-                      <TableHead>Model</TableHead>
-                      <TableHead className="text-right">Calls</TableHead>
-                      <TableHead className="text-right">In Tokens</TableHead>
-                      <TableHead className="text-right">Out Tokens</TableHead>
-                      <TableHead className="text-right">Cost</TableHead>
+                      <TableHead>{locale === "vi" ? "Agent" : "Agent"}</TableHead>
+                      <TableHead>{locale === "vi" ? "Model" : "Model"}</TableHead>
+                      <TableHead className="text-right">{locale === "vi" ? "Calls" : "Calls"}</TableHead>
+                      <TableHead className="text-right">{locale === "vi" ? "In Tokens" : "In Tokens"}</TableHead>
+                      <TableHead className="text-right">{locale === "vi" ? "Out Tokens" : "Out Tokens"}</TableHead>
+                      <TableHead className="text-right">{locale === "vi" ? "Cost" : "Cost"}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>

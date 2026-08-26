@@ -533,7 +533,7 @@ export default function WorkflowEditor() {
                   </div>
 
                   <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">AI Model</Label>
+                    <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">{locale === "vi" ? "AI Model" : "AI Model"}</Label>
                     <Select className="text-xs w-full" value={aiModelId} onChange={(e) => setAiModelId(e.target.value)}>
                       {models.data?.map((m) => (
                         <option key={m.id} value={m.id}>{m.display_name || m.name}</option>
@@ -545,14 +545,13 @@ export default function WorkflowEditor() {
                     <div className="space-y-2.5 rounded-xl border border-primary/40 bg-primary/10 p-4 animate-pulse">
                       <div className="flex items-center gap-2.5 text-xs font-semibold text-primary">
                         <Sparkles className="h-4 w-4 animate-spin" />
-                        <span>AI is architecting your multi-agent workflow DAG...</span>
+                        <span>{locale === "vi" ? "AI is architecting your multi-agent workflow DAG..." : "AI is architecting your multi-agent workflow DAG..."}</span>
                       </div>
                       <div className="h-1.5 w-full overflow-hidden rounded-full bg-primary/20">
                         <div className="h-full w-2/3 animate-[shimmer_1.5s_infinite] bg-primary rounded-full" />
                       </div>
                       <p className="text-[11px] text-muted-foreground">
-                        Synthesizing triggers, connectors, triage policies, and agent routing graph...
-                      </p>
+                        {locale === "vi" ? "Synthesizing triggers, connectors, triage policies, and agent routing graph..." : "Synthesizing triggers, connectors, triage policies, and agent routing graph..."}</p>
                     </div>
                   )}
 
@@ -562,8 +561,7 @@ export default function WorkflowEditor() {
                       disabled={!aiPrompt.trim() || !aiModelId}
                       onClick={handleGenerate}
                     >
-                      <Sparkles className="h-4 w-4 text-primary-foreground" /> Generate Workflow
-                    </Button>
+                      <Sparkles className="h-4 w-4 text-primary-foreground" /> {locale === "vi" ? "Generate Workflow" : "Generate Workflow"}</Button>
                   )}
 
                   {aiResult && (
@@ -576,8 +574,7 @@ export default function WorkflowEditor() {
                           )}
                         </div>
                         <span className="shrink-0 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
-                          {aiResult.graph.nodes.length} nodes · {aiResult.graph.edges.length} edges
-                        </span>
+                          {aiResult.graph.nodes.length} {locale === "vi" ? "nodes ·" : "nodes ·"}{aiResult.graph.edges.length} {locale === "vi" ? "edges" : "edges"}</span>
                       </div>
 
                       {/* Visual node flow chain preview */}
@@ -596,8 +593,7 @@ export default function WorkflowEditor() {
 
                       <DialogClose asChild>
                         <Button size="sm" className="w-full gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-medium" onClick={applyGenerated}>
-                          Apply to canvas
-                        </Button>
+                          {locale === "vi" ? "Apply to canvas" : "Apply to canvas"}</Button>
                       </DialogClose>
                     </div>
                   )}

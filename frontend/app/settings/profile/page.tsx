@@ -199,7 +199,7 @@ export default function ProfilePage() {
               <div key={mem.org_id} className="flex items-center justify-between p-4">
                 <div className="space-y-1">
                   <div className="font-semibold">{mem.org_name}</div>
-                  <div className="text-xs text-muted-foreground">ID: {mem.org_id}</div>
+                  <div className="text-xs text-muted-foreground">{locale === "vi" ? "ID:" : "ID:"}{mem.org_id}</div>
                 </div>
                 <div className="flex items-center gap-2">
                   <Badge variant="outline" className="capitalize">

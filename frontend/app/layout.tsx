@@ -6,10 +6,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "sonner";
 import { usePathname } from "next/navigation";
 import { isAuthenticated, refreshAccessToken, subscribeAuth } from "@/lib/auth";
-import { LanguageProvider } from "@/lib/i18n";
+import { LanguageProvider, useTranslation } from "@/lib/i18n";
 import { AppShell } from "@/components/layout/app-shell";
 
 function AuthGate({ children }: { children: React.ReactNode }) {
+    const { locale } = useTranslation();
   const pathname = usePathname();
   const [ready, setReady] = React.useState(false);
   const publicRoute = pathname === "/login" || pathname.startsWith("/oauth/");
@@ -29,11 +30,12 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     if (ready && !publicRoute && !isAuthenticated()) window.location.replace("/login");
   }, [ready, publicRoute, pathname]);
 
-  if (!ready && !publicRoute) return <div className="p-6 text-sm text-muted-foreground">Preparing session...</div>;
+  if (!ready && !publicRoute) return <div className="p-6 text-sm text-muted-foreground">{locale === "vi" ? "Preparing session..." : "Preparing session..."}</div>;
   return <>{children}</>;
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+    const { locale } = useTranslation();
   const [client] = React.useState(() => new QueryClient({
     defaultOptions: {
       queries: { retry: 1, refetchOnWindowFocus: false, staleTime: 30_000, gcTime: 10 * 60_000 },

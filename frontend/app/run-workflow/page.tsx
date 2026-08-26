@@ -108,15 +108,15 @@ export default function RunWorkflowPage() {
         <LoadingSkeleton variant="page" />
       ) : workflows.isError ? (
         <ErrorState
-          title="Unable to load workflows"
-          description="Available workflows could not be loaded."
+          title={locale === "vi" ? "Unable to load workflows" : "Unable to load workflows"}
+          description={locale === "vi" ? "Available workflows could not be loaded." : "Available workflows could not be loaded."}
           onRetry={() => void workflows.refetch()}
         />
       ) : !workflows.data?.length ? (
         <EmptyState
           icon={WorkflowIcon}
-          title="No workflows available"
-          description="Ask an administrator to prepare a workflow before trying to run one."
+          title={locale === "vi" ? "No workflows available" : "No workflows available"}
+          description={locale === "vi" ? "Ask an administrator to prepare a workflow before trying to run one." : "Ask an administrator to prepare a workflow before trying to run one."}
         />
       ) : (
         <Card glass className="shadow-3d-card">
@@ -124,7 +124,7 @@ export default function RunWorkflowPage() {
             <form className="space-y-5" onSubmit={run} aria-busy={running}>
               <div className="grid gap-5 lg:grid-cols-[minmax(240px,0.7fr)_minmax(0,1.3fr)]">
                 <div className="space-y-2">
-                  <Label htmlFor="workflow-select">Workflow</Label>
+                  <Label htmlFor="workflow-select">{locale === "vi" ? "Workflow" : "Workflow"}</Label>
                   <Select
                     id="workflow-select"
                     value={workflowId}
@@ -145,12 +145,12 @@ export default function RunWorkflowPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="workflow-input">Input</Label>
+                  <Label htmlFor="workflow-input">{locale === "vi" ? "Input" : "Input"}</Label>
                   <Textarea
                     id="workflow-input"
                     value={input}
                     onChange={(event) => setInput(event.target.value)}
-                    placeholder="Describe what you want this workflow to process..."
+                    placeholder={locale === "vi" ? "Describe what you want this workflow to process..." : "Describe what you want this workflow to process..."}
                     className="min-h-32 resize-y"
                     required
                   />
@@ -162,7 +162,7 @@ export default function RunWorkflowPage() {
                   {status && (
                     <>
                       <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
-                      <span>Latest run</span>
+                      <span>{locale === "vi" ? "Latest run" : "Latest run"}</span>
                       <Badge variant={status === "succeeded" ? "success" : status === "failed" ? "destructive" : "outline"}>
                         {status}
                       </Badge>
