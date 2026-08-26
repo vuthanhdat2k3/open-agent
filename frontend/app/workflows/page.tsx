@@ -197,7 +197,7 @@ export default function WorkflowEditor() {
     setActiveRun(null);
     setGraph([], []);
     setSelectedNode(null);
-    toast.success("New workflow — canvas cleared");
+    toast.success(locale === "vi" ? "Workflow mới — đã xóa canvas" : "New workflow — canvas cleared");
   };
 
   const loadWorkflow = (wf: any) => {
@@ -230,7 +230,7 @@ export default function WorkflowEditor() {
         });
         setEditId(created.id);
       }
-      toast.success("Workflow saved");
+      toast.success(locale === "vi" ? "Đã lưu workflow" : "Workflow saved");
     } catch (e: any) {
       toast.error(e.message);
     }
@@ -288,7 +288,7 @@ export default function WorkflowEditor() {
     setSelectedNode(null);
     setAiResult(null);
     setAiPrompt("");
-    toast.success("Applied to canvas — review and Save");
+    toast.success(locale === "vi" ? "Đã áp dụng vào canvas — hãy xem lại và Lưu" : "Applied to canvas — review and Save");
   };
 
   const handleAutoLayout = () => {
@@ -298,7 +298,7 @@ export default function WorkflowEditor() {
       position: calculatedPos[n.id] || { x: 40, y: 40 },
     }));
     setGraph(updatedNodes, edges);
-    toast.success("Graph auto-layout applied");
+    toast.success(locale === "vi" ? "Đã áp dụng tự động sắp xếp Graph" : "Graph auto-layout applied");
   };
 
   const handleDeleteNode = (id: string) => {
@@ -307,12 +307,12 @@ export default function WorkflowEditor() {
       edges.filter((e) => e.from_ !== id && e.to !== id),
     );
     if (selectedNodeId === id) setSelectedNode(null);
-    toast.success("Node deleted");
+    toast.success(locale === "vi" ? "Đã xóa Node" : "Node deleted");
   };
 
   const run = async () => {
     if (!editId) {
-      toast.error("Save the workflow first to run it");
+      toast.error(locale === "vi" ? "Lưu workflow trước khi chạy" : "Save the workflow first to run it");
       return;
     }
     setRunning(true);
@@ -605,8 +605,7 @@ export default function WorkflowEditor() {
               </DialogContent>
             </Dialog>
             <Button onClick={save} className="gap-2 active-tactile transition-transform">
-              <Save className="h-4 w-4" /> Save
-            </Button>
+              <Save className="h-4 w-4" />{locale === "vi" ? "Lưu" : "Save"}</Button>
           </>
         }
       />
@@ -614,20 +613,16 @@ export default function WorkflowEditor() {
       <div className="space-y-3">
         <div className="flex items-center gap-2 rounded-xl border border-border/80 bg-card/50 p-3 backdrop-blur-xl shadow-3d-card">
           <div className="flex-1 space-y-1">
-            <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">
-              Workflow name
-            </Label>
-            <Input className="text-xs" value={wfName} onChange={(e) => setWfName(e.target.value)} placeholder="Workflow name" />
+            <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">{locale === "vi" ? "Tên workflow" : "Workflow name"}</Label>
+            <Input className="text-xs" value={wfName} onChange={(e) => setWfName(e.target.value)} placeholder={locale === "vi" ? "Tên workflow" : "Workflow name"} />
           </div>
           <div className="flex-[2] space-y-1">
-            <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">
-              Run input
-            </Label>
+            <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">{locale === "vi" ? "Đầu vào chạy" : "Run input"}</Label>
             <Textarea
               className="min-h-[38px] text-xs resize-none"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="JSON or plain text input…"
+              placeholder={locale === "vi" ? "Đầu vào JSON hoặc văn bản thuần túy…" : "JSON or plain text input…"}
             />
           </div>
           <Button className="gap-2 active-tactile transition-transform self-end text-xs" disabled={running} onClick={run}>
