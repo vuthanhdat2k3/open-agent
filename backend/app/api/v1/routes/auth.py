@@ -66,6 +66,11 @@ def _require_local_auth() -> None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Legacy authentication surface is disabled")
 
 
+def _auth_error_redirect(error_code: str) -> RedirectResponse:
+    frontend_base = get_settings().zitadel_post_logout_redirect_uri.rstrip("/")
+    return RedirectResponse(f"{frontend_base}/login?error={error_code}", status_code=303)
+
+
 def _digest(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
@@ -174,12 +179,12 @@ async def oidc_callback(
         )
     if token_response.status_code >= 400:
         await db.rollback()
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Authorization code exchange failed")
+        return _auth_error_redirect("CODE_EXCHANGE_FAILED")
     token = token_response.json()
     id_token = token.get("id_token")
     if not id_token:
         await db.rollback()
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "ZITADEL did not return an ID token")
+        return _auth_error_redirect("ID_TOKEN_MISSING")
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             jwks_response = await client.get(
@@ -193,7 +198,7 @@ async def oidc_callback(
         if signing_key is None:
             await db.rollback()
             logger.error("OIDC ID token signing key was not found", extra={"kid": key_id})
-            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "ZITADEL signing key not found")
+            return _auth_error_redirect("SIGNING_KEY_NOT_FOUND")
         claims = jwt.decode(
             id_token,
             signing_key,
@@ -203,10 +208,11 @@ async def oidc_callback(
         )
     except jwt.PyJWTError as exc:
         await db.rollback()
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid ZITADEL ID token") from exc
+        logger.warning("Invalid ZITADEL ID token: %s", exc)
+        return _auth_error_redirect("INVALID_ID_TOKEN")
     if _digest(str(claims.get("nonce", ""))) != transaction.nonce_hash:
         await db.rollback()
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid OIDC nonce")
+        return _auth_error_redirect("INVALID_NONCE")
     zitadel_user_id = str(claims.get("sub", ""))
     claim_email = str(claims.get("email", "")).strip().lower()
     if not claim_email and token.get("access_token"):
@@ -245,7 +251,7 @@ async def oidc_callback(
         db.add(Membership(org_id=system_org.id, user_id=user.id, role=Role.platform_admin))
     if user is None or not user.is_active or user.lifecycle_status != "active":
         await db.rollback()
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "ACCOUNT_NOT_PROVISIONED")
+        return _auth_error_redirect("ACCOUNT_NOT_PROVISIONED")
     org_claim = claims.get(get_settings().zitadel_required_org_claim) or claims.get("org_id")
     if isinstance(org_claim, list):
         org_claim = org_claim[0] if len(org_claim) == 1 else None
@@ -254,7 +260,7 @@ async def oidc_callback(
         expected_org = org_result.scalar_one_or_none()
         if expected_org is None or (org_claim and org_claim not in {expected_org.id, expected_org.zitadel_org_id}):
             await db.rollback()
-            raise HTTPException(status.HTTP_403_FORBIDDEN, "Organization context mismatch")
+            return _auth_error_redirect("ORGANIZATION_CONTEXT_MISMATCH")
         organization_id = expected_org.id
     else:
         platform_membership_result = await db.execute(
@@ -276,7 +282,7 @@ async def oidc_callback(
                 org = org_result.scalar_one_or_none()
                 if org is None:
                     await db.rollback()
-                    raise HTTPException(status.HTTP_403_FORBIDDEN, "ACCOUNT_NOT_PROVISIONED")
+                    return _auth_error_redirect("ACCOUNT_NOT_PROVISIONED")
                 organization_id = org.id
             else:
                 memberships_result = await db.execute(
@@ -288,7 +294,7 @@ async def oidc_callback(
                 memberships = memberships_result.scalars().all()
                 if len(memberships) != 1:
                     await db.rollback()
-                    raise HTTPException(status.HTTP_403_FORBIDDEN, "ORGANIZATION_CONTEXT_REQUIRED")
+                    return _auth_error_redirect("ORGANIZATION_CONTEXT_REQUIRED")
                 organization_id = memberships[0].org_id
     membership_result = await db.execute(
         select(Membership).where(
@@ -300,7 +306,7 @@ async def oidc_callback(
     membership = membership_result.scalar_one_or_none()
     if membership is None:
         await db.rollback()
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "ACCOUNT_NOT_PROVISIONED")
+        return _auth_error_redirect("ACCOUNT_NOT_PROVISIONED")
     if claims.get("email") and not user.email:
         user.email = str(claims["email"]).lower()
     if claims.get("name"):
