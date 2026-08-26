@@ -296,8 +296,8 @@ export default function AgentsPage() {
       {/* 1. Page Header */}
       <PageHeader
         icon={Bot}
-        title="Agent Studio"
-        description="Configure agent personas, system prompt reasoning, granted tool sets, and customize the live 3D Companion Avatar."
+        title="Agent Studio & Persona Catalog"
+        description="Manage multi-agent orchestrators, worker personas, system reasoning prompts, tool access control, and 3D companion runtime."
         actions={
           <div className="flex items-center gap-2">
             <Button

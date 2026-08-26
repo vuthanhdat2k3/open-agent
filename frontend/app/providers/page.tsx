@@ -165,11 +165,11 @@ export default function ProvidersPage() {
 
   return (
     <div className="space-y-6">
-      {/* 1. Header with Merged Scope & Actions */}
+      {/* 1. Unified Page Header */}
       <PageHeader
         icon={Server}
-        title="AI Providers & Models"
-        description="Configure LLM connection endpoints, API keys, and manage the discovered model catalog for agents and workflows."
+        title="LLM Gateway & Model Benchmarks"
+        description="Manage upstream AI provider endpoints, secure API credentials, and run latency/benchmark tests across discovered models."
         actions={
           <div className="flex items-center gap-2">
             <Button

@@ -173,7 +173,11 @@ export default function OrganizationsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader icon={Building2} title="Organizations" description="Create and oversee tenant organizations" />
+      <PageHeader
+        icon={Building2}
+        title="Tenant Directory & Organizations"
+        description="Create, provision, and oversee multi-tenant organizations and initial tenant administrators."
+      />
       <Card glass>
         <CardContent className="p-5">
           <form onSubmit={submit} className="grid gap-4 md:grid-cols-[1fr_1fr_1fr_auto] md:items-end">

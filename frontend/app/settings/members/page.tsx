@@ -103,8 +103,8 @@ export default function MembersAndAccessPage() {
     <div className="space-y-6">
       <PageHeader
         icon={Users}
-        title="Members & Access"
-        description="Manage organization team members, role-based access permissions, and programmatic API integration keys."
+        title="Identity & Access Management (IAM)"
+        description="Manage organization team members, role-based access control (RBAC), and programmatic API integration keys."
       />
 
       {/* 1. Metrics Ribbon */}

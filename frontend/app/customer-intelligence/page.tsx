@@ -723,7 +723,7 @@ export default function CustomerIntelligencePage() {
       {/* 1. Page Header */}
       <PageHeader
         icon={Building2}
-        title="Client Intelligence & Dossiers"
+        title="Client Dossiers & Briefings"
         description="Automated company background research, market briefings, and pre-meeting preparation synthesized from email exchanges and public knowledge graph."
         actions={
           <div className="flex items-center gap-2">

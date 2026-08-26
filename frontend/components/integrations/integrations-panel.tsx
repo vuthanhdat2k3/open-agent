@@ -138,7 +138,13 @@ export function IntegrationsPanel({ withHeader = true }: { withHeader?: boolean 
 
   return (
     <div className="space-y-8">
-      {withHeader && <PageHeader icon={Plug} title="Integrations" description="Connect work accounts through encrypted, approval-aware OAuth connectors." />}
+      {withHeader && (
+        <PageHeader
+          icon={Plug}
+          title="Connected Accounts & OAuth"
+          description="Connect personal work accounts (Gmail, Google Calendar, Google Drive) through encrypted, approval-aware OAuth connectors."
+        />
+      )}
       {error && <Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert>}
       {loading ? <LoadingSkeleton variant="grid" /> : <div className="grid gap-6 lg:grid-cols-3">
         <Card>

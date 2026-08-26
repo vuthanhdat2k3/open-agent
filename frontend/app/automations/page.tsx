@@ -631,8 +631,8 @@ export default function AutomationsPage() {
     <div className="space-y-6">
       <PageHeader
         icon={Zap}
-        title="Automations"
-        description="Set up helpful routines for email, meetings, customer research, and follow-up."
+        title="Automated Routines & Schedules"
+        description="Activate scheduled enterprise routines for daily briefings, meeting prep, customer research, and relationship follow-ups."
       />
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="rounded-xl border border-border/70 bg-card/60 p-4">

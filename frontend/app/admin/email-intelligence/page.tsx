@@ -42,7 +42,11 @@ export default function EmailOperationsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader icon={Activity} title="Email Operations" description="Operational signals from PostgreSQL canonical state. Redis transport is not shown as business truth." />
+      <PageHeader
+        icon={Activity}
+        title="Email Gateway & Security Operations"
+        description="Operational health signals, dead-letter triage, queue metrics, and sanitized trace explorer for organization email pipelines."
+      />
       <div className="grid gap-4 md:grid-cols-4">
         <Metric icon={Database} label="Connections" value={`${data.connections.healthy}/${data.connections.total}`} detail={data.connections.unhealthy ? `${data.connections.unhealthy} unhealthy` : "Healthy"} danger={data.connections.unhealthy > 0} />
         <Metric icon={GitBranch} label="Queue" value={`${data.queue.ready}`} detail={`${data.queue.retrying} retrying · ${data.queue.dead_letter} dead-letter`} danger={data.queue.dead_letter > 0} />

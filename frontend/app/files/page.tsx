@@ -72,8 +72,8 @@ export default function FilesPage() {
     <div className="space-y-6">
       <PageHeader
         icon={FileText}
-        title="Knowledge Base"
-        description="Upload company documents and ingest them into the RAG vector service"
+        title="Enterprise Knowledge Base (RAG)"
+        description="Ingest company documents, PDFs, and data files into the vector database for RAG retrieval and citation grounding."
         actions={
           <>
             <Input
