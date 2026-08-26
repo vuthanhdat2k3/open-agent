@@ -131,6 +131,13 @@ async def test_second_turn_sees_full_tool_history(db_factory):
                 session_id="s-hf",
                 user_id="u-hf",
             )
+        events = await slog.load_events(db, "s-hf")
+        assert [(event.type, event.data.get("tool_call_id")) for event in events] == [
+            (slog.USER_MESSAGE, None),
+            (slog.TOOL_CALL, "tc-hf-1"),
+            (slog.TOOL_RESULT, "tc-hf-1"),
+            (slog.ASSISTANT_MESSAGE, None),
+        ]
 
     # Run a second turn and capture its history.
     async with db_factory() as db:
@@ -152,6 +159,8 @@ async def test_second_turn_sees_full_tool_history(db_factory):
     # Old code: tool_calls/result lost across turns; the second turn only saw
     # a flat assistant text. Event log: turn 2 sees the tool role.
     assert "tool" in roles, f"tool history lost across turns: got roles={roles}"
+    assistant_messages = [m for m in captured_turn2 if m.get("role") == "assistant"]
+    assert assistant_messages[-1].get("tool_calls") is None
     # The first user/assistant/tool/result turn should appear before
     # turn 2's user message.
     tool_idx = roles.index("tool")

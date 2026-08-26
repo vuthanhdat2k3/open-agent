@@ -1437,7 +1437,7 @@ async def _agent_stream(
                             },
                         }
                     )
-                messages.append({"role": "assistant", "content": None, "tool_calls": openai_tcs})
+                    messages.append({"role": "assistant", "content": None, "tool_calls": openai_tcs})
                 for idx, entry in enumerate(tc_map.values()):
                     name = entry["name"]
                     try:
@@ -1455,6 +1455,23 @@ async def _agent_stream(
                         "event": "tool_call",
                         "data": {"index": tool_index, "name": name, "arguments": args},
                     }
+                    if session_id:
+                        try:
+                            await slog.append_event(
+                                db,
+                                session_id=session_id,
+                                org_id=agent.org_id,
+                                type_=slog.TOOL_CALL,
+                                data={
+                                    "tool_call_id": entry["id"],
+                                    "name": name,
+                                    "arguments": entry.get("arguments") or "{}",
+                                    "status": "started",
+                                },
+                            )
+                            await db.commit()
+                        except slog.SessionEventError:
+                            pass
                     if rec is not None:
                         await rec.record(call_ev)
                         await rec.flush_progress(phase=f"tool:{name}")
@@ -1853,23 +1870,10 @@ async def _agent_stream(
                             },
                             commit=False,
                         )
-                    # Mirror the tool call + result into the event log so the
-                    # next turn sees the full conversation including tool
-                    # arguments and results, not just a final-text summary.
+                    # Mirror the tool result into the event log. The tool call
+                    # was persisted before execution so a crash cannot lose it.
                     if session_id:
                         try:
-                            await slog.append_event(
-                                db,
-                                session_id=session_id,
-                                org_id=agent.org_id,
-                                type_=slog.TOOL_CALL,
-                                data={
-                                    "tool_call_id": entry["id"],
-                                    "name": name,
-                                    "arguments": entry.get("arguments") or "{}",
-                                    "status": tool_status,
-                                },
-                            )
                             await slog.append_event(
                                 db,
                                 session_id=session_id,
@@ -2119,22 +2123,10 @@ async def _agent_stream(
                 },
             }
             if session_id:
-                # Persist the final assistant turn as a single event with
-                # the full tool-call/result history attached; the next
-                # turn will derive both this message and its tool turns
-                # from the log.
+                # Persist only the final assistant text. Tool calls/results
+                # are separate events and are projected into their own
+                # provider messages.
                 try:
-                    assistant_tool_calls = [
-                        {
-                            "id": c.get("name", "") + ":" + str(i),
-                            "type": "function",
-                            "function": {
-                                "name": c.get("name", ""),
-                                "arguments": json.dumps(c.get("arguments") or {}),
-                            },
-                        }
-                        for i, c in enumerate(tool_calls_log)
-                    ]
                     await slog.append_event(
                         db,
                         session_id=session_id,
@@ -2142,7 +2134,6 @@ async def _agent_stream(
                         type_=slog.ASSISTANT_MESSAGE,
                         data={
                             "content": final,
-                            "tool_calls": assistant_tool_calls,
                             "usage": usage,
                             "reasoning": reasoning_text,
                         },
