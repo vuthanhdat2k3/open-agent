@@ -20,10 +20,12 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { useTranslation } from "@/lib/i18n";
 import { isActive, navGroups, prefetchTab, type UserRole } from "./navigation";
 
 export function AppSidebar({ queryClient }: { queryClient: QueryClient }) {
   const pathname = usePathname();
+  const { t } = useTranslation();
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const summary = useEmailIntelligenceNavigationSummary();
@@ -74,25 +76,27 @@ export function AppSidebar({ queryClient }: { queryClient: QueryClient }) {
               return hasPerm && passPlatform && passRole;
             });
             if (items.length === 0) return null;
+            const groupTitle = group.i18nKey ? t(group.i18nKey, group.title) : group.title;
             return (
           <SidebarGroup key={group.title}>
-            <SidebarGroupLabel>{group.title}</SidebarGroupLabel>
+            <SidebarGroupLabel>{groupTitle}</SidebarGroupLabel>
             <SidebarMenu>
               {items.map((item) => {
                 const Icon = item.icon;
                 const active = isActive(pathname, item.href);
+                const itemLabel = item.i18nKey ? t(item.i18nKey, item.label) : item.label;
                 return (
                   <SidebarMenuItem key={item.href}>
                     <SidebarMenuButton
                       asChild
                       isActive={active}
-                      tooltip={item.label}
+                      tooltip={itemLabel}
                       onMouseEnter={() => prefetchTab(queryClient, item.href)}
                       onFocus={() => prefetchTab(queryClient, item.href)}
                     >
                       <Link href={item.href} aria-current={active ? "page" : undefined}>
                         <Icon aria-hidden="true" />
-                        <span>{item.label}</span>
+                        <span>{itemLabel}</span>
                       </Link>
                     </SidebarMenuButton>
                     {item.href === "/approvals" && pending > 0 && (

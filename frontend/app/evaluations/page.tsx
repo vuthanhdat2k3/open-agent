@@ -260,7 +260,7 @@ export default function EvaluationsPage() {
                     <Badge variant="outline" className="font-mono text-[10px]">{run.execution_mode}</Badge>
                   </div>
                   <p className="text-[11px] font-mono text-muted-foreground">
-                    {run.passed_cases}/{run.total_cases} cases Â· {run.average_latency_ms.toFixed(0)}ms Â· ${run.total_cost_usd.toFixed(4)}
+                    {run.passed_cases}/{run.total_cases} cases · {run.average_latency_ms.toFixed(0)}ms · ${run.total_cost_usd.toFixed(4)}
                   </p>
                 </div>
               ))}

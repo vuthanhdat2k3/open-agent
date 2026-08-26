@@ -95,6 +95,11 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 | Branch | Worktree path | Phạm vi/task | Agent/người phụ trách |
 |---|---|---|---|
 | `dev` | `G:\open-agent` | Nhánh tích hợp chính — không code trực tiếp ở đây | — |
+| `feat/ui-i18n-vietnamese-english` | `G:\open-agent-worktrees\ui-i18n-vietnamese-english` | Quét toàn bộ UI, sửa lỗi chính tả ký tự và triển khai đa ngôn ngữ (vi/en) toàn diện | Antigravity |
+| `feat/session-event-log` | `G:\open-agent-worktrees\session-event-log` | Session event log kiểu dsh: tool fidelity qua turn, compaction surface-replacement token-based | ox-alpha |
+| `feat/workflow-node-config-system` | `G:\open-agent-worktrees\workflow-node-system-upgrade` | Workflow node configuration system: n8n-style node schemas, agent custom/inherit, scheduler cron form, real integration, LLM triager | CommandCode |
+
+> 2026-08-26: Đã dọn dẹp worktree/branch `feat/automation-dag-nodes-and-template-graphs` (Standardize Enterprise Page Taxonomy, Tab Labels, DataPagination) sau khi merge vào `dev` và deploy thành công lên `deploy/dev`.
 
 > 2026-08-25: Đã dọn dẹp worktree/branch của các PR đã merge vào `dev`
 > (#86 chat-projection-stream-target, #88 chat-tool-chips, #90 chat-markdown-links,
@@ -117,6 +122,7 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 - Không commit file `.env`, credential, database dump, backup chứa dữ liệu thật.
 - Stage file cụ thể (`git add <file>`), không dùng `git add .` khi không chắc phạm vi thay đổi.
 - Message commit ngắn gọn, mô tả đúng thay đổi, theo convention hiện có trong `git log` (`feat:`, `fix:`, `docs:`...).
+- **Không thêm co-author trailer (ví dụ `Co-authored-by: ...`) vào commit message.** Mọi commit do agent tạo chỉ ghi tác giả thực của commit (git config), không gắn tên agent làm đồng tác giả.
 - **Khi merge PR: dùng "Create a merge commit", KHÔNG dùng "Squash and merge".** Squash phá lịch sử
   atomic mà các file task yêu cầu, làm branch feature không xóa được bằng `git branch -d` sau merge,
   và gây phân kỳ `deploy/dev` so với `dev` (phải merge commit hòa giải mỗi lần sync).
