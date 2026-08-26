@@ -25,7 +25,7 @@ import {
   useUrlSearchParam,
 } from "@/hooks";
 import { PageHeader } from "@/components/page-header";
-import { ConfirmDialog, EmptyState, ErrorState, LoadingSkeleton } from "@/components/shared";
+import { ConfirmDialog, EmptyState, ErrorState, LoadingSkeleton, DataPagination } from "@/components/shared";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
@@ -55,6 +55,21 @@ export default function MembersAndAccessPage() {
   const [email, setEmail] = React.useState("");
   const [role, setRole] = React.useState("user");
   const [password, setPassword] = React.useState("");
+
+  // Pagination states
+  const [memberPage, setMemberPage] = React.useState(1);
+  const [memberPageSize, setMemberPageSize] = React.useState(10);
+  const paginatedMembers = React.useMemo(() => {
+    const start = (memberPage - 1) * memberPageSize;
+    return (members.data || []).slice(start, start + memberPageSize);
+  }, [members.data, memberPage, memberPageSize]);
+
+  const [keyPage, setKeyPage] = React.useState(1);
+  const [keyPageSize, setKeyPageSize] = React.useState(10);
+  const paginatedKeys = React.useMemo(() => {
+    const start = (keyPage - 1) * keyPageSize;
+    return (keys.data || []).slice(start, start + keyPageSize);
+  }, [keys.data, keyPage, keyPageSize]);
 
   async function submitMember(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -103,8 +118,8 @@ export default function MembersAndAccessPage() {
     <div className="space-y-6">
       <PageHeader
         icon={Users}
-        title="Identity & Access Management (IAM)"
-        description="Manage organization team members, role-based access control (RBAC), and programmatic API integration keys."
+        title="Members"
+        description="Manage organization team members, role-based access, and API integration keys."
       />
 
       {/* 1. Metrics Ribbon */}
@@ -159,7 +174,7 @@ export default function MembersAndAccessPage() {
           className="gap-2 font-medium"
         >
           <Users className="h-4 w-4" />
-          Organization Members
+          Members
           <Badge variant="outline" className="ml-1 text-[10px] font-mono">
             {totalMembers}
           </Badge>
@@ -172,7 +187,7 @@ export default function MembersAndAccessPage() {
           className="gap-2 font-medium"
         >
           <KeyRound className="h-4 w-4" />
-          API Keys & Programmatic Access
+          API Keys
           <Badge variant="outline" className="ml-1 text-[10px] font-mono">
             {totalKeys}
           </Badge>
@@ -245,44 +260,54 @@ export default function MembersAndAccessPage() {
               onRetry={() => void members.refetch()}
             />
           ) : members.data?.length ? (
-            <div className="space-y-2.5">
-              {members.data.map((member) => (
-                <Card key={member.user_id} className="shadow-card border-border/80 p-4 transition-colors hover:border-primary/40">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-primary/20 bg-primary/10 font-semibold text-primary text-xs">
-                        {member.email.charAt(0).toUpperCase()}
+            <div className="space-y-4">
+              <div className="space-y-2.5">
+                {paginatedMembers.map((member) => (
+                  <Card key={member.user_id} className="shadow-card border-border/80 p-4 transition-colors hover:border-primary/40">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-primary/20 bg-primary/10 font-semibold text-primary text-xs">
+                          {member.email.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-semibold text-foreground">{member.email}</div>
+                          <div className="truncate text-xs text-muted-foreground">{member.display_name || "Active Teammate"}</div>
+                        </div>
                       </div>
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-semibold text-foreground">{member.email}</div>
-                        <div className="truncate text-xs text-muted-foreground">{member.display_name || "Active Teammate"}</div>
-                      </div>
-                    </div>
 
-                    <div className="flex items-center gap-2.5">
-                      <Badge variant={member.role === "org_admin" || member.role === "admin" ? "default" : "outline"} className="font-mono text-[10px] uppercase">
-                        {member.role}
-                      </Badge>
-                      {canRemoveMember(member) ? (
-                        <ConfirmDialog
-                          trigger={
-                            <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-destructive">
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          }
-                          title={`Remove ${member.email}?`}
-                          description="This member will lose access to the organization immediately."
-                          confirmLabel="Remove member"
-                          destructive
-                          onConfirm={() => remove.mutateAsync(member.user_id).then(() => undefined)}
-                        />
-                      ) : (
-                        <Lock className="h-4 w-4 text-muted-foreground/40" aria-label="Protected member" />
-                      )}
+                      <div className="flex items-center gap-2.5">
+                        <Badge variant={member.role === "org_admin" || member.role === "admin" ? "default" : "outline"} className="font-mono text-[10px] uppercase">
+                          {member.role}
+                        </Badge>
+                        {canRemoveMember(member) ? (
+                          <ConfirmDialog
+                            trigger={
+                              <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-destructive">
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            }
+                            title={`Remove ${member.email}?`}
+                            description="This member will lose access to the organization immediately."
+                            confirmLabel="Remove member"
+                            destructive
+                            onConfirm={() => remove.mutateAsync(member.user_id).then(() => undefined)}
+                          />
+                        ) : (
+                          <Lock className="h-4 w-4 text-muted-foreground/40" aria-label="Protected member" />
+                        )}
+                      </div>
                     </div>
-                  </div>
-                </Card>
-              ))}
+                  </Card>
+                ))}
+              </div>
+              <DataPagination
+                page={memberPage}
+                pageSize={memberPageSize}
+                totalItems={members.data.length}
+                onPageChange={setMemberPage}
+                onPageSizeChange={setMemberPageSize}
+                pageSizeOptions={[5, 10, 20, 50]}
+              />
             </div>
           ) : (
             <EmptyState
@@ -356,40 +381,50 @@ export default function MembersAndAccessPage() {
               onRetry={() => void keys.refetch()}
             />
           ) : keys.data?.length ? (
-            <div className="space-y-2.5">
-              {keys.data.map((key) => (
-                <Card key={key.id} className="shadow-card border-border/80 p-4 transition-colors hover:border-primary/40">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-amber-500/25 bg-amber-500/10 text-amber-500">
-                        <KeyRound className="h-4 w-4" />
+            <div className="space-y-4">
+              <div className="space-y-2.5">
+                {paginatedKeys.map((key) => (
+                  <Card key={key.id} className="shadow-card border-border/80 p-4 transition-colors hover:border-primary/40">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-amber-500/25 bg-amber-500/10 text-amber-500">
+                          <KeyRound className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-semibold text-foreground">{key.name}</div>
+                          <div className="font-mono text-xs text-muted-foreground">{key.key_prefix}••••••••</div>
+                        </div>
                       </div>
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-semibold text-foreground">{key.name}</div>
-                        <div className="font-mono text-xs text-muted-foreground">{key.key_prefix}••••••••</div>
-                      </div>
-                    </div>
 
-                    <div className="flex items-center gap-2.5">
-                      <Badge variant="outline" className="font-mono text-[10px]">
-                        {key.expires_at ? "Has Expiry" : "No Expiry"}
-                      </Badge>
-                      <ConfirmDialog
-                        trigger={
-                          <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-destructive">
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        }
-                        title={`Revoke API Key ${key.name}?`}
-                        description="Any integration using this key will be revoked immediately."
-                        confirmLabel="Revoke Key"
-                        destructive
-                        onConfirm={() => revokeKey.mutateAsync(key.id).then(() => undefined)}
-                      />
+                      <div className="flex items-center gap-2.5">
+                        <Badge variant="outline" className="font-mono text-[10px]">
+                          {key.expires_at ? "Has Expiry" : "No Expiry"}
+                        </Badge>
+                        <ConfirmDialog
+                          trigger={
+                            <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-destructive">
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          }
+                          title={`Revoke API Key ${key.name}?`}
+                          description="Any integration using this key will be revoked immediately."
+                          confirmLabel="Revoke Key"
+                          destructive
+                          onConfirm={() => revokeKey.mutateAsync(key.id).then(() => undefined)}
+                        />
+                      </div>
                     </div>
-                  </div>
-                </Card>
-              ))}
+                  </Card>
+                ))}
+              </div>
+              <DataPagination
+                page={keyPage}
+                pageSize={keyPageSize}
+                totalItems={keys.data.length}
+                onPageChange={setKeyPage}
+                onPageSizeChange={setKeyPageSize}
+                pageSizeOptions={[5, 10, 20, 50]}
+              />
             </div>
           ) : (
             <EmptyState

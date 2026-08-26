@@ -98,8 +98,8 @@ export default function RunWorkflowPage() {
     <div className="space-y-8">
       <PageHeader
         icon={WorkflowIcon}
-        title="Workflow Execution Center"
-        description="Execute published multi-agent workflows, provide contextual inputs, and track live node outputs."
+        title="Run Workflow"
+        description="Execute published multi-agent workflows and inspect live node outputs."
       />
 
       {workflows.isLoading ? (
