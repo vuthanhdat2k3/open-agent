@@ -182,8 +182,8 @@ export default function EmailIntelligencePage() {
       {/* 1. Header with Merged Title */}
       <PageHeader
         icon={Bell}
-        title="Smart Inbox & Email Triage"
-        description="AI-classified email inbox, smart meeting extraction signals, and trusted auto-dispatch automation rules."
+        title="Email Intelligence"
+        description="AI-classified email inbox, meeting extraction signals, and auto-dispatch rules."
         actions={
           <Button
             variant="outline"
@@ -253,7 +253,7 @@ export default function EmailIntelligencePage() {
           className="gap-2 font-medium"
         >
           <Inbox className="h-4 w-4" />
-          Smart Inbox
+          Inbox
           <Badge variant="outline" className="ml-1 text-[10px] font-mono">
             {totalNotifications}
           </Badge>
@@ -266,7 +266,7 @@ export default function EmailIntelligencePage() {
           className="gap-2 font-medium"
         >
           <ShieldCheck className="h-4 w-4" />
-          Trusted Automation Rules
+          Rules
           <Badge variant="outline" className="ml-1 text-[10px] font-mono">
             {totalRules}
           </Badge>

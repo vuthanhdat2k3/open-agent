@@ -17,7 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
-import { ConfirmDialog, ErrorState, LoadingSkeleton } from "@/components/shared";
+import { ConfirmDialog, ErrorState, LoadingSkeleton, DataPagination } from "@/components/shared";
 import {
   Table,
   TableBody,
@@ -54,6 +54,13 @@ export default function FilesPage() {
   const canIngest = useCan("files:manage");
   const fileRef = React.useRef<HTMLInputElement>(null);
   const [collection, setCollection] = React.useState("default");
+  const [page, setPage] = React.useState(1);
+  const [pageSize, setPageSize] = React.useState(10);
+
+  const paginatedFiles = React.useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return (data || []).slice(start, start + pageSize);
+  }, [data, page, pageSize]);
 
   async function onPick(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -72,8 +79,8 @@ export default function FilesPage() {
     <div className="space-y-6">
       <PageHeader
         icon={FileText}
-        title="Enterprise Knowledge Base (RAG)"
-        description="Ingest company documents, PDFs, and data files into the vector database for RAG retrieval and citation grounding."
+        title="Knowledge Base"
+        description="Upload and manage documents, PDFs, and files for semantic search and retrieval."
         actions={
           <>
             <Input
@@ -102,82 +109,104 @@ export default function FilesPage() {
       <Card glass className="shadow-3d-card overflow-hidden">
         <CardContent className="p-0">
           {isLoading ? <div className="p-6"><LoadingSkeleton variant="table" /></div> : isError ? <div className="p-6"><ErrorState title="Unable to load files" description="File data could not be loaded." onRetry={() => void refetch()} /></div> : data && data.length > 0 ? (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Size</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Collection</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {data.map((f: UploadedFile) => (
-                  <TableRow key={f.id}>
-                    <TableCell className="max-w-[240px] truncate font-medium text-foreground">
-                      {f.original_name}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground font-mono text-xs">
-                      {f.content_type || "—"}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground font-mono text-xs">
-                      {formatSize(f.size)}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={statusVariant[f.status] || "secondary"} className="uppercase tracking-wider text-[10px]">
-                        {f.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground font-mono text-xs">
-                      {f.collection || "—"}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        {canIngest && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="gap-1.5 active-tactile transition-transform"
-                            loading={ingest.isPending}
-                            disabled={f.status === "queued" || f.status === "processing" || f.status === "retrying"}
-                            onClick={async () => {
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Size</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Collection</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {paginatedFiles.map((f: UploadedFile) => (
+                    <TableRow key={f.id}>
+                      <TableCell className="max-w-[240px] truncate font-medium text-foreground">
+                        {f.original_name}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground font-mono text-xs">
+                        {f.content_type || "—"}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground font-mono text-xs">
+                        {formatSize(f.size)}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={statusVariant[f.status] || "secondary"} className="uppercase tracking-wider text-[10px]">
+                          {f.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground font-mono text-xs">
+                        {f.collection || "—"}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          {canIngest && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="gap-1.5 active-tactile transition-transform"
+                              loading={ingest.isPending}
+                              disabled={f.status === "queued" || f.status === "processing" || f.status === "retrying"}
+                              onClick={async () => {
+                                try {
+                                  const r = await ingest.mutateAsync({
+                                    id: f.id,
+                                    body: { collection },
+                                  });
+                                  toast.success(
+                                    r.rag_document_id
+                                      ? `Ingestion accepted ${r.rag_document_id}`
+                                      : "Ingestion submitted",
+                                  );
+                                } catch (err: any) {
+                                  toast.error(err.message);
+                                }
+                              }}
+                            >
+                              <Loader2 className="h-3.5 w-3.5" /> Ingest
+                            </Button>
+                          )}
+                          <ConfirmDialog
+                            trigger={
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="text-destructive hover:bg-destructive/10 active-tactile transition-transform"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            }
+                            title="Delete File"
+                            description={`Are you sure you want to delete ${f.original_name}? This action cannot be undone.`}
+                            confirmLabel="Delete"
+                            destructive
+                            onConfirm={async () => {
                               try {
-                                const r = await ingest.mutateAsync({
-                                  id: f.id,
-                                  body: { collection },
-                                });
-                                toast.success(
-                                  r.rag_document_id
-                                    ? `Ingestion accepted ${r.rag_document_id}`
-                                    : "Ingestion submitted",
-                                );
+                                await del.mutateAsync(f.id);
+                                toast.success(`Deleted ${f.original_name}`);
                               } catch (err: any) {
                                 toast.error(err.message);
                               }
                             }}
-                          >
-                            {f.status === "queued" || f.status === "processing" || f.status === "retrying" ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : null}
-                            Ingest
-                          </Button>
-                        )}
-                        <ConfirmDialog
-                          trigger={<Button size="icon" variant="ghost" className="h-10 w-10 text-muted-foreground hover:text-destructive" aria-label={`Delete ${f.original_name}`}><Trash2 className="h-4 w-4" /></Button>}
-                          title={`Delete ${f.original_name}?`}
-                          description="This uploaded file will be permanently removed."
-                          confirmLabel="Delete file"
-                          destructive
-                          onConfirm={() => del.mutateAsync(f.id).then(() => undefined)}
-                        />
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                          />
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              <DataPagination
+                page={page}
+                pageSize={pageSize}
+                totalItems={data.length}
+                onPageChange={setPage}
+                onPageSizeChange={setPageSize}
+                pageSizeOptions={[5, 10, 20, 50]}
+              />
+            </>
           ) : (
             <EmptyState
               icon={FileText}

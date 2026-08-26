@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { ConfirmDialog, ErrorState, LoadingSkeleton } from "@/components/shared";
+import { ConfirmDialog, ErrorState, LoadingSkeleton, DataPagination } from "@/components/shared";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import type { Organization } from "@/types";
 
@@ -89,43 +89,64 @@ function OrgMembersDialog({ organization, open, onOpenChange }: OrgMembersDialog
               onChange={(e) => setPassword(e.target.value)}
             />
           </div>
-          <Button type="submit" loading={invite.isPending} disabled={!email.trim()} className="gap-1.5">
-            <UserPlus className="h-4 w-4" /> Appoint Org Admin
+          <Button type="submit" size="sm" className="gap-1.5" loading={invite.isPending}>
+            <UserPlus className="h-4 w-4" />
+            Add Admin
           </Button>
         </form>
 
-        {/* Current Members List */}
-        <div className="mt-3 space-y-2 border-t pt-3">
-          <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Current Members</h4>
+        {/* Members List */}
+        <div className="space-y-2 pt-3 border-t border-border">
+          <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+            Current Admins ({members.data?.length ?? 0})
+          </Label>
           {members.isLoading ? (
             <LoadingSkeleton variant="table" />
-          ) : members.isError ? (
-            <ErrorState title="Unable to load members" description="Could not load member list." onRetry={() => void members.refetch()} />
-          ) : members.data?.length ? (
-            <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
-              {members.data.map((m) => (
-                <div key={m.user_id} className="flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-background/60 p-3">
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-medium">{m.email}</div>
-                    <div className="truncate text-xs text-muted-foreground">{m.display_name}</div>
+          ) : members.data && members.data.length > 0 ? (
+            <div className="divide-y divide-border rounded-md border border-border">
+              {members.data.map((m: any) => (
+                <div key={m.user_id} className="flex items-center justify-between p-3 text-sm">
+                  <div className="min-w-0 space-y-0.5">
+                    <p className="font-medium truncate">{m.email}</p>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={m.role === "platform_admin" ? "default" : "outline"} className="text-xs">
+                        {m.role}
+                      </Badge>
+                      <span className="text-xs text-muted-foreground">
+                        Joined {new Date(m.created_at).toLocaleDateString()}
+                      </span>
+                    </div>
                   </div>
+
                   <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="font-mono text-xs uppercase">{m.role}</Badge>
                     {canRemoveMember(m) ? (
                       <ConfirmDialog
                         trigger={
-                          <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-destructive" aria-label={`Remove ${m.email}`}>
-                            <Trash2 className="h-3.5 w-3.5" />
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-destructive hover:bg-destructive/10 hover:text-destructive h-8 w-8 p-0"
+                          >
+                            <Trash2 className="h-4 w-4" />
                           </Button>
                         }
-                        title={`Remove ${m.email}?`}
-                        description="This member will lose access to the organization."
-                        confirmLabel="Remove member"
+                        title="Remove Admin"
+                        description={`Remove ${m.email} from ${organization.name}?`}
+                        confirmLabel="Remove"
                         destructive
-                        onConfirm={() => remove.mutateAsync(m.user_id).then(() => undefined)}
+                        onConfirm={async () => {
+                          try {
+                            await remove.mutateAsync(m.user_id);
+                            toast.success(`Removed ${m.email}`);
+                          } catch (err: any) {
+                            toast.error(err.message || "Failed to remove member");
+                          }
+                        }}
                       />
                     ) : (
-                      <Lock className="h-4 w-4 text-muted-foreground/40" aria-label="Protected member" />
+                      <span className="text-xs text-muted-foreground italic flex items-center gap-1">
+                        <Lock className="h-3 w-3" /> Protected
+                      </span>
                     )}
                   </div>
                 </div>
@@ -148,6 +169,13 @@ export default function OrganizationsPage() {
   const [adminEmail, setAdminEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [selectedOrg, setSelectedOrg] = React.useState<Organization | null>(null);
+  const [page, setPage] = React.useState(1);
+  const [pageSize, setPageSize] = React.useState(10);
+
+  const paginatedOrgs = React.useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return (organizations.data || []).slice(start, start + pageSize);
+  }, [organizations.data, page, pageSize]);
 
   if (role !== "platform_admin") {
     return <ErrorState title="Access denied" description="Only platform administrators can manage organizations." />;
@@ -175,8 +203,8 @@ export default function OrganizationsPage() {
     <div className="space-y-6">
       <PageHeader
         icon={Building2}
-        title="Tenant Directory & Organizations"
-        description="Create, provision, and oversee multi-tenant organizations and initial tenant administrators."
+        title="Organizations"
+        description="Create, provision, and oversee tenant organizations and initial administrators."
       />
       <Card glass>
         <CardContent className="p-5">
@@ -198,29 +226,39 @@ export default function OrganizationsPage() {
         </CardContent>
       </Card>
       {organizations.isLoading ? <LoadingSkeleton variant="table" /> : organizations.isError ? <ErrorState title="Unable to load organizations" description="Organization data could not be loaded." onRetry={() => void organizations.refetch()} /> : (
-        <div className="grid gap-3 md:grid-cols-2">
-          {organizations.data?.map((organization) => (
-            <Card key={organization.id} glass>
-              <CardContent className="flex items-center justify-between gap-4 p-5">
-                <div className="min-w-0">
-                  <div className="truncate font-semibold">{organization.name}</div>
-                  <div className="truncate font-mono text-xs text-muted-foreground">{organization.slug}</div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="gap-1.5 text-xs"
-                    onClick={() => setSelectedOrg(organization)}
-                  >
-                    <Users className="h-3.5 w-3.5" />
-                    Members
-                  </Button>
-                  <Badge variant="outline">active</Badge>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+        <div className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-2">
+            {paginatedOrgs.map((organization) => (
+              <Card key={organization.id} glass>
+                <CardContent className="flex items-center justify-between gap-4 p-5">
+                  <div className="min-w-0">
+                    <div className="truncate font-semibold">{organization.name}</div>
+                    <div className="truncate font-mono text-xs text-muted-foreground">{organization.slug}</div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-1.5 text-xs"
+                      onClick={() => setSelectedOrg(organization)}
+                    >
+                      <Users className="h-3.5 w-3.5" />
+                      Members
+                    </Button>
+                    <Badge variant="outline">active</Badge>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+          <DataPagination
+            page={page}
+            pageSize={pageSize}
+            totalItems={organizations.data?.length ?? 0}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+            pageSizeOptions={[6, 10, 20, 50]}
+          />
         </div>
       )}
 

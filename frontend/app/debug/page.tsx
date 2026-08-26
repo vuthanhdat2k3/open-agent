@@ -31,7 +31,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { EmptyState, ErrorState, LoadingSkeleton } from "@/components/shared";
+import { EmptyState, ErrorState, LoadingSkeleton, DataPagination } from "@/components/shared";
 import { PageHeader } from "@/components/page-header";
 import {
   Table,
@@ -80,13 +80,30 @@ export default function UsageAndAuditLogsPage() {
     );
   }, [usage.data, usageSearch]);
 
+  const [usagePage, setUsagePage] = React.useState(1);
+  const [usagePageSize, setUsagePageSize] = React.useState(10);
+  React.useEffect(() => {
+    setUsagePage(1);
+  }, [usageSearch]);
+  const paginatedUsage = React.useMemo(() => {
+    const start = (usagePage - 1) * usagePageSize;
+    return filteredUsage.slice(start, start + usagePageSize);
+  }, [filteredUsage, usagePage, usagePageSize]);
+
+  const [sessionPage, setSessionPage] = React.useState(1);
+  const [sessionPageSize, setSessionPageSize] = React.useState(10);
+  const paginatedSessions = React.useMemo(() => {
+    const start = (sessionPage - 1) * sessionPageSize;
+    return (sessions.data ?? []).slice(start, start + sessionPageSize);
+  }, [sessions.data, sessionPage, sessionPageSize]);
+
   return (
     <div className="space-y-6">
       {/* 1. Page Header */}
       <PageHeader
         icon={Bug}
-        title="LLM Observability & Execution Traces"
-        description="Monitor live token burn, latency analytics per agent, audit message histories, and inspect distributed task execution trees."
+        title="Audit Logs"
+        description="Monitor token usage, session audit histories, and task execution trees."
         actions={
           <Button
             variant="outline"
@@ -168,7 +185,7 @@ export default function UsageAndAuditLogsPage() {
           className="gap-2 font-medium"
         >
           <BarChart3 className="h-4 w-4" />
-          Cost & Token Analytics
+          Cost Analytics
         </Button>
 
         <Button
@@ -178,7 +195,7 @@ export default function UsageAndAuditLogsPage() {
           className="gap-2 font-medium"
         >
           <MessageSquare className="h-4 w-4" />
-          Session Audit & Message Traces
+          Session Audit
         </Button>
 
         <Button
@@ -188,7 +205,7 @@ export default function UsageAndAuditLogsPage() {
           className="gap-2 font-medium"
         >
           <GitBranch className="h-4 w-4" />
-          Task Graph & Execution Tree
+          Task Graph
         </Button>
       </div>
 
@@ -220,45 +237,57 @@ export default function UsageAndAuditLogsPage() {
                 onRetry={() => void usage.refetch()}
               />
             ) : filteredUsage.length ? (
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-muted/40">
-                    <TableHead className="text-xs font-semibold">Agent Name</TableHead>
-                    <TableHead className="text-xs font-semibold">Model Provider</TableHead>
-                    <TableHead className="text-right text-xs font-semibold">Calls</TableHead>
-                    <TableHead className="text-right text-xs font-semibold">Prompt In</TableHead>
-                    <TableHead className="text-right text-xs font-semibold">Completion Out</TableHead>
-                    <TableHead className="text-right text-xs font-semibold">Total Cost</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredUsage.map((u, i) => (
-                    <TableRow key={i} className="hover:bg-muted/20 transition-colors">
-                      <TableCell className="font-medium text-xs text-foreground flex items-center gap-2">
-                        <Bot className="h-3.5 w-3.5 text-primary shrink-0" />
-                        {u.agent_name}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground text-xs font-mono">
-                        <Badge variant="outline" className="font-mono text-[10px]">
-                          {u.model_name}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums text-xs font-mono">
-                        {u.calls.toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums font-mono text-xs text-muted-foreground">
-                        {u.input_tokens.toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums font-mono text-xs text-muted-foreground">
-                        {u.output_tokens.toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums font-mono text-xs font-semibold text-emerald-500">
-                        ${u.cost_usd.toFixed(6)}
-                      </TableCell>
+              <div>
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/40">
+                      <TableHead className="text-xs font-semibold">Agent Name</TableHead>
+                      <TableHead className="text-xs font-semibold">Model Provider</TableHead>
+                      <TableHead className="text-right text-xs font-semibold">Calls</TableHead>
+                      <TableHead className="text-right text-xs font-semibold">Prompt In</TableHead>
+                      <TableHead className="text-right text-xs font-semibold">Completion Out</TableHead>
+                      <TableHead className="text-right text-xs font-semibold">Total Cost</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {paginatedUsage.map((u, i) => (
+                      <TableRow key={i} className="hover:bg-muted/20 transition-colors">
+                        <TableCell className="font-medium text-xs text-foreground flex items-center gap-2">
+                          <Bot className="h-3.5 w-3.5 text-primary shrink-0" />
+                          {u.agent_name}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground text-xs font-mono">
+                          <Badge variant="outline" className="font-mono text-[10px]">
+                            {u.model_name}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums text-xs font-mono">
+                          {u.calls.toLocaleString()}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums font-mono text-xs text-muted-foreground">
+                          {u.input_tokens.toLocaleString()}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums font-mono text-xs text-muted-foreground">
+                          {u.output_tokens.toLocaleString()}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums font-mono text-xs font-semibold text-emerald-500">
+                          ${u.cost_usd.toFixed(6)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+                <div className="p-3 border-t border-border/60">
+                  <DataPagination
+                    page={usagePage}
+                    pageSize={usagePageSize}
+                    totalItems={filteredUsage.length}
+                    onPageChange={setUsagePage}
+                    onPageSizeChange={setUsagePageSize}
+                    pageSizeOptions={[5, 10, 25, 50]}
+                  />
+                </div>
+              </div>
             ) : (
               <EmptyState
                 icon={BarChart3}
@@ -283,7 +312,7 @@ export default function UsageAndAuditLogsPage() {
                 Inspect raw prompt messages and tool calls for any chat conversation.
               </CardDescription>
             </CardHeader>
-            <CardContent className="p-3 flex-1">
+            <CardContent className="p-3 flex-1 flex flex-col justify-between">
               {sessions.isLoading ? (
                 <LoadingSkeleton variant="table" />
               ) : sessions.isError ? (
@@ -293,29 +322,39 @@ export default function UsageAndAuditLogsPage() {
                   onRetry={() => void sessions.refetch()}
                 />
               ) : sessions.data?.length ? (
-                <div className="space-y-1.5 max-h-[60vh] overflow-y-auto pr-1">
-                  {sessions.data.map((s) => {
-                    const isSelected = selSession === s.id;
-                    return (
-                      <button
-                        key={s.id}
-                        type="button"
-                        onClick={() => setSelSession(s.id)}
-                        className={`w-full text-left rounded-lg p-3 transition-all flex flex-col gap-1 border ${
-                          isSelected
-                            ? "border-primary bg-primary/10 text-foreground shadow-sm"
-                            : "border-border/60 hover:bg-muted/40 text-muted-foreground"
-                        }`}
-                      >
-                        <p className={`text-xs font-semibold truncate ${isSelected ? "text-primary" : "text-foreground"}`}>
-                          {s.title || "Untitled Conversation"}
-                        </p>
-                        <p className="font-mono text-[10px] text-muted-foreground truncate">
-                          ID: {s.id}
-                        </p>
-                      </button>
-                    );
-                  })}
+                <div className="space-y-3">
+                  <div className="space-y-1.5 max-h-[50vh] overflow-y-auto pr-1">
+                    {paginatedSessions.map((s) => {
+                      const isSelected = selSession === s.id;
+                      return (
+                        <button
+                          key={s.id}
+                          type="button"
+                          onClick={() => setSelSession(s.id)}
+                          className={`w-full text-left rounded-lg p-3 transition-all flex flex-col gap-1 border ${
+                            isSelected
+                              ? "border-primary bg-primary/10 text-foreground shadow-sm"
+                              : "border-border/60 hover:bg-muted/40 text-muted-foreground"
+                          }`}
+                        >
+                          <p className={`text-xs font-semibold truncate ${isSelected ? "text-primary" : "text-foreground"}`}>
+                            {s.title || "Untitled Conversation"}
+                          </p>
+                          <p className="font-mono text-[10px] text-muted-foreground truncate">
+                            ID: {s.id}
+                          </p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <DataPagination
+                    page={sessionPage}
+                    pageSize={sessionPageSize}
+                    totalItems={sessions.data.length}
+                    onPageChange={setSessionPage}
+                    onPageSizeChange={setSessionPageSize}
+                    pageSizeOptions={[5, 10, 20]}
+                  />
                 </div>
               ) : (
                 <EmptyState icon={MessageSquare} title="No recorded sessions" />

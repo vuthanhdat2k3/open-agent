@@ -25,67 +25,67 @@ export interface NavGroup {
 }
 
 // Tailored navigation per role persona:
-// - platform_admin: Multi-tenant Platform & Tenant Provisioning (Organizations)
-// - org_admin (admin): Tenant Administration (Members, Providers, Quotas, Knowledge Base, Usage Logs, Email Ops)
-// - operator: AI Studio & Builder (Agent Studio, Workflow Builder, MCP, Knowledge Base, Workspace, Evaluations, Approvals)
-// - user: End-user Consumer (Chat Assistant with 📎 attachments, Run Workflow, Smart Inbox, Automations, Research Cases, My Approvals)
+// - platform_admin: Organizations (Tenant Provisioning)
+// - org_admin (admin): Administration (Members, Quotas, Email Gateway, Audit Logs)
+// - operator: AI Studio & Observability (Agents, Providers, Workflows, MCP Servers, Knowledge Base, Traces, Sandbox, Evaluations, Approvals)
+// - user: Workspace (Chat, Run Workflow, Integrations, Email Intelligence, Automations, Customer Intelligence, Approvals)
 export const navGroups: NavGroup[] = [
   // --- Platform Admin ---
   {
-    title: "Platform Administration",
+    title: "Platform Admin",
     roles: ["platform_admin"],
     items: [
-      { href: "/organizations", label: "Tenant Directory & Organizations", icon: Users, roles: ["platform_admin"], platformOnly: true },
+      { href: "/organizations", label: "Organizations", icon: Users, roles: ["platform_admin"], platformOnly: true },
     ],
   },
 
   // --- Organization Admin (Members, Quotas, System Governance, Email Ops) ---
   {
-    title: "Organization & Governance",
+    title: "Administration",
     roles: ["admin", "org_admin"],
     items: [
-      { href: "/settings/members", label: "Identity & Access Management (IAM)", icon: Users, roles: ["admin", "org_admin"], permission: "orgs:manage" },
-      { href: "/settings/quotas", label: "Resource & Budget Governance", icon: Gauge, roles: ["admin", "org_admin"], permission: "quota:usage" },
-      { href: "/admin/email-intelligence", label: "Email Gateway & Security Operations", icon: SlidersHorizontal, roles: ["admin", "org_admin"], permission: "admin:email-intelligence" },
-      { href: "/debug", label: "Enterprise Audit & Compliance Logs", icon: Bug, roles: ["admin", "org_admin"], permission: "orgs:manage" },
+      { href: "/settings/members", label: "Members", icon: Users, roles: ["admin", "org_admin"], permission: "orgs:manage" },
+      { href: "/settings/quotas", label: "Quotas", icon: Gauge, roles: ["admin", "org_admin"], permission: "quota:usage" },
+      { href: "/admin/email-intelligence", label: "Email Gateway", icon: SlidersHorizontal, roles: ["admin", "org_admin"], permission: "admin:email-intelligence" },
+      { href: "/debug", label: "Audit Logs", icon: Bug, roles: ["admin", "org_admin"], permission: "orgs:manage" },
     ],
   },
 
   // --- Operator (AI Engineer / AI Operations Stack) ---
   {
-    title: "AI Studio & Engineering",
+    title: "AI Studio",
     roles: ["operator"],
     items: [
-      { href: "/agents", label: "Agent Studio & Persona Catalog", icon: Bot, roles: ["operator"], permission: "agents:read" },
-      { href: "/providers", label: "LLM Gateway & Model Benchmarks", icon: Server, roles: ["operator"], permission: "providers:read" },
-      { href: "/workflows", label: "Multi-Agent Workflow Orchestrator", icon: Workflow, roles: ["operator"], permission: "workflows:read" },
-      { href: "/mcp", label: "Tool Registry & MCP Integrations", icon: Plug, roles: ["operator"], permission: "mcp:read" },
-      { href: "/files", label: "Enterprise Knowledge Base (RAG)", icon: FolderKanban, roles: ["operator"], permission: "files:read" },
+      { href: "/agents", label: "Agents", icon: Bot, roles: ["operator"], permission: "agents:read" },
+      { href: "/providers", label: "Providers", icon: Server, roles: ["operator"], permission: "providers:read" },
+      { href: "/workflows", label: "Workflows", icon: Workflow, roles: ["operator"], permission: "workflows:read" },
+      { href: "/mcp", label: "MCP Servers", icon: Plug, roles: ["operator"], permission: "mcp:read" },
+      { href: "/files", label: "Knowledge Base", icon: FolderKanban, roles: ["operator"], permission: "files:read" },
     ],
   },
   {
-    title: "Testing & Observability",
+    title: "Observability",
     roles: ["operator"],
     items: [
-      { href: "/debug", label: "LLM Observability & Execution Traces", icon: Bug, roles: ["operator"], permission: "usage:read" },
-      { href: "/workspace", label: "Code Execution Sandbox", icon: FolderKanban, roles: ["operator"], permission: "files:read" },
-      { href: "/evaluations", label: "Model Quality & Agent Evaluations", icon: FlaskConical, roles: ["operator"], permission: "evaluations:read" },
-      { href: "/approvals", label: "Technical Action Approvals", icon: ShieldCheck, roles: ["operator"], permission: "approvals:read" },
+      { href: "/debug", label: "Traces", icon: Bug, roles: ["operator"], permission: "usage:read" },
+      { href: "/workspace", label: "Sandbox", icon: FolderKanban, roles: ["operator"], permission: "files:read" },
+      { href: "/evaluations", label: "Evaluations", icon: FlaskConical, roles: ["operator"], permission: "evaluations:read" },
+      { href: "/approvals", label: "Approvals", icon: ShieldCheck, roles: ["operator"], permission: "approvals:read" },
     ],
   },
 
   // --- User (Business Consumer / End-User) ---
   {
-    title: "AI Workplace",
+    title: "Workspace",
     roles: ["user"],
     items: [
-      { href: "/chat", label: "Executive Copilot & Assistant", icon: MessageSquare, roles: ["user"] },
-      { href: "/run-workflow", label: "Workflow Execution Center", icon: PlayCircle, roles: ["user"], permission: "workflows:run" },
-      { href: "/integrations", label: "Connected Accounts & OAuth", icon: Plug, roles: ["user"], permission: "ci:personal:manage" },
-      { href: "/email-intelligence", label: "Smart Inbox & Email Triage", icon: Bell, roles: ["user"], permission: "ci:personal:manage" },
-      { href: "/automations", label: "Automated Routines & Schedules", icon: Zap, roles: ["user"], permission: "workflows:read" },
-      { href: "/customer-intelligence", label: "Client Dossiers & Briefings", icon: Building2, roles: ["user"], permission: "ci:read" },
-      { href: "/approvals", label: "Action Approvals & Usage Quota", icon: ShieldCheck, roles: ["user"], permission: "approvals:read" },
+      { href: "/chat", label: "Chat", icon: MessageSquare, roles: ["user"] },
+      { href: "/run-workflow", label: "Run Workflow", icon: PlayCircle, roles: ["user"], permission: "workflows:run" },
+      { href: "/integrations", label: "Integrations", icon: Plug, roles: ["user"], permission: "ci:personal:manage" },
+      { href: "/email-intelligence", label: "Email Intelligence", icon: Bell, roles: ["user"], permission: "ci:personal:manage" },
+      { href: "/automations", label: "Automations", icon: Zap, roles: ["user"], permission: "workflows:read" },
+      { href: "/customer-intelligence", label: "Customer Intelligence", icon: Building2, roles: ["user"], permission: "ci:read" },
+      { href: "/approvals", label: "Approvals", icon: ShieldCheck, roles: ["user"], permission: "approvals:read" },
     ],
   },
 ];

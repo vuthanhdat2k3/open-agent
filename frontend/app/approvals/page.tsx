@@ -30,7 +30,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { EmptyState, ErrorState, LoadingSkeleton, ConfirmDialog } from "@/components/shared";
+import { EmptyState, ErrorState, LoadingSkeleton, ConfirmDialog, DataPagination } from "@/components/shared";
 import { approvalTitle } from "@/components/layout/approval-bell";
 import { getActiveOrgId } from "@/lib/auth";
 
@@ -102,19 +102,34 @@ export default function ApprovalsPage() {
   const [tabParam, setTabParam] = useUrlSearchParam("tab");
   const activeTab = (tabParam as "approvals" | "quota") || "approvals";
 
+  const searchParams = useSearchParams();
+  const highlightId = searchParams.get("id") || searchParams.get("approval_id");
+  const role = useCurrentRole();
   const me = useMe();
-  const orgId = getActiveOrgId() || me.data?.memberships?.[0]?.org_id;
+  const isUserRole = role === "user";
+  const orgId = me.data?.active_org_id || getActiveOrgId() || me.data?.memberships?.[0]?.org_id;
+
   const approvals = useApprovals();
   const usage = useQuotaUsage(orgId);
   const decide = useDecideApproval();
-  const role = useCurrentRole();
-  const searchParams = useSearchParams();
   const [selected, setSelected] = React.useState<ApprovalRequest | null>(null);
-  const pendingId = searchParams.get("approval_id");
+
+  const items = approvals.data ?? [];
+  const urgent = items.filter((item) => item.risk_level === "HIGH").length;
+
+  const [page, setPage] = React.useState(1);
+  const [pageSize, setPageSize] = React.useState(5);
+
+  const paginatedItems = React.useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return items.slice(start, start + pageSize);
+  }, [items, page, pageSize]);
 
   React.useEffect(() => {
-    if (pendingId && approvals.data) setSelected(approvals.data.find((item) => item.id === pendingId) ?? null);
-  }, [approvals.data, pendingId]);
+    if (highlightId && items.length) {
+      setSelected(items.find((item) => item.id === highlightId) ?? null);
+    }
+  }, [items, highlightId]);
 
   async function submit(id: string, decision: "approved" | "rejected") {
     try {
@@ -128,21 +143,13 @@ export default function ApprovalsPage() {
     }
   }
 
-  const items = approvals.data ?? [];
-  const urgent = items.filter((item) => item.risk_level === "HIGH").length;
-  const isUserRole = role === "user";
-
   return (
     <div className="space-y-6">
       {/* 1. Page Header */}
       <PageHeader
         icon={ShieldCheck}
-        title={isUserRole ? "Action Approvals & Usage Quota" : "Technical Action Approvals"}
-        description={
-          isUserRole
-            ? "Review pending AI actions, dispatches, and monitor your personal/organization consumption limits."
-            : "Review and govern high-risk automated agent tool executions and dispatch policies across the organization."
-        }
+        title="Approvals"
+        description="Review and govern high-risk automated actions and dispatch requests."
         actions={
           <Button
             variant="outline"
@@ -218,7 +225,7 @@ export default function ApprovalsPage() {
           className="gap-2 font-medium"
         >
           <ShieldCheck className="h-4 w-4" />
-          Pending Approvals
+          Approvals
           <Badge variant={urgent > 0 ? "destructive" : "outline"} className="ml-1 text-[10px] font-mono">
             {items.length}
           </Badge>
@@ -231,7 +238,7 @@ export default function ApprovalsPage() {
           className="gap-2 font-medium"
         >
           <Gauge className="h-4 w-4" />
-          Monthly Quota & Usage
+          Usage
         </Button>
       </div>
 
@@ -247,15 +254,25 @@ export default function ApprovalsPage() {
               onRetry={() => void approvals.refetch()}
             />
           ) : items.length ? (
-            <div className="space-y-3" aria-label="Pending approvals">
-              {items.map((approval) => (
-                <ApprovalCard
-                  key={approval.id}
-                  approval={approval}
-                  onOpen={() => setSelected(approval)}
-                  onSubmit={(decision) => submit(approval.id, decision)}
-                />
-              ))}
+            <div className="space-y-4">
+              <div className="space-y-3" aria-label="Pending approvals">
+                {paginatedItems.map((approval) => (
+                  <ApprovalCard
+                    key={approval.id}
+                    approval={approval}
+                    onOpen={() => setSelected(approval)}
+                    onSubmit={(decision) => submit(approval.id, decision)}
+                  />
+                ))}
+              </div>
+              <DataPagination
+                page={page}
+                pageSize={pageSize}
+                totalItems={items.length}
+                onPageChange={setPage}
+                onPageSizeChange={setPageSize}
+                pageSizeOptions={[3, 5, 10, 20]}
+              />
             </div>
           ) : (
             <EmptyState

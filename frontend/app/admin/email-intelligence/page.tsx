@@ -44,8 +44,8 @@ export default function EmailOperationsPage() {
     <div className="space-y-6">
       <PageHeader
         icon={Activity}
-        title="Email Gateway & Security Operations"
-        description="Operational health signals, dead-letter triage, queue metrics, and sanitized trace explorer for organization email pipelines."
+        title="Email Gateway"
+        description="Operational health signals, dead-letter triage, and trace explorer for email pipelines."
       />
       <div className="grid gap-4 md:grid-cols-4">
         <Metric icon={Database} label="Connections" value={`${data.connections.healthy}/${data.connections.total}`} detail={data.connections.unhealthy ? `${data.connections.unhealthy} unhealthy` : "Healthy"} danger={data.connections.unhealthy > 0} />
@@ -54,7 +54,7 @@ export default function EmailOperationsPage() {
         <Metric icon={Timer} label="Scheduler" value={data.scheduler.healthy ? "Healthy" : "Degraded"} detail={`${data.scheduler.missed_occurrences} missed occurrences`} danger={!data.scheduler.healthy} />
       </div>
       <div className="flex flex-wrap gap-2" role="tablist" aria-label="Admin operations sections">
-        {[["overview", "Overview"], ["queue", "Queue & Dead-letter"], ["schedulers", "Schedulers"], ["reviews", "Reviews"], ["traces", "Trace Explorer"]].map(([value, label]) => <Button key={value} size="sm" variant={tab === value ? "default" : "outline"} onClick={() => setTab(value)} role="tab" aria-selected={tab === value}>{label}</Button>)}
+        {[["overview", "Overview"], ["queue", "Queue"], ["schedulers", "Schedulers"], ["reviews", "Reviews"], ["traces", "Traces"]].map(([value, label]) => <Button key={value} size="sm" variant={tab === value ? "default" : "outline"} onClick={() => setTab(value)} role="tab" aria-selected={tab === value}>{label}</Button>)}
       </div>
       {tab === "overview" && <Card><CardHeader><CardTitle>Operational guardrails</CardTitle></CardHeader><CardContent className="space-y-2 text-sm text-muted-foreground"><p>Admin actions remain capability-gated and read-only until the corresponding backend policy is enabled.</p><p>Use correlation IDs to inspect a sanitized lifecycle trace. No provider payloads or secrets are rendered here.</p></CardContent></Card>}
       {tab !== "overview" && tab !== "traces" && (resource.isLoading ? <LoadingSkeleton variant="table" /> : resource.isError ? <ErrorState title="Unable to load resource" description="Retry the operation query." onRetry={() => void resource.refetch()} /> : <OperationsTable rows={resource.data || []} />)}
