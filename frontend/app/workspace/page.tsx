@@ -3,40 +3,29 @@
 import * as React from "react";
 import { toast } from "sonner";
 import {
-  Code2,
-  Download,
-  Eye,
-  FileCode2,
   FolderKanban,
-  Play,
-  RefreshCw,
+  FileCode2,
   TerminalSquare,
+  Play,
+  Download,
   Trash2,
+  Eye,
+  RefreshCw,
+  Code2,
+  Layers,
 } from "lucide-react";
 import {
-  useDeleteSandboxExecution,
-  useDeleteWorkspaceArtifact,
-  useCurrentRole,
-  useRunWorkspaceArtifact,
-  useSandboxExecutions,
   useWorkspaceArtifacts,
+  useSandboxExecutions,
+  useRunWorkspaceArtifact,
+  useDeleteWorkspaceArtifact,
+  useDeleteSandboxExecution,
+  useUrlSearchParam,
+  useCurrentRole,
 } from "@/hooks";
-import { getAccessToken } from "@/lib/auth";
-import type { SandboxExecution, WorkspaceArtifact } from "@/types";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { EmptyState } from "@/components/empty-state";
-import { ConfirmDialog, ErrorState, LoadingSkeleton, DataPagination } from "@/components/shared";
-import { PageHeader } from "@/components/page-header";
-import { useTranslation } from "@/lib/i18n";
+import { Badge } from "@/components/ui/badge";
 import {
   Table,
   TableBody,
@@ -45,111 +34,119 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { PageHeader } from "@/components/page-header";
+import { EmptyState, ErrorState, LoadingSkeleton, DataPagination, ConfirmDialog } from "@/components/shared";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { useTranslation } from "@/lib/i18n";
+import type { WorkspaceArtifact, SandboxExecution } from "@/types";
 
-function formatBytes(bytes: number) {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return "0 B";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
 }
 
-function formatMs(ms: number | null) {
-  if (ms == null) return "running";
-  if (ms < 1000) return `${ms} ms`;
-  return `${(ms / 1000).toFixed(2)} s`;
+function formatMs(ms: number | null): string {
+  if (ms == null) return "—";
+  if (ms < 1000) return `${ms}ms`;
+  return `${(ms / 1000).toFixed(2)}s`;
 }
 
-const executionVariant: Record<string, "secondary" | "warning" | "success" | "destructive"> = {
+const executionVariant: Record<string, "default" | "secondary" | "destructive" | "outline" | "success" | "warning"> = {
+  succeeded: "success",
+  failed: "destructive",
   running: "warning",
-  success: "success",
-  error: "destructive",
-  timeout: "destructive",
+  queued: "secondary",
 };
-
-function isRunnableArtifact(path: string) {
-  return /\.(py|sh)$/i.test(path);
-}
-
-function isRenderableArtifact(path: string) {
-  return /\.(html?|svg)$/i.test(path);
-}
-
-async function fetchText(url: string) {
-  const token = getAccessToken();
-  const res = await fetch(url, {
-    credentials: "include",
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.text();
-}
-
-async function downloadArtifact(artifact: WorkspaceArtifact) {
-  const token = getAccessToken();
-  const res = await fetch(`/api/workspace/artifacts/${artifact.id}/download`, {
-    credentials: "include",
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-  });
-  if (!res.ok) throw new Error(`download failed: ${res.status}`);
-  const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = artifact.path.split("/").pop() || "artifact";
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
-}
 
 export default function WorkspacePage() {
   const { t, dict, locale } = useTranslation();
-  const isAdmin = useCurrentRole() === "admin";
+  const [tabParam, setTabParam] = useUrlSearchParam("tab");
+  const activeTab = (tabParam as "artifacts" | "executions") || "artifacts";
+
   const artifacts = useWorkspaceArtifacts();
   const executions = useSandboxExecutions();
-  const deleteArtifact = useDeleteWorkspaceArtifact();
   const runArtifact = useRunWorkspaceArtifact();
+  const deleteArtifact = useDeleteWorkspaceArtifact();
   const deleteExecution = useDeleteSandboxExecution();
-  const [previewTitle, setPreviewTitle] = React.useState("");
-  const [previewPath, setPreviewPath] = React.useState("");
-  const [previewContent, setPreviewContent] = React.useState<string | null>(null);
-  const [previewOpen, setPreviewOpen] = React.useState(false);
+  const role = useCurrentRole();
+  const isAdmin = role === "admin" || role === "platform_admin";
 
+  const [previewArtifact, setPreviewArtifact] = React.useState<WorkspaceArtifact | null>(null);
+  const [previewContent, setPreviewContent] = React.useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = React.useState(false);
+
+  const [viewExecution, setViewExecution] = React.useState<SandboxExecution | null>(null);
+
+  // Pagination states
   const [artifactPage, setArtifactPage] = React.useState(1);
   const [artifactPageSize, setArtifactPageSize] = React.useState(10);
   const paginatedArtifacts = React.useMemo(() => {
     const start = (artifactPage - 1) * artifactPageSize;
-    return (artifacts.data || []).slice(start, start + artifactPageSize);
+    return (artifacts.data ?? []).slice(start, start + artifactPageSize);
   }, [artifacts.data, artifactPage, artifactPageSize]);
 
   const [executionPage, setExecutionPage] = React.useState(1);
   const [executionPageSize, setExecutionPageSize] = React.useState(10);
   const paginatedExecutions = React.useMemo(() => {
     const start = (executionPage - 1) * executionPageSize;
-    return (executions.data || []).slice(start, start + executionPageSize);
+    return (executions.data ?? []).slice(start, start + executionPageSize);
   }, [executions.data, executionPage, executionPageSize]);
 
   async function openArtifact(artifact: WorkspaceArtifact) {
+    setPreviewArtifact(artifact);
+    setPreviewLoading(true);
     try {
-      setPreviewTitle(artifact.path);
-      setPreviewPath(artifact.path);
-      setPreviewContent(await fetchText(`/api/workspace/artifacts/${artifact.id}/content`));
-      setPreviewOpen(true);
-    } catch (err: any) {
-      toast.error(err.message);
+      const res = await fetch(`/api/workspace/artifacts/${artifact.id}/content`);
+      if (!res.ok) throw new Error("Failed to load content");
+      const text = await res.text();
+      setPreviewContent(text);
+    } catch {
+      setPreviewContent(locale === "vi" ? "Không thể tải nội dung tệp tin." : "Unable to load artifact content.");
+    } finally {
+      setPreviewLoading(false);
     }
   }
 
+  async function downloadArtifact(artifact: WorkspaceArtifact) {
+    const res = await fetch(`/api/workspace/artifacts/${artifact.id}/content`);
+    if (!res.ok) throw new Error("Download failed");
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = artifact.path.split("/").pop() || "artifact";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
   function openExecution(execution: SandboxExecution) {
-    setPreviewTitle(`${execution.source} ${execution.status}`);
-    setPreviewPath("");
-    setPreviewContent(execution.stdout_preview || execution.error || "(no output)");
-    setPreviewOpen(true);
+    setViewExecution(execution);
+  }
+
+  function isRunnableArtifact(path: string): boolean {
+    const lower = path.toLowerCase();
+    return (
+      lower.endsWith(".py") ||
+      lower.endsWith(".sh") ||
+      lower.endsWith(".js") ||
+      lower.endsWith(".ts")
+    );
   }
 
   async function runWorkspaceArtifact(artifact: WorkspaceArtifact) {
     try {
       await runArtifact.mutateAsync(artifact.id);
-      toast.success(`Started ${artifact.path}`);
+      toast.success(locale === "vi" ? `Đã khởi chạy ${artifact.path}` : `Started ${artifact.path}`);
     } catch (err: any) {
       toast.error(err.message);
     }
@@ -160,47 +157,77 @@ export default function WorkspacePage() {
       <PageHeader
         icon={FolderKanban}
         title={dict.pages.workspace.title}
-        description="Inspect agent artifacts, execution logs, and run isolated sandbox containers."
+        description={dict.pages.workspace.description}
         actions={
           <Button
             variant="outline"
             className="gap-2"
             onClick={() => {
-              artifacts.refetch();
-              executions.refetch();
+              void artifacts.refetch();
+              void executions.refetch();
             }}
           >
             <RefreshCw className="h-4 w-4" />
-            Refresh
+            {locale === "vi" ? "Làm mới" : "Refresh"}
           </Button>
         }
       />
 
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(420px,0.8fr)]">
-        <Card glass className="overflow-hidden shadow-3d-card">
-          <CardHeader className="flex flex-row items-center gap-3 border-b border-border/60 bg-muted/20">
-            <FileCode2 className="h-4 w-4 text-primary" />
-            <CardTitle className="text-sm font-semibold">Artifacts</CardTitle>
-          </CardHeader>
+      {/* Segmented Navigation Tabs */}
+      <div className="flex gap-2 border-b border-border/70 pb-2">
+        <Button
+          type="button"
+          variant={activeTab === "artifacts" ? "secondary" : "ghost"}
+          onClick={() => setTabParam("artifacts")}
+          className="gap-2 font-medium"
+        >
+          <FileCode2 className="h-4 w-4 text-primary" />
+          {locale === "vi" ? "Tệp Artifacts" : "Artifacts"} ({artifacts.data?.length ?? 0})
+        </Button>
+
+        <Button
+          type="button"
+          variant={activeTab === "executions" ? "secondary" : "ghost"}
+          onClick={() => setTabParam("executions")}
+          className="gap-2 font-medium"
+        >
+          <TerminalSquare className="h-4 w-4 text-primary" />
+          {locale === "vi" ? "Lịch sử Thực thi Sandbox" : "Sandbox Executions"} ({executions.data?.length ?? 0})
+        </Button>
+      </div>
+
+      {/* Tab 1: Artifacts Table */}
+      {activeTab === "artifacts" && (
+        <Card glass className="overflow-hidden shadow-card border-border/80">
           <CardContent className="p-0">
-            {artifacts.isLoading ? <div className="p-6"><LoadingSkeleton variant="table" /></div> : artifacts.isError ? <div className="p-6"><ErrorState title="Unable to load artifacts" description="Workspace artifacts could not be loaded." onRetry={() => void artifacts.refetch()} /></div> : artifacts.data?.length ? (
-              <div className="space-y-2">
+            {artifacts.isLoading ? (
+              <div className="p-6"><LoadingSkeleton variant="table" /></div>
+            ) : artifacts.isError ? (
+              <div className="p-6">
+                <ErrorState
+                  title={locale === "vi" ? "Không thể tải artifacts" : "Unable to load artifacts"}
+                  description={locale === "vi" ? "Dữ liệu artifacts không khả dụng." : "Workspace artifacts could not be loaded."}
+                  onRetry={() => void artifacts.refetch()}
+                />
+              </div>
+            ) : artifacts.data?.length ? (
+              <div>
                 <Table>
                   <TableHeader>
-                    <TableRow>
-                      <TableHead>Path</TableHead>
-                      <TableHead>Size</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Updated</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
+                    <TableRow className="bg-muted/40">
+                      <TableHead className="text-xs font-semibold">{locale === "vi" ? "Đường dẫn tệp" : "Path"}</TableHead>
+                      <TableHead className="text-xs font-semibold">{locale === "vi" ? "Kích thước" : "Size"}</TableHead>
+                      <TableHead className="text-xs font-semibold">{locale === "vi" ? "Trạng thái" : "Status"}</TableHead>
+                      <TableHead className="text-xs font-semibold">{locale === "vi" ? "Cập nhật" : "Updated"}</TableHead>
+                      <TableHead className="text-right text-xs font-semibold">{locale === "vi" ? "Thao tác" : "Actions"}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {paginatedArtifacts.map((artifact) => (
-                      <TableRow key={artifact.id}>
-                        <TableCell className="max-w-[280px] truncate font-medium text-foreground">
+                      <TableRow key={artifact.id} className="hover:bg-muted/20 transition-colors">
+                        <TableCell className="max-w-[320px] truncate font-medium text-foreground text-xs">
                           <div className="flex items-center gap-2">
-                            <Code2 className="h-4 w-4 text-muted-foreground" />
+                            <Code2 className="h-4 w-4 text-muted-foreground shrink-0" />
                             <span className="truncate">{artifact.path}</span>
                           </div>
                         </TableCell>
@@ -209,11 +236,11 @@ export default function WorkspacePage() {
                         </TableCell>
                         <TableCell>
                           <Badge variant={artifact.exists ? "default" : "secondary"} className="text-[10px]">
-                            {artifact.exists ? "stored" : "missing"}
+                            {artifact.exists ? (locale === "vi" ? "Đã lưu" : "stored") : (locale === "vi" ? "Thất lạc" : "missing")}
                           </Badge>
                         </TableCell>
                         <TableCell className="text-muted-foreground font-mono text-xs">
-                          {new Date(artifact.updated_at).toLocaleString()}
+                          {new Date(artifact.updated_at).toLocaleString(locale === "vi" ? "vi-VN" : "en-US")}
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-1.5">
@@ -221,12 +248,12 @@ export default function WorkspacePage() {
                               <Button
                                 size="icon"
                                 variant="ghost"
-                                className="h-10 w-10"
+                                className="h-8 w-8"
                                 disabled={!artifact.exists || runArtifact.isPending}
                                 aria-label={`Run ${artifact.path}`}
                                 onClick={() => runWorkspaceArtifact(artifact)}
                               >
-                                <Play className="h-4 w-4" />
+                                <Play className="h-3.5 w-3.5" />
                               </Button>
                             )}
                             {(() => {
@@ -236,16 +263,22 @@ export default function WorkspacePage() {
                                 <Button
                                   size="icon"
                                   variant="ghost"
-                                  className="h-10 w-10"
+                                  className="h-8 w-8"
                                   disabled={!artifact.exists || !canPreview}
                                   aria-label={`Preview ${artifact.path}`}
                                   onClick={() => openArtifact(artifact)}
                                 >
-                                  <Eye className="h-4 w-4" />
+                                  <Eye className="h-3.5 w-3.5" />
                                 </Button>
                               );
                             })()}
-                            <Button size="icon" variant="ghost" className="h-10 w-10" disabled={!artifact.exists} aria-label={`Download ${artifact.path}`} onClick={async () => {
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-8 w-8"
+                              disabled={!artifact.exists}
+                              aria-label={`Download ${artifact.path}`}
+                              onClick={async () => {
                                 try {
                                   await downloadArtifact(artifact);
                                 } catch (err: any) {
@@ -253,16 +286,18 @@ export default function WorkspacePage() {
                                 }
                               }}
                             >
-                              <Download className="h-4 w-4" />
+                              <Download className="h-3.5 w-3.5" />
                             </Button>
-                            {isAdmin && <ConfirmDialog
-                              trigger={<Button size="icon" variant="ghost" className="h-10 w-10 text-muted-foreground hover:text-destructive" aria-label={`Delete ${artifact.path}`}><Trash2 className="h-4 w-4" /></Button>}
-                              title={`Delete ${artifact.path}?`}
-                              description="This workspace artifact will be permanently removed."
-                              confirmLabel="Delete artifact"
-                              destructive
-                              onConfirm={() => deleteArtifact.mutateAsync(artifact.id).then(() => undefined)}
-                            />}
+                            {isAdmin && (
+                              <ConfirmDialog
+                                trigger={<Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-destructive" aria-label={`Delete ${artifact.path}`}><Trash2 className="h-3.5 w-3.5" /></Button>}
+                                title={locale === "vi" ? `Xóa ${artifact.path}?` : `Delete ${artifact.path}?`}
+                                description={locale === "vi" ? "Tệp workspace này sẽ bị xóa vĩnh viễn khỏi sandbox." : "This workspace artifact will be permanently removed."}
+                                confirmLabel={locale === "vi" ? "Xóa tệp" : "Delete artifact"}
+                                destructive
+                                onConfirm={() => deleteArtifact.mutateAsync(artifact.id).then(() => undefined)}
+                              />
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -276,40 +311,49 @@ export default function WorkspacePage() {
                     totalItems={artifacts.data.length}
                     onPageChange={setArtifactPage}
                     onPageSizeChange={setArtifactPageSize}
-                    pageSizeOptions={[5, 10, 20]}
+                    pageSizeOptions={[5, 10, 25, 50]}
                   />
                 </div>
               </div>
             ) : (
               <EmptyState
                 icon={FileCode2}
-                title="No artifacts yet"
-                description="Ask an agent to write a file with write_file."
+                title={locale === "vi" ? "Chưa có artifact nào" : "No artifacts yet"}
+                description={locale === "vi" ? "Yêu cầu Agent viết tệp hoặc chạy tác vụ để sinh artifacts." : "Ask an agent to write a file with write_file."}
               />
             )}
           </CardContent>
         </Card>
+      )}
 
-        <Card glass className="overflow-hidden shadow-3d-card">
-          <CardHeader className="flex flex-row items-center gap-3 border-b border-border/60 bg-muted/20">
-            <TerminalSquare className="h-4 w-4 text-primary" />
-            <CardTitle className="text-sm font-semibold">Executions</CardTitle>
-          </CardHeader>
+      {/* Tab 2: Executions Table */}
+      {activeTab === "executions" && (
+        <Card glass className="overflow-hidden shadow-card border-border/80">
           <CardContent className="p-0">
-            {executions.isLoading ? <div className="p-6"><LoadingSkeleton variant="table" /></div> : executions.isError ? <div className="p-6"><ErrorState title="Unable to load executions" description="Sandbox execution history could not be loaded." onRetry={() => void executions.refetch()} /></div> : executions.data?.length ? (
-              <div className="space-y-2">
+            {executions.isLoading ? (
+              <div className="p-6"><LoadingSkeleton variant="table" /></div>
+            ) : executions.isError ? (
+              <div className="p-6">
+                <ErrorState
+                  title={locale === "vi" ? "Không thể tải lịch sử thực thi" : "Unable to load executions"}
+                  description={locale === "vi" ? "Lịch sử sandbox không khả dụng." : "Sandbox execution history could not be loaded."}
+                  onRetry={() => void executions.refetch()}
+                />
+              </div>
+            ) : executions.data?.length ? (
+              <div>
                 <Table>
                   <TableHeader>
-                    <TableRow>
-                      <TableHead>Run</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Time</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
+                    <TableRow className="bg-muted/40">
+                      <TableHead className="text-xs font-semibold">{locale === "vi" ? "Tác vụ / Lệnh" : "Run"}</TableHead>
+                      <TableHead className="text-xs font-semibold">{locale === "vi" ? "Trạng thái" : "Status"}</TableHead>
+                      <TableHead className="text-right text-xs font-semibold">{locale === "vi" ? "Thời gian" : "Time"}</TableHead>
+                      <TableHead className="text-right text-xs font-semibold">{locale === "vi" ? "Thao tác" : "Actions"}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {paginatedExecutions.map((execution) => (
-                      <TableRow key={execution.id}>
+                      <TableRow key={execution.id} className="hover:bg-muted/20 transition-colors">
                         <TableCell>
                           <div className="flex min-w-0 items-center gap-2">
                             <Code2 className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -332,19 +376,27 @@ export default function WorkspacePage() {
                         <TableCell className="text-right font-mono text-xs text-muted-foreground">
                           {formatMs(execution.duration_ms)}
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="text-right">
                           <div className="flex justify-end gap-1.5">
-                            <Button size="icon" variant="ghost" className="h-10 w-10" onClick={() => openExecution(execution)} aria-label={`View execution ${execution.id}`}>
-                              <Eye className="h-4 w-4" />
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-8 w-8"
+                              onClick={() => openExecution(execution)}
+                              aria-label={`View execution ${execution.id}`}
+                            >
+                              <Eye className="h-3.5 w-3.5" />
                             </Button>
-                            {isAdmin && <ConfirmDialog
-                              trigger={<Button size="icon" variant="ghost" className="h-10 w-10 text-muted-foreground hover:text-destructive" aria-label={`Delete execution ${execution.id}`}><Trash2 className="h-4 w-4" /></Button>}
-                              title="Delete this execution?"
-                              description="The execution record and its output preview will be removed."
-                              confirmLabel="Delete execution"
-                              destructive
-                              onConfirm={() => deleteExecution.mutateAsync(execution.id).then(() => undefined)}
-                            />}
+                            {isAdmin && (
+                              <ConfirmDialog
+                                trigger={<Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-destructive" aria-label={`Delete execution ${execution.id}`}><Trash2 className="h-3.5 w-3.5" /></Button>}
+                                title={locale === "vi" ? "Xóa bản ghi thực thi này?" : "Delete this execution?"}
+                                description={locale === "vi" ? "Bản ghi thực thi và kết quả output sẽ bị xóa vĩnh viễn." : "The execution record and its output preview will be removed."}
+                                confirmLabel={locale === "vi" ? "Xóa bản ghi" : "Delete execution"}
+                                destructive
+                                onConfirm={() => deleteExecution.mutateAsync(execution.id).then(() => undefined)}
+                              />
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -358,39 +410,96 @@ export default function WorkspacePage() {
                     totalItems={executions.data.length}
                     onPageChange={setExecutionPage}
                     onPageSizeChange={setExecutionPageSize}
-                    pageSizeOptions={[5, 10, 20]}
+                    pageSizeOptions={[5, 10, 25, 50]}
                   />
                 </div>
               </div>
             ) : (
               <EmptyState
                 icon={TerminalSquare}
-                title="No executions yet"
-                description="run_code and sandbox API calls will appear here."
+                title={locale === "vi" ? "Chưa có lần thực thi nào" : "No executions yet"}
+                description={locale === "vi" ? "Các lệnh code chạy trong sandbox container sẽ xuất hiện tại đây." : "Code runs executed in isolated containers will be listed here."}
               />
             )}
           </CardContent>
         </Card>
-      </div>
+      )}
 
-      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
-        <DialogContent className="max-w-4xl">
+      {/* Artifact Preview Modal */}
+      <Dialog
+        open={Boolean(previewArtifact)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPreviewArtifact(null);
+            setPreviewContent(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-3xl">
           <DialogHeader>
-            <DialogTitle className="font-mono text-sm">{previewTitle}</DialogTitle>
-            <DialogDescription>Read-only preview</DialogDescription>
+            <DialogTitle className="flex items-center gap-2 font-mono text-sm">
+              <FileCode2 className="h-4 w-4 text-primary" />
+              {previewArtifact?.path}
+            </DialogTitle>
           </DialogHeader>
-          {previewPath && isRenderableArtifact(previewPath) ? (
-            <iframe
-              title={`Preview ${previewPath}`}
-              sandbox="allow-scripts"
-              srcDoc={previewContent || ""}
-              className="h-[65vh] w-full rounded-xl border border-border/70 bg-white"
-            />
-          ) : (
-            <pre className="max-h-[65vh] overflow-auto rounded-xl border border-border/70 bg-background/80 p-4 text-xs leading-relaxed text-foreground">
-              {previewContent}
-            </pre>
-          )}
+          <div className="max-h-[60vh] overflow-auto rounded-lg border border-border/80 bg-muted/30 p-4 font-mono text-xs">
+            {previewLoading ? (
+              <p className="text-muted-foreground">{locale === "vi" ? "Đang tải nội dung tệp..." : "Loading content..."}</p>
+            ) : (
+              <pre className="whitespace-pre-wrap">{previewContent}</pre>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Execution Output Modal */}
+      <Dialog
+        open={Boolean(viewExecution)}
+        onOpenChange={(open) => {
+          if (!open) setViewExecution(null);
+        }}
+      >
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-sm font-semibold">
+              <TerminalSquare className="h-4 w-4 text-primary" />
+              {locale === "vi" ? "Chi tiết thực thi" : "Execution Details"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 text-xs">
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <span className="font-semibold text-muted-foreground">{locale === "vi" ? "Nguồn:" : "Source:"}</span>{" "}
+                <span className="font-mono">{viewExecution?.source}</span>
+              </div>
+              <div>
+                <span className="font-semibold text-muted-foreground">{locale === "vi" ? "Trạng thái:" : "Status:"}</span>{" "}
+                <Badge variant={executionVariant[viewExecution?.status || ""] || "secondary"} className="text-[10px]">
+                  {viewExecution?.status}
+                </Badge>
+              </div>
+              <div>
+                <span className="font-semibold text-muted-foreground">{locale === "vi" ? "Mã thoát:" : "Exit code:"}</span>{" "}
+                <span className="font-mono">{viewExecution?.exit_code ?? "—"}</span>
+              </div>
+              <div>
+                <span className="font-semibold text-muted-foreground">{locale === "vi" ? "Thời lượng:" : "Duration:"}</span>{" "}
+                <span className="font-mono">{formatMs(viewExecution?.duration_ms ?? null)}</span>
+              </div>
+            </div>
+            {viewExecution?.command && (
+              <div>
+                <p className="mb-1 font-semibold text-muted-foreground">{locale === "vi" ? "Lệnh thực thi:" : "Command:"}</p>
+                <pre className="rounded bg-muted/40 p-2 font-mono">{viewExecution.command}</pre>
+              </div>
+            )}
+            <div>
+              <p className="mb-1 font-semibold text-muted-foreground">{locale === "vi" ? "Kết quả Output / Logs:" : "Output preview:"}</p>
+              <pre className="max-h-60 overflow-auto rounded bg-muted/40 p-2 font-mono whitespace-pre-wrap">
+                {viewExecution?.stdout_preview || (locale === "vi" ? "(không có output)" : "(no output)")}
+              </pre>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
