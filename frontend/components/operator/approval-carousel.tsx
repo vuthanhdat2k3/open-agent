@@ -8,6 +8,8 @@ import { approvalTitle, expiry } from "@/components/layout/approval-bell";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
+import { useTranslation } from "@/lib/i18n";
+
 interface ApprovalCarouselProps {
   approvals: ApprovalRequest[];
   onDecide: (id: string, decision: "approved" | "rejected") => Promise<void>;
@@ -21,6 +23,7 @@ export function ApprovalCarousel({
   onBatchDecideAll,
   onOpenDetail,
 }: ApprovalCarouselProps) {
+  const { t, locale } = useTranslation();
   const [currentIndex, setCurrentIndex] = React.useState(0);
   const [isDeciding, setIsDeciding] = React.useState(false);
   const [isBatchDeciding, setIsBatchDeciding] = React.useState(false);
@@ -46,7 +49,7 @@ export function ApprovalCarousel({
   }
 
   const current = approvals[currentIndex];
-  const title = approvalTitle(current);
+  const title = approvalTitle(current, locale);
   const isHighRisk = current.risk_level === "HIGH" || current.risk_level === "high" || current.tool_name?.includes("send") || current.tool_name?.includes("delete");
 
   const handleNext = () => {
@@ -122,7 +125,7 @@ export function ApprovalCarousel({
             {isHighRisk ? "⚡ HIGH RISK" : "STANDARD ACTION"}
           </Badge>
           <span className="font-mono text-[10.5px] text-muted-foreground">
-            98% Confidence · {expiry(current.expires_at)}
+            98% Confidence · {expiry(current.expires_at, locale)}
           </span>
         </div>
 

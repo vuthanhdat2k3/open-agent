@@ -14,7 +14,7 @@ import { useCurrentRole } from "@/hooks";
 
 export function AppShell({ children, queryClient }: { children: React.ReactNode; queryClient: QueryClient }) {
   const pathname = usePathname();
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const role = useCurrentRole();
   const isEndUser = role === "user";
   const matched = [...allNavItems].sort((a, b) => b.href.length - a.href.length).find((item) => isActive(pathname, item.href));
@@ -25,7 +25,7 @@ export function AppShell({ children, queryClient }: { children: React.ReactNode;
 
   return (
     <SidebarProvider>
-      <a href="#main-content" className="sr-only z-[100] rounded-md bg-background px-4 py-2 text-sm font-semibold text-foreground focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:ring-2 focus:ring-ring">Skip to main content</a>
+      <a href="#main-content" className="sr-only z-[100] rounded-md bg-background px-4 py-2 text-sm font-semibold text-foreground focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:ring-2 focus:ring-ring">{locale === "vi" ? "Skip to main content" : "Skip to main content"}</a>
       <AppSidebar queryClient={queryClient} />
       <SidebarInset
         id="main-content"

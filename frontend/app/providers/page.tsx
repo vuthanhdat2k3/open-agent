@@ -207,7 +207,7 @@ export default function ProvidersPage() {
       <PageHeader
         icon={Server}
         title={dict.pages.providers.title}
-        description="Manage AI model providers, API credentials, and benchmark endpoints."
+        description={locale === "vi" ? "Manage AI model providers, API credentials, and benchmark endpoints." : "Manage AI model providers, API credentials, and benchmark endpoints."}
         actions={
           <div className="flex items-center gap-2">
             <Button
@@ -246,7 +246,7 @@ export default function ProvidersPage() {
                         <p className="mt-3 font-mono text-xs text-muted-foreground">{selectedTemplate.default_base_url}</p>
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="template-api-key">API Key{selectedTemplate.api_key_required ? "" : " (optional)"}</Label>
+                        <Label htmlFor="template-api-key">{locale === "vi" ? "API Key" : "API Key"}{selectedTemplate.api_key_required ? "" : " (optional)"}</Label>
                         <Input
                           id="template-api-key"
                           type="password"
@@ -497,7 +497,7 @@ export default function ProvidersPage() {
                           {provider.discovery_status}
                         </Badge>
                       </div>
-                      <p className="text-[11px] text-muted-foreground">{locale === "vi" ? "Đã khám phá: " : "Discovered: "}<span className="font-semibold text-foreground">{provider.models_discovered} models</span>
+                      <p className="text-[11px] text-muted-foreground">{locale === "vi" ? "Đã khám phá: " : "Discovered: "}<span className="font-semibold text-foreground">{provider.models_discovered} {locale === "vi" ? "models" : "models"}</span>
                       </p>
                       {provider.discovery_error && (
                         <p className="line-clamp-2 text-[10px] text-destructive">{provider.discovery_error}</p>

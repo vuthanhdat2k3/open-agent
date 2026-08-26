@@ -183,7 +183,7 @@ export default function QuotasAndBudgetsPage() {
             </div>
             <div className="flex items-baseline gap-2">
               <span className="text-3xl font-bold font-mono text-foreground">${monthlyCost.toFixed(4)}</span>
-              <span className="text-sm text-muted-foreground font-mono">/ ${costLimit.toFixed(2)} USD {locale === "vi" ? "Tối đa" : "Cap"}</span>
+              <span className="text-sm text-muted-foreground font-mono">/ ${costLimit.toFixed(2)} {locale === "vi" ? "USD" : "USD"}{locale === "vi" ? "Tối đa" : "Cap"}</span>
             </div>
           </div>
 
@@ -264,7 +264,7 @@ export default function QuotasAndBudgetsPage() {
               <span className="text-xs font-semibold uppercase tracking-wider">{locale === "vi" ? "Lưu trữ kiến thức" : "Knowledge Storage"}</span>
               <HardDrive className="h-4 w-4 text-amber-500" />
             </div>
-            <p className="mt-2 text-xl font-bold font-mono text-foreground">{storageMB} MB</p>
+            <p className="mt-2 text-xl font-bold font-mono text-foreground">{storageMB} {locale === "vi" ? "MB" : "MB"}</p>
             <p className="mt-0.5 text-[11px] font-mono text-muted-foreground">{locale === "vi" ? "Tối đa" : "Cap"}: {storageLimitMB}</p>
           </Card>
         </div>

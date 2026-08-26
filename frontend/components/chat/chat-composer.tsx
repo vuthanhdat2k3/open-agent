@@ -92,7 +92,7 @@ export function ChatComposer({
         </div>
       )}
 
-      <label htmlFor="chat-composer" className="sr-only">Message</label>
+      <label htmlFor="chat-composer" className="sr-only">{locale === "vi" ? "Message" : "Message"}</label>
       <Textarea
         id="chat-composer"
         ref={textareaRef}
@@ -122,7 +122,7 @@ export function ChatComposer({
           onClick={() => fileInputRef.current?.click()}
           disabled={upload.isPending}
           aria-label="Attach file"
-          title="Attach file"
+          title={locale === "vi" ? "Attach file" : "Attach file"}
         >
           {upload.isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Paperclip className="h-4 w-4" aria-hidden="true" />}
         </Button>

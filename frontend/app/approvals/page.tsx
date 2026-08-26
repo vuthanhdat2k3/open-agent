@@ -36,6 +36,7 @@ import { approvalTitle } from "@/components/layout/approval-bell";
 import { getActiveOrgId } from "@/lib/auth";
 
 function ApprovalExpiry({ expiresAt, serverTime }: { expiresAt?: string | null; serverTime?: string | null }) {
+    const { locale } = useTranslation();
   const [remaining, setRemaining] = React.useState<number | null>(null);
   React.useEffect(() => {
     if (!expiresAt || !serverTime) return;
@@ -73,7 +74,7 @@ function ApprovalCard({ approval, onOpen, onSubmit }: { approval: ApprovalReques
               {highRisk ? <ShieldAlert className="h-5 w-5" aria-hidden="true" /> : <CalendarDays className="h-5 w-5" aria-hidden="true" />}
             </div>
             <div className="min-w-0">
-              <h2 className="text-base font-semibold text-foreground">{approvalTitle(approval)}</h2>
+              <h2 className="text-base font-semibold text-foreground">{approvalTitle(approval, locale)}</h2>
               <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{details.summary}</p>
             </div>
           </div>
@@ -358,7 +359,7 @@ export default function ApprovalsPage() {
             return (
               <>
                 <DialogHeader>
-                  <DialogTitle>{approvalTitle(selected)}</DialogTitle>
+                  <DialogTitle>{approvalTitle(selected, locale)}</DialogTitle>
                   <DialogDescription>{locale === "vi" ? "Xem xét chi tiết hành động trước khi cho phép OpenAgent thực thi nó." : "Review the action details before allowing OpenAgent to execute it."}</DialogDescription>
                 </DialogHeader>
                 <div className="space-y-5" tabIndex={-1} autoFocus>
@@ -417,8 +418,7 @@ export default function ApprovalsPage() {
                         : false
                     }
                   >
-                    Approve
-                  </Button>
+                    {locale === "vi" ? "Approve" : "Approve"}</Button>
                 </DialogFooter>
               </>
             );

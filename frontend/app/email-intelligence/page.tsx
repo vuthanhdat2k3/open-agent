@@ -458,7 +458,7 @@ export default function EmailIntelligencePage() {
                   <Input
                     value={ruleDomain}
                     onChange={(e) => setRuleDomain(e.target.value)}
-                    placeholder="partner.com"
+                    placeholder={locale === "vi" ? "partner.com" : "partner.com"}
                     required
                     className="text-xs font-mono"
                   />
@@ -468,7 +468,7 @@ export default function EmailIntelligencePage() {
                   <Input
                     value={calendarConnectionId}
                     onChange={(e) => setCalendarConnectionId(e.target.value)}
-                    placeholder="conn-google-..."
+                    placeholder={locale === "vi" ? "conn-google-..." : "conn-google-..."}
                     required
                     className="text-xs font-mono"
                   />

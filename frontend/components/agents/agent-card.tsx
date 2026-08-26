@@ -100,10 +100,10 @@ export function AgentCard({
             {agentModel.tier}
           </span>
           <span className="text-[10px] font-mono text-muted-foreground/60 bg-muted/30 border border-border/30 px-2 py-0.5 rounded-full">
-            ctx {agentModel.context_window.toLocaleString()}
+            {locale === "vi" ? "ctx" : "ctx"}{agentModel.context_window.toLocaleString()}
           </span>
           <span className="text-[10px] font-mono text-muted-foreground/60 bg-muted/30 border border-border/30 px-2 py-0.5 rounded-full">
-            T={agent.temperature.toFixed(1)}
+            {locale === "vi" ? "T=" : "T="}{agent.temperature.toFixed(1)}
           </span>
           <span className="text-[10px] font-mono text-muted-foreground/60 bg-muted/30 border border-border/30 px-2 py-0.5 rounded-full">
             ×{agent.max_iterations}

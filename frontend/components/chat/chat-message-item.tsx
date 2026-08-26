@@ -11,6 +11,7 @@ import { ReasoningRow } from "./blocks/reasoning-row";
 import { ToolCallCard } from "./blocks/tool-call-card";
 import { ToolCallChip } from "./blocks/tool-call-chip";
 import { StatsLine } from "./blocks/stats-line";
+import { useTranslation } from "@/lib/i18n";
 
 export interface ChatMessageItemProps {
   message: ChatMessage;
@@ -19,6 +20,7 @@ export interface ChatMessageItemProps {
 }
 
 function ChatMessageItemBase({ message: m, debug, onApprovalDecision }: ChatMessageItemProps) {
+    const { locale } = useTranslation();
   const [copied, setCopied] = React.useState(false);
 
   const copyText = React.useCallback(async (text: string) => {
@@ -64,7 +66,7 @@ function ChatMessageItemBase({ message: m, debug, onApprovalDecision }: ChatMess
       >
         <div className="flex items-center gap-2 font-semibold text-foreground">
           <ShieldAlert className="h-4 w-4 text-warning" />
-          <span>Approval required</span>
+          <span>{locale === "vi" ? "Approval required" : "Approval required"}</span>
           <Badge
             variant={m.status === "approved" ? "success" : m.status === "rejected" ? "destructive" : "warning"}
             className="ml-auto text-[10px]"
@@ -73,7 +75,7 @@ function ChatMessageItemBase({ message: m, debug, onApprovalDecision }: ChatMess
           </Badge>
         </div>
         <p className="mt-2 text-xs text-muted-foreground">
-          The agent wants to run <code className="font-mono text-foreground">{m.toolName ?? "a tool"}</code>.
+          {locale === "vi" ? "The agent wants to run" : "The agent wants to run"}<code className="font-mono text-foreground">{m.toolName ?? "a tool"}</code>.
         </p>
         {m.argsSnapshot != null && (
           <pre className="mt-2 max-h-40 overflow-auto rounded-lg bg-background/80 p-2 text-[11px] font-mono text-muted-foreground">
@@ -89,8 +91,7 @@ function ChatMessageItemBase({ message: m, debug, onApprovalDecision }: ChatMess
               onClick={() => onApprovalDecision(m.approvalId, "approved")}
             >
               <ShieldCheck className="h-3.5 w-3.5" />
-              Approve
-            </Button>
+              {locale === "vi" ? "Approve" : "Approve"}</Button>
             <Button
               size="sm"
               variant="destructive"
@@ -98,8 +99,7 @@ function ChatMessageItemBase({ message: m, debug, onApprovalDecision }: ChatMess
               onClick={() => onApprovalDecision(m.approvalId, "rejected")}
             >
               <ShieldX className="h-3.5 w-3.5" />
-              Reject
-            </Button>
+              {locale === "vi" ? "Reject" : "Reject"}</Button>
           </div>
         )}
       </div>
@@ -117,7 +117,7 @@ function ChatMessageItemBase({ message: m, debug, onApprovalDecision }: ChatMess
       >
         <div className="flex items-center gap-2 font-semibold">
           <XCircle className="h-4 w-4" />
-          <span>Model error</span>
+          <span>{locale === "vi" ? "Model error" : "Model error"}</span>
         </div>
         <p className="mt-2 whitespace-pre-wrap break-words text-foreground">{m.content}</p>
       </div>
