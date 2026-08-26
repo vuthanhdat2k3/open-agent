@@ -82,6 +82,7 @@ export const navGroups: NavGroup[] = [
     roles: ["user"],
     items: [
       { href: "/chat", label: "Chat", i18nKey: "nav.chat", icon: MessageSquare, roles: ["user"] },
+      { href: "/workflows", label: "Workflows", i18nKey: "nav.workflows", icon: Workflow, roles: ["user"], permission: "workflows:read" },
       { href: "/run-workflow", label: "Run Workflow", i18nKey: "nav.runWorkflow", icon: PlayCircle, roles: ["user"], permission: "workflows:run" },
       { href: "/integrations", label: "Integrations", i18nKey: "nav.integrations", icon: Plug, roles: ["user"], permission: "ci:personal:manage" },
       { href: "/email-intelligence", label: "Email Intelligence", i18nKey: "nav.emailIntelligence", icon: Bell, roles: ["user"], permission: "ci:personal:manage" },

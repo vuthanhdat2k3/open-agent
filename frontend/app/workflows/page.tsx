@@ -11,7 +11,7 @@ import {
   RefreshCw,
   Sparkles,
 } from "lucide-react";
-import { streamSSE } from "@/lib/api";
+import { api, streamSSE } from "@/lib/api";
 import { useWorkflows, useCreateWorkflow, useUpdateWorkflow, useAgents, useModels, useGenerateWorkflow, useWorkflowRun } from "@/hooks";
 import { useWorkflowStore } from "@/stores";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,7 @@ import { WorkflowNodePalette } from "@/components/workflows/workflow-node-palett
 import { WorkflowCanvas } from "@/components/workflows/workflow-canvas";
 import { WorkflowNodeConfig } from "@/components/workflows/workflow-node-config";
 import { WorkflowConsole, type WorkflowLogItem } from "@/components/workflows/workflow-console";
+import { RunKpiStrip } from "@/components/workflows/run-kpi-strip";
 import type { GraphEdge, GraphNode } from "@/types";
 import {
   Dialog,
@@ -96,6 +97,21 @@ export default function WorkflowEditor() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Load a workflow directly when opened with ?edit=<id> (e.g. from Automations)
+  const didLoadEditRef = React.useRef(false);
+  React.useEffect(() => {
+    if (didLoadEditRef.current || typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    const editIdParam = url.searchParams.get("edit");
+    if (!editIdParam) return;
+    const wf = data?.find((w) => w.id === editIdParam);
+    if (wf) {
+      didLoadEditRef.current = true;
+      loadWorkflow(wf);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]);
 
   // Update browser URL silently without triggering Next.js router re-render or scrolling reset
   React.useEffect(() => {
@@ -170,10 +186,9 @@ export default function WorkflowEditor() {
       id,
       kind,
       label: kind,
-      config: kind === "tool" ? { tool: "" } : {},
+      parameters: kind === "tool" ? { tool: "" } : kind === "agent" ? { mode: "custom", temperature: 0.7, max_iterations: 12 } : {},
+      config: {},
       merge_mode: kind === "merge" ? "all" : undefined,
-      agent_id:
-        kind === "agent" && agents.data?.length ? agents.data[0].id : undefined,
       position,
     };
     setGraph([...nodes, node], edges);
@@ -265,6 +280,37 @@ export default function WorkflowEditor() {
     setLogs((previous) => (previous.length === 0 ? restoredLogs : previous));
   }, [workflowRun.data, setActiveRun, activeRunId]);
 
+  const runReplay = async (runId: string) => {
+    try {
+      setRunning(true);
+      setLogs([]);
+      setOutput("");
+      setNodeStatus({});
+      const res = await api.post<any>(`/api/workflows/runs/${runId}/replay`);
+      setOutput(res.output || "");
+      const divergence = res.diverged;
+      setLogs([
+        {
+          id: `replay-${Date.now()}`,
+          ts: Date.now(),
+          event: "done",
+          message: divergence
+            ? t("pages.workflows.replayDiverged", "Replay diverged from original run")
+            : t("pages.workflows.replayCompleted", "Replay completed (deterministic, no side effects)"),
+        },
+      ]);
+      toast.success(
+        divergence
+          ? t("pages.workflows.replayDiverged", "Replay diverged from original run")
+          : t("pages.workflows.replayCompleted", "Replay completed"),
+      );
+    } catch (e: any) {
+      toast.error(e.message || t("pages.workflows.replay", "Replay failed"));
+    } finally {
+      setRunning(false);
+    }
+  };
+
   const handleGenerate = async () => {
     if (!aiPrompt.trim() || !aiModelId) return;
     try {
@@ -308,6 +354,25 @@ export default function WorkflowEditor() {
     );
     if (selectedNodeId === id) setSelectedNode(null);
     toast.success(locale === "vi" ? "Đã xóa Node" : "Node deleted");
+  };
+
+  const handleEditEdgeCondition = (edgeId: string) => {
+    const [fromId, rest] = edgeId.split("->");
+    const toId = rest?.split("#")[0] ?? "";
+    const edge = edges.find((e) => e.from_ === fromId && e.to === toId);
+    const current = edge?.condition ?? "";
+    const input = window.prompt(
+      t(
+        "pages.workflows.edgeConditionPrompt",
+        "Edge condition (leave empty to clear).\n\nExamples:\n  output.category == 'sales'\n  'urgent' in output.text\n  true",
+      ),
+      current,
+    );
+    if (input === null) return;
+    const nextEdges = edges.map((e) =>
+      e.from_ === fromId && e.to === toId ? { ...e, condition: input.trim() || undefined } : e,
+    );
+    setGraph(nodes, nextEdges);
   };
 
   const run = async () => {
@@ -607,6 +672,7 @@ export default function WorkflowEditor() {
       />
 
       <div className="space-y-3">
+        {activeRunId && <RunKpiStrip run={workflowRun.data} />}
         <div className="flex items-center gap-2 rounded-xl border border-border/80 bg-card/50 p-3 backdrop-blur-xl shadow-3d-card">
           <div className="flex-1 space-y-1">
             <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">{locale === "vi" ? "Tên workflow" : "Workflow name"}</Label>
@@ -640,6 +706,7 @@ export default function WorkflowEditor() {
             onGraphChange={setGraph}
             onSelectNode={setSelectedNode}
             onCreateNode={addNode}
+            onEditEdgeCondition={handleEditEdgeCondition}
           />
         </div>
       </div>
@@ -648,15 +715,18 @@ export default function WorkflowEditor() {
         node={selectedNode}
         open={Boolean(selectedNode)}
         onOpenChange={(open) => !open && setSelectedNode(null)}
-        agents={agents.data}
-        workflows={data}
-        currentWorkflowId={editId}
         onUpdate={updateNode}
         onDeleteNode={handleDeleteNode}
       />
 
       <div className="animate-slide-up" style={{ animationDelay: "150ms" }}>
-        <WorkflowConsole logs={logs} output={output} running={running} />
+        <WorkflowConsole
+          logs={logs}
+          output={output}
+          running={running}
+          run={workflowRun.data}
+          onReplay={activeRunId && !running ? () => runReplay(activeRunId) : undefined}
+        />
       </div>
     </div>
   );

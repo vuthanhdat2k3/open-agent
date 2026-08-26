@@ -3,38 +3,45 @@ from __future__ import annotations
 import json
 import re
 
+from simpleeval import simple_eval
 from sqlalchemy import select
 
 from app.config import get_settings
 from app.core.observability.llm_trace import ObservabilityContext, build_trace_context
 from app.core.providers.factory import build_driver
+from app.core.workflow.node_definitions import get_node_definition
 from app.db.base import gen_id
 from app.models.model import Model
 from app.models.provider import Provider
 from app.models.workflow import Workflow
 from app.repositories.agent_repo import AgentRepository
 from app.repositories.workflow_repo import WorkflowRepository
+from app.schemas.workflow import WorkflowValidationError
 
 _GENERATE_SYSTEM_PROMPT = """You design workflow graphs for a multi-agent automation platform.
 
 A workflow graph is JSON: {{"name": str, "description": str, "graph": {{"nodes": [...], "edges": [...]}}}}.
 
-Node shape: {{"id": str, "kind": "input"|"agent"|"tool"|"merge"|"output"|"approval"|"scheduler"|"triager"|"integration", "label": str, "agent_id": str|null, "merge_mode": "all"|"any", "config": dict}}
+Node shape: {{"id": str, "kind": "input"|"agent"|"tool"|"merge"|"output"|"approval"|"scheduler"|"triager"|"integration"|"sub_workflow", "label": str, "agent_id": str|null, "merge_mode": "all"|"any", "parameters": dict}}
 - Exactly one entry trigger node:
-  * "input" for on-demand interactive requests.
-  * "scheduler" for recurring/scheduled automations (e.g. config: {{"cron": "0 6 * * *", "schedule_label": "Daily at 06:00"}}).
-- At least one "output" node for returning results.
-- "agent" nodes: if matching agents exist below, use their id. Otherwise set agent_id to null or the best matching agent.
-- "integration" nodes: connect to Gmail, Google Calendar, Google Drive, or Webhook (e.g. config: {{"source": "google_drive"|"gmail"|"google_calendar"|"webhook"}}).
-- "triager" nodes: filter, rank, or route items by urgency/category.
-- "approval" nodes: pause for human sign-off before external side-effects (e.g. config: {{"tool_name": "send_email"}}).
+  * "input" for on-demand interactive requests (parameters: {{"input_field": str}}).
+  * "scheduler" for recurring/scheduled automations (parameters: {{"frequency": "daily"|"weekdays"|"weekly"|"hourly"|"custom", "time": "HH:MM", "days_of_week": ["mon"...], "custom_cron": "0 6 * * *"}}).
+- At least one "output" node for returning results (parameters: {{"include": "all_inputs"}}).
+- "agent" nodes: if matching agents exist below, use their id with mode "inherit". Otherwise set parameters {{"mode": "custom", "system_prompt": str, "model_id": null}} (the system will bind a model).
+- "integration" nodes: connect to real data — parameters: {{"source": "google_drive"|"gmail"|"google_calendar"|"webhook", "operation": "list_new"|"search"|"list_events"|"list_files", "max_results": 20}}.
+- "triager" nodes: route/classify — parameters: {{"mode": "llm", "categories": "sales, support, spam"}} or {{"mode": "rules", "rules": [{{"pattern": str, "category": str}}]}}.
+- "tool" nodes: invoke a registered tool — parameters: {{"tool": str, "arguments": dict}}.
+- "approval" nodes: pause for human sign-off — parameters: {{"title": str, "instructions": str}}.
+- "sub_workflow" nodes: run another workflow — parameters: {{"workflow_id": str}}.
 - "merge" nodes: join parallel branches (merge_mode "all"|"any").
+
+Use "parameters" (NOT "config") for node configuration.
 
 Edge shape: {{"from_": node_id, "to": node_id, "condition": str|null}}.
 
 Examples:
 1. "quét driver 6h sáng hàng ngày" (Scan Google Drive daily at 6am):
-{{"name": "Daily 06:00 Google Drive Scanner", "description": "Scans Google Drive daily at 06:00, classifies updated documents, and synthesizes a digest.", "graph": {{"nodes": [{{"id": "trigger", "kind": "scheduler", "label": "Daily 06:00 Trigger", "config": {{"cron": "0 6 * * *", "schedule_label": "Daily at 06:00"}}}}, {{"id": "fetch_drive", "kind": "integration", "label": "Fetch Google Drive Documents", "config": {{"source": "google_drive"}}}}, {{"id": "triage", "kind": "triager", "label": "Filter New & Modified Files", "config": {{"policy": "filter_recent_docs"}}}}, {{"id": "analyzer", "kind": "agent", "label": "Document Intelligence Agent", "agent_id": null, "config": {{}}}}, {{"id": "output", "kind": "output", "label": "Drive Scan Digest", "config": {{}}}}], "edges": [{{"from_": "trigger", "to": "fetch_drive"}}, {{"from_": "fetch_drive", "to": "triage"}}, {{"from_": "triage", "to": "analyzer"}}, {{"from_": "analyzer", "to": "output"}}]}}}}
+{{"name": "Daily 06:00 Google Drive Scanner", "description": "Scans Google Drive daily at 06:00, classifies updated documents, and synthesizes a digest.", "graph": {{"nodes": [{{"id": "trigger", "kind": "scheduler", "label": "Daily 06:00 Trigger", "parameters": {{"frequency": "daily", "time": "06:00"}}}}, {{"id": "fetch_drive", "kind": "integration", "label": "Fetch Google Drive Documents", "parameters": {{"source": "google_drive", "operation": "list_files"}}}}, {{"id": "triage", "kind": "triager", "label": "Filter New & Modified Files", "parameters": {{"mode": "llm", "categories": "updated, unchanged"}}}}, {{"id": "analyzer", "kind": "agent", "label": "Document Intelligence Agent", "parameters": {{"mode": "custom", "system_prompt": "Summarize the documents."}}}}, {{"id": "output", "kind": "output", "label": "Drive Scan Digest", "parameters": {{"include": "all_inputs"}}}}], "edges": [{{"from_": "trigger", "to": "fetch_drive"}}, {{"from_": "fetch_drive", "to": "triage"}}, {{"from_": "triage", "to": "analyzer"}}, {{"from_": "analyzer", "to": "output"}}]}}}}
 
 Available agents in this organization:
 {agents}
@@ -135,21 +142,26 @@ class WorkflowService:
 
         for node in graph.get("nodes", []):
             if node.get("kind") == "agent":
-                aid = node.get("agent_id")
-                if aid not in valid_agent_ids:
-                    # Match by name if possible, or fallback to first available agent
-                    matched = next(
-                        (
-                            a.id
-                            for a in agents
-                            if a.name.lower() in str(aid or "").lower()
-                            or a.name.lower() in node.get("label", "").lower()
-                        ),
-                        first_agent_id,
+                parameters = node.get("parameters") or {}
+                if (
+                    parameters.get("mode") == "custom"
+                    and not parameters.get("model_id")
+                    and first_agent_id
+                ):
+                    # The system binds the org's default model for custom agents.
+                    res = await self.repo.db.execute(
+                        select(Model)
+                        .where(Model.org_id == org_id, Model.enabled.is_(True))
+                        .order_by(Model.created_at.asc())
+                        .limit(1)
                     )
-                    node["agent_id"] = matched
+                    model = res.scalar_one_or_none()
+                    if model is not None:
+                        parameters["model_id"] = model.id
             if node.get("merge_mode") is None:
                 node.pop("merge_mode", None)
+            if node.get("parameters") is None:
+                node.pop("parameters", None)
             if node.get("config") is None:
                 node.pop("config", None)
 
@@ -161,30 +173,69 @@ class WorkflowService:
 
     @staticmethod
     def validate_graph(graph: dict) -> None:
+        errors: list[dict[str, str]] = []
         nodes = graph.get("nodes", [])
         edges = graph.get("edges", [])
-        if not any(n.get("kind") in ("input", "scheduler", "integration") for n in nodes):
-            raise ValueError("graph must have at least one entry trigger node (input or scheduler)")
-        entry_count = sum(1 for n in nodes if n.get("kind") in ("input", "scheduler"))
-        if entry_count < 1 and not any(n.get("kind") == "integration" for n in nodes):
-            raise ValueError("graph must have at least one entry trigger node (input or scheduler)")
-        if not any(n.get("kind") in ("agent", "output") for n in nodes):
-            raise ValueError("graph needs at least one agent or output node")
         ids = {n.get("id") for n in nodes}
+
+        # --- structural ---
+        entry_kinds = {"input", "scheduler", "integration"}
+        if not any(n.get("kind") in entry_kinds for n in nodes):
+            errors.append(
+                {
+                    "node_id": "",
+                    "field": "graph",
+                    "message": "graph must have at least one entry trigger node (input, scheduler, or integration)",
+                }
+            )
+        if not any(n.get("kind") in ("agent", "output") for n in nodes):
+            errors.append(
+                {
+                    "node_id": "",
+                    "field": "graph",
+                    "message": "graph needs at least one agent or output node",
+                }
+            )
         for e in edges:
             if e.get("from_") not in ids or e.get("to") not in ids:
-                raise ValueError(f"edge references unknown node: {e}")
-        # cycle detection (DFS)
+                errors.append(
+                    {
+                        "node_id": "",
+                        "field": "edge",
+                        "message": f"edge references unknown node: {e}",
+                    }
+                )
+            cond = e.get("condition")
+            if cond:
+                try:
+                    simple_eval(
+                        cond,
+                        names={"output": "", "output_text": "", "output_data": {}},
+                        functions={},
+                    )
+                except Exception:  # noqa: BLE001
+                    errors.append(
+                        {
+                            "node_id": e.get("from_", ""),
+                            "field": "condition",
+                            "message": f"edge condition is not valid: {cond!r}",
+                        }
+                    )
+
+        # --- cycle detection (DFS) ---
         adj = {n["id"]: [] for n in nodes}
         for e in edges:
-            adj[e["from_"]].append(e["to"])
+            adj.setdefault(e["from_"], []).append(e["to"])
         WHITE, GRAY, BLACK = 0, 1, 2
         color = {n["id"]: WHITE for n in nodes}
+        has_cycle = False
 
         def dfs(u: str) -> bool:
+            nonlocal has_cycle
             color[u] = GRAY
             for v in adj[u]:
                 if color[v] == GRAY:
+                    has_cycle = True
                     return True
                 if color[v] == WHITE and dfs(v):
                     return True
@@ -193,4 +244,186 @@ class WorkflowService:
 
         for n in nodes:
             if color[n["id"]] == WHITE and dfs(n["id"]):
-                raise ValueError("graph contains a cycle")
+                break
+        if has_cycle:
+            errors.append({"node_id": "", "field": "graph", "message": "graph contains a cycle"})
+
+        # --- per-node parameters validation ---
+        upstream: dict[str, set[str]] = {n["id"]: set() for n in nodes}
+        for e in edges:
+            upstream.setdefault(e["to"], set()).add(e["from_"])
+
+        # transitive upstream closure (for input_mapping reachability)
+        reachable: dict[str, set[str]] = {nid: set(anc) for nid, anc in upstream.items()}
+        changed = True
+        while changed:
+            changed = False
+            for _nid, anc in reachable.items():
+                for a in list(anc):
+                    for ga in reachable.get(a, set()):
+                        if ga not in anc:
+                            anc.add(ga)
+                            changed = True
+
+        for n in nodes:
+            nid = n.get("id")
+            kind = n.get("kind")
+            if not nid or not kind:
+                errors.append(
+                    {"node_id": str(nid), "field": "kind", "message": "node missing id or kind"}
+                )
+                continue
+            definition = get_node_definition(kind)
+            if definition is None:
+                errors.append(
+                    {"node_id": nid, "field": "kind", "message": f"unknown node kind: {kind}"}
+                )
+                continue
+            parameters = dict(n.get("parameters") or n.get("config") or {})
+
+            for field in definition.fields:
+                if not field.required:
+                    continue
+                if not _field_visible(field, parameters):
+                    continue
+                # scheduler legacy compat: a raw `cron`/`custom_cron` in config
+                # satisfies the schedule requirement without `frequency`.
+                if (
+                    kind == "scheduler"
+                    and field.name == "frequency"
+                    and (parameters.get("cron") or parameters.get("custom_cron"))
+                ):
+                    continue
+                # Catalog-template input nodes are event/trigger placeholders
+                # (e.g. {"event": "inbound_email"}) — no run-input form field.
+                if (
+                    kind == "input"
+                    and field.name == "input_field"
+                    and graph.get("kind") == "catalog_template"
+                ):
+                    continue
+                # Catalog-template agents leave model binding to runtime.
+                if (
+                    kind == "agent"
+                    and field.name == "model_id"
+                    and graph.get("kind") == "catalog_template"
+                ):
+                    continue
+                value = parameters.get(field.name)
+                if value is None or value == "" or value == [] or value == {}:
+                    errors.append(
+                        {
+                            "node_id": nid,
+                            "field": field.name,
+                            "message": f"field '{field.label}' is required",
+                        }
+                    )
+
+            # agent custom mode requires model_id; legacy top-level agent_id => inherit
+            if kind == "agent":
+                mode = parameters.get("mode")
+                legacy_agent_id = n.get("agent_id")
+                # Catalog-template agents leave model binding to runtime (org
+                # default model); the editor UI fills model_id when saved.
+                if graph.get("kind") == "catalog_template":
+                    mode = None
+                if mode == "custom":
+                    if not parameters.get("model_id"):
+                        errors.append(
+                            {
+                                "node_id": nid,
+                                "field": "model_id",
+                                "message": "custom agent requires a model",
+                            }
+                        )
+                elif (mode == "inherit" or (mode is None and legacy_agent_id)) and not (
+                    parameters.get("agent_id") or legacy_agent_id
+                ):
+                    errors.append(
+                        {
+                            "node_id": nid,
+                            "field": "agent_id",
+                            "message": "inherit mode requires an agent",
+                        }
+                    )
+            # tool requires a tool name
+            if kind == "tool" and not parameters.get("tool"):
+                errors.append(
+                    {
+                        "node_id": nid,
+                        "field": "tool",
+                        "message": "tool node requires a tool to invoke",
+                    }
+                )
+            # sub_workflow cannot be itself
+            if kind == "sub_workflow":
+                child_id = parameters.get("workflow_id")
+                if child_id == nid:
+                    errors.append(
+                        {
+                            "node_id": nid,
+                            "field": "workflow_id",
+                            "message": "sub_workflow cannot reference itself",
+                        }
+                    )
+
+            # input_mapping source must exist and be upstream
+            mapping = parameters.get("input_mapping") or []
+            if isinstance(mapping, list):
+                for item in mapping:
+                    if not isinstance(item, dict):
+                        continue
+                    src = item.get("source_node_id")
+                    if src and src not in ids:
+                        errors.append(
+                            {
+                                "node_id": nid,
+                                "field": "input_mapping",
+                                "message": f"input_mapping source '{src}' does not exist",
+                            }
+                        )
+                    elif src and src not in reachable.get(nid, set()):
+                        errors.append(
+                            {
+                                "node_id": nid,
+                                "field": "input_mapping",
+                                "message": f"input_mapping source '{src}' is not upstream of this node",
+                            }
+                        )
+
+            # output.include=selected requires selected_from
+            if (
+                kind == "output"
+                and parameters.get("include") == "selected"
+                and not parameters.get("selected_from")
+            ):
+                errors.append(
+                    {
+                        "node_id": nid,
+                        "field": "selected_from",
+                        "message": "output with 'selected' include requires selected_from nodes",
+                    }
+                )
+
+        if errors:
+            raise WorkflowValidationError(errors)
+
+
+def _field_visible(field, parameters: dict) -> bool:
+    """Evaluate a field's ``display`` show/hide rules against current parameters.
+
+    Mirrors the frontend renderer: a field is visible when its ``show`` rules
+    match (all) and none of its ``hide`` rules match. No display rules = visible.
+    """
+    display = field.display
+    if not display:
+        return True
+    if "show" in display:
+        for key, values in display["show"].items():
+            if parameters.get(key) not in values:
+                return False
+    if "hide" in display:
+        for key, values in display["hide"].items():
+            if parameters.get(key) in values:
+                return False
+    return True

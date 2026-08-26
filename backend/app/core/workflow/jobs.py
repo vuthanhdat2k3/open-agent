@@ -46,6 +46,29 @@ async def run_workflow(ctx, workflow_run_id: str) -> None:  # noqa: ARG001
                 )
                 if installation is None or installation.status == "archived":
                     raise RuntimeError("workflow installation is no longer active")
+                # If the user edited this installed workflow's DAG in the editor,
+                # run the generic engine over their graph instead of the catalog
+                # executor — the user now owns the workflow.
+                if (installation.settings or {}).get("editor_overridden"):
+                    await run_workflow_engine(
+                        workflow,
+                        str((workflow_run.input or {}).get("text", "")),
+                        session,
+                        stream=False,
+                        workflow_run_id=workflow_run.id,
+                        force_inline=True,
+                        user_id=workflow_run.triggered_by_user_id,
+                        timezone_name=(workflow_run.input or {}).get("timezone"),
+                    )
+                    occurrence_id = (workflow_run.input or {}).get("occurrence_id")
+                    if occurrence_id:
+                        occurrence = await session.get(WorkflowOccurrence, occurrence_id)
+                        if occurrence is not None:
+                            occurrence.status = (
+                                "succeeded" if workflow_run.status == "succeeded" else workflow_run.status
+                            )
+                    await session.commit()
+                    return
                 if template_key == "gmail_monitor_and_triage":
                     from app.customer_intelligence.ingest import sync_connection
 

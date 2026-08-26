@@ -1,12 +1,13 @@
 "use client";
 
 import * as React from "react";
-import { Terminal, CheckCircle2, AlertCircle, Play, Pause, Copy, Check, Clock, ShieldAlert, GitCommit } from "lucide-react";
+import { Terminal, CheckCircle2, Clock, Copy, Check, RefreshCw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { useTranslation } from "@/lib/i18n";
+import type { WorkflowRunDetail } from "@/types";
 
 export type WorkflowLogItem = {
   id: string;
@@ -21,51 +22,60 @@ interface WorkflowConsoleProps {
   logs: WorkflowLogItem[];
   output: string;
   running: boolean;
+  run?: WorkflowRunDetail | undefined;
+  onReplay?: () => void;
 }
 
-export function WorkflowConsole({ logs, output, running }: WorkflowConsoleProps) {
-    const { locale } = useTranslation();
-  const [activeTab, setActiveTab] = React.useState<"logs" | "output">("logs");
+const NODE_STATUS: Record<string, { labelKey: string; className: string }> = {
+  succeeded: { labelKey: "pages.workflows.statusDone", className: "bg-success/12 text-success" },
+  failed: { labelKey: "pages.workflows.statusFailed", className: "bg-destructive/12 text-destructive" },
+  running: { labelKey: "pages.workflows.statusRunning", className: "bg-info/12 text-info" },
+  skipped: { labelKey: "pages.workflows.statusSkipped", className: "bg-muted/20 text-muted-foreground" },
+  waiting_approval: { labelKey: "pages.workflows.statusWaiting", className: "bg-warning/12 text-warning" },
+  pending: { labelKey: "pages.workflows.statusPending", className: "bg-muted/20 text-muted-foreground" },
+};
+
+function fmtDurationMs(ms?: number) {
+  if (ms == null) return "—";
+  if (ms < 1000) return `${ms}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
+}
+
+export function WorkflowConsole({ logs, output, running, run, onReplay }: WorkflowConsoleProps) {
+  const { t } = useTranslation();
+  const [activeTab, setActiveTab] = React.useState<"logs" | "trace" | "output">("logs");
   const [copied, setCopied] = React.useState(false);
   const logEndRef = React.useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to bottom whenever new logs arrive
   React.useEffect(() => {
     if (activeTab === "logs") {
       logEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
   }, [logs.length, activeTab]);
 
-  // Switch to output tab automatically when workflow completes and has output
-  React.useEffect(() => {
-    if (output && !running) {
-      // keep current tab or let user switch freely
-    }
-  }, [output, running]);
-
   const copyOutput = () => {
     if (!output) return;
     navigator.clipboard.writeText(output);
     setCopied(true);
-    toast.success("Output copied to clipboard");
+    toast.success(t("pages.workflows.outputCopied", "Output copied to clipboard"));
     setTimeout(() => setCopied(false), 2000);
   };
 
   const getEventBadge = (event: string) => {
     switch (event) {
       case "node_start":
-        return <Badge variant="outline" className="border-info/40 text-info bg-info/10 text-[9px] py-0 font-mono">{locale === "vi" ? "START" : "START"}</Badge>;
+        return <Badge variant="outline" className="border-info/40 text-info bg-info/10 text-[9px] py-0 font-mono">START</Badge>;
       case "node_done":
-        return <Badge variant="outline" className="border-success/40 text-success bg-success/10 text-[9px] py-0 font-mono">{locale === "vi" ? "DONE" : "DONE"}</Badge>;
+        return <Badge variant="outline" className="border-success/40 text-success bg-success/10 text-[9px] py-0 font-mono">DONE</Badge>;
       case "node_error":
       case "error":
-        return <Badge variant="outline" className="border-destructive/40 text-destructive bg-destructive/10 text-[9px] py-0 font-mono">{locale === "vi" ? "ERROR" : "ERROR"}</Badge>;
+        return <Badge variant="outline" className="border-destructive/40 text-destructive bg-destructive/10 text-[9px] py-0 font-mono">ERROR</Badge>;
       case "approval_required":
-        return <Badge variant="outline" className="border-warning/40 text-warning bg-warning/10 text-[9px] py-0 font-mono">{locale === "vi" ? "WAIT" : "WAIT"}</Badge>;
+        return <Badge variant="outline" className="border-warning/40 text-warning bg-warning/10 text-[9px] py-0 font-mono">WAIT</Badge>;
       case "edge":
-        return <Badge variant="outline" className="border-border text-muted-foreground text-[9px] py-0 font-mono">{locale === "vi" ? "EDGE" : "EDGE"}</Badge>;
+        return <Badge variant="outline" className="border-border text-muted-foreground text-[9px] py-0 font-mono">EDGE</Badge>;
       case "done":
-        return <Badge variant="outline" className="border-primary/40 text-primary bg-primary/10 text-[9px] py-0 font-mono font-bold">{locale === "vi" ? "FINISH" : "FINISH"}</Badge>;
+        return <Badge variant="outline" className="border-primary/40 text-primary bg-primary/10 text-[9px] py-0 font-mono font-bold">FINISH</Badge>;
       default:
         return <Badge variant="outline" className="text-[9px] py-0 font-mono">{event}</Badge>;
     }
@@ -98,44 +108,52 @@ export function WorkflowConsole({ logs, output, running }: WorkflowConsoleProps)
             <Terminal className="h-4 w-4" />
           </div>
           <div>
-            <CardTitle className="text-sm font-semibold tracking-tight text-foreground">{locale === "vi" ? "Workflow Run Console" : "Workflow Run Console"}</CardTitle>
+            <CardTitle className="text-sm font-semibold tracking-tight text-foreground">
+              {t("pages.workflows.consoleLogs", "Workflow Run")}
+            </CardTitle>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Navigation Tabs */}
           <div className="flex rounded-lg bg-muted/50 p-1 border border-border/40 text-xs font-medium">
             <button
               onClick={() => setActiveTab("logs")}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md transition-[background-color,color,border-color] ${
-                activeTab === "logs"
-                  ? "bg-card text-foreground shadow-inner-edge font-semibold"
-                  : "text-muted-foreground hover:text-foreground"
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md transition-colors ${
+                activeTab === "logs" ? "bg-card text-foreground shadow-inner-edge font-semibold" : "text-muted-foreground hover:text-foreground"
               }`}
             >
               <Clock className="h-3 w-3" />
-              {locale === "vi" ? "Live Logs" : "Live Logs"}{logs.length > 0 && (
-                <span className="ml-1 rounded-full bg-primary/20 text-primary px-1.5 py-0.2 text-[10px] font-mono font-bold">
-                  {logs.length}
-                </span>
-              )}
+              {t("pages.workflows.liveLogsTab", "Live Logs")}
+            </button>
+            <button
+              onClick={() => setActiveTab("trace")}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md transition-colors ${
+                activeTab === "trace" ? "bg-card text-foreground shadow-inner-edge font-semibold" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Terminal className="h-3 w-3" />
+              {t("pages.workflows.traceTab", "Node Trace")}
             </button>
             <button
               onClick={() => setActiveTab("output")}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md transition-[background-color,color,border-color] ${
-                activeTab === "output"
-                  ? "bg-card text-foreground shadow-inner-edge font-semibold"
-                  : "text-muted-foreground hover:text-foreground"
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md transition-colors ${
+                activeTab === "output" ? "bg-card text-foreground shadow-inner-edge font-semibold" : "text-muted-foreground hover:text-foreground"
               }`}
             >
               <CheckCircle2 className="h-3 w-3" />
-              {locale === "vi" ? "Final Output" : "Final Output"}</button>
+              {t("pages.workflows.finalOutput", "Final Output")}
+            </button>
           </div>
 
+          {onReplay && run && !running && (
+            <Button size="sm" variant="outline" className="h-7 gap-1 text-[11px]" onClick={onReplay}>
+              <RefreshCw className="h-3 w-3" /> {t("pages.workflows.replay", "Replay")}
+            </Button>
+          )}
           {activeTab === "output" && output && (
-            <Button size="sm" variant="outline" className="h-7 gap-1 text-[11px] active-tactile transition-transform" onClick={copyOutput}>
+            <Button size="sm" variant="outline" className="h-7 gap-1 text-[11px]" onClick={copyOutput}>
               {copied ? <Check className="h-3 w-3 text-success" /> : <Copy className="h-3 w-3" />}
-              {copied ? "Copied" : "Copy"}
+              {copied ? t("common.copied", "Copied") : t("common.copy", "Copy")}
             </Button>
           )}
         </div>
@@ -146,12 +164,7 @@ export function WorkflowConsole({ logs, output, running }: WorkflowConsoleProps)
           <div className="max-h-80 overflow-auto p-3 space-y-1.5 scrollbar-thin">
             {logs.length > 0 ? (
               logs.map((item) => {
-                const dateStr = new Date(item.ts).toLocaleTimeString("en-US", {
-                  hour12: false,
-                  hour: "2-digit",
-                  minute: "2-digit",
-                  second: "2-digit",
-                });
+                const dateStr = new Date(item.ts).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
                 return (
                   <div key={item.id} className="flex items-start gap-2 py-0.5 border-b border-border/10 last:border-0 hover:bg-white/5 px-1.5 rounded transition-colors">
                     <span className="text-[10px] text-muted-foreground/60 shrink-0 mt-0.5">{dateStr}</span>
@@ -161,9 +174,7 @@ export function WorkflowConsole({ logs, output, running }: WorkflowConsoleProps)
                         {item.node_id}
                       </span>
                     )}
-                    <span className={`break-all leading-relaxed ${getEventTextColor(item.event)}`}>
-                      {item.message}
-                    </span>
+                    <span className={`break-all leading-relaxed ${getEventTextColor(item.event)}`}>{item.message}</span>
                   </div>
                 );
               })
@@ -172,17 +183,49 @@ export function WorkflowConsole({ logs, output, running }: WorkflowConsoleProps)
                 {running ? (
                   <span className="flex items-center justify-center gap-2 text-info">
                     <span className="h-2 w-2 rounded-full bg-info animate-ping" />
-                    {locale === "vi" ? "Executing workflow and streaming live events…" : "Executing workflow and streaming live events…"}</span>
+                    {t("pages.workflows.runningStreaming", "Executing workflow and streaming live events…")}
+                  </span>
                 ) : (
-                  "No execution logs yet. Run workflow to stream real-time events."
+                  t("pages.workflows.noLogsYet", "No execution logs yet. Run workflow to stream real-time events.")
                 )}
               </div>
             )}
             <div ref={logEndRef} />
           </div>
+        ) : activeTab === "trace" ? (
+          <div className="max-h-80 overflow-auto p-3 space-y-1.5 scrollbar-thin">
+            {run?.nodes?.length ? (
+              run.nodes.map((node, idx) => {
+                const status = NODE_STATUS[node.status] ?? { labelKey: node.status, className: "bg-muted/20 text-muted-foreground" };
+                const timing = node.timing_ms ?? (node.finished_at && node.started_at ? new Date(node.finished_at).getTime() - new Date(node.started_at).getTime() : undefined);
+                return (
+                  <div key={node.id} className="flex items-center gap-3 rounded-lg border border-border/40 bg-white/[0.03] px-2.5 py-2">
+                    <span className="text-[10px] text-muted-foreground/50 w-6 text-right">{idx + 1}</span>
+                    <span className="flex-1 truncate font-medium text-foreground/90">{node.node_id}</span>
+                    <span className="hidden sm:inline text-[10px] text-muted-foreground/70">{fmtDurationMs(timing)}</span>
+                    <span className="hidden md:inline text-[10px] text-muted-foreground/70">
+                      {node.tokens ? `${(node.tokens / 1000).toFixed(1)}k tok` : "—"}
+                    </span>
+                    <span className="hidden lg:inline text-[10px] text-muted-foreground/70">
+                      {node.cost_usd ? `$${node.cost_usd.toFixed(4)}` : "—"}
+                    </span>
+                    <Badge variant="outline" className={`text-[9px] py-0 font-mono ${status.className}`}>
+                      {t(status.labelKey, status.labelKey)}
+                    </Badge>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="py-12 text-center text-muted-foreground/60 text-xs font-sans">
+                {running
+                  ? t("pages.workflows.waitingNodeResults", "Waiting for node results…")
+                  : t("pages.workflows.noTraceYet", "Run a workflow to see per-node trace.")}
+              </div>
+            )}
+          </div>
         ) : (
           <pre className="max-h-80 overflow-auto whitespace-pre-wrap p-4 text-foreground leading-relaxed scrollbar-thin">
-            {output || "Console waiting for workflow execution output…"}
+            {output || t("pages.workflows.noLogsYet", "Console waiting for workflow execution output…")}
           </pre>
         )}
       </CardContent>

@@ -2,16 +2,13 @@ name: CI
 
 on:
   pull_request:
+  workflow_dispatch:
   push:
     branches: [main]
 
 jobs:
   backend:
-    runs-on: ubuntu-latest
-    services:
-      redis:
-        image: redis:7
-        ports: ["6379:6379"]
+    runs-on: self-hosted
     env:
       OPENAGENT_REDIS_URL: redis://localhost:6379/0
     defaults:
@@ -19,31 +16,30 @@ jobs:
         working-directory: backend
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
+      - name: Start Redis
+        run: docker run -d --name openagent-ci-redis-${{ github.run_id }} -p 6379:6379 redis:7
       - run: pip install -e ".[dev]"
       - run: ruff check .
       - run: python -c "import yaml; yaml.safe_load(open('../observability/prometheus/alerts.yml'))"
       - run: pytest -q
+      - name: Stop Redis
+        if: always()
+        run: docker rm -f openagent-ci-redis-${{ github.run_id }}
 
   frontend:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     defaults:
       run:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run build
 
   build-images:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
       - run: docker build -t openagent-api ./backend
@@ -51,16 +47,13 @@ jobs:
       - run: docker compose --env-file .env.example config
 
   compose-e2e:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 20
     env:
       OPENAGENT_DB_URL: postgresql+asyncpg://openagent:openagent@postgres:5432/openagent
       OPENAGENT_JWT_SECRET_KEY: ci-secret-change-me-32-bytes-minimum
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
       - run: docker compose -f docker-compose.yml -f .github/ci-compose.yml --env-file .env.example up -d --build postgres redis api worker frontend
       - run: python scripts/e2e_agent_releases.py
       - run: python scripts/e2e_evaluations.py

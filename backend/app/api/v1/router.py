@@ -22,6 +22,7 @@ from app.api.v1.routes import (
     users,
     workflow_catalog,
     workflow_installations,
+    workflow_webhooks,
     workflows,
     workspace,
 )
@@ -54,4 +55,5 @@ protected_router.include_router(workspace.router)
 protected_router.include_router(a2a.router)
 api_router.include_router(customer_intelligence.oauth_router)
 api_router.include_router(customer_intelligence.webhook_router)
+api_router.include_router(workflow_webhooks.router)
 api_router.include_router(protected_router)
