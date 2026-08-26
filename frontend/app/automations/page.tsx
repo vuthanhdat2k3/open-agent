@@ -112,8 +112,7 @@ function TemplateCard({
           {item.recommendation.recommended && (
             <Badge variant="info">
               <Sparkles className="h-3 w-3" aria-hidden="true" />
-              Recommended
-            </Badge>
+              {locale === "vi" ? "Recommended" : "Recommended"}</Badge>
           )}
         </div>
         <div>
@@ -176,7 +175,7 @@ function TemplateCard({
           >
             {item.capabilities.can_install ? (
               <>
-                Set up <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+                {locale === "vi" ? "Set up" : "Set up"}<ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
               </>
             ) : (
               "Preview only"
@@ -197,6 +196,7 @@ function SetupDialog({
   onClose: () => void;
   onInstalled: (installation: WorkflowInstallation) => void;
 }) {
+    const { locale } = useTranslation();
   const queryClient = useQueryClient();
   const [step, setStep] = useState(1);
   const [scheduleKind, setScheduleKind] =
@@ -249,10 +249,9 @@ function SetupDialog({
       {item && (
         <DialogContent className="max-w-xl">
           <DialogHeader>
-            <DialogTitle>Set up {item.name}</DialogTitle>
+            <DialogTitle>{locale === "vi" ? "Set up" : "Set up"}{item.name}</DialogTitle>
             <DialogDescription>
-              Choose a safe schedule. You can change it later.
-            </DialogDescription>
+              {locale === "vi" ? "Choose a safe schedule. You can change it later." : "Choose a safe schedule. You can change it later."}</DialogDescription>
           </DialogHeader>
           <div
             className="flex items-center gap-2 border-b border-border/70 pb-4 text-xs font-medium text-muted-foreground"
@@ -285,7 +284,7 @@ function SetupDialog({
           {step === 1 && (
             <div className="space-y-4">
               <div className="rounded-lg border border-primary/20 bg-primary/[0.04] p-4 text-sm">
-                <p className="font-semibold">What will happen</p>
+                <p className="font-semibold">{locale === "vi" ? "What will happen" : "What will happen"}</p>
                 <p className="mt-1 leading-6 text-muted-foreground">
                   {item.outcome}
                 </p>
@@ -295,8 +294,7 @@ function SetupDialog({
                   htmlFor="automation-name"
                   className="text-sm font-medium"
                 >
-                  Automation name
-                </label>
+                  {locale === "vi" ? "Automation name" : "Automation name"}</label>
                 <Input
                   id="automation-name"
                   value={name}
@@ -310,8 +308,7 @@ function SetupDialog({
                     htmlFor="automation-frequency"
                     className="text-sm font-medium"
                   >
-                    Run frequency
-                  </label>
+                    {locale === "vi" ? "Run frequency" : "Run frequency"}</label>
                   <select
                     id="automation-frequency"
                     value={scheduleKind}
@@ -323,11 +320,11 @@ function SetupDialog({
                     }
                     className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
-                    <option value="hourly">Every hour</option>
-                    <option value="daily">Every day</option>
-                    <option value="weekdays">Weekdays</option>
-                    <option value="weekly">Weekly</option>
-                    <option value="event">When a relevant event arrives</option>
+                    <option value="hourly">{locale === "vi" ? "Every hour" : "Every hour"}</option>
+                    <option value="daily">{locale === "vi" ? "Every day" : "Every day"}</option>
+                    <option value="weekdays">{locale === "vi" ? "Weekdays" : "Weekdays"}</option>
+                    <option value="weekly">{locale === "vi" ? "Weekly" : "Weekly"}</option>
+                    <option value="event">{locale === "vi" ? "When a relevant event arrives" : "When a relevant event arrives"}</option>
                   </select>
                 </div>
                 <div className="space-y-2">
@@ -335,8 +332,7 @@ function SetupDialog({
                     htmlFor="automation-time"
                     className="text-sm font-medium"
                   >
-                    Time · Vietnam
-                  </label>
+                    {locale === "vi" ? "Time · Vietnam" : "Time · Vietnam"}</label>
                   <Input
                     id="automation-time"
                     type="time"
@@ -349,63 +345,54 @@ function SetupDialog({
                 </div>
               </div>
               <p className="text-xs text-muted-foreground">
-                Timezone: Asia/Ho_Chi_Minh. The server calculates the next run.
-              </p>
+                {locale === "vi" ? "Timezone: Asia/Ho_Chi_Minh. The server calculates the next run." : "Timezone: Asia/Ho_Chi_Minh. The server calculates the next run."}</p>
             </div>
           )}
           {step === 2 && (
             <div className="space-y-4 text-sm">
               <div className="rounded-lg border border-border/70 p-4">
-                <p className="font-semibold">Data and safety</p>
+                <p className="font-semibold">{locale === "vi" ? "Data and safety" : "Data and safety"}</p>
                 <ul className="mt-3 space-y-3 text-muted-foreground">
                   <li className="flex gap-2">
                     <Plug
                       className="mt-0.5 h-4 w-4 shrink-0 text-primary"
                       aria-hidden="true"
                     />
-                    Uses{" "}
+                    {locale === "vi" ? "Uses" : "Uses"}{" "}
                     {item.required_integrations
                       .map(integrationLabel)
                       .join(" and ")}{" "}
-                    when connected.
-                  </li>
+                    {locale === "vi" ? "when connected." : "when connected."}</li>
                   <li className="flex gap-2">
                     <ShieldCheck
                       className="mt-0.5 h-4 w-4 shrink-0 text-primary"
                       aria-hidden="true"
                     />
-                    {approvalLabel(item.side_effect_policy)}. External actions
-                    are never silently executed.
-                  </li>
+                    {approvalLabel(item.side_effect_policy)}{locale === "vi" ? ". External actions are never silently executed." : ". External actions are never silently executed."}</li>
                   <li className="flex gap-2">
                     <Gauge
                       className="mt-0.5 h-4 w-4 shrink-0 text-primary"
                       aria-hidden="true"
                     />
-                    Estimated cost: {costLabel(item.cost_tier)} · up to $
-                    {item.estimated_cost_usd.per_run_max ?? "—"}/run.
-                  </li>
+                    {locale === "vi" ? "Estimated cost:" : "Estimated cost:"}{costLabel(item.cost_tier)} {locale === "vi" ? "· up to $" : "· up to $"}{item.estimated_cost_usd.per_run_max ?? "—"}{locale === "vi" ? "/run." : "/run."}</li>
                 </ul>
               </div>
               <p className="text-xs text-muted-foreground">
-                Connection binding and permission checks are enforced by the
-                server before a run is dispatched.
-              </p>
+                {locale === "vi" ? "Connection binding and permission checks are enforced by the server before a run is dispatched." : "Connection binding and permission checks are enforced by the server before a run is dispatched."}</p>
             </div>
           )}
           {step === 3 && (
             <div className="space-y-4 text-sm">
               <div className="rounded-lg border border-border/70 p-4">
-                <p className="font-semibold">Ready to enable</p>
+                <p className="font-semibold">{locale === "vi" ? "Ready to enable" : "Ready to enable"}</p>
                 <dl className="mt-3 grid gap-3 sm:grid-cols-2">
                   <div>
                     <dt className="text-xs text-muted-foreground">
-                      Automation
-                    </dt>
+                      {locale === "vi" ? "Automation" : "Automation"}</dt>
                     <dd className="mt-1 font-medium">{name || item.name}</dd>
                   </div>
                   <div>
-                    <dt className="text-xs text-muted-foreground">Schedule</dt>
+                    <dt className="text-xs text-muted-foreground">{locale === "vi" ? "Schedule" : "Schedule"}</dt>
                     <dd className="mt-1 font-medium">
                       {scheduleKind === "hourly"
                         ? "Every hour"
@@ -415,11 +402,11 @@ function SetupDialog({
                     </dd>
                   </div>
                   <div>
-                    <dt className="text-xs text-muted-foreground">Timezone</dt>
-                    <dd className="mt-1 font-medium">Asia/Ho_Chi_Minh</dd>
+                    <dt className="text-xs text-muted-foreground">{locale === "vi" ? "Timezone" : "Timezone"}</dt>
+                    <dd className="mt-1 font-medium">{locale === "vi" ? "Asia/Ho_Chi_Minh" : "Asia/Ho_Chi_Minh"}</dd>
                   </div>
                   <div>
-                    <dt className="text-xs text-muted-foreground">Safety</dt>
+                    <dt className="text-xs text-muted-foreground">{locale === "vi" ? "Safety" : "Safety"}</dt>
                     <dd className="mt-1 font-medium">
                       {approvalLabel(item.side_effect_policy)}
                     </dd>
@@ -428,9 +415,7 @@ function SetupDialog({
               </div>
               {install.isError && (
                 <p className="text-sm text-destructive" role="alert">
-                  Could not enable this automation. It may already be installed
-                  or a connection may need attention.
-                </p>
+                  {locale === "vi" ? "Could not enable this automation. It may already be installed or a connection may need attention." : "Could not enable this automation. It may already be installed or a connection may need attention."}</p>
               )}
             </div>
           )}
@@ -450,16 +435,14 @@ function SetupDialog({
                 onClick={() => setStep((value) => value + 1)}
                 disabled={!name.trim()}
               >
-                Continue
-              </Button>
+                {locale === "vi" ? "Continue" : "Continue"}</Button>
             ) : (
               <Button
                 type="button"
                 loading={install.isPending}
                 onClick={() => install.mutate()}
               >
-                Enable automation
-              </Button>
+                {locale === "vi" ? "Enable automation" : "Enable automation"}</Button>
             )}
           </DialogFooter>
         </DialogContent>
@@ -475,6 +458,7 @@ function TemplateDetails({
   item: WorkflowCatalogItem | null;
   onClose: () => void;
 }) {
+    const { locale } = useTranslation();
   const Icon = item ? workflowIcon(item.icon) : Zap;
   return (
     <Dialog
@@ -495,75 +479,65 @@ function TemplateDetails({
           <div className="space-y-5 text-sm">
             <section className="rounded-lg border border-primary/20 bg-primary/[0.04] p-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-primary">
-                What you receive
-              </p>
+                {locale === "vi" ? "What you receive" : "What you receive"}</p>
               <p className="mt-2 leading-6 text-foreground">{item.outcome}</p>
             </section>
             <section className="space-y-3">
-              <h3 className="font-semibold">How it works</h3>
+              <h3 className="font-semibold">{locale === "vi" ? "How it works" : "How it works"}</h3>
               <ol className="space-y-3 text-muted-foreground">
                 <li className="flex gap-3">
                   <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-muted font-mono text-xs text-foreground">
                     1
                   </span>
                   <span>
-                    Read only the connected data needed for this workflow.
-                  </span>
+                    {locale === "vi" ? "Read only the connected data needed for this workflow." : "Read only the connected data needed for this workflow."}</span>
                 </li>
                 <li className="flex gap-3">
                   <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-muted font-mono text-xs text-foreground">
                     2
                   </span>
                   <span>
-                    Analyze and organize useful information with bounded cost
-                    and latency.
-                  </span>
+                    {locale === "vi" ? "Analyze and organize useful information with bounded cost and latency." : "Analyze and organize useful information with bounded cost and latency."}</span>
                 </li>
                 <li className="flex gap-3">
                   <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-muted font-mono text-xs text-foreground">
                     3
                   </span>
                   <span>
-                    Send a private result to your Automation Hub and
-                    notification bell.
-                  </span>
+                    {locale === "vi" ? "Send a private result to your Automation Hub and notification bell." : "Send a private result to your Automation Hub and notification bell."}</span>
                 </li>
               </ol>
             </section>
             <section className="grid gap-3 sm:grid-cols-2">
               <div className="rounded-lg border border-border/70 p-3">
-                <p className="text-xs text-muted-foreground">Required</p>
+                <p className="text-xs text-muted-foreground">{locale === "vi" ? "Required" : "Required"}</p>
                 <p className="mt-1 font-medium">
                   {item.required_integrations.map(integrationLabel).join(" · ")}
                 </p>
               </div>
               <div className="rounded-lg border border-border/70 p-3">
-                <p className="text-xs text-muted-foreground">Schedule</p>
+                <p className="text-xs text-muted-foreground">{locale === "vi" ? "Schedule" : "Schedule"}</p>
                 <p className="mt-1 font-medium">
                   {item.default_schedule_label}
                 </p>
               </div>
               <div className="rounded-lg border border-border/70 p-3">
                 <p className="text-xs text-muted-foreground">
-                  External actions
-                </p>
+                  {locale === "vi" ? "External actions" : "External actions"}</p>
                 <p className="mt-1 font-medium">
                   {approvalLabel(item.side_effect_policy)}
                 </p>
               </div>
               <div className="rounded-lg border border-border/70 p-3">
-                <p className="text-xs text-muted-foreground">Estimated cost</p>
+                <p className="text-xs text-muted-foreground">{locale === "vi" ? "Estimated cost" : "Estimated cost"}</p>
                 <p className="mt-1 font-medium">
-                  {costLabel(item.cost_tier)} · up to $
-                  {item.estimated_cost_usd.per_run_max ?? "—"}/run
-                </p>
+                  {costLabel(item.cost_tier)} {locale === "vi" ? "· up to $" : "· up to $"}{item.estimated_cost_usd.per_run_max ?? "—"}{locale === "vi" ? "/run" : "/run"}</p>
               </div>
             </section>
           </div>
           <DialogFooter>
             <Button type="button" onClick={onClose}>
-              Close
-            </Button>
+              {locale === "vi" ? "Đóng" : "Close"}</Button>
           </DialogFooter>
         </DialogContent>
       )}

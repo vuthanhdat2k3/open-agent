@@ -5,12 +5,14 @@ import { providerCreate, type ProviderCreate } from "@/lib/schemas";
 import { Form } from "@/components/ui/form";
 import { Input, Label } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { useTranslation } from "@/lib/i18n";
 
 function deriveEnvVar(name: string): string {
   return name.trim().replace(/\s+/g, "-") + "-API-KEY";
 }
 
 export function ProviderForm({ initial, onSubmit }: { initial?: Partial<ProviderCreate>; onSubmit: (values: ProviderCreate) => void | Promise<void> }) {
+    const { locale } = useTranslation();
   const form = useForm<ProviderCreate>({
     resolver: zodResolver(providerCreate),
     defaultValues: {
@@ -33,13 +35,13 @@ export function ProviderForm({ initial, onSubmit }: { initial?: Partial<Provider
   return (
     <Form {...form}>
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-        <div className="space-y-2"><Label htmlFor="provider-key">Key (slug)</Label><Input id="provider-key" {...register("key")} placeholder="openai" className="font-mono text-xs" /><p className="text-sm text-muted-foreground">Unique id, e.g. openai</p>{errors.key && <p role="alert" className="text-sm text-destructive">{errors.key.message}</p>}</div>
-        <div className="space-y-2"><Label htmlFor="provider-name">Name</Label><Input id="provider-name" {...register("name")} placeholder="OpenAI" />{errors.name && <p role="alert" className="text-sm text-destructive">{errors.name.message}</p>}</div>
-        <div className="space-y-2"><Label htmlFor="provider-base-url">Base URL</Label><Input id="provider-base-url" {...register("base_url")} className="font-mono text-xs" placeholder="https://api.openai.com/v1" />{errors.base_url && <p role="alert" className="text-sm text-destructive">{errors.base_url.message}</p>}</div>
-        <div className="space-y-2"><Label htmlFor="provider-api-key">API Key</Label><Input id="provider-api-key" type="password" autoComplete="off" {...register("api_key")} className="font-mono text-xs" placeholder="sk-…" /><p className="text-sm leading-relaxed text-muted-foreground">Stored encrypted at rest. Leave empty to keep the existing key or fall back to the env var below.</p>{errors.api_key && <p role="alert" className="text-sm text-destructive">{errors.api_key.message}</p>}</div>
-        <div className="space-y-2"><Label htmlFor="provider-env-var">Env Var (auto)</Label><Input id="provider-env-var" {...register("env_var")} className="font-mono text-xs" placeholder="OpenAI-API-KEY" /><p className="text-sm leading-relaxed text-muted-foreground">Fallback when API Key is empty (e.g. set in .env).</p></div>
-        <label htmlFor="provider-default" className="flex min-h-11 cursor-pointer items-center gap-3 text-sm text-muted-foreground"><input id="provider-default" type="checkbox" {...register("is_default")} className="h-4 w-4 rounded border-border accent-primary" />Default provider</label>
-        <Button type="submit" className="w-full" loading={isSubmitting}>Save</Button>
+        <div className="space-y-2"><Label htmlFor="provider-key">{locale === "vi" ? "Key (slug)" : "Key (slug)"}</Label><Input id="provider-key" {...register("key")} placeholder={locale === "vi" ? "openai" : "openai"} className="font-mono text-xs" /><p className="text-sm text-muted-foreground">{locale === "vi" ? "Unique id, e.g. openai" : "Unique id, e.g. openai"}</p>{errors.key && <p role="alert" className="text-sm text-destructive">{errors.key.message}</p>}</div>
+        <div className="space-y-2"><Label htmlFor="provider-name">{locale === "vi" ? "Tên" : "Name"}</Label><Input id="provider-name" {...register("name")} placeholder={locale === "vi" ? "OpenAI" : "OpenAI"} />{errors.name && <p role="alert" className="text-sm text-destructive">{errors.name.message}</p>}</div>
+        <div className="space-y-2"><Label htmlFor="provider-base-url">{locale === "vi" ? "Base URL" : "Base URL"}</Label><Input id="provider-base-url" {...register("base_url")} className="font-mono text-xs" placeholder={locale === "vi" ? "https://api.openai.com/v1" : "https://api.openai.com/v1"} />{errors.base_url && <p role="alert" className="text-sm text-destructive">{errors.base_url.message}</p>}</div>
+        <div className="space-y-2"><Label htmlFor="provider-api-key">{locale === "vi" ? "API Key" : "API Key"}</Label><Input id="provider-api-key" type="password" autoComplete="off" {...register("api_key")} className="font-mono text-xs" placeholder={locale === "vi" ? "sk-…" : "sk-…"} /><p className="text-sm leading-relaxed text-muted-foreground">{locale === "vi" ? "Stored encrypted at rest. Leave empty to keep the existing key or fall back to the env var below." : "Stored encrypted at rest. Leave empty to keep the existing key or fall back to the env var below."}</p>{errors.api_key && <p role="alert" className="text-sm text-destructive">{errors.api_key.message}</p>}</div>
+        <div className="space-y-2"><Label htmlFor="provider-env-var">{locale === "vi" ? "Env Var (auto)" : "Env Var (auto)"}</Label><Input id="provider-env-var" {...register("env_var")} className="font-mono text-xs" placeholder={locale === "vi" ? "OpenAI-API-KEY" : "OpenAI-API-KEY"} /><p className="text-sm leading-relaxed text-muted-foreground">{locale === "vi" ? "Fallback when API Key is empty (e.g. set in .env)." : "Fallback when API Key is empty (e.g. set in .env)."}</p></div>
+        <label htmlFor="provider-default" className="flex min-h-11 cursor-pointer items-center gap-3 text-sm text-muted-foreground"><input id="provider-default" type="checkbox" {...register("is_default")} className="h-4 w-4 rounded border-border accent-primary" />{locale === "vi" ? "Default provider" : "Default provider"}</label>
+        <Button type="submit" className="w-full" loading={isSubmitting}>{locale === "vi" ? "Lưu" : "Save"}</Button>
       </form>
     </Form>
   );

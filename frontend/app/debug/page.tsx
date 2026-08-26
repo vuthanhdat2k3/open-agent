@@ -347,7 +347,7 @@ export default function DebugPage() {
                             {s.title || (locale === "vi" ? "Hội thoại không tên" : "Untitled Conversation")}
                           </p>
                           <p className="font-mono text-[10px] text-muted-foreground truncate">
-                            ID: {s.id}
+                            {locale === "vi" ? "ID:" : "ID:"}{s.id}
                           </p>
                         </button>
                       );
@@ -415,8 +415,7 @@ export default function DebugPage() {
                         </Badge>
                         {m.meta?.cost_usd != null && (
                           <span className="font-mono text-[10.5px] text-muted-foreground bg-muted/40 px-2 py-0.5 rounded border border-border/40">
-                            ${Number(m.meta.cost_usd).toFixed(6)} · {m.meta.latency_ms || 0}ms
-                          </span>
+                            ${Number(m.meta.cost_usd).toFixed(6)} · {m.meta.latency_ms || 0}{locale === "vi" ? "ms" : "ms"}</span>
                         )}
                       </div>
 
@@ -508,7 +507,7 @@ export default function DebugPage() {
                     </Badge>
                   </div>
                   <div className="mt-2 text-xs font-mono text-muted-foreground flex items-center gap-4">
-                    <span>Task ID: {node.id}</span>
+                    <span>{locale === "vi" ? "Task ID:" : "Task ID:"}{node.id}</span>
                     <span>{locale === "vi" ? "Tác vụ cha:" : "Parent:"} {node.parent_task_id || "Root"}</span>
                   </div>
                 </Card>

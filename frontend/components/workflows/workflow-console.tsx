@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import { useTranslation } from "@/lib/i18n";
 
 export type WorkflowLogItem = {
   id: string;
@@ -23,6 +24,7 @@ interface WorkflowConsoleProps {
 }
 
 export function WorkflowConsole({ logs, output, running }: WorkflowConsoleProps) {
+    const { locale } = useTranslation();
   const [activeTab, setActiveTab] = React.useState<"logs" | "output">("logs");
   const [copied, setCopied] = React.useState(false);
   const logEndRef = React.useRef<HTMLDivElement>(null);
@@ -52,18 +54,18 @@ export function WorkflowConsole({ logs, output, running }: WorkflowConsoleProps)
   const getEventBadge = (event: string) => {
     switch (event) {
       case "node_start":
-        return <Badge variant="outline" className="border-info/40 text-info bg-info/10 text-[9px] py-0 font-mono">START</Badge>;
+        return <Badge variant="outline" className="border-info/40 text-info bg-info/10 text-[9px] py-0 font-mono">{locale === "vi" ? "START" : "START"}</Badge>;
       case "node_done":
-        return <Badge variant="outline" className="border-success/40 text-success bg-success/10 text-[9px] py-0 font-mono">DONE</Badge>;
+        return <Badge variant="outline" className="border-success/40 text-success bg-success/10 text-[9px] py-0 font-mono">{locale === "vi" ? "DONE" : "DONE"}</Badge>;
       case "node_error":
       case "error":
-        return <Badge variant="outline" className="border-destructive/40 text-destructive bg-destructive/10 text-[9px] py-0 font-mono">ERROR</Badge>;
+        return <Badge variant="outline" className="border-destructive/40 text-destructive bg-destructive/10 text-[9px] py-0 font-mono">{locale === "vi" ? "ERROR" : "ERROR"}</Badge>;
       case "approval_required":
-        return <Badge variant="outline" className="border-warning/40 text-warning bg-warning/10 text-[9px] py-0 font-mono">WAIT</Badge>;
+        return <Badge variant="outline" className="border-warning/40 text-warning bg-warning/10 text-[9px] py-0 font-mono">{locale === "vi" ? "WAIT" : "WAIT"}</Badge>;
       case "edge":
-        return <Badge variant="outline" className="border-border text-muted-foreground text-[9px] py-0 font-mono">EDGE</Badge>;
+        return <Badge variant="outline" className="border-border text-muted-foreground text-[9px] py-0 font-mono">{locale === "vi" ? "EDGE" : "EDGE"}</Badge>;
       case "done":
-        return <Badge variant="outline" className="border-primary/40 text-primary bg-primary/10 text-[9px] py-0 font-mono font-bold">FINISH</Badge>;
+        return <Badge variant="outline" className="border-primary/40 text-primary bg-primary/10 text-[9px] py-0 font-mono font-bold">{locale === "vi" ? "FINISH" : "FINISH"}</Badge>;
       default:
         return <Badge variant="outline" className="text-[9px] py-0 font-mono">{event}</Badge>;
     }
@@ -96,7 +98,7 @@ export function WorkflowConsole({ logs, output, running }: WorkflowConsoleProps)
             <Terminal className="h-4 w-4" />
           </div>
           <div>
-            <CardTitle className="text-sm font-semibold tracking-tight text-foreground">Workflow Run Console</CardTitle>
+            <CardTitle className="text-sm font-semibold tracking-tight text-foreground">{locale === "vi" ? "Workflow Run Console" : "Workflow Run Console"}</CardTitle>
           </div>
         </div>
 
@@ -112,8 +114,7 @@ export function WorkflowConsole({ logs, output, running }: WorkflowConsoleProps)
               }`}
             >
               <Clock className="h-3 w-3" />
-              Live Logs
-              {logs.length > 0 && (
+              {locale === "vi" ? "Live Logs" : "Live Logs"}{logs.length > 0 && (
                 <span className="ml-1 rounded-full bg-primary/20 text-primary px-1.5 py-0.2 text-[10px] font-mono font-bold">
                   {logs.length}
                 </span>
@@ -128,8 +129,7 @@ export function WorkflowConsole({ logs, output, running }: WorkflowConsoleProps)
               }`}
             >
               <CheckCircle2 className="h-3 w-3" />
-              Final Output
-            </button>
+              {locale === "vi" ? "Final Output" : "Final Output"}</button>
           </div>
 
           {activeTab === "output" && output && (
@@ -172,8 +172,7 @@ export function WorkflowConsole({ logs, output, running }: WorkflowConsoleProps)
                 {running ? (
                   <span className="flex items-center justify-center gap-2 text-info">
                     <span className="h-2 w-2 rounded-full bg-info animate-ping" />
-                    Executing workflow and streaming live events…
-                  </span>
+                    {locale === "vi" ? "Executing workflow and streaming live events…" : "Executing workflow and streaming live events…"}</span>
                 ) : (
                   "No execution logs yet. Run workflow to stream real-time events."
                 )}

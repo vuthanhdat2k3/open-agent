@@ -637,7 +637,7 @@ export default function AgentsPage() {
           <Dialog open={Boolean(releaseAgent)} onOpenChange={(v) => { if (!v) setReleaseAgent(null); }}>
             <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>Releases — {releaseAgent?.name}</DialogTitle>
+                <DialogTitle>{locale === "vi" ? "Releases —" : "Releases —"}{releaseAgent?.name}</DialogTitle>
               </DialogHeader>
               <div className="space-y-4 pt-2">
                 <div className="space-y-2 rounded-xl border border-border/60 bg-muted/20 p-4">
@@ -760,7 +760,7 @@ export default function AgentsPage() {
                 {companionConfig.showThoughtBubbles && (
                   <div className="animate-bounce-subtle absolute top-2 z-10 flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-card/95 px-3 py-1 text-[10px] font-medium text-amber-500 shadow-md">
                     <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-                    <span>⚡ 2 actions need your review →</span>
+                    <span>{locale === "vi" ? "⚡ 2 actions need your review →" : "⚡ 2 actions need your review →"}</span>
                   </div>
                 )}
 
@@ -791,7 +791,7 @@ export default function AgentsPage() {
                 <div className="absolute bottom-2 flex items-center gap-2 rounded-full border border-border/90 bg-card/95 px-3 py-1 text-xs text-muted-foreground shadow-sm backdrop-blur-md">
                   <span className="h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_8px_#10b981]" />
                   <span className="font-semibold text-foreground">{companionConfig.name || (locale === "vi" ? "Người điều hành Cá nhân" : "Personal Operator")}</span>
-                  <span className="font-mono text-[10.5px] text-primary font-medium">ready</span>
+                  <span className="font-mono text-[10.5px] text-primary font-medium">{locale === "vi" ? "ready" : "ready"}</span>
                 </div>
               </div>
 
@@ -807,56 +807,52 @@ export default function AgentsPage() {
             <div className="flex items-center justify-between border-b border-border/60 pb-4">
               <div>
                 <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
-                  <SlidersHorizontal className="h-5 w-5 text-primary" /> 3D Companion & Executive Operator Config
-                </h2>
+                  <SlidersHorizontal className="h-5 w-5 text-primary" /> {locale === "vi" ? "3D Companion & Executive Operator Config" : "3D Companion & Executive Operator Config"}</h2>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Operators and Org Admins configure this persona to maintain, develop, and customize the live assistant for users.
-                </p>
+                  {locale === "vi" ? "Operators and Org Admins configure this persona to maintain, develop, and customize the live assistant for users." : "Operators and Org Admins configure this persona to maintain, develop, and customize the live assistant for users."}</p>
               </div>
               <Button
                 className="gap-2 font-semibold"
                 onClick={handleSaveCompanion}
                 loading={isSavingCompanion}
               >
-                <Save className="h-4 w-4" /> Save Configuration
-              </Button>
+                <Save className="h-4 w-4" /> {locale === "vi" ? "Save Configuration" : "Save Configuration"}</Button>
             </div>
 
             <div className="space-y-5">
               {/* Section A: Identity & Brain Binding */}
               <div className="space-y-3">
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-primary">
-                  1. Identity & Brain Persona Binding
-                </h3>
+                  {locale === "vi" ? "1. Identity & Brain Persona Binding" : "1. Identity & Brain Persona Binding"}</h3>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="space-y-1.5">
-                    <Label className="text-xs font-medium">Companion Display Name</Label>
+                    <Label className="text-xs font-medium">{locale === "vi" ? "Companion Display Name" : "Companion Display Name"}</Label>
                     <Input
                       value={companionConfig.name}
                       onChange={(e) => setCompanionConfig({ ...companionConfig, name: e.target.value })}
-                      placeholder="e.g. Personal Operator, Executive Chief of Staff"
+                      placeholder={locale === "vi" ? "e.g. Personal Operator, Executive Chief of Staff" : "e.g. Personal Operator, Executive Chief of Staff"}
                       className="text-xs"
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-xs font-medium">Tagline / Role Description</Label>
+                    <Label className="text-xs font-medium">{locale === "vi" ? "Tagline / Role Description" : "Tagline / Role Description"}</Label>
                     <Input
                       value={companionConfig.tagline}
                       onChange={(e) => setCompanionConfig({ ...companionConfig, tagline: e.target.value })}
-                      placeholder="e.g. Personal Executive Chief of Staff"
+                      placeholder={locale === "vi" ? "e.g. Personal Executive Chief of Staff" : "e.g. Personal Executive Chief of Staff"}
                       className="text-xs"
                     />
                   </div>
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">Underlying Brain Agent (Studio Agent Persona)</Label>
+                  <Label className="text-xs font-medium">{locale === "vi" ? "Underlying Brain Agent (Studio Agent Persona)" : "Underlying Brain Agent (Studio Agent Persona)"}</Label>
                   <Select
                     value={companionConfig.brainAgentId || ""}
                     onChange={(e) => setCompanionConfig({ ...companionConfig, brainAgentId: e.target.value || null })}
                     className="text-xs"
                   >
-                    <option value="">Default Organization Orchestrator</option>
+                    <option value="">{locale === "vi" ? "Default Organization Orchestrator" : "Default Organization Orchestrator"}</option>
                     {data?.map((a) => (
                       <option key={a.id} value={a.id}>
                         {a.name} — {a.description || "Active Agent Persona"}
@@ -864,16 +860,14 @@ export default function AgentsPage() {
                     ))}
                   </Select>
                   <p className="text-[11px] text-muted-foreground">
-                    When users send prompts or dispatch actions to the 3D Companion, this agent persona and its system prompts will process the request.
-                  </p>
+                    {locale === "vi" ? "When users send prompts or dispatch actions to the 3D Companion, this agent persona and its system prompts will process the request." : "When users send prompts or dispatch actions to the 3D Companion, this agent persona and its system prompts will process the request."}</p>
                 </div>
               </div>
 
               {/* Section B: 3D Avatar Asset Model */}
               <div className="space-y-3 border-t border-border/60 pt-4">
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-primary">
-                  2. 3D Model Asset & Visual Avatar
-                </h3>
+                  {locale === "vi" ? "2. 3D Model Asset & Visual Avatar" : "2. 3D Model Asset & Visual Avatar"}</h3>
 
                 <div className="grid gap-3 sm:grid-cols-3">
                   {AVATAR_3D_PRESETS.map((preset) => {
@@ -907,11 +901,11 @@ export default function AgentsPage() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">Custom 3D Model Asset URL (.glb / .gltf)</Label>
+                  <Label className="text-xs font-medium">{locale === "vi" ? "Custom 3D Model Asset URL (.glb / .gltf)" : "Custom 3D Model Asset URL (.glb / .gltf)"}</Label>
                   <Input
                     value={companionConfig.modelUrl}
                     onChange={(e) => setCompanionConfig({ ...companionConfig, modelUrl: e.target.value })}
-                    placeholder="/agent-service-robot.glb or https://your-cdn.com/avatar.glb"
+                    placeholder={locale === "vi" ? "/agent-service-robot.glb or https://your-cdn.com/avatar.glb" : "/agent-service-robot.glb or https://your-cdn.com/avatar.glb"}
                     className="text-xs font-mono"
                   />
                 </div>
@@ -920,8 +914,7 @@ export default function AgentsPage() {
               {/* Section C: Docking Position & Screen Placement */}
               <div className="space-y-3 border-t border-border/60 pt-4">
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-primary">
-                  3. Default Screen Placement & Docking
-                </h3>
+                  {locale === "vi" ? "3. Default Screen Placement & Docking" : "3. Default Screen Placement & Docking"}</h3>
                 <div className="grid gap-3 sm:grid-cols-4">
                   {[
                     { id: "bottom-right", label: "Bottom-Right (Default)" },
@@ -956,8 +949,7 @@ export default function AgentsPage() {
               {/* Section D: Feature Toggles & Capabilities */}
               <div className="space-y-3 border-t border-border/60 pt-4">
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-primary">
-                  4. Interactive Capabilities & Surface Controls
-                </h3>
+                  {locale === "vi" ? "4. Interactive Capabilities & Surface Controls" : "4. Interactive Capabilities & Surface Controls"}</h3>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="flex items-center gap-2.5 rounded-lg border border-border/70 p-3 text-xs text-foreground cursor-pointer hover:bg-muted/30">
                     <input
@@ -967,8 +959,8 @@ export default function AgentsPage() {
                       className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
                     />
                     <div>
-                      <p className="font-semibold">Live Thought Bubble Alerts</p>
-                      <p className="text-[10px] text-muted-foreground">Show urgent action notifications above avatar head</p>
+                      <p className="font-semibold">{locale === "vi" ? "Live Thought Bubble Alerts" : "Live Thought Bubble Alerts"}</p>
+                      <p className="text-[10px] text-muted-foreground">{locale === "vi" ? "Show urgent action notifications above avatar head" : "Show urgent action notifications above avatar head"}</p>
                     </div>
                   </label>
 
@@ -980,8 +972,8 @@ export default function AgentsPage() {
                       className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
                     />
                     <div>
-                      <p className="font-semibold">1-Click Technical Approvals</p>
-                      <p className="text-[10px] text-muted-foreground">Allow instant approving from floating operator surface</p>
+                      <p className="font-semibold">{locale === "vi" ? "1-Click Technical Approvals" : "1-Click Technical Approvals"}</p>
+                      <p className="text-[10px] text-muted-foreground">{locale === "vi" ? "Allow instant approving from floating operator surface" : "Allow instant approving from floating operator surface"}</p>
                     </div>
                   </label>
 
@@ -993,8 +985,8 @@ export default function AgentsPage() {
                       className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
                     />
                     <div>
-                      <p className="font-semibold">Email Triage Feed</p>
-                      <p className="text-[10px] text-muted-foreground">Expose incoming classified emails in operator surface</p>
+                      <p className="font-semibold">{locale === "vi" ? "Email Triage Feed" : "Email Triage Feed"}</p>
+                      <p className="text-[10px] text-muted-foreground">{locale === "vi" ? "Expose incoming classified emails in operator surface" : "Expose incoming classified emails in operator surface"}</p>
                     </div>
                   </label>
 
@@ -1006,8 +998,8 @@ export default function AgentsPage() {
                       className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
                     />
                     <div>
-                      <p className="font-semibold">Direct Operator Dispatch</p>
-                      <p className="text-[10px] text-muted-foreground">Enable natural language command dispatch bar</p>
+                      <p className="font-semibold">{locale === "vi" ? "Direct Operator Dispatch" : "Direct Operator Dispatch"}</p>
+                      <p className="text-[10px] text-muted-foreground">{locale === "vi" ? "Enable natural language command dispatch bar" : "Enable natural language command dispatch bar"}</p>
                     </div>
                   </label>
                 </div>
