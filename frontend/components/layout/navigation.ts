@@ -81,6 +81,7 @@ export const navGroups: NavGroup[] = [
     items: [
       { href: "/chat", label: "Chat Assistant", icon: MessageSquare, roles: ["user"] },
       { href: "/run-workflow", label: "Run Workflow", icon: PlayCircle, roles: ["user"], permission: "workflows:run" },
+      { href: "/integrations", label: "Connected Accounts", icon: Plug, roles: ["user"], permission: "ci:personal:manage" },
       { href: "/email-intelligence", label: "Smart Inbox & Rules", icon: Bell, roles: ["user"], permission: "ci:personal:manage" },
       { href: "/automations", label: "Automations", icon: Zap, roles: ["user"], permission: "workflows:read" },
       { href: "/customer-intelligence", label: "Client Intelligence", icon: Building2, roles: ["user"], permission: "ci:read" },
