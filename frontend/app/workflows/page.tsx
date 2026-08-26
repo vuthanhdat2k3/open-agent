@@ -243,14 +243,16 @@ export default function WorkflowsPage() {
     if (!aiResult) return;
     setWfName(aiResult.name);
     setEditId(null);
-    setGraph(
-      aiResult.graph.nodes.map((n) => ({ ...n, position: undefined })),
-      aiResult.graph.edges,
-    );
+    const calculatedPos = layout(aiResult.graph.nodes, aiResult.graph.edges);
+    const positionedNodes = aiResult.graph.nodes.map((n) => ({
+      ...n,
+      position: n.position || calculatedPos[n.id] || { x: 40, y: 40 },
+    }));
+    setGraph(positionedNodes, aiResult.graph.edges);
     setSelectedNode(null);
     setAiResult(null);
     setAiPrompt("");
-    toast.success("Applied to canvas â€” review and Save");
+    toast.success("Applied to canvas — review and Save");
   };
 
   const handleAutoLayout = () => {
@@ -261,6 +263,15 @@ export default function WorkflowsPage() {
     }));
     setGraph(updatedNodes, edges);
     toast.success("Graph auto-layout applied");
+  };
+
+  const handleDeleteNode = (id: string) => {
+    setGraph(
+      nodes.filter((n) => n.id !== id),
+      edges.filter((e) => e.from_ !== id && e.to !== id),
+    );
+    if (selectedNodeId === id) setSelectedNode(null);
+    toast.success("Node deleted");
   };
 
   const run = async () => {
@@ -425,54 +436,119 @@ export default function WorkflowsPage() {
             </Button>
             <Dialog>
               <DialogTrigger asChild>
-                <Button variant="outline" className="gap-2 active-tactile transition-transform">
-                  <Sparkles className="h-4 w-4 text-primary" /> AI Generate
+                <Button variant="outline" className="gap-2 active-tactile transition-transform border-primary/40 bg-primary/5 hover:bg-primary/10">
+                  <Sparkles className="h-4 w-4 text-primary animate-pulse" /> AI Generate
                 </Button>
               </DialogTrigger>
-              <DialogContent>
+              <DialogContent className="sm:max-w-[540px] bg-card/95 backdrop-blur-2xl border-border/80 shadow-2xl">
                 <DialogHeader>
-                  <DialogTitle>Generate workflow with AI</DialogTitle>
+                  <div className="flex items-center gap-2.5">
+                    <div className="grid h-9 w-9 place-items-center rounded-xl bg-primary/15 text-primary border border-primary/30">
+                      <Sparkles className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <DialogTitle className="text-base font-bold">Generate Workflow with AI</DialogTitle>
+                      <p className="text-xs text-muted-foreground">Describe your automation routine in natural language</p>
+                    </div>
+                  </div>
                 </DialogHeader>
-                <div className="space-y-3">
+
+                <div className="space-y-4 pt-2">
                   <div className="space-y-1.5">
                     <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">
                       Describe what the workflow should do
                     </Label>
                     <Textarea
-                      className="min-h-[100px] text-xs"
+                      className="min-h-[110px] text-xs leading-relaxed"
                       value={aiPrompt}
                       onChange={(e) => setAiPrompt(e.target.value)}
-                      placeholder="e.g. Research a topic, then draft a report, then review it before output."
+                      placeholder="e.g. Tự động quét Google Drive 6h sáng hàng ngày, lọc các tài liệu mới và tổng hợp báo cáo gửi cho tôi..."
                     />
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setAiPrompt("Quét Google Drive 6h sáng hàng ngày, lọc các file mới cập nhật và phân tích tổng hợp báo cáo")}
+                        className="rounded-full border border-border/60 bg-muted/40 px-2 py-0.5 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                      >
+                        ⚡ Quét Drive 6h sáng hàng ngày
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAiPrompt("Đọc Gmail mỗi sáng lúc 8h, lọc email khẩn cấp và tạo bản nháp phản hồi để tôi duyệt")}
+                        className="rounded-full border border-border/60 bg-muted/40 px-2 py-0.5 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                      >
+                        ⚡ Triage Gmail & Phê duyệt
+                      </button>
+                    </div>
                   </div>
+
                   <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">Model</Label>
+                    <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">AI Model</Label>
                     <Select className="text-xs w-full" value={aiModelId} onChange={(e) => setAiModelId(e.target.value)}>
                       {models.data?.map((m) => (
                         <option key={m.id} value={m.id}>{m.display_name || m.name}</option>
                       ))}
                     </Select>
                   </div>
-                  <Button
-                    className="w-full gap-2 active-tactile transition-transform"
-                    disabled={!aiPrompt.trim() || !aiModelId || generate.isPending}
-                    onClick={handleGenerate}
-                  >
-                    <Sparkles className="h-4 w-4" /> {generate.isPending ? "Generatingâ€¦" : "Generate"}
-                  </Button>
+
+                  {generate.isPending && (
+                    <div className="space-y-2.5 rounded-xl border border-primary/40 bg-primary/10 p-4 animate-pulse">
+                      <div className="flex items-center gap-2.5 text-xs font-semibold text-primary">
+                        <Sparkles className="h-4 w-4 animate-spin" />
+                        <span>AI is architecting your multi-agent workflow DAG...</span>
+                      </div>
+                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-primary/20">
+                        <div className="h-full w-2/3 animate-[shimmer_1.5s_infinite] bg-primary rounded-full" />
+                      </div>
+                      <p className="text-[11px] text-muted-foreground">
+                        Synthesizing triggers, connectors, triage policies, and agent routing graph...
+                      </p>
+                    </div>
+                  )}
+
+                  {!generate.isPending && (
+                    <Button
+                      className="w-full gap-2 active-tactile transition-transform font-semibold"
+                      disabled={!aiPrompt.trim() || !aiModelId}
+                      onClick={handleGenerate}
+                    >
+                      <Sparkles className="h-4 w-4 text-primary-foreground" /> Generate Workflow
+                    </Button>
+                  )}
 
                   {aiResult && (
-                    <div className="space-y-2 rounded-lg border border-primary/30 bg-primary/5 p-3">
-                      <div className="text-sm font-semibold text-foreground">{aiResult.name}</div>
-                      {aiResult.description && (
-                        <p className="text-xs text-muted-foreground">{aiResult.description}</p>
-                      )}
-                      <p className="text-[11px] text-muted-foreground">
-                        {aiResult.graph.nodes.length} nodes Â· {aiResult.graph.edges.length} connections
-                      </p>
-                      <Button size="sm" className="w-full gap-2" onClick={applyGenerated}>
-                        Apply to canvas
-                      </Button>
+                    <div className="space-y-3 rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4 shadow-sm">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="text-sm font-bold text-foreground">{aiResult.name}</div>
+                          {aiResult.description && (
+                            <p className="mt-0.5 text-xs text-muted-foreground leading-relaxed">{aiResult.description}</p>
+                          )}
+                        </div>
+                        <span className="shrink-0 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                          {aiResult.graph.nodes.length} nodes · {aiResult.graph.edges.length} edges
+                        </span>
+                      </div>
+
+                      {/* Visual node flow chain preview */}
+                      <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-border/50 bg-background/60 p-2 text-[10px]">
+                        {aiResult.graph.nodes.map((node: any, idx: number) => (
+                          <React.Fragment key={node.id}>
+                            <span className="rounded border border-border/80 bg-muted/60 px-2 py-0.5 font-medium text-foreground">
+                              {node.label || node.kind}
+                            </span>
+                            {idx < aiResult.graph.nodes.length - 1 && (
+                              <span className="text-muted-foreground/60 font-bold">→</span>
+                            )}
+                          </React.Fragment>
+                        ))}
+                      </div>
+
+                      <DialogClose asChild>
+                        <Button size="sm" className="w-full gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-medium" onClick={applyGenerated}>
+                          Apply to canvas
+                        </Button>
+                      </DialogClose>
                     </div>
                   )}
                 </div>
@@ -501,11 +577,11 @@ export default function WorkflowsPage() {
               className="min-h-[38px] text-xs resize-none"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="JSON or plain text inputâ€¦"
+              placeholder="JSON or plain text input…"
             />
           </div>
           <Button className="gap-2 active-tactile transition-transform self-end text-xs" disabled={running} onClick={run}>
-            <Play className="h-3.5 w-3.5" /> {running ? "Runningâ€¦" : "Run Workflow"}
+            <Play className="h-3.5 w-3.5" /> {running ? "Running…" : "Run Workflow"}
           </Button>
         </div>
 
@@ -535,6 +611,7 @@ export default function WorkflowsPage() {
         workflows={data}
         currentWorkflowId={editId}
         onUpdate={updateNode}
+        onDeleteNode={handleDeleteNode}
       />
 
       <div className="animate-slide-up" style={{ animationDelay: "150ms" }}>

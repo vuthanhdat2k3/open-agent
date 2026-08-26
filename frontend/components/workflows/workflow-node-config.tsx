@@ -10,6 +10,8 @@ import {
 } from "@/components/ui/sheet";
 import { Input, Label } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import type { Agent, GraphNode, Workflow } from "@/types";
 
 interface WorkflowNodeConfigProps {
@@ -20,6 +22,7 @@ interface WorkflowNodeConfigProps {
   workflows: Workflow[] | undefined;
   currentWorkflowId: string | null;
   onUpdate: (patch: Partial<GraphNode>) => void;
+  onDeleteNode?: (id: string) => void;
 }
 
 export function WorkflowNodeConfig({
@@ -30,16 +33,18 @@ export function WorkflowNodeConfig({
   workflows,
   currentWorkflowId,
   onUpdate,
+  onDeleteNode,
 }: WorkflowNodeConfigProps) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="bg-card/95 backdrop-blur-xl">
-        <SheetHeader>
-          <SheetTitle>Node configuration</SheetTitle>
-          <SheetDescription>
-            {node ? `Editing "${node.label || node.id}" (${node.kind})` : "No node selected"}
-          </SheetDescription>
-        </SheetHeader>
+      <SheetContent side="right" className="bg-card/95 backdrop-blur-xl flex flex-col justify-between overflow-y-auto">
+        <div>
+          <SheetHeader>
+            <SheetTitle>Node configuration</SheetTitle>
+            <SheetDescription>
+              {node ? `Editing "${node.label || node.id}" (${node.kind})` : "No node selected"}
+            </SheetDescription>
+          </SheetHeader>
 
         {node && (
           <div className="mt-6 space-y-4">
@@ -215,6 +220,22 @@ export function WorkflowNodeConfig({
                 </Select>
               </div>
             )}
+          </div>
+        )}
+        </div>
+
+        {node && onDeleteNode && (
+          <div className="mt-8 border-t border-border/40 pt-4">
+            <Button
+              variant="outline"
+              className="w-full gap-2 border-destructive/40 text-destructive hover:bg-destructive hover:text-destructive-foreground transition-all duration-150"
+              onClick={() => {
+                onDeleteNode(node.id);
+                onOpenChange(false);
+              }}
+            >
+              <Trash2 className="h-4 w-4" /> Delete node
+            </Button>
           </div>
         )}
       </SheetContent>

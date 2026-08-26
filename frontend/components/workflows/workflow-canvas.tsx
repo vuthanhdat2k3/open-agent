@@ -55,12 +55,16 @@ function toFlowStatus(status: string | undefined): NodeStatus {
   return "idle";
 }
 
-function toFlowNodes(nodes: GraphNode[], nodeStatus: Record<string, string>): Node<WorkflowNodeData>[] {
+function toFlowNodes(
+  nodes: GraphNode[],
+  nodeStatus: Record<string, string>,
+  onDelete: (id: string) => void,
+): Node<WorkflowNodeData>[] {
   return nodes.map((n) => ({
     id: n.id,
     type: n.kind,
     position: n.position || { x: 0, y: 0 },
-    data: { label: n.label, kind: n.kind, status: toFlowStatus(nodeStatus[n.id]) },
+    data: { label: n.label, kind: n.kind, status: toFlowStatus(nodeStatus[n.id]), onDelete },
   }));
 }
 
@@ -121,6 +125,14 @@ function WorkflowCanvasInner({
     [graphNodes, graphEdges, onGraphChange, selectedNodeId, onSelectNode],
   );
 
+  const handleDeleteNode = React.useCallback(
+    (nodeId: string) => {
+      const target = graphNodes.find((n) => n.id === nodeId);
+      setPendingDelete({ kind: "node", id: nodeId, label: target?.label || nodeId });
+    },
+    [graphNodes],
+  );
+
   const handleDeleteEdge = React.useCallback(
     (edgeId: string) => {
       const { from_, to } = edgeIdToGraphEdge(edgeId);
@@ -129,7 +141,10 @@ function WorkflowCanvasInner({
     [],
   );
 
-  const nodes = React.useMemo(() => toFlowNodes(graphNodes, nodeStatus), [graphNodes, nodeStatus]);
+  const nodes = React.useMemo(
+    () => toFlowNodes(graphNodes, nodeStatus, handleDeleteNode),
+    [graphNodes, nodeStatus, handleDeleteNode],
+  );
   const edges = React.useMemo(
     () => toFlowEdges(graphEdges, nodeStatus, handleDeleteEdge),
     [graphEdges, nodeStatus, handleDeleteEdge],
