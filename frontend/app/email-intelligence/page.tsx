@@ -8,23 +8,52 @@ import {
   ChevronLeft,
   ChevronRight,
   Inbox,
+  Mail,
   MailOpen,
+  Plus,
   RefreshCw,
   Search,
   ShieldAlert,
+  ShieldCheck,
+  Sparkles,
 } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Input, Label } from "@/components/ui/input";
 import { PageHeader } from "@/components/page-header";
 import { EmptyState, ErrorState, LoadingSkeleton } from "@/components/shared";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatVietnamDateTime, vietnamDateRangeStart } from "@/lib/datetime";
 import {
   useCustomerIntelligenceNotifications,
   useMarkCustomerIntelligenceNotificationRead,
+  useUrlSearchParam,
 } from "@/hooks";
+import { api } from "@/lib/api";
+import { getActiveOrgId } from "@/lib/auth";
+import { createIdempotencyKey } from "@/lib/email-intelligence/idempotency";
+import { emailIntelligenceQueryKeys } from "@/lib/email-intelligence/query-keys";
+import { toast } from "sonner";
 
 type DateRange = "all" | "today" | "7d" | "30d";
+
+type Rule = {
+  id: string;
+  name: string;
+  status: string;
+  match: { type: string; value: string };
+  action: { type: string };
+  conditions: Record<string, unknown>;
+  capabilities: Record<string, boolean>;
+  policy_version: string;
+};
+
+type RuleResponse = {
+  items: Rule[];
+  policy: Record<string, number | string>;
+  meta: { server_time: string };
+};
 
 function dateRange(range: DateRange) {
   if (range === "all") return {};
@@ -49,14 +78,57 @@ function initials(sender: string) {
 }
 
 export default function EmailIntelligencePage() {
+  const [tabParam, setTabParam] = useUrlSearchParam("tab");
+  const activeTab = (tabParam as "inbox" | "rules") || "inbox";
+
   const [unreadOnly, setUnreadOnly] = React.useState(false);
   const [range, setRange] = React.useState<DateRange>("all");
   const [notificationType, setNotificationType] = React.useState("");
   const [searchInput, setSearchInput] = React.useState("");
   const [query, setQuery] = React.useState("");
+  const [pageSize, setPageSize] = React.useState(6);
   const [pageIndex, setPageIndex] = React.useState(0);
   const [pageCursors, setPageCursors] = React.useState<(string | null)[]>([null]);
   const markRead = useMarkCustomerIntelligenceNotificationRead();
+
+  // Rules state
+  const orgId = getActiveOrgId();
+  const qc = useQueryClient();
+  const rules = useQuery({
+    queryKey: emailIntelligenceQueryKeys(orgId).rules(),
+    queryFn: () => api.get<RuleResponse>("/api/email-intelligence/trusted-rules"),
+  });
+  const [ruleName, setRuleName] = React.useState("");
+  const [ruleDomain, setRuleDomain] = React.useState("");
+  const [calendarConnectionId, setCalendarConnectionId] = React.useState("");
+  const [ruleExpiry, setRuleExpiry] = React.useState("");
+  const [ruleError, setRuleError] = React.useState("");
+
+  const createRule = useMutation({
+    mutationFn: () =>
+      api.post<Rule>(
+        "/api/email-intelligence/trusted-rules",
+        {
+          name: ruleName,
+          match_type: "DOMAIN",
+          match_value: ruleDomain,
+          calendar_connection_id: calendarConnectionId,
+          minimum_classification_confidence: 0.95,
+          maximum_events_per_day: 3,
+          expires_at: new Date(ruleExpiry).toISOString(),
+        },
+        { headers: { "Idempotency-Key": createIdempotencyKey() } },
+      ),
+    onSuccess: () => {
+      setRuleName("");
+      setRuleDomain("");
+      setCalendarConnectionId("");
+      setRuleExpiry("");
+      toast.success("Trusted calendar rule created");
+      void qc.invalidateQueries({ queryKey: emailIntelligenceQueryKeys(orgId).rules() });
+    },
+    onError: (value) => setRuleError(value instanceof Error ? value.message : "Failed to create rule"),
+  });
 
   React.useEffect(() => {
     const timer = window.setTimeout(() => setQuery(searchInput.trim()), 300);
@@ -72,17 +144,23 @@ export default function EmailIntelligencePage() {
     () => ({
       unreadOnly,
       cursor: pageCursors[pageIndex],
+      limit: pageSize,
       query,
       notificationType,
       ...dateRange(range),
     }),
-    [notificationType, pageCursors, pageIndex, query, range, unreadOnly],
+    [notificationType, pageCursors, pageIndex, pageSize, query, range, unreadOnly],
   );
+
   const notifications = useCustomerIntelligenceNotifications(filters);
   const items = React.useMemo(
     () => [...(notifications.data?.items ?? [])].sort((a, b) => new Date(b.received_at).getTime() - new Date(a.received_at).getTime()),
     [notifications.data?.items],
   );
+
+  const totalNotifications = notifications.data?.total ?? items.length;
+  const unreadCount = notifications.data?.unread ?? 0;
+  const totalRules = rules.data?.items?.length ?? 0;
 
   function changeUnread(value: boolean) {
     setUnreadOnly(value);
@@ -99,112 +177,426 @@ export default function EmailIntelligencePage() {
     resetPaging();
   }
 
-  function nextPage() {
-    if (!notifications.data?.next_cursor) return;
-    setPageCursors((current) => [...current.slice(0, pageIndex + 1), notifications.data!.next_cursor]);
-    setPageIndex((current) => current + 1);
-  }
-
-  function previousPage() {
-    if (pageIndex === 0) return;
-    setPageIndex((current) => current - 1);
-  }
-
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-6">
-      <PageHeader icon={Bell} title="Smart Inbox" description="A focused view of routed email and safe next steps." />
-
-      <section className="space-y-3" aria-label="Inbox controls">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-          <div className="relative min-w-0 flex-1">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-            <Input
-              value={searchInput}
-              onChange={(event) => { setSearchInput(event.target.value); resetPaging(); }}
-              placeholder="Search sender, subject, or email content"
-              aria-label="Search inbox"
-              className="h-11 pl-9"
-            />
-          </div>
-          <Button variant="outline" size="icon" onClick={() => void notifications.refetch()} aria-label="Refresh inbox" disabled={notifications.isFetching}>
-            <RefreshCw className={notifications.isFetching ? "h-4 w-4 animate-spin" : "h-4 w-4"} aria-hidden="true" />
+    <div className="space-y-6">
+      {/* 1. Header with Merged Title */}
+      <PageHeader
+        icon={Bell}
+        title="Smart Inbox & Rules"
+        description="AI-classified email stream, meeting extraction signals, and trusted auto-dispatch safety rules."
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              void notifications.refetch();
+              void rules.refetch();
+            }}
+            disabled={notifications.isFetching || rules.isFetching}
+            className="gap-1.5"
+          >
+            <RefreshCw className={notifications.isFetching || rules.isFetching ? "h-3.5 w-3.5 animate-spin" : "h-3.5 w-3.5"} />
+            Refresh
           </Button>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex rounded-lg border border-border bg-card p-1" role="tablist" aria-label="Read status">
-            <Button variant={!unreadOnly ? "default" : "ghost"} size="sm" role="tab" aria-selected={!unreadOnly} onClick={() => changeUnread(false)}>All mail</Button>
-            <Button variant={unreadOnly ? "default" : "ghost"} size="sm" role="tab" aria-selected={unreadOnly} onClick={() => changeUnread(true)}>Unread</Button>
-          </div>
-          <select aria-label="Filter by date" value={range} onChange={(event) => changeRange(event.target.value as DateRange)} className="h-9 rounded-lg border border-border bg-card px-3 text-xs font-medium text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring">
-            <option value="all">All time</option>
-            <option value="today">Today</option>
-            <option value="7d">Last 7 days</option>
-            <option value="30d">Last 30 days</option>
-          </select>
-          <select aria-label="Filter by type" value={notificationType} onChange={(event) => changeType(event.target.value)} className="h-9 rounded-lg border border-border bg-card px-3 text-xs font-medium text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring">
-            <option value="">All types</option>
-            <option value="email_received">Email received</option>
-          </select>
-          <div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
-            <Inbox className="h-3.5 w-3.5" aria-hidden="true" />
-            {notifications.data?.total ?? 0} messages
-            {(notifications.data?.unread ?? 0) > 0 && <Badge variant="info">{notifications.data?.unread} unread</Badge>}
-          </div>
-        </div>
-      </section>
+        }
+      />
 
-      {notifications.isLoading ? <LoadingSkeleton variant="table" /> : notifications.isError ? (
-        <ErrorState title="Unable to load inbox" description="Notifications could not be loaded." onRetry={() => void notifications.refetch()} />
-      ) : items.length ? (
-        <section className="overflow-hidden rounded-xl border border-border bg-card" aria-label="Email notifications" aria-live="polite">
-          {items.map((item) => {
-            const unread = !item.read_at;
-            const isSecurity = item.type.includes("security") || item.type.includes("quarantine");
-            return (
-              <article key={item.id} className={`group border-b border-border px-4 py-4 last:border-b-0 sm:px-5 ${unread ? "bg-primary/[0.035]" : "bg-card"}`}>
-                <div className="flex items-start gap-3 sm:gap-4">
-                  <div className={`mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-full text-xs font-bold ${isSecurity ? "bg-destructive/10 text-destructive" : unread ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`} aria-hidden="true">
-                    {isSecurity ? <ShieldAlert className="h-4 w-4" /> : initials(item.sender_email)}
+      {/* 2. Metrics Ribbon */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Card className="flex items-center gap-3.5 p-4 shadow-card">
+          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+            <Inbox className="h-5 w-5" />
+          </div>
+          <div>
+            <p className="text-2xl font-bold leading-none tabular-nums text-foreground">{totalNotifications}</p>
+            <p className="mt-1 text-xs text-muted-foreground font-medium">Triage Queue</p>
+          </div>
+        </Card>
+
+        <Card className="flex items-center gap-3.5 p-4 shadow-card">
+          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-sky-500/10 text-sky-500">
+            <Mail className="h-5 w-5" />
+          </div>
+          <div>
+            <p className="text-2xl font-bold leading-none tabular-nums text-foreground">{unreadCount}</p>
+            <p className="mt-1 text-xs text-muted-foreground font-medium">Unread Items</p>
+          </div>
+        </Card>
+
+        <Card className="flex items-center gap-3.5 p-4 shadow-card">
+          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-emerald-500/10 text-emerald-500">
+            <ShieldCheck className="h-5 w-5" />
+          </div>
+          <div>
+            <p className="text-2xl font-bold leading-none tabular-nums text-foreground">{totalRules}</p>
+            <p className="mt-1 text-xs text-muted-foreground font-medium">Trusted Rules</p>
+          </div>
+        </Card>
+
+        <Card className="flex items-center gap-3.5 p-4 shadow-card">
+          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-amber-500/10 text-amber-500">
+            <Sparkles className="h-5 w-5" />
+          </div>
+          <div>
+            <p className="text-lg font-bold leading-none capitalize text-foreground">Active</p>
+            <p className="mt-1 text-xs text-muted-foreground font-medium">Classifier Status</p>
+          </div>
+        </Card>
+      </div>
+
+      {/* 3. Navigation Segmented Tabs */}
+      <div className="flex gap-2 border-b border-border/70 pb-2">
+        <Button
+          type="button"
+          variant={activeTab === "inbox" ? "secondary" : "ghost"}
+          onClick={() => setTabParam("inbox")}
+          className="gap-2 font-medium"
+        >
+          <Inbox className="h-4 w-4" />
+          Smart Inbox
+          <Badge variant="outline" className="ml-1 text-[10px] font-mono">
+            {totalNotifications}
+          </Badge>
+        </Button>
+
+        <Button
+          type="button"
+          variant={activeTab === "rules" ? "secondary" : "ghost"}
+          onClick={() => setTabParam("rules")}
+          className="gap-2 font-medium"
+        >
+          <ShieldCheck className="h-4 w-4" />
+          Trusted Automation Rules
+          <Badge variant="outline" className="ml-1 text-[10px] font-mono">
+            {totalRules}
+          </Badge>
+        </Button>
+      </div>
+
+      {/* 4. Tab 1: Smart Inbox View */}
+      {activeTab === "inbox" && (
+        <div className="space-y-4">
+          {/* Search & Filters */}
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="relative flex-1 max-w-md">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={searchInput}
+                onChange={(event) => setSearchInput(event.target.value)}
+                placeholder="Search subject, sender, or content..."
+                className="pl-9 text-xs"
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex rounded-lg border border-border bg-muted/30 p-0.5">
+                <Button
+                  size="sm"
+                  variant={!unreadOnly ? "secondary" : "ghost"}
+                  className="h-7 text-xs font-medium"
+                  onClick={() => changeUnread(false)}
+                >
+                  All
+                </Button>
+                <Button
+                  size="sm"
+                  variant={unreadOnly ? "secondary" : "ghost"}
+                  className="h-7 text-xs font-medium"
+                  onClick={() => changeUnread(true)}
+                >
+                  Unread
+                </Button>
+              </div>
+
+              <select
+                value={range}
+                onChange={(e) => changeRange(e.target.value as DateRange)}
+                className="flex h-8 cursor-pointer rounded-lg border border-border bg-background px-2.5 py-1 text-xs text-foreground shadow-sm hover:border-primary/40 focus-visible:outline-none"
+              >
+                <option value="all">All Time</option>
+                <option value="today">Today</option>
+                <option value="7d">Last 7 Days</option>
+                <option value="30d">Last 30 Days</option>
+              </select>
+
+              <select
+                value={notificationType}
+                onChange={(e) => changeType(e.target.value)}
+                className="flex h-8 cursor-pointer rounded-lg border border-border bg-background px-2.5 py-1 text-xs text-foreground shadow-sm hover:border-primary/40 focus-visible:outline-none"
+              >
+                <option value="">All Categories</option>
+                <option value="CONTRACT_UPDATE">Contract Updates</option>
+                <option value="CALENDAR_INVITE">Calendar Invites</option>
+                <option value="GENERAL">General</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Inbox List */}
+          {notifications.isLoading ? (
+            <LoadingSkeleton variant="table" />
+          ) : notifications.isError ? (
+            <ErrorState
+              title="Unable to load notifications"
+              description="Email triage feed could not be retrieved."
+              onRetry={() => void notifications.refetch()}
+            />
+          ) : items.length ? (
+            <div className="space-y-2.5">
+              {items.map((n) => (
+                <Card
+                  key={n.id}
+                  className={`shadow-card border-border/80 p-4 transition-all hover:border-primary/40 ${
+                    !n.read_at ? "bg-primary/[0.02] border-primary/30 ring-1 ring-primary/10" : ""
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3 min-w-0">
+                      <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-border bg-muted/40 font-semibold text-primary text-xs">
+                        {initials(n.sender_email || "Client")}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="truncate text-sm font-semibold text-foreground">
+                            {n.subject || "(No subject)"}
+                          </p>
+                          {!n.read_at && (
+                            <span className="h-2 w-2 rounded-full bg-primary shrink-0" />
+                          )}
+                        </div>
+                        <p className="truncate text-xs text-muted-foreground mt-0.5">
+                          {n.sender_name ? `${n.sender_name} <${n.sender_email}>` : n.sender_email} · {formatVietnamDateTime(n.received_at)} ({relativeTime(n.received_at)})
+                        </p>
+                        <p className="line-clamp-2 text-xs text-muted-foreground mt-2 leading-relaxed font-sans">
+                          {preview(n.body, n.subject)}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col items-end gap-2 shrink-0">
+                      <Badge variant="outline" className="text-[9.5px] uppercase font-mono">
+                        {n.classification || n.type || "GENERAL"}
+                      </Badge>
+                      {!n.read_at && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground gap-1"
+                          onClick={() => markRead.mutate(n.id)}
+                        >
+                          <Check className="h-3.5 w-3.5" /> Mark read
+                        </Button>
+                      )}
+                    </div>
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-start gap-x-2 gap-y-1">
-                      <h2 className={`min-w-0 truncate text-sm ${unread ? "font-bold text-foreground" : "font-semibold text-foreground/85"}`} title={item.sender_email}>{item.sender_name || item.sender_email}</h2>
-                      {item.sender_name && <span className="max-w-full truncate text-xs text-muted-foreground">&lt;{item.sender_email}&gt;</span>}
-                      {unread && <Badge variant="info" className="ml-auto">Unread</Badge>}
-                    </div>
-                    <div className="mt-1 flex items-baseline justify-between gap-3">
-                      <p className={`truncate text-sm ${unread ? "font-semibold" : "font-medium text-foreground/80"}`}>{item.subject || "(No subject)"}</p>
-                      <time className="shrink-0 text-xs text-muted-foreground" dateTime={item.received_at} title={`${formatVietnamDateTime(item.received_at)} · Giờ Việt Nam`}>{relativeTime(item.received_at)}</time>
-                    </div>
-                    <p className="mt-1 line-clamp-2 break-words text-sm leading-5 text-muted-foreground" title={preview(item.body, item.subject)}>{preview(item.body, item.subject) || "No preview available"}</p>
-                    <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
-                      <Link href={`/customer-intelligence?email_id=${encodeURIComponent(item.email_id)}`} className="text-xs font-semibold text-primary hover:underline">Open related research</Link>
-                      {unread && <Button size="sm" variant="outline" onClick={() => markRead.mutate(item.id)} disabled={markRead.isPending}><Check className="h-3.5 w-3.5" aria-hidden="true" />Mark read</Button>}
-                      <Badge variant="outline" className="ml-auto hidden sm:inline-flex">{item.type.replaceAll("_", " ")}</Badge>
-                    </div>
+                </Card>
+              ))}
+
+              {/* Pagination Controls */}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-border/60 pt-4 text-xs text-muted-foreground">
+                <div className="flex items-center gap-3">
+                  <span className="font-mono">
+                    Page {pageIndex + 1} ({items.length} items)
+                  </span>
+                  <div className="flex items-center gap-1.5 font-sans">
+                    <span className="text-[11px] text-muted-foreground">Per page:</span>
+                    <select
+                      value={pageSize}
+                      onChange={(e) => {
+                        setPageSize(Number(e.target.value));
+                        resetPaging();
+                      }}
+                      className="h-7 rounded-md border border-border bg-background px-2 text-xs text-foreground cursor-pointer hover:border-primary/40 focus:outline-none"
+                    >
+                      <option value={5}>5</option>
+                      <option value={6}>6</option>
+                      <option value={8}>8</option>
+                      <option value={10}>10</option>
+                    </select>
                   </div>
                 </div>
-              </article>
-            );
-          })}
-        </section>
-      ) : (
-        <div className="rounded-xl border border-dashed border-border bg-card px-6 py-14 text-center">
-          {query || unreadOnly || range !== "all" ? <>
-            <MailOpen className="mx-auto h-8 w-8 text-muted-foreground" aria-hidden="true" />
-            <h2 className="mt-3 font-semibold">No matching emails</h2>
-            <p className="mt-1 text-sm text-muted-foreground">Try a broader search or clear one of the filters.</p>
-            <Button variant="outline" size="sm" className="mt-4" onClick={() => { setSearchInput(""); setQuery(""); setUnreadOnly(false); setRange("all"); setNotificationType(""); resetPaging(); }}>Clear filters</Button>
-          </> : <EmptyState icon={Bell} title="Your inbox is clear" description="Connect Gmail to receive routed email summaries and customer research updates." />}
+
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 gap-1 text-xs"
+                    disabled={pageIndex === 0 || notifications.isLoading}
+                    onClick={() => setPageIndex((p) => Math.max(0, p - 1))}
+                  >
+                    <ChevronLeft className="h-4 w-4" /> Previous
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 gap-1 text-xs"
+                    disabled={!notifications.data?.next_cursor || notifications.isLoading}
+                    onClick={() => {
+                      if (notifications.data?.next_cursor) {
+                        setPageCursors((prev) => {
+                          const next = [...prev];
+                          next[pageIndex + 1] = notifications.data?.next_cursor ?? null;
+                          return next;
+                        });
+                        setPageIndex((p) => p + 1);
+                      }
+                    }}
+                  >
+                    Next <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <EmptyState
+              icon={Inbox}
+              title="All caught up in your inbox"
+              description="No incoming emails matched your active filters."
+            />
+          )}
         </div>
       )}
 
-      {(notifications.data?.has_more || pageIndex > 0) && (
-        <nav className="flex items-center justify-between border-t border-border pt-4" aria-label="Inbox pagination">
-          <Button variant="outline" size="sm" onClick={previousPage} disabled={pageIndex === 0 || notifications.isFetching}><ChevronLeft className="h-4 w-4" aria-hidden="true" />Newer</Button>
-          <span className="text-xs text-muted-foreground">Page {pageIndex + 1} · 25 per page</span>
-          <Button variant="outline" size="sm" onClick={nextPage} disabled={!notifications.data?.has_more || notifications.isFetching}>Older<ChevronRight className="h-4 w-4" aria-hidden="true" /></Button>
-        </nav>
+      {/* 5. Tab 2: Trusted Rules View */}
+      {activeTab === "rules" && (
+        <div className="space-y-4">
+          <Card className="border-amber-500/30 bg-amber-500/[0.04] shadow-card">
+            <CardContent className="space-y-1.5 p-4 text-xs">
+              <p className="font-semibold text-amber-500 flex items-center gap-1.5">
+                <ShieldCheck className="h-4 w-4" /> Production Safety Policy Defaults
+              </p>
+              <p className="text-muted-foreground leading-relaxed">
+                Rules currently operate with strict safety boundaries (CALENDAR_AUTO_CREATE). Rules require a verified exact company domain, expiration date, daily execution caps, and SPF/DKIM/DMARC authentication.
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-card border-border/80">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base font-semibold text-foreground">Create Trusted Calendar Rule</CardTitle>
+              <CardDescription className="text-xs">
+                Auto-approve calendar invites from trusted partner domains that satisfy strict verification policies.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  setRuleError("");
+                  createRule.mutate();
+                }}
+                className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 items-end"
+              >
+                <div className="space-y-1.5">
+                  <Label htmlFor="rule-name" className="text-xs font-medium">Rule Name</Label>
+                  <Input
+                    id="rule-name"
+                    placeholder="e.g. Acme Corp Auto-Meeting"
+                    value={ruleName}
+                    onChange={(e) => setRuleName(e.target.value)}
+                    required
+                    className="text-xs"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="rule-domain" className="text-xs font-medium">Trusted Domain</Label>
+                  <Input
+                    id="rule-domain"
+                    placeholder="customer.example.com"
+                    value={ruleDomain}
+                    onChange={(e) => setRuleDomain(e.target.value)}
+                    required
+                    className="text-xs font-mono"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="rule-cal-id" className="text-xs font-medium">Calendar Connection ID</Label>
+                  <Input
+                    id="rule-cal-id"
+                    placeholder="e.g. primary-google-cal"
+                    value={calendarConnectionId}
+                    onChange={(e) => setCalendarConnectionId(e.target.value)}
+                    required
+                    className="text-xs font-mono"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="rule-expiry" className="text-xs font-medium">Expiry Date & Time</Label>
+                  <Input
+                    id="rule-expiry"
+                    type="datetime-local"
+                    value={ruleExpiry}
+                    onChange={(e) => setRuleExpiry(e.target.value)}
+                    required
+                    className="text-xs"
+                  />
+                </div>
+
+                <div className="sm:col-span-2 lg:col-span-4 pt-1 flex items-center justify-between">
+                  {ruleError ? (
+                    <p className="text-xs text-destructive">{ruleError}</p>
+                  ) : <span />}
+                  <Button
+                    type="submit"
+                    loading={createRule.isPending}
+                    disabled={!ruleName || !ruleDomain || !calendarConnectionId || !ruleExpiry}
+                    className="gap-1.5 font-semibold text-xs h-9"
+                  >
+                    <Plus className="h-4 w-4" /> Create Trusted Rule
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+
+          {rules.isLoading ? (
+            <LoadingSkeleton variant="table" />
+          ) : rules.isError ? (
+            <ErrorState
+              title="Unable to load rules"
+              description="Trusted automation rules could not be loaded."
+              onRetry={() => void rules.refetch()}
+            />
+          ) : rules.data?.items?.length ? (
+            <div className="space-y-2.5">
+              {rules.data.items.map((rule) => (
+                <Card key={rule.id} className="shadow-card border-border/80 p-4 transition-colors hover:border-primary/40">
+                  <div className="flex flex-wrap items-center justify-between gap-4">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-sm text-foreground">{rule.name}</span>
+                        <Badge variant={rule.status === "ACTIVE" ? "default" : "outline"} className="text-[9.5px]">
+                          {rule.status}
+                        </Badge>
+                        <Badge variant="outline" className="text-[9.5px] font-mono">
+                          Shadow Policy
+                        </Badge>
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {rule.match.type}: <span className="font-mono text-primary">{rule.match.value}</span> · Action: {rule.action.type}
+                      </p>
+                      <p className="mt-0.5 text-[10px] text-muted-foreground font-mono">
+                        Policy version: {rule.policy_version}
+                      </p>
+                    </div>
+
+                    <div className="text-right text-xs text-muted-foreground font-mono">
+                      <span>Daily Cap: {String(rule.conditions.maximum_events_per_day || 0)} events</span>
+                      <br />
+                      <span>Min Confidence: {String(rule.conditions.minimum_classification_confidence || 0)}</span>
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              icon={ShieldCheck}
+              title="No automation rules configured"
+              description="Create a trusted domain rule to enable automatic scheduling for key partners."
+            />
+          )}
+        </div>
       )}
     </div>
   );

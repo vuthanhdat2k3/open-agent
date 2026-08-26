@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import httpx
 import pytest
@@ -79,7 +79,11 @@ class TestPermissionMatrix:
     def test_operator_lacks_org_admin_surfaces(self) -> None:
         assert not has_permission(Role.operator, "admin:email-intelligence")
         assert not has_permission(Role.operator, "orgs:manage")
-        assert not has_permission(Role.operator, "models:manage")
+        assert not has_permission(Role.operator, "members:manage")
+        assert not has_permission(Role.operator, "quotas:manage")
+        # Operator has full AI stack management
+        assert has_permission(Role.operator, "models:manage")
+        assert has_permission(Role.operator, "agents:manage")
 
     def test_user_lacks_ingest_and_org_management(self) -> None:
         assert not has_permission(Role.user, "files:manage")
