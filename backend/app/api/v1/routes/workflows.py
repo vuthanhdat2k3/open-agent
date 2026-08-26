@@ -7,14 +7,24 @@ from app.api.v1.sse import format_sse
 from app.config import get_settings
 from app.core.authz.scope import scope_to_owner
 from app.core.quota.dependencies import agent_run_admission, enforce_resource_quota
+from app.core.tools.registry import BUILTIN_TOOLS
 from app.core.workflow.engine import create_workflow_run, run_workflow
+from app.core.workflow.node_definitions import NODE_DEFINITIONS
 from app.core.workflow.queue import enqueue_workflow_run
 from app.db.base import utc_now
 from app.db.session import SessionLocal
 from app.dependencies import get_current_org_id, get_current_user, get_db, require_permission
+from app.models.agent import Agent
+from app.models.model import Model
 from app.models.user import User
+from app.models.workflow import Workflow
 from app.models.workflow_node_run import WorkflowNodeRun
 from app.models.workflow_run import WorkflowRun
+from app.repositories.customer_intelligence import (
+    CalendarConnectionRepository,
+    DriveConnectionRepository,
+    EmailConnectionRepository,
+)
 from app.schemas.workflow import (
     RunWorkflowRequest,
     WorkflowCreate,
@@ -22,6 +32,7 @@ from app.schemas.workflow import (
     WorkflowGenerateResponse,
     WorkflowOut,
     WorkflowUpdate,
+    WorkflowValidationError,
 )
 from app.services.workflow_service import WorkflowService
 
@@ -29,6 +40,66 @@ router = APIRouter(
     prefix="/api/workflows",
     tags=["workflows"],
 )
+
+
+@router.get("/node-definitions", dependencies=[Depends(require_permission("workflows:read"))])
+async def list_node_definitions():
+    """Declarative config schemas for every node kind (single source of truth)."""
+    return NODE_DEFINITIONS
+
+
+@router.get("/node-options", dependencies=[Depends(require_permission("workflows:read"))])
+async def list_node_options(
+    type: str = "models",
+    org_id: str = Depends(get_current_org_id),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Dynamic dropdown sources for ``load_options_from`` fields."""
+    from app.repositories.agent_repo import AgentRepository
+
+    if type == "models":
+        rows = await db.execute(select(Model).where(Model.org_id == org_id, Model.enabled.is_(True)))
+        return [{"name": m.display_name or m.name, "value": m.id} for m in rows.scalars().all()]
+    if type == "agents":
+        agents = await AgentRepository(db).list(org_id)
+        return [{"name": a.name, "value": a.id} for a in agents]
+    if type == "workflows":
+        rows = await db.execute(select(Workflow).where(Workflow.org_id == org_id))
+        return [{"name": w.name, "value": w.id} for w in rows.scalars().all()]
+    if type == "connections":
+        out = []
+        for repo in (EmailConnectionRepository, CalendarConnectionRepository, DriveConnectionRepository):
+            conns = await repo(db).list(org_id)
+            for c in conns:
+                label = getattr(c, "account_email", None) or getattr(c, "provider", "connection")
+                out.append({"name": f"{label} ({getattr(c, 'status', '')})", "value": c.id})
+        return out
+    if type == "users":
+        rows = await db.execute(
+            select(User).join(User.memberships).where(User.memberships.any(org_id=org_id))
+        )
+        return [{"name": u.email, "value": u.id} for u in rows.scalars().all()]
+    if type == "categories":
+        return []
+    return []
+
+
+@router.get("/tool-options", dependencies=[Depends(require_permission("workflows:read"))])
+async def list_tool_options():
+    """Registered tools for the tool-node dropdown (builtin + MCP + CI)."""
+    tools = []
+    for name, spec in BUILTIN_TOOLS.items():
+        tools.append(
+            {
+                "name": name,
+                "value": name,
+                "description": getattr(spec, "description", ""),
+                "risk_tier": getattr(spec, "risk_tier", "safe"),
+                "input_schema": getattr(spec, "input_schema", {}),
+            }
+        )
+    return tools
 
 
 async def _run_workflow_detached(workflow_id: str, org_id: str, workflow_run_id: str) -> None:
@@ -78,6 +149,8 @@ async def create_workflow(
 ):
     try:
         return await WorkflowService(db).create(org_id, body.model_dump())
+    except WorkflowValidationError as e:
+        raise HTTPException(400, detail={"errors": e.errors}) from e
     except ValueError as e:
         raise HTTPException(400, str(e))
 
@@ -119,6 +192,8 @@ async def update_workflow(
 ):
     try:
         return await WorkflowService(db).update(org_id, id, body.model_dump(exclude_unset=True))
+    except WorkflowValidationError as e:
+        raise HTTPException(400, detail={"errors": e.errors}) from e
     except ValueError as e:
         raise HTTPException(404, str(e))
 
