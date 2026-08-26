@@ -39,6 +39,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/page-header";
+import { DataPagination } from "@/components/shared";
 import { useTranslation } from "@/lib/i18n";
 import { getAccessToken } from "@/lib/auth";
 import { formatVietnamDateTime } from "@/lib/datetime";
@@ -557,9 +558,14 @@ export default function CustomerIntelligencePage() {
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
   const [companyName, setCompanyName] = useState("");
   const [companyDomain, setCompanyDomain] = useState("");
+  const [casePage, setCasePage] = useState(1);
+  const [casePageSize, setCasePageSize] = useState(8);
   const [question, setQuestion] = useState("");
 
-  useEffect(() => setOffset(0), [deferredQuery, businessFilter]);
+  useEffect(() => {
+    setOffset(0);
+    setCasePage(1);
+  }, [deferredQuery, businessFilter]);
 
   // Filter cases based on business role
   const displayCases = React.useMemo(() => {
@@ -759,7 +765,7 @@ export default function CustomerIntelligencePage() {
           </div>
           <div>
             <p className="text-2xl font-bold leading-none tabular-nums text-foreground">{totalCount}</p>
-            <p className="mt-1 text-xs text-muted-foreground font-medium">Total Dossiers</p>
+            <p className="mt-1 text-xs text-muted-foreground font-medium">Total {locale === "vi" ? "Hồ sơ Khách hàng" : "Dossiers"}</p>
           </div>
         </Card>
 
@@ -823,7 +829,7 @@ export default function CustomerIntelligencePage() {
           <Card className="shadow-card flex flex-col h-full">
             <CardHeader className="pb-3 space-y-3">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-base font-semibold text-foreground">Briefing Stream</CardTitle>
+                <CardTitle className="text-base font-semibold text-foreground">{locale === "vi" ? "Luồng Hồ sơ Tình báo" : "Briefing Stream"}</CardTitle>
                 <div className="flex items-center gap-1.5">
                   <div className="flex rounded-md border border-border bg-muted/40 p-0.5">
                     <button
@@ -871,7 +877,7 @@ export default function CustomerIntelligencePage() {
                     businessFilter === "action_required" ? "bg-card text-foreground font-semibold shadow-sm border border-border/40" : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
-                  🔥 Action
+                  {locale === "vi" ? "🔥 Cần xử lý" : "🔥 Action"}
                 </button>
                 <button
                   type="button"
@@ -880,7 +886,7 @@ export default function CustomerIntelligencePage() {
                     businessFilter === "pre_meeting" ? "bg-card text-foreground font-semibold shadow-sm border border-border/40" : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
-                  📅 Pre-Meeting
+                  {locale === "vi" ? "📅 Trước cuộc họp" : "📅 Pre-Meeting"}
                 </button>
                 <button
                   type="button"
@@ -889,7 +895,7 @@ export default function CustomerIntelligencePage() {
                     businessFilter === "ready" ? "bg-card text-foreground font-semibold shadow-sm border border-border/40" : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
-                  ✅ Ready
+                  {locale === "vi" ? "✅ Sẵn sàng" : "✅ Ready"}
                 </button>
               </div>
 
@@ -897,7 +903,7 @@ export default function CustomerIntelligencePage() {
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Search company or domain..."
+                  placeholder={locale === "vi" ? "Tìm theo tên công ty hoặc domain..." : "Search company or domain..."}
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   className="pl-9 text-xs"
@@ -967,6 +973,17 @@ export default function CustomerIntelligencePage() {
                 </div>
               )}
 
+              <div className="pt-2">
+                <DataPagination
+                  page={casePage}
+                  pageSize={casePageSize}
+                  totalItems={displayCases.length}
+                  onPageChange={setCasePage}
+                  onPageSizeChange={setCasePageSize}
+                  pageSizeOptions={[4, 8, 16]}
+                  compact
+                />
+              </div>
               {!cases.isLoading && !displayCases.length && (
                 <div className="rounded-xl border border-dashed border-border p-8 text-center text-xs text-muted-foreground">
                   <Building2 className="mx-auto h-8 w-8 text-muted-foreground mb-2" />
@@ -1018,7 +1035,7 @@ export default function CustomerIntelligencePage() {
                       onClick={() => void research.mutateAsync(detail.data!.id)}
                       loading={research.isPending}
                     >
-                      <RefreshCw className="h-3.5 w-3.5" /> Re-research
+                      <RefreshCw className="h-3.5 w-3.5" /> {locale === "vi" ? "Nghiên cứu lại" : "Re-research"}
                     </Button>
                     <Button
                       variant="ghost"
@@ -1037,7 +1054,7 @@ export default function CustomerIntelligencePage() {
               {!selected ? (
                 <div className="py-24 text-center">
                   <FileText className="mx-auto h-12 w-12 text-muted-foreground/50 mb-3" />
-                  <h3 className="text-base font-semibold text-foreground">No Dossier Selected</h3>
+                  <h3 className="text-base font-semibold text-foreground">{locale === "vi" ? "Chưa chọn hồ sơ nào" : "No Dossier Selected"}</h3>
                   <p className="mt-1 text-xs text-muted-foreground max-w-sm mx-auto">
                     Select a client from the stream on the left to view synthesized background briefings, company signals, and meeting preparation.
                   </p>
