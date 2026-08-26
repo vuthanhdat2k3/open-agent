@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.core.auth.api_key import generate_api_key
+from app.core.auth.password import hash_password
 from app.core.observability.audit import log_action
 from app.db.base import utc_now
 from app.db.session import get_db
@@ -127,14 +128,19 @@ async def create_org(
 
     if body.admin_email and body.admin_email.strip().lower() != (current_user.email or "").lower():
         target_email = body.admin_email.strip().lower()
+        initial_pass = body.initial_password or "OpenAgent@2026"
         res_u = await db.execute(select(User).where(User.email == target_email))
         target_user = res_u.scalar_one_or_none()
         if not target_user:
             target_user = User(
                 email=target_email,
                 display_name=target_email.split("@", 1)[0],
+                hashed_password=hash_password(initial_pass),
             )
             db.add(target_user)
+            await db.flush()
+        elif not target_user.hashed_password:
+            target_user.hashed_password = hash_password(initial_pass)
             await db.flush()
         invited_membership = Membership(
             org_id=org.id,
@@ -148,7 +154,7 @@ async def create_org(
         await ZitadelProvisioningService().provision_user(
             email=target_email,
             display_name=target_user.display_name,
-            initial_password=body.initial_password or "OpenAgent@2026",
+            initial_password=initial_pass,
         )
 
     await db.commit()
@@ -212,14 +218,19 @@ async def add_org_member(
     db: AsyncSession = Depends(get_db),
 ):
     await _ensure_user_belongs_to_org(db, current_user.id, id)
+    initial_pass = body.initial_password or "OpenAgent@2026"
     res_u = await db.execute(select(User).where(User.email == body.email.lower()))
     invited_user = res_u.scalar_one_or_none()
     if not invited_user:
         invited_user = User(
             email=body.email.lower(),
             display_name=body.email.split("@", 1)[0],
+            hashed_password=hash_password(initial_pass),
         )
         db.add(invited_user)
+        await db.flush()
+    elif not invited_user.hashed_password:
+        invited_user.hashed_password = hash_password(initial_pass)
         await db.flush()
 
     res_mem = await db.execute(
