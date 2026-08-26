@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 from typing import Any
 from unittest.mock import patch
@@ -17,7 +16,6 @@ from app.core.agent_loop import run_agent_loop
 from app.core.session_surface import derive_messages
 from app.db.base import Base
 from app.models.agent import Agent
-from app.models.message import Message
 from app.models.model import Model
 from app.models.provider import Provider
 from app.models.session import Session
