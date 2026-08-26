@@ -95,6 +95,7 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 | Branch | Worktree path | Phạm vi/task | Agent/người phụ trách |
 |---|---|---|---|
 | `dev` | `G:\open-agent` | Nhánh tích hợp chính — không code trực tiếp ở đây | — |
+| `feat/ui-full-i18n-localization` | `G:\open-agent-worktrees\ui-full-i18n-localization` | Bản địa hóa 100% giao diện (vi/en) toàn diện cho tất cả các trang, dialogs, forms và tables | Antigravity |
 | `feat/session-event-log` | `G:\open-agent-worktrees\session-event-log` | Session event log kiểu dsh: tool fidelity qua turn, compaction surface-replacement token-based | ox-alpha |
 | `feat/workflow-node-config-system` | `G:\open-agent-worktrees\workflow-node-system-upgrade` | Workflow node configuration system: n8n-style node schemas, agent custom/inherit, scheduler cron form, real integration, LLM triager | CommandCode |
 
@@ -128,3 +129,29 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
   và gây phân kỳ `deploy/dev` so với `dev` (phải merge commit hòa giải mỗi lần sync).
 - Không amend commit không phải của mình.
 - Nếu phát hiện file `.kiro/` hoặc file debug tạm (`_debug_*.py`) không thuộc phạm vi task của mình xuất hiện trong `git status`, không xóa hay commit chúng — để lại cho agent/người tạo ra chúng xử lý.
+
+## 9. Quy tắc bắt buộc về Đa ngôn ngữ (i18n vi/en) khi sửa hoặc thêm mới UI
+
+Hệ thống giao diện của OpenAgent hỗ trợ đa ngôn ngữ đầy đủ (`vi` - Tiếng Việt và `en` - Tiếng Anh). Mọi agent khi tạo mới hoặc sửa đổi code Frontend **bắt buộc tuân thủ**:
+
+1. **Tuyệt đối không hardcode chuỗi hiển thị** (User-facing text) chỉ bằng một ngôn ngữ hoặc chuỗi cứng trong JSX/TSX.
+2. **Sử dụng Hook đa ngôn ngữ**:
+   ```tsx
+   import { useTranslation } from "@/lib/i18n";
+
+   export function MyComponent() {
+     const { t, dict, locale } = useTranslation();
+     // Sử dụng qua dictionary có type-checking:
+     // {dict.pages.agents.title}
+     // Hoặc qua helper:
+     // {t("pages.agents.title", "Agents")}
+     // Hoặc điều kiện locale đối với câu ngắn:
+     // {locale === "vi" ? "Lưu thay đổi" : "Save changes"}
+   }
+   ```
+3. **Cập nhật đầy đủ cả 2 từ điển**: Khi thêm tính năng, trang hoặc trường mới, phải bổ sung đồng thời vào:
+   - `frontend/lib/i18n/locales/vi.ts` (Từ điển Tiếng Việt)
+   - `frontend/lib/i18n/locales/en.ts` (Từ điển Tiếng Anh)
+   - `frontend/lib/i18n/types.ts` (Type definition tương ứng)
+4. **Kiểm tra trước khi hoàn thành**: Luôn chạy `npm run typecheck && npm run build` trong `frontend/` để bảo đảm không thiếu translation key và toàn bộ các trang biên dịch thành công.
+
