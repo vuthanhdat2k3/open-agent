@@ -29,11 +29,13 @@ DEFAULT_LEASE_SECONDS = 300
 WORKER_ID = f"worker-{uuid.uuid4().hex[:12]}"
 
 
-async def completed_node_outputs(db: AsyncSession, workflow_run_id: str) -> dict[str, str]:
-    """Return ``{node_id: output_text}`` for nodes that already succeeded.
+async def completed_node_outputs(db: AsyncSession, workflow_run_id: str) -> dict[str, Any]:
+    """Return ``{node_id: output_dict}`` for nodes that already succeeded.
 
     Ordered by attempt so the latest successful attempt wins if a node was
-    retried before eventually succeeding.
+    retried before eventually succeeding. The value carries the full
+    ``{"text": ..., "data": ...}`` output so a resumed run rebuilds structured
+    node outputs for downstream ``input_mapping`` and edge conditions.
     """
     res = await db.execute(
         select(WorkflowNodeRun)
@@ -43,7 +45,13 @@ async def completed_node_outputs(db: AsyncSession, workflow_run_id: str) -> dict
         )
         .order_by(WorkflowNodeRun.attempt)
     )
-    return {row.node_id: (row.output or {}).get("text", "") for row in res.scalars().all()}
+    out: dict[str, Any] = {}
+    for row in res.scalars().all():
+        out[row.node_id] = {
+            "text": (row.output or {}).get("text", ""),
+            "data": (row.output or {}).get("data", {}) or {},
+        }
+    return out
 
 
 async def acquire_lease(

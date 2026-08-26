@@ -95,6 +95,21 @@ export default function WorkflowsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Load a workflow directly when opened with ?edit=<id> (e.g. from Automations)
+  const didLoadEditRef = React.useRef(false);
+  React.useEffect(() => {
+    if (didLoadEditRef.current || typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    const editIdParam = url.searchParams.get("edit");
+    if (!editIdParam) return;
+    const wf = data?.find((w) => w.id === editIdParam);
+    if (wf) {
+      didLoadEditRef.current = true;
+      loadWorkflow(wf);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]);
+
   // Update browser URL silently without triggering Next.js router re-render or scrolling reset
   React.useEffect(() => {
     if (typeof window === "undefined") return;

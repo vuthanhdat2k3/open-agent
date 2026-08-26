@@ -18,6 +18,7 @@ from app.models.agent import Agent
 from app.models.model import Model
 from app.models.user import User
 from app.models.workflow import Workflow
+from app.models.workflow_installation import WorkflowInstallation
 from app.models.workflow_node_run import WorkflowNodeRun
 from app.models.workflow_run import WorkflowRun
 from app.repositories.customer_intelligence import (
@@ -190,12 +191,36 @@ async def update_workflow(
     org_id: str = Depends(get_current_org_id),
     db: AsyncSession = Depends(get_db),
 ):
+    # Ownership-scoped: role `user` may only update their own workflows.
+    res = await db.execute(
+        scope_to_owner(select(Workflow).where(Workflow.id == id, Workflow.org_id == org_id), db, Workflow.created_by_user_id)
+    )
+    if res.scalar_one_or_none() is None:
+        existing = await db.scalar(select(Workflow.id).where(Workflow.id == id, Workflow.org_id == org_id))
+        if existing is None:
+            raise HTTPException(404, "workflow not found")
+        raise HTTPException(403, "you can only edit workflows you created")
     try:
-        return await WorkflowService(db).update(org_id, id, body.model_dump(exclude_unset=True))
+        result = await WorkflowService(db).update(org_id, id, body.model_dump(exclude_unset=True))
     except WorkflowValidationError as e:
         raise HTTPException(400, detail={"errors": e.errors}) from e
     except ValueError as e:
         raise HTTPException(404, str(e))
+    # If this workflow belongs to a template installation and the user edited
+    # its DAG, mark the installation so the worker runs the generic engine
+    # instead of the catalog executor (the user now owns the graph).
+    if body.graph is not None:
+        installation = await db.scalar(
+            select(WorkflowInstallation).where(
+                WorkflowInstallation.workflow_id == id, WorkflowInstallation.org_id == org_id
+            )
+        )
+        if installation is not None:
+            settings = dict(installation.settings or {})
+            settings["editor_overridden"] = True
+            installation.settings = settings
+            await db.commit()
+    return result
 
 
 @router.delete("/{id}", dependencies=[Depends(require_permission("workflows:delete"))])
@@ -204,6 +229,15 @@ async def delete_workflow(
     org_id: str = Depends(get_current_org_id),
     db: AsyncSession = Depends(get_db),
 ):
+    # Ownership-scoped: role `user` may only delete their own workflows.
+    res = await db.execute(
+        scope_to_owner(select(Workflow).where(Workflow.id == id, Workflow.org_id == org_id), db, Workflow.created_by_user_id)
+    )
+    if res.scalar_one_or_none() is None:
+        existing = await db.scalar(select(Workflow.id).where(Workflow.id == id, Workflow.org_id == org_id))
+        if existing is None:
+            raise HTTPException(404, "workflow not found")
+        raise HTTPException(403, "you can only delete workflows you created")
     if not await WorkflowService(db).delete(org_id, id):
         raise HTTPException(404, "workflow not found")
     return {"ok": True}

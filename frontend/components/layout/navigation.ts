@@ -80,6 +80,7 @@ export const navGroups: NavGroup[] = [
     roles: ["user"],
     items: [
       { href: "/chat", label: "Chat", icon: MessageSquare, roles: ["user"] },
+      { href: "/workflows", label: "Workflows", icon: Workflow, roles: ["user"], permission: "workflows:read" },
       { href: "/run-workflow", label: "Run Workflow", icon: PlayCircle, roles: ["user"], permission: "workflows:run" },
       { href: "/integrations", label: "Integrations", icon: Plug, roles: ["user"], permission: "ci:personal:manage" },
       { href: "/email-intelligence", label: "Email Intelligence", icon: Bell, roles: ["user"], permission: "ci:personal:manage" },

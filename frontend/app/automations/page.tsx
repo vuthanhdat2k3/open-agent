@@ -21,6 +21,8 @@ import { PageHeader } from "@/components/page-header";
 import { EmptyState, ErrorState, LoadingSkeleton, DataPagination } from "@/components/shared";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useRouter } from "next/navigation";
+import { Pencil } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -571,6 +573,7 @@ function TemplateDetails({
 
 export default function AutomationsPage() {
   const queryClient = useQueryClient();
+  const router = useRouter();
   const [view, setView] = useState<"discover" | "active">("discover");
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("");
@@ -834,6 +837,19 @@ export default function AutomationsPage() {
                         </p>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() =>
+                            router.push(
+                              `/workflows?edit=${installation.workflow_id}`,
+                            )
+                          }
+                        >
+                          <Pencil className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+                          Open in editor
+                        </Button>
                         <Button
                           type="button"
                           size="sm"
