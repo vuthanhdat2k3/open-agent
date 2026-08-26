@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
 import {
   ArrowRight,
   Check,
@@ -11,6 +12,7 @@ import {
   Clock3,
   Gauge,
   LibraryBig,
+  Pencil,
   Plug,
   Search,
   ShieldCheck,
@@ -548,6 +550,7 @@ function TemplateDetails({
 export default function AutomationsPage() {
   const { t, dict, locale } = useTranslation();
   const queryClient = useQueryClient();
+  const router = useRouter();
   const [view, setView] = useState<"discover" | "active">("discover");
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("");
@@ -839,6 +842,20 @@ export default function AutomationsPage() {
                           </p>
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              router.push(
+                                `/workflows?edit=${installation.workflow_id}`,
+                              )
+                            }
+                            className="text-xs"
+                          >
+                            <Pencil className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+                            {locale === "vi" ? "Mở trong trình soạn thảo" : "Open in editor"}
+                          </Button>
                           <Button
                             type="button"
                             size="sm"

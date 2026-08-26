@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.workflow.template_dags import TEMPLATE_DAGS
 from app.db.base import gen_id, utc_now
 from app.db.session import get_db
 from app.dependencies import get_current_org_id, get_current_user, require_permission
@@ -168,17 +169,18 @@ async def install_template(
         raise HTTPException(409, "workflow template is already installed")
 
     installation_id = gen_id()
+    # Materialize the real template DAG so the user owns an editable workflow,
+    # not an opaque "catalog_template" placeholder.
+    template_graph = TEMPLATE_DAGS.get(body.template_key)
+    if template_graph is None:
+        raise HTTPException(404, f"template {body.template_key} has no DAG graph")
     workflow = Workflow(
         id=gen_id(),
         org_id=org_id,
         created_by_user_id=current_user.id,
         name=body.name or version.name,
         description=f"Managed installation of {version.name}",
-        graph={
-            "kind": "catalog_template",
-            "template_key": body.template_key,
-            "template_version": version.version,
-        },
+        graph=template_graph,
     )
     schedule = body.schedule.model_dump()
     if body.template_key in {"gmail_monitor_and_triage", "new-customer-intelligence"}:

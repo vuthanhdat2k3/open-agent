@@ -47,6 +47,7 @@ interface WorkflowCanvasProps {
   onGraphChange: (nodes: GraphNode[], edges: GraphEdge[]) => void;
   onSelectNode: (id: string | null) => void;
   onCreateNode: (kind: GraphNode["kind"], position: { x: number; y: number }) => void;
+  onEditEdgeCondition?: (edgeId: string) => void;
 }
 
 function toFlowStatus(status: string | undefined): NodeStatus {
@@ -73,13 +74,15 @@ function toFlowEdges(
   edges: GraphEdge[],
   nodeStatus: Record<string, string>,
   onDelete: (edgeId: string) => void,
+  onEditCondition?: (edgeId: string) => void,
 ): Edge<WorkflowEdgeData>[] {
   return edges.map((e, i) => ({
     id: `${e.from_}->${e.to}#${i}`,
     source: e.from_,
     target: e.to,
     type: "custom",
-    data: { sourceStatus: toFlowStatus(nodeStatus[e.from_]), onDelete },
+    label: e.condition || undefined,
+    data: { sourceStatus: toFlowStatus(nodeStatus[e.from_]), onDelete, onEditCondition },
   }));
 }
 
@@ -102,6 +105,7 @@ function WorkflowCanvasInner({
   onGraphChange,
   onSelectNode,
   onCreateNode,
+  onEditEdgeCondition,
 }: WorkflowCanvasProps) {
     const { locale } = useTranslation();
   const { screenToFlowPosition } = useReactFlow();
@@ -148,8 +152,8 @@ function WorkflowCanvasInner({
     [graphNodes, nodeStatus, handleDeleteNode],
   );
   const edges = React.useMemo(
-    () => toFlowEdges(graphEdges, nodeStatus, handleDeleteEdge),
-    [graphEdges, nodeStatus, handleDeleteEdge],
+    () => toFlowEdges(graphEdges, nodeStatus, handleDeleteEdge, onEditEdgeCondition),
+    [graphEdges, nodeStatus, handleDeleteEdge, onEditEdgeCondition],
   );
 
   const onNodesChange: OnNodesChange<Node<WorkflowNodeData>> = React.useCallback(

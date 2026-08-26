@@ -66,7 +66,7 @@ async def test_workflow_persists_run_and_node_runs_inline() -> None:
             await session.execute(select(WorkflowRun).where(WorkflowRun.id == workflow_run_id))
         ).scalar_one()
         assert run.status == "succeeded"
-        assert run.output == {"text": "hello durable"}
+        assert run.output == {"text": "hello durable", "data": {"out": {"output": "hello durable"}}}
         assert run.triggered_by_user_id == "workflow-runner"
         node_runs = (
             await session.execute(

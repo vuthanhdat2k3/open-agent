@@ -22,15 +22,24 @@ class GraphNode(BaseModel):
     id: str
     kind: NodeKind
     label: str = ""
-    agent_id: str | None = None  # for kind == "agent"
+    agent_id: str | None = None  # for kind == "agent", mode == "inherit"
     merge_mode: MergeMode = "all"  # for kind == "merge"
-    config: dict[str, Any] = {}
+    parameters: dict[str, Any] = {}  # validated per NodeDefinition
+    config: dict[str, Any] = {}  # DEPRECATED: read fallback only
 
 
 class GraphEdge(BaseModel):
     from_: str
     to: str
     condition: str | None = None  # optional guard expression
+
+
+class NodeOutput(BaseModel):
+    """Unified output contract for every workflow node."""
+
+    text: str = ""
+    data: dict[str, Any] = {}
+    error: str | None = None
 
 
 class WorkflowGraph(BaseModel):
@@ -84,3 +93,11 @@ class WorkflowRunEvent(BaseModel):
     event: str  # "node_start" | "node_done" | "node_error" | "edge" | "done" | "error"
     node_id: str | None = None
     data: dict[str, Any] = {}
+
+
+class WorkflowValidationError(ValueError):
+    """Graph validation failed with structured per-node/per-field errors."""
+
+    def __init__(self, errors: list[dict[str, str]]) -> None:
+        super().__init__("workflow graph validation failed")
+        self.errors = errors

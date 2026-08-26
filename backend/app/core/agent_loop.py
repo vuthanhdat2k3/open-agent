@@ -15,6 +15,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
+from app.core import session_log as slog
 from app.core.chat_events import ChatEventRecorder
 from app.core.guardrails.approval import request_approval
 from app.core.guardrails.budget import BudgetTracker, RunBudget
@@ -34,6 +35,7 @@ from app.core.observability.metrics import (
 )
 from app.core.providers.factory import build_driver
 from app.core.runtime_context import build_runtime_context, normalize_timezone
+from app.core.session_surface import derive_messages
 from app.core.tools.registry import BUILTIN_TOOLS, execute_tool_call
 from app.core.tools.risk_tier import RiskTier
 from app.core.tools.types import ToolContext, ToolSpec, tool_to_openai_schema
@@ -886,31 +888,39 @@ async def _agent_stream(
     system_prompt = "\n\n".join(system_parts)
 
     # Build messages: system prompt first, then conversation history, then current user message.
-    # NOTE: previously messages was built before system_prompt and then overwritten here —
-    # that caused history + user message to be lost entirely.
+    # History is derived from the append-only session event log so tool-call
+    # fidelity is preserved across turns ("model-visible means logged").
+    # The legacy Message table is only consulted when a session has no
+    # session_events yet (safe backfill path for sessions created before
+    # this feature shipped).
     messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
     if session_id:
-        res = await db.execute(
-            select(Message).where(Message.session_id == session_id).order_by(Message.position)
-        )
-        hist = res.scalars().all()
-        if len(hist) > 20:
-            # Compact older messages via hierarchical memory tiering (Hot/Warm/Cold)
-            tiered = await compact_tiered_memory(
-                session_id,
-                db,
-                model,
-                provider,
-                hot_window=8,
-                agent_id=agent.id,
-                org_id=agent.org_id,
-                created_by_user_id=user_id or agent.created_by_user_id,
-                observability=observability,
-            )
-            messages.append({"role": "system", "content": f"[Conversation context]\n{tiered['combined']}"})
+        events = await slog.load_events(db, session_id)
+        if events:
+            messages.extend(derive_messages(events))
         else:
-            for m in hist:
-                messages.append(_to_openai_message(m))
+            res = await db.execute(
+                select(Message).where(Message.session_id == session_id).order_by(Message.position)
+            )
+            hist = res.scalars().all()
+            if len(hist) > 20:
+                # Legacy sessions: still apply tiered compaction so old
+                # sessions don't blow the window until they earn events.
+                tiered = await compact_tiered_memory(
+                    session_id,
+                    db,
+                    model,
+                    provider,
+                    hot_window=8,
+                    agent_id=agent.id,
+                    org_id=agent.org_id,
+                    created_by_user_id=user_id or agent.created_by_user_id,
+                    observability=observability,
+                )
+                messages.append({"role": "system", "content": f"[Conversation context]\n{tiered['combined']}"})
+            else:
+                for m in hist:
+                    messages.append(_to_openai_message(m))
     if not approval_resume_id:
         messages.append({"role": "user", "content": message})
     elif not any(m.get("role") == "user" for m in messages):
@@ -942,6 +952,19 @@ async def _agent_stream(
             created_by_user_id=user_id or agent.created_by_user_id,
             db=db,
         )
+        # Mirror the user message into the append-only event log so later
+        # turns can derive the full conversation history with tool fidelity.
+        try:
+            await slog.append_event(
+                db,
+                session_id=session_id,
+                org_id=agent.org_id,
+                type_=slog.USER_MESSAGE,
+                data={"content": message},
+            )
+        except slog.SessionEventError:
+            # Malformed payload: don't poison the run, just log and proceed.
+            pass
 
     # Only the chat root task gets a durable event log: it is the one a
     # browser reconnects to. Subagent loops (call_agent) just emit in-process.
@@ -1414,7 +1437,7 @@ async def _agent_stream(
                             },
                         }
                     )
-                messages.append({"role": "assistant", "content": None, "tool_calls": openai_tcs})
+                    messages.append({"role": "assistant", "content": None, "tool_calls": openai_tcs})
                 for idx, entry in enumerate(tc_map.values()):
                     name = entry["name"]
                     try:
@@ -1432,6 +1455,23 @@ async def _agent_stream(
                         "event": "tool_call",
                         "data": {"index": tool_index, "name": name, "arguments": args},
                     }
+                    if session_id:
+                        try:
+                            await slog.append_event(
+                                db,
+                                session_id=session_id,
+                                org_id=agent.org_id,
+                                type_=slog.TOOL_CALL,
+                                data={
+                                    "tool_call_id": entry["id"],
+                                    "name": name,
+                                    "arguments": entry.get("arguments") or "{}",
+                                    "status": "started",
+                                },
+                            )
+                            await db.commit()
+                        except slog.SessionEventError:
+                            pass
                     if rec is not None:
                         await rec.record(call_ev)
                         await rec.flush_progress(phase=f"tool:{name}")
@@ -1830,6 +1870,23 @@ async def _agent_stream(
                             },
                             commit=False,
                         )
+                    # Mirror the tool result into the event log. The tool call
+                    # was persisted before execution so a crash cannot lose it.
+                    if session_id:
+                        try:
+                            await slog.append_event(
+                                db,
+                                session_id=session_id,
+                                org_id=agent.org_id,
+                                type_=slog.TOOL_RESULT,
+                                data={
+                                    "tool_call_id": entry["id"],
+                                    "content": result,
+                                    "status": tool_status,
+                                },
+                            )
+                        except slog.SessionEventError:
+                            pass
                     result_ev = {
                         "event": "tool_result",
                         "data": {"index": tool_index, "name": name, "result": result},
@@ -2065,6 +2122,24 @@ async def _agent_stream(
                     "finalization": finalization_outcome,
                 },
             }
+            if session_id:
+                # Persist only the final assistant text. Tool calls/results
+                # are separate events and are projected into their own
+                # provider messages.
+                try:
+                    await slog.append_event(
+                        db,
+                        session_id=session_id,
+                        org_id=agent.org_id,
+                        type_=slog.ASSISTANT_MESSAGE,
+                        data={
+                            "content": final,
+                            "usage": usage,
+                            "reasoning": reasoning_text,
+                        },
+                    )
+                except slog.SessionEventError:
+                    pass
             if rec is not None:
                 # Record before yielding so a reconnecting client that drains
                 # the log always sees the terminal event.

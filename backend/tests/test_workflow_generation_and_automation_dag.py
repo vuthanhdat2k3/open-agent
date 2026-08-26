@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.core.workflow.engine import run_workflow
 from app.db.base import Base
+from app.models.customer_intelligence import CalendarConnection, DriveConnection, EmailConnection
 from app.models.organization import Organization
 from app.services.workflow_service import WorkflowService
 
@@ -20,12 +21,69 @@ async def async_session_factory():
     await engine.dispose()
 
 
+@pytest.fixture(autouse=True)
+def _stub_ci_credentials(monkeypatch: pytest.MonkeyPatch):
+    """Integration node fetches real provider data via CI stack; stub the
+    credential refresh so tests don't touch OAuth, and the conftest
+    ``ci_mcp_stub`` provides fake provider responses."""
+
+    async def _load_fresh(db, conn):
+        return {
+            "access_token": "stub-access",
+            "refresh_token": "stub-refresh",
+            "expires_at": None,
+            "token_type": "Bearer",
+        }
+
+    monkeypatch.setattr(
+        "app.customer_intelligence.oauth.load_fresh_credentials", _load_fresh
+    )
+
+    # Calendar provider calls via research module; extend the conftest stub
+    # (which only handles email tools) with calendar/event responses.
+    async def _research_call(tool: str, args: dict):
+        if tool == "calendar_list_events":
+            return [
+                {
+                    "provider_event_id": "evt-1",
+                    "title": "Client Advisory Board",
+                    "start_at": "2026-08-27T10:00:00+00:00",
+                    "end_at": "2026-08-27T11:00:00+00:00",
+                    "attendees": ["client@example.com"],
+                }
+            ]
+        raise AssertionError(f"unexpected research MCP tool: {tool}")
+
+    monkeypatch.setattr(
+        "app.customer_intelligence.providers.research.call_customer_intelligence_mcp",
+        _research_call,
+    )
+
+    # Drive provider (not covered by conftest stub) returns one fake file.
+    async def _drive_call(tool: str, args: dict):
+        if tool == "drive_list_files":
+            return [
+                {"id": "file-1", "name": "Q3 Report.pdf", "mimeType": "application/pdf", "modifiedTime": "2026-08-25T09:00:00+00:00"}
+            ]
+        raise AssertionError(f"unexpected drive MCP tool: {tool}")
+
+    monkeypatch.setattr(
+        "app.customer_intelligence.providers.drive.call_customer_intelligence_mcp",
+        _drive_call,
+    )
+
+
 @pytest.mark.asyncio
 async def test_automation_dag_validation_and_engine_execution(async_session_factory) -> None:
     async with async_session_factory() as session:
         # Create an org and sample automation DAG with scheduler, integration, triager, agent, output
         org = Organization(name="DAG Corp", slug="dag-corp")
         session.add(org)
+        await session.flush()
+
+        # Connected Gmail + Calendar accounts (integration node fetches real data)
+        session.add(EmailConnection(org_id=org.id, created_by_user_id="user-1", provider="gmail", account_email="a@b.c", status="connected", credentials_enc="enc"))
+        session.add(CalendarConnection(org_id=org.id, created_by_user_id="user-1", provider="google", account_email="cal@b.c", status="connected", credentials_enc="enc"))
         await session.flush()
 
         automation_graph = {
@@ -84,13 +142,19 @@ async def test_automation_dag_validation_and_engine_execution(async_session_fact
             db=session,
             stream=False,
             force_inline=True,
+            user_id="user-1",
         )
         assert run_id is not None
         assert output_text is not None
+        import sys
+        for e in event_logs:
+            if e["event"] in ("node_error", "error", "done"):
+                print(f"\n[{e['event']}] {e['data']}", file=sys.stderr)
         assert (
             "Daily Morning Run Context" in output_text
             or "Triage routed" in output_text
-            or "Google Workspace" in output_text
+            or "Gmail" in output_text
+            or "No email" in output_text
         )
 
 
@@ -99,6 +163,13 @@ async def test_google_drive_scan_automation_dag_execution(async_session_factory)
     async with async_session_factory() as session:
         org = Organization(name="Drive Corp", slug="drive-corp")
         session.add(org)
+        await session.flush()
+        session.add(
+            DriveConnection(
+                org_id=org.id, created_by_user_id="user-1", account_email="drive@b.c",
+                status="connected", credentials_enc="enc",
+            )
+        )
         await session.flush()
 
         drive_dag = {
@@ -163,6 +234,7 @@ async def test_google_drive_scan_automation_dag_execution(async_session_factory)
             db=session,
             stream=False,
             force_inline=True,
+            user_id="user-1",
         )
         assert run_id is not None
         assert output_text is not None
@@ -170,4 +242,5 @@ async def test_google_drive_scan_automation_dag_execution(async_session_factory)
             "Google Drive" in output_text
             or "Document Intelligence Agent" in output_text
             or "Drive Scan Digest" in output_text
+            or "No files" in output_text
         )

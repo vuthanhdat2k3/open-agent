@@ -51,6 +51,7 @@ from app.models.role import Role
 from app.models.sampling_policy import SamplingPolicy
 from app.models.service_principal import ServicePrincipal
 from app.models.session import Session
+from app.models.session_event import SessionEvent
 from app.models.task import Task
 from app.models.tool_call_record import ToolCallRecord
 from app.models.usage import UsageEvent
@@ -112,6 +113,7 @@ __all__ = [
     "SamplingPolicy",
     "ServicePrincipal",
     "Session",
+    "SessionEvent",
     "Task",
     "ToolCallRecord",
     "UploadedFile",
