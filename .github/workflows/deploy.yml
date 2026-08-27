@@ -11,8 +11,9 @@
 #                    .env file, e.g. G:\open-agent\.env. Kept out of git on
 #                    purpose (credentials); see .gitignore.
 #
-# NOTE: this job rebuilds images in place. It never runs `down -v`, so named
-# volumes (postgres, qdrant, minio, ...) survive every deploy.
+# This job builds and starts the full Compose stack on the self-hosted runner.
+# It never runs `down -v`, so named volumes (postgres, qdrant, minio, ...)
+# survive every deploy.
 
 name: Deploy (self-hosted)
 
@@ -29,6 +30,9 @@ jobs:
   deploy:
     runs-on: [self-hosted, windows]
     timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: read
     steps:
       - name: Preflight - Docker must be reachable
         shell: powershell

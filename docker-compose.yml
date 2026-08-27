@@ -315,6 +315,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
 
   api:
+    image: ${OPENAGENT_API_IMAGE:-openagent-api:local}
     build:
       context: ./backend
     environment:
@@ -389,6 +390,7 @@ services:
 
   worker:
     restart: unless-stopped
+    image: ${OPENAGENT_API_IMAGE:-openagent-api:local}
     build:
       context: ./backend
     environment:
@@ -457,6 +459,7 @@ services:
       test: ["CMD", "arq", "app.worker.ClassificationWorkerSettings", "--check"]
 
   frontend:
+    image: ${OPENAGENT_FRONTEND_IMAGE:-openagent-frontend:local}
     build:
       context: ./frontend
       args:
@@ -487,6 +490,7 @@ services:
       - qdrant-data:/qdrant/storage
 
   rag-service:
+    image: ${OPENAGENT_RAG_IMAGE:-openagent-rag-service:local}
     build:
       context: ./rag-service
     environment:
@@ -506,6 +510,7 @@ services:
       - qdrant
 
   docling-service:
+    image: ${OPENAGENT_DOCLING_IMAGE:-openagent-docling-service:local}
     build:
       context: ./docling-service
       args:
@@ -521,6 +526,7 @@ services:
       retries: 5
 
   customer-intelligence-mcp:
+    image: ${OPENAGENT_CI_MCP_IMAGE:-openagent-customer-intelligence-mcp:local}
     build:
       context: ./customer-intelligence-mcp
     environment:

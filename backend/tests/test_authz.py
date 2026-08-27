@@ -54,8 +54,11 @@ class TestPermissionMatrix:
         assert not has_permission(Role.user, "agents:create")
         assert not has_permission(Role.user, "agents:update")
         assert not has_permission(Role.user, "agents:delete")
-        assert not has_permission(Role.user, "workflows:create")
-        assert not has_permission(Role.user, "workflows:delete")
+        # Users may author their own workflows; workflow authoring is not an
+        # organization-management permission.
+        assert has_permission(Role.user, "workflows:create")
+        assert has_permission(Role.user, "workflows:update")
+        assert has_permission(Role.user, "workflows:delete")
         assert not has_permission(Role.user, "files:manage")
         assert not has_permission(Role.user, "approvals:decide")
         assert not has_permission(Role.user, "evaluations:read")

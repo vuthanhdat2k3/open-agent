@@ -4,7 +4,7 @@ on:
   pull_request:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [dev, main]
 
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
@@ -18,6 +18,9 @@ jobs:
         working-directory: backend
     steps:
       - uses: actions/checkout@v4
+      - name: Create Python environment
+        run: |
+          & 'C:\Users\PC\AppData\Local\Programs\Python\Python312\python.exe' -m venv ..\.ci-venv
       - name: Start Redis
         run: |
           $port = 6000 + ([int64]$env:GITHUB_RUN_ID % 1000)
@@ -32,10 +35,10 @@ jobs:
           key: ${{ runner.os }}-pip-${{ hashFiles('backend/pyproject.toml', 'backend/requirements*.txt') }}
           restore-keys: |
             ${{ runner.os }}-pip-
-      - run: pip install -e ".[dev]"
-      - run: ruff check .
-      - run: python -c "import yaml; yaml.safe_load(open('../observability/prometheus/alerts.yml'))"
-      - run: pytest -q
+      - run: ..\.ci-venv\Scripts\python.exe -m pip install -e ".[dev]"
+      - run: ..\.ci-venv\Scripts\python.exe -m ruff check .
+      - run: ..\.ci-venv\Scripts\python.exe -c "import yaml; yaml.safe_load(open('../observability/prometheus/alerts.yml'))"
+      - run: ..\.ci-venv\Scripts\python.exe -m pytest -q
       - name: Stop Redis
         if: always()
         run: docker rm -f openagent-ci-redis-${{ github.run_id }}
