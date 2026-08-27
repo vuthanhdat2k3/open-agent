@@ -86,7 +86,6 @@ export const navGroups: NavGroup[] = [
       { href: "/workflows", label: "Workflows", i18nKey: "nav.workflows", icon: Workflow, roles: ["user"], permission: "workflows:read" },
       { href: "/integrations", label: "Integrations", i18nKey: "nav.integrations", icon: Plug, roles: ["user"], permission: "ci:personal:manage" },
       { href: "/email-intelligence", label: "Email Intelligence", i18nKey: "nav.emailIntelligence", icon: Bell, roles: ["user"], permission: "ci:personal:manage" },
-      { href: "/automations", label: "Automations", i18nKey: "nav.automations", icon: Zap, roles: ["user"], permission: "workflows:read" },
       { href: "/customer-intelligence", label: "Customer Intelligence", i18nKey: "nav.customerIntelligence", icon: Building2, roles: ["user"], permission: "ci:read" },
       { href: "/approvals", label: "Approvals", i18nKey: "nav.approvals", icon: ShieldCheck, roles: ["user"], permission: "approvals:read" },
     ],

@@ -14,7 +14,31 @@ import {
   UploadCloud,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { publishWorkflowToCatalog } from "@/lib/automations/api";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  getWorkflowCatalog,
+  installWorkflowTemplate,
+  publishWorkflowToCatalog,
+  unpublishWorkflowFromCatalog,
+  type WorkflowCatalogItem,
+} from "@/lib/automations/api";
+import { workflowIcon } from "@/lib/automations/icons";
+import { useCurrentRole } from "@/hooks";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { EmptyState } from "@/components/shared";
+import {
+  Search,
+  CheckCircle2,
+  Clock3,
+  Gauge,
+  ShieldCheck,
+  Plug,
+  ArrowRight,
+  Trash2,
+  Plus,
+  ChevronRight,
+  Info,
+} from "lucide-react";
 import { api, streamSSE } from "@/lib/api";
 import { useWorkflows, useCreateWorkflow, useUpdateWorkflow, useAgents, useModels, useGenerateWorkflow, useWorkflowRun } from "@/hooks";
 import { useWorkflowStore } from "@/stores";
@@ -37,6 +61,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogTrigger,
 } from "@/components/ui/dialog";
 
@@ -105,6 +130,16 @@ function calculateDagLayout(nodes: GraphNode[], edges: GraphEdge[]) {
   return pos;
 }
 
+
+const marketplaceCategories = [
+  { value: "", labelVi: "Tất cả quy trình", labelEn: "All workflows" },
+  { value: "daily_planning", labelVi: "Lập kế hoạch hàng ngày", labelEn: "Daily planning" },
+  { value: "meetings", labelVi: "Họp & Lịch trình", labelEn: "Meetings" },
+  { value: "customer_intelligence", labelVi: "Thông tin khách hàng", labelEn: "Customer intelligence" },
+  { value: "research", labelVi: "Nghiên cứu & Báo cáo", labelEn: "Research" },
+  { value: "custom", labelVi: "Tùy chỉnh tổ chức", labelEn: "Organization Custom" },
+];
+
 export default function WorkflowEditor() {
   const { t, dict, locale, tx } = useTranslation();
   const workflows = useWorkflows();
@@ -125,10 +160,79 @@ export default function WorkflowEditor() {
   } = useWorkflowStore();
   const workflowRun = useWorkflowRun(activeRunId);
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const role = useCurrentRole();
+  const isOperator = role === "operator";
+
+  // Tab State: "editor" (My Workflows) vs "marketplace" (Workflow Marketplace)
+  const [activeTab, setActiveTab] = React.useState<"editor" | "marketplace">("editor");
+
+  // Marketplace State
+  const [marketSearch, setMarketSearch] = React.useState("");
+  const [marketCategory, setMarketCategory] = React.useState("");
+  const [isInstalling, setIsInstalling] = React.useState<string | null>(null);
+
+  // Operator Publish Dialog State
+  const [publishWfId, setPublishWfId] = React.useState("");
+
+  // Fetch Marketplace Templates
+  const catalogQuery = useQuery({
+    queryKey: ["workflow-catalog", marketSearch, marketCategory],
+    queryFn: () => getWorkflowCatalog({ query: marketSearch, category: marketCategory }),
+  });
+
+  const catalogItems = catalogQuery.data?.data ?? [];
+
+  // Synchronize Tab from URL
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    const tabParam = url.searchParams.get("tab");
+    if (tabParam === "marketplace") {
+      setActiveTab("marketplace");
+    }
+  }, []);
+
   const [publishDialogOpen, setPublishDialogOpen] = React.useState(false);
   const [publishCategory, setPublishCategory] = React.useState("custom");
   const [publishDescription, setPublishDescription] = React.useState("");
   const [isPublishing, setIsPublishing] = React.useState(false);
+
+
+  const handleUnpublish = async (key: string) => {
+    if (!confirm(tx("Bạn có chắc chắn muốn gỡ bỏ quy trình này khỏi Marketplace?", "Are you sure you want to remove this template from Marketplace?"))) {
+      return;
+    }
+    try {
+      await unpublishWorkflowFromCatalog(key);
+      toast.success(tx("Đã gỡ bỏ template khỏi Marketplace", "Template removed from Marketplace"));
+      void queryClient.invalidateQueries({ queryKey: ["workflow-catalog"] });
+    } catch (e: any) {
+      toast.error(e.message || tx("Không thể gỡ bỏ template", "Failed to unpublish template"));
+    }
+  };
+
+  const handleInstallTemplate = async (template: WorkflowCatalogItem) => {
+    setIsInstalling(template.key);
+    try {
+      const res = await installWorkflowTemplate({
+        template_key: template.key,
+        name: template.name,
+        timezone: "Asia/Ho_Chi_Minh",
+        schedule: { kind: "daily", time: "08:00" },
+      });
+      toast.success(tx(`Đã cài đặt "${template.name}" thành công!`, `Successfully installed "${template.name}"!`));
+      void workflows.refetch();
+      if (res.workflow_id) {
+        router.push(`/workflows?edit=${res.workflow_id}`);
+      }
+      setActiveTab("editor");
+    } catch (e: any) {
+      toast.error(e.message || tx("Không thể cài đặt quy trình", "Failed to install workflow"));
+    } finally {
+      setIsInstalling(null);
+    }
+  };
 
   const handlePublishToMarketplace = async () => {
     if (!editId) {
@@ -582,291 +686,529 @@ export default function WorkflowEditor() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        icon={WorkflowIcon}
-        title={dict.pages.workflows.title}
-        description={dict.pages.workflows.description}
-        actions={
-          <>
-            <Button
-              variant="outline"
-              className="gap-2 active-tactile transition-transform text-primary border-primary/30 hover:bg-primary/10"
-              onClick={() => router.push("/automations")}
+      {/* Top Header & Tab Navigation */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2.5">
+            <WorkflowIcon className="h-7 w-7 text-primary" />
+            {activeTab === "editor"
+              ? tx("Quy trình của tôi", "My Workflows")
+              : tx("Workflow Marketplace", "Workflow Marketplace")}
+          </h1>
+          <p className="text-xs text-muted-foreground mt-1">
+            {activeTab === "editor"
+              ? tx(
+                  "Thiết kế, tùy biến và kiểm thử các quy trình DAG tự động hóa của riêng bạn",
+                  "Design, customize, and execute your personal DAG automation workflows"
+                )
+              : tx(
+                  "Duyệt các mẫu quy trình chuẩn của tổ chức và cài đặt thành bản sao cá nhân",
+                  "Browse organization-approved workflow templates and install independent copies"
+                )}
+          </p>
+        </div>
+
+        {/* Tab Switcher Segmented Control */}
+        <div className="flex items-center gap-2">
+          <div className="flex items-center rounded-xl border border-border/80 bg-muted/50 p-1 backdrop-blur-md">
+            <button
+              type="button"
+              onClick={() => setActiveTab("editor")}
+              className={`flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all ${
+                activeTab === "editor"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
             >
-              <LibraryBig className="h-4 w-4 text-primary" /> {tx("Marketplace", "Marketplace")}
-            </Button>
-            {editId && (
-              <Dialog open={publishDialogOpen} onOpenChange={setPublishDialogOpen}>
+              <WorkflowIcon className="h-4 w-4 text-primary" />
+              {tx("Quy trình của tôi", "My Workflows")}
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("marketplace")}
+              className={`flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all ${
+                activeTab === "marketplace"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <LibraryBig className="h-4 w-4 text-primary" />
+              {tx("Marketplace", "Marketplace")}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ================= TAB 1: WORKFLOW CANVAS EDITOR ================= */}
+      {activeTab === "editor" && (
+        <div className="space-y-4">
+          {/* Action Buttons Toolbar */}
+          <div className="flex flex-wrap items-center justify-between gap-2.5 rounded-xl border border-border/80 bg-card/60 p-2.5 backdrop-blur-xl shadow-sm">
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="outline" size="sm" className="gap-1.5 active-tactile text-xs font-medium" onClick={newWorkflow}>
+                <FilePlus className="h-4 w-4" /> {dict.pages.workflows.btnNew}
+              </Button>
+              <Dialog>
                 <DialogTrigger asChild>
-                  <Button variant="outline" className="gap-2 active-tactile transition-transform border-emerald-500/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10">
-                    <UploadCloud className="h-4 w-4" /> {tx("Đẩy lên Market", "Publish to Market")}
+                  <Button variant="outline" size="sm" className="gap-1.5 active-tactile text-xs font-medium">
+                    <FolderOpen className="h-4 w-4" /> {dict.pages.workflows.btnLoad}
                   </Button>
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
-                    <DialogTitle>{tx("Xuất bản lên Workflow Marketplace", "Publish to Workflow Marketplace")}</DialogTitle>
+                    <DialogTitle>{tx("Tải Workflow đã lưu", "Load Saved Workflow")}</DialogTitle>
                   </DialogHeader>
-                  <div className="space-y-4 py-2 text-xs">
-                    <p className="text-muted-foreground">
-                      {tx(
-                        "Quy trình này sẽ xuất hiện trên Marketplace của tổ chức để các thành viên khác có thể cài đặt và sử dụng bản sao độc lập.",
-                        "This workflow will be available on the organization Marketplace for other members to install and run independently."
-                      )}
-                    </p>
+                  <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+                    {workflows.isLoading ? (
+                      <LoadingSkeleton variant="table" />
+                    ) : workflows.isError ? (
+                      <ErrorState
+                        title={tx("Không thể tải workflow", "Unable to load workflows")}
+                        description={tx("Danh sách workflow chưa sẵn sàng.", "Saved workflows could not be loaded.")}
+                        onRetry={() => void workflows.refetch()}
+                      />
+                    ) : !data || data.length === 0 ? (
+                      <EmptyState
+                        title={tx("Chưa có quy trình nào", "No workflows found")}
+                        description={tx("Bạn có thể tạo quy trình mới hoặc lên Marketplace cài đặt về.", "Create a new workflow or install one from Marketplace.")}
+                        action={
+                          <Button size="sm" onClick={() => setActiveTab("marketplace")}>
+                            {tx("Khám phá Marketplace", "Browse Marketplace")}
+                          </Button>
+                        }
+                      />
+                    ) : (
+                      data.map((wf) => (
+                        <DialogClose asChild key={wf.id}>
+                          <Button
+                            variant="outline"
+                            className="w-full justify-start text-xs font-medium"
+                            onClick={() => loadWorkflow(wf)}
+                          >
+                            {wf.name}
+                          </Button>
+                        </DialogClose>
+                      ))
+                    )}
+                  </div>
+                </DialogContent>
+              </Dialog>
+              <Button variant="outline" size="sm" className="gap-1.5 active-tactile text-xs font-medium" onClick={handleAutoLayout}>
+                <RefreshCw className="h-3.5 w-3.5" /> {dict.pages.workflows.btnAutoLayout}
+              </Button>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Operator Publish Button */}
+              {isOperator && (
+                <Dialog open={publishDialogOpen} onOpenChange={setPublishDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5 text-xs font-semibold border-emerald-500/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10"
+                      onClick={() => setPublishWfId(editId || "")}
+                    >
+                      <UploadCloud className="h-4 w-4" /> {tx("Đẩy lên Market", "Publish to Market")}
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="sm:max-w-[480px]">
+                    <DialogHeader>
+                      <DialogTitle className="flex items-center gap-2">
+                        <UploadCloud className="h-5 w-5 text-emerald-600" />
+                        {tx("Xuất bản lên Marketplace (Operator)", "Publish to Marketplace (Operator)")}
+                      </DialogTitle>
+                      <DialogDescription className="text-xs">
+                        {tx(
+                          "Chia sẻ quy trình này thành mẫu chuẩn của tổ chức để toàn bộ thành viên có thể cài đặt và sử dụng độc lập.",
+                          "Publish this workflow as an organization-approved template for all members to install."
+                        )}
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-3.5 py-2 text-xs">
+                      <div className="space-y-1.5">
+                        <Label>{tx("Chọn Workflow", "Select Workflow")}</Label>
+                        <Select className="w-full text-xs" value={publishWfId} onChange={(e) => setPublishWfId(e.target.value)}>
+                          <option value="">{tx("-- Chọn workflow cần đẩy --", "-- Select workflow --")}</option>
+                          {data?.map((w) => (
+                            <option key={w.id} value={w.id}>{w.name}</option>
+                          ))}
+                        </Select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>{tx("Danh mục (Category)", "Category")}</Label>
+                        <Select className="w-full text-xs" value={publishCategory} onChange={(e) => setPublishCategory(e.target.value)}>
+                          {marketplaceCategories.filter((c) => c.value).map((c) => (
+                            <option key={c.value} value={c.value}>{locale === "vi" ? c.labelVi : c.labelEn}</option>
+                          ))}
+                        </Select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>{tx("Mô tả tóm tắt", "Summary Description")}</Label>
+                        <Textarea
+                          className="text-xs min-h-[80px]"
+                          placeholder={tx("Mô tả mục tiêu và kết quả của quy trình mẫu này...", "Describe the goals and outcome of this template...")}
+                          value={publishDescription}
+                          onChange={(e) => setPublishDescription(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    <div className="flex justify-end gap-2 pt-2">
+                      <Button variant="outline" size="sm" onClick={() => setPublishDialogOpen(false)}>
+                        {tx("Hủy", "Cancel")}
+                      </Button>
+                      <Button
+                        size="sm"
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium gap-1.5"
+                        disabled={isPublishing || !publishWfId}
+                        onClick={handlePublishToMarketplace}
+                      >
+                        {isPublishing ? tx("Đang xuất bản...", "Publishing...") : tx("Xác nhận Đẩy lên Market", "Publish Now")}
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              )}
+
+              {/* AI Generator */}
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button variant="outline" size="sm" className="gap-1.5 text-xs font-semibold border-primary/40 bg-primary/5 hover:bg-primary/10">
+                    <Sparkles className="h-4 w-4 text-primary animate-pulse" /> {dict.pages.workflows.btnAiGenerate}
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-[540px]">
+                  <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                      <Sparkles className="h-5 w-5 text-primary" />
+                      {tx("AI Thiết kế Workflow Tự động", "Generate Workflow with AI")}
+                    </DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4 pt-2 text-xs">
+                    <div className="space-y-1.5">
+                      <Label className="font-semibold text-muted-foreground">{tx("Mô tả quy trình mong muốn", "Describe what the workflow should do")}</Label>
+                      <Textarea
+                        className="min-h-[100px] text-xs leading-relaxed"
+                        value={aiPrompt}
+                        onChange={(e) => setAiPrompt(e.target.value)}
+                        placeholder={dict.pages.workflows.aiPromptPlaceholder}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="font-semibold text-muted-foreground">{tx("AI Model", "AI Model")}</Label>
+                      <Select className="text-xs w-full" value={aiModelId} onChange={(e) => setAiModelId(e.target.value)}>
+                        {models.data?.map((m) => (
+                          <option key={m.id} value={m.id}>{m.display_name || m.name}</option>
+                        ))}
+                      </Select>
+                    </div>
+                    {generate.isPending ? (
+                      <div className="p-4 rounded-xl border border-primary/30 bg-primary/10 text-center animate-pulse text-xs text-primary font-semibold">
+                        {tx("AI đang phân tích và thiết kế đồ thị DAG...", "AI is generating workflow DAG...")}
+                      </div>
+                    ) : (
+                      <Button className="w-full gap-2 font-semibold" disabled={!aiPrompt.trim() || !aiModelId} onClick={handleGenerate}>
+                        <Sparkles className="h-4 w-4" /> {tx("Sinh quy trình", "Generate Workflow")}
+                      </Button>
+                    )}
+                    {aiResult && (
+                      <div className="p-3.5 rounded-xl border border-emerald-500/30 bg-emerald-500/5 space-y-2">
+                        <div className="font-bold text-foreground">{aiResult.name}</div>
+                        <p className="text-xs text-muted-foreground">{aiResult.description}</p>
+                        <DialogClose asChild>
+                          <Button size="sm" className="w-full bg-emerald-600 hover:bg-emerald-700 text-white" onClick={applyGenerated}>
+                            {tx("Áp dụng vào Canvas", "Apply to canvas")}
+                          </Button>
+                        </DialogClose>
+                      </div>
+                    )}
+                  </div>
+                </DialogContent>
+              </Dialog>
+
+              <Button size="sm" onClick={save} className="gap-1.5 active-tactile font-semibold">
+                <Save className="h-4 w-4" /> {tx("Lưu", "Save")}
+              </Button>
+            </div>
+          </div>
+
+          {/* Workflow Name Bar */}
+          <div className="flex items-center gap-2 rounded-xl border border-border/80 bg-card/50 p-3 backdrop-blur-xl shadow-3d-card">
+            <div className="flex-1 space-y-1">
+              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">{tx("Tên workflow", "Workflow name")}</Label>
+              <Input className="text-xs" value={wfName} onChange={(e) => setWfName(e.target.value)} placeholder={tx("Tên workflow", "Workflow name")} />
+            </div>
+            <div className="flex-[2] space-y-1">
+              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">{tx("Đầu vào chạy", "Run input")}</Label>
+              <Textarea
+                className="min-h-[38px] text-xs resize-none"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder={tx("Đầu vào JSON hoặc văn bản thuần túy…", "JSON or plain text input…")}
+              />
+            </div>
+            <Button className="gap-2 active-tactile transition-transform self-end text-xs" disabled={running} onClick={run}>
+              <Play className="h-3.5 w-3.5" /> {running ? "Running…" : "Run Workflow"}
+            </Button>
+          </div>
+
+          {activeRunId && <RunKpiStrip run={workflowRun.data} />}
+
+          <div className="flex gap-3">
+            <WorkflowNodePalette
+              className="sticky top-4 self-start"
+              onAddNode={(kind) => addNode(kind, { x: 60 + (nodes.length * 40) % 300, y: 80 + (nodes.length * 30) % 200 })}
+            />
+            <WorkflowCanvas
+              className="h-[calc(100vh-380px)] min-h-[500px] flex-1"
+              graphNodes={nodes}
+              graphEdges={edges}
+              nodeStatus={nodeStatus}
+              selectedNodeId={selectedNodeId}
+              onGraphChange={setGraph}
+              onSelectNode={setSelectedNode}
+              onCreateNode={addNode}
+              onEditEdgeCondition={handleEditEdgeCondition}
+            />
+          </div>
+
+          <WorkflowNodeConfig
+            node={selectedNode}
+            open={Boolean(selectedNode)}
+            onOpenChange={(open) => !open && setSelectedNode(null)}
+            onUpdate={updateNode}
+            onDeleteNode={handleDeleteNode}
+          />
+
+          <div className="animate-slide-up" style={{ animationDelay: "150ms" }}>
+            <WorkflowConsole
+              logs={logs}
+              output={output}
+              running={running}
+              run={workflowRun.data}
+              onReplay={activeRunId && !running ? () => runReplay(activeRunId) : undefined}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* ================= TAB 2: WORKFLOW MARKETPLACE ================= */}
+      {activeTab === "marketplace" && (
+        <div className="space-y-6">
+          {/* Operator Management Banner */}
+          {isOperator && (
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 backdrop-blur-md shadow-sm">
+              <div className="flex items-center gap-3">
+                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                  <ShieldCheck className="h-6 w-6" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+                    {tx("Khu vực Quản trị Marketplace (Operator)", "Marketplace Management Console (Operator)")}
+                    <Badge variant="outline" className="text-[10px] border-emerald-500/40 text-emerald-600 dark:text-emerald-400">
+                      Operator Access
+                    </Badge>
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    {tx(
+                      "Bạn có toàn quyền xuất bản các quy trình chuẩn của tổ chức hoặc gỡ bỏ các mẫu lỗi thời khỏi Marketplace.",
+                      "You have permissions to publish organization workflows or unpublish obsolete templates from Marketplace."
+                    )}
+                  </p>
+                </div>
+              </div>
+
+              <Dialog open={publishDialogOpen} onOpenChange={setPublishDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs shrink-0">
+                    <Plus className="h-4 w-4" /> {tx("Xuất bản quy trình lên Market", "Publish Workflow to Market")}
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-[480px]">
+                  <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                      <UploadCloud className="h-5 w-5 text-emerald-600" />
+                      {tx("Xuất bản Workflow lên Marketplace", "Publish Workflow to Marketplace")}
+                    </DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-3.5 py-2 text-xs">
+                    <div className="space-y-1.5">
+                      <Label>{tx("Chọn Workflow của bạn", "Select Your Workflow")}</Label>
+                      <Select className="w-full text-xs" value={publishWfId} onChange={(e) => setPublishWfId(e.target.value)}>
+                        <option value="">{tx("-- Chọn workflow cần xuất bản --", "-- Select workflow --")}</option>
+                        {data?.map((w) => (
+                          <option key={w.id} value={w.id}>{w.name}</option>
+                        ))}
+                      </Select>
+                    </div>
                     <div className="space-y-1.5">
                       <Label>{tx("Danh mục (Category)", "Category")}</Label>
                       <Select className="w-full text-xs" value={publishCategory} onChange={(e) => setPublishCategory(e.target.value)}>
-                        <option value="custom">{tx("Tùy chỉnh (Custom)", "Custom")}</option>
-                        <option value="daily_planning">{tx("Lập kế hoạch hàng ngày (Daily planning)", "Daily planning")}</option>
-                        <option value="customer_intelligence">{tx("Thông tin khách hàng (Customer intelligence)", "Customer intelligence")}</option>
-                        <option value="research">{tx("Nghiên cứu & Báo cáo (Research)", "Research")}</option>
+                        {marketplaceCategories.filter((c) => c.value).map((c) => (
+                          <option key={c.value} value={c.value}>{locale === "vi" ? c.labelVi : c.labelEn}</option>
+                        ))}
                       </Select>
                     </div>
                     <div className="space-y-1.5">
                       <Label>{tx("Mô tả tóm tắt", "Summary Description")}</Label>
                       <Textarea
-                        className="text-xs"
-                        placeholder={tx("Mô tả mục tiêu của workflow mẫu...", "Describe the template goal...")}
+                        className="text-xs min-h-[80px]"
+                        placeholder={tx("Mô tả mục tiêu và kết quả của quy trình mẫu này...", "Describe the goals and outcome of this template...")}
                         value={publishDescription}
                         onChange={(e) => setPublishDescription(e.target.value)}
                       />
                     </div>
                   </div>
-                  <div className="flex justify-end gap-2">
+                  <div className="flex justify-end gap-2 pt-2">
                     <Button variant="outline" size="sm" onClick={() => setPublishDialogOpen(false)}>
                       {tx("Hủy", "Cancel")}
                     </Button>
-                    <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white" disabled={isPublishing} onClick={handlePublishToMarketplace}>
+                    <Button
+                      size="sm"
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium gap-1.5"
+                      disabled={isPublishing || !publishWfId}
+                      onClick={handlePublishToMarketplace}
+                    >
                       {isPublishing ? tx("Đang xuất bản...", "Publishing...") : tx("Xác nhận Đẩy lên Market", "Publish Now")}
                     </Button>
                   </div>
                 </DialogContent>
               </Dialog>
-            )}
-            <Button variant="outline" className="gap-2 active-tactile transition-transform" onClick={newWorkflow}>
-              <FilePlus className="h-4 w-4" /> {dict.pages.workflows.btnNew}
-            </Button>
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button variant="outline" className="gap-2 active-tactile transition-transform">
-                  <FolderOpen className="h-4 w-4" /> {dict.pages.workflows.btnLoad}
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>{tx("Tải Workflow đã lưu", "Load Saved Workflow")}</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-2">
-                  {workflows.isLoading ? (
-                    <LoadingSkeleton variant="table" />
-                  ) : workflows.isError ? (
-                    <ErrorState
-                      title={tx("Không thể tải workflow", "Unable to load workflows")}
-                      description={tx("Danh sách workflow chưa sẵn sàng.", "Saved workflows could not be loaded.")}
-                      onRetry={() => void workflows.refetch()}
-                    />
-                  ) : (
-                    data?.map((wf) => (
-                      <DialogClose asChild key={wf.id}>
-                        <Button
-                          variant="outline"
-                          className="w-full justify-start"
-                          onClick={() => loadWorkflow(wf)}
-                        >
-                          {wf.name}
-                        </Button>
-                      </DialogClose>
-                    ))
-                  )}
-                </div>
-              </DialogContent>
-            </Dialog>
-            <Button variant="outline" className="gap-2 active-tactile transition-transform" onClick={handleAutoLayout}>
-              <RefreshCw className="h-4 w-4" /> {dict.pages.workflows.btnAutoLayout}
-            </Button>
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button variant="outline" className="gap-2 active-tactile transition-transform border-primary/40 bg-primary/5 hover:bg-primary/10">
-                  <Sparkles className="h-4 w-4 text-primary animate-pulse" /> {dict.pages.workflows.btnAiGenerate}
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-[540px] bg-card/95 backdrop-blur-2xl border-border/80 shadow-2xl">
-                <DialogHeader>
-                  <div className="flex items-center gap-2.5">
-                    <div className="grid h-9 w-9 place-items-center rounded-xl bg-primary/15 text-primary border border-primary/30">
-                      <Sparkles className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <DialogTitle className="text-base font-bold">
-                        {tx("AI Thiết kế Workflow Tự động", "Generate Workflow with AI")}
-                      </DialogTitle>
-                      <p className="text-xs text-muted-foreground">
-                        {tx("Mô tả quy trình tự động hóa của bạn bằng ngôn ngữ tự nhiên", "Describe your automation routine in natural language")}
-                      </p>
-                    </div>
-                  </div>
-                </DialogHeader>
+            </div>
+          )}
 
-                <div className="space-y-4 pt-2">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">
-                      {tx("Mô tả quy trình mong muốn", "Describe what the workflow should do")}
-                    </Label>
-                    <Textarea
-                      className="min-h-[110px] text-xs leading-relaxed"
-                      value={aiPrompt}
-                      onChange={(e) => setAiPrompt(e.target.value)}
-                      placeholder={dict.pages.workflows.aiPromptPlaceholder}
-                    />
-                    <div className="flex flex-wrap gap-1.5 pt-1">
-                      <button
-                        type="button"
-                        onClick={() => setAiPrompt(tx("Quét Google Drive 6h sáng hàng ngày, lọc các file mới cập nhật và phân tích tổng hợp báo cáo", "Scan Google Drive daily at 6 AM, filter updated files and synthesize summary report"))}
-                        className="rounded-full border border-border/60 bg-muted/40 px-2 py-0.5 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                      >
-                        {tx("⚡ Quét Drive 6h sáng hàng ngày", "⚡ Daily Drive Scan 6 AM")}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setAiPrompt(tx("Đọc Gmail mỗi sáng lúc 8h, lọc email khẩn cấp và tạo bản nháp phản hồi để tôi duyệt", "Read Gmail daily at 8 AM, filter urgent emails and draft response for my approval"))}
-                        className="rounded-full border border-border/60 bg-muted/40 px-2 py-0.5 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                      >
-                        {tx("⚡ Triage Gmail & Phê duyệt", "⚡ Gmail Triage & Approvals")}
-                      </button>
-                    </div>
-                  </div>
+          {/* Search & Category Filter Bar */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="relative w-full sm:w-80">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                className="pl-9 text-xs h-9"
+                placeholder={tx("Tìm kiếm quy trình trong Marketplace...", "Search templates in Marketplace...")}
+                value={marketSearch}
+                onChange={(e) => setMarketSearch(e.target.value)}
+              />
+            </div>
+            <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0">
+              {marketplaceCategories.map((c) => (
+                <button
+                  key={c.value}
+                  type="button"
+                  onClick={() => setMarketCategory(c.value)}
+                  className={`rounded-full px-3 py-1 text-xs font-medium whitespace-nowrap transition-all ${
+                    marketCategory === c.value
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "border border-border/80 bg-card/60 text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {locale === "vi" ? c.labelVi : c.labelEn}
+                </button>
+              ))}
+            </div>
+          </div>
 
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">{tx("AI Model", "AI Model")}</Label>
-                    <Select className="text-xs w-full" value={aiModelId} onChange={(e) => setAiModelId(e.target.value)}>
-                      {models.data?.map((m) => (
-                        <option key={m.id} value={m.id}>{m.display_name || m.name}</option>
-                      ))}
-                    </Select>
-                  </div>
+          {/* Marketplace Grid Cards */}
+          {catalogQuery.isLoading ? (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {[...Array(6)].map((_, i) => (
+                <div key={i} className="h-56 rounded-2xl border border-border/80 bg-card/40 animate-pulse" />
+              ))}
+            </div>
+          ) : catalogItems.length === 0 ? (
+            <EmptyState
+              title={tx("Không tìm thấy quy trình nào", "No templates found")}
+              description={tx("Hãy thử thay đổi từ khóa tìm kiếm hoặc chọn danh mục khác.", "Try changing search terms or filtering by another category.")}
+            />
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {catalogItems.map((template) => {
+                const Icon = workflowIcon(template.icon);
+                const isCustomOrgTemplate = template.key.startsWith("market-") || template.key.startsWith("org_");
 
-                  {generate.isPending && (
-                    <div className="space-y-2.5 rounded-xl border border-primary/40 bg-primary/10 p-4 animate-pulse">
-                      <div className="flex items-center gap-2.5 text-xs font-semibold text-primary">
-                        <Sparkles className="h-4 w-4 animate-spin" />
-                        <span>{tx("AI is architecting your multi-agent workflow DAG...", "AI is architecting your multi-agent workflow DAG...")}</span>
-                      </div>
-                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-primary/20">
-                        <div className="h-full w-2/3 animate-[shimmer_1.5s_infinite] bg-primary rounded-full" />
-                      </div>
-                      <p className="text-[11px] text-muted-foreground">
-                        {tx("Synthesizing triggers, connectors, triage policies, and agent routing graph...", "Synthesizing triggers, connectors, triage policies, and agent routing graph...")}</p>
-                    </div>
-                  )}
-
-                  {!generate.isPending && (
-                    <Button
-                      className="w-full gap-2 active-tactile transition-transform font-semibold"
-                      disabled={!aiPrompt.trim() || !aiModelId}
-                      onClick={handleGenerate}
-                    >
-                      <Sparkles className="h-4 w-4 text-primary-foreground" /> {tx("Generate Workflow", "Generate Workflow")}</Button>
-                  )}
-
-                  {aiResult && (
-                    <div className="space-y-3 rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4 shadow-sm">
+                return (
+                  <Card
+                    key={template.key}
+                    className="flex flex-col border-border/80 bg-card/70 hover:border-primary/40 hover:shadow-3d-card transition-all duration-200"
+                  >
+                    <CardHeader className="space-y-2.5 pb-3">
                       <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <div className="text-sm font-bold text-foreground">{aiResult.name}</div>
-                          {aiResult.description && (
-                            <p className="mt-0.5 text-xs text-muted-foreground leading-relaxed">{aiResult.description}</p>
+                        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/15 text-primary border border-primary/25">
+                          <Icon className="h-5 w-5" />
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <Badge variant="outline" className="text-[10px] uppercase font-semibold">
+                            {template.category.replace("_", " ")}
+                          </Badge>
+                          {template.recommendation?.recommended && (
+                            <Badge variant="info" className="text-[10px]">
+                              <Sparkles className="h-3 w-3 mr-1" />
+                              {tx("Khuyên dùng", "Recommended")}
+                            </Badge>
                           )}
                         </div>
-                        <span className="shrink-0 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
-                          {aiResult.graph.nodes.length} {tx("nodes ·", "nodes ·")}{aiResult.graph.edges.length} {tx("edges", "edges")}</span>
+                      </div>
+                      <div>
+                        <CardTitle className="text-sm font-bold text-foreground line-clamp-1">
+                          {template.name}
+                        </CardTitle>
+                        <CardDescription className="text-xs text-muted-foreground line-clamp-2 mt-1">
+                          {template.description}
+                        </CardDescription>
+                      </div>
+                    </CardHeader>
+
+                    <CardContent className="flex flex-1 flex-col justify-between gap-4 pt-0">
+                      <div className="space-y-2 border-t border-border/50 pt-2.5 text-[11px] text-muted-foreground">
+                        <p className="line-clamp-2 text-foreground/80 font-medium">
+                          🎯 {template.outcome}
+                        </p>
+                        <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                          {template.required_integrations.map((integration) => (
+                            <Badge key={integration} variant="secondary" className="text-[10px]">
+                              <Plug className="h-3 w-3 mr-1" /> {integration}
+                            </Badge>
+                          ))}
+                        </div>
                       </div>
 
-                      {/* Visual node flow chain preview */}
-                      <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-border/50 bg-background/60 p-2 text-[10px]">
-                        {aiResult.graph.nodes.map((node: any, idx: number) => (
-                          <React.Fragment key={node.id}>
-                            <span className="rounded border border-border/80 bg-muted/60 px-2 py-0.5 font-medium text-foreground">
-                              {node.label || node.kind}
-                            </span>
-                            {idx < aiResult.graph.nodes.length - 1 && (
-                              <span className="text-muted-foreground/60 font-bold">→</span>
+                      <div className="flex items-center justify-between gap-2 pt-2 border-t border-border/40">
+                        {/* Operator Unpublish Action */}
+                        {isOperator && isCustomOrgTemplate && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 px-2 text-destructive hover:bg-destructive/10"
+                            onClick={() => handleUnpublish(template.key)}
+                            title={tx("Gỡ bỏ khỏi Marketplace", "Unpublish from Marketplace")}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+
+                        <div className="flex items-center justify-end gap-2 ml-auto w-full">
+                          <Button
+                            size="sm"
+                            className="w-full gap-1.5 text-xs font-semibold active-tactile"
+                            disabled={isInstalling === template.key}
+                            onClick={() => handleInstallTemplate(template)}
+                          >
+                            {isInstalling === template.key ? (
+                              tx("Đang cài đặt...", "Installing...")
+                            ) : (
+                              <>
+                                {tx("Cài đặt", "Install")} <ArrowRight className="h-3.5 w-3.5" />
+                              </>
                             )}
-                          </React.Fragment>
-                        ))}
+                          </Button>
+                        </div>
                       </div>
-
-                      <DialogClose asChild>
-                        <Button size="sm" className="w-full gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-medium" onClick={applyGenerated}>
-                          {tx("Apply to canvas", "Apply to canvas")}</Button>
-                      </DialogClose>
-                    </div>
-                  )}
-                </div>
-              </DialogContent>
-            </Dialog>
-            <Button onClick={save} className="gap-2 active-tactile transition-transform">
-              <Save className="h-4 w-4" />{tx("Lưu", "Save")}</Button>
-          </>
-        }
-      />
-
-      <div className="space-y-3">
-        {activeRunId && <RunKpiStrip run={workflowRun.data} />}
-        <div className="flex items-center gap-2 rounded-xl border border-border/80 bg-card/50 p-3 backdrop-blur-xl shadow-3d-card">
-          <div className="flex-1 space-y-1">
-            <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">{tx("Tên workflow", "Workflow name")}</Label>
-            <Input className="text-xs" value={wfName} onChange={(e) => setWfName(e.target.value)} placeholder={tx("Tên workflow", "Workflow name")} />
-          </div>
-          <div className="flex-[2] space-y-1">
-            <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">{tx("Đầu vào chạy", "Run input")}</Label>
-            <Textarea
-              className="min-h-[38px] text-xs resize-none"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder={tx("Đầu vào JSON hoặc văn bản thuần túy…", "JSON or plain text input…")}
-            />
-          </div>
-          <Button className="gap-2 active-tactile transition-transform self-end text-xs" disabled={running} onClick={run}>
-            <Play className="h-3.5 w-3.5" /> {running ? "Running…" : "Run Workflow"}
-          </Button>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
         </div>
-
-        <div className="flex gap-3">
-          <WorkflowNodePalette
-            className="sticky top-4 self-start"
-            onAddNode={(kind) => addNode(kind, { x: 60 + (nodes.length * 40) % 300, y: 80 + (nodes.length * 30) % 200 })}
-          />
-          <WorkflowCanvas
-            className="h-[calc(100vh-380px)] min-h-[500px] flex-1"
-            graphNodes={nodes}
-            graphEdges={edges}
-            nodeStatus={nodeStatus}
-            selectedNodeId={selectedNodeId}
-            onGraphChange={setGraph}
-            onSelectNode={setSelectedNode}
-            onCreateNode={addNode}
-            onEditEdgeCondition={handleEditEdgeCondition}
-          />
-        </div>
-      </div>
-
-      <WorkflowNodeConfig
-        node={selectedNode}
-        open={Boolean(selectedNode)}
-        onOpenChange={(open) => !open && setSelectedNode(null)}
-        onUpdate={updateNode}
-        onDeleteNode={handleDeleteNode}
-      />
-
-      <div className="animate-slide-up" style={{ animationDelay: "150ms" }}>
-        <WorkflowConsole
-          logs={logs}
-          output={output}
-          running={running}
-          run={workflowRun.data}
-          onReplay={activeRunId && !running ? () => runReplay(activeRunId) : undefined}
-        />
-      </div>
+      )}
     </div>
   );
 }
