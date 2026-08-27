@@ -285,6 +285,12 @@ export const en: TranslationDictionary = {
       startedAt: 'Started At',
       finishedAt: 'Finished At',
       searchLogs: 'Filter execution logs...',
+      viewMarkdownModal: 'View Markdown Report',
+      finalReportModalTitle: 'Final Workflow Report',
+      downloadReport: 'Download .md',
+      rawJson: 'Raw JSON',
+      formattedMarkdown: 'Formatted Markdown',
+      viewInMarkdown: 'View as Markdown',
       nodeField: {
         inputField: 'Input field name',
         required: 'Required',

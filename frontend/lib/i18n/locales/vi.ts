@@ -285,6 +285,12 @@ export const vi: TranslationDictionary = {
       startedAt: 'Bắt đầu lúc',
       finishedAt: 'Hoàn tất lúc',
       searchLogs: 'Tìm kiếm nhật ký thực thi...',
+      viewMarkdownModal: 'Xem báo cáo Markdown',
+      finalReportModalTitle: 'Báo cáo Kết quả Workflow',
+      downloadReport: 'Tải file .md',
+      rawJson: 'Dữ liệu thô (JSON)',
+      formattedMarkdown: 'Văn bản định dạng (Markdown)',
+      viewInMarkdown: 'Xem định dạng Markdown',
       nodeField: {
         inputField: 'Tên trường đầu vào',
         required: 'Bắt buộc',
