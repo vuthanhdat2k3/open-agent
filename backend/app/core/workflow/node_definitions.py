@@ -50,6 +50,7 @@ class NodeField(BaseModel):
     display: dict[str, Any] | None = None
     type_options: dict[str, Any] = {}
     multiple: bool = False
+    advanced: bool = False
 
 
 class NodeDefinition(BaseModel):
@@ -238,6 +239,7 @@ def _build_definitions() -> dict[str, NodeDefinition]:
                     placeholder="0 6 * * *",
                     description="5-field cron expression.",
                     display={"show": {"frequency": ["custom"]}},
+                    advanced=True,
                 ),
                 NodeField(
                     name="start_date",
@@ -245,6 +247,7 @@ def _build_definitions() -> dict[str, NodeDefinition]:
                     type="string",
                     default="",
                     description="Optional ISO date (YYYY-MM-DD) to start the schedule.",
+                    advanced=True,
                 ),
                 NodeField(
                     name="end_date",
@@ -252,6 +255,7 @@ def _build_definitions() -> dict[str, NodeDefinition]:
                     type="string",
                     default="",
                     description="Optional ISO date (YYYY-MM-DD) to stop the schedule.",
+                    advanced=True,
                 ),
             ]
         ),

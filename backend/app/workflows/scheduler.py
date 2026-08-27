@@ -3,7 +3,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import structlog
@@ -60,7 +60,9 @@ def _next_custom_cron(cron: str, local: datetime) -> datetime:
             and _field_matches(candidate.hour, fields[1])
             and _field_matches(candidate.day, fields[2])
             and _field_matches(candidate.month, fields[3])
-            and _field_matches(candidate.weekday(), fields[4], sunday=True)
+            # Cron uses Sunday=0/7 and Monday=1, while datetime.weekday uses
+            # Monday=0. Convert before matching the user-facing cron value.
+            and _field_matches((candidate.weekday() + 1) % 7, fields[4], sunday=True)
         ):
             return candidate
         candidate += timedelta(minutes=1)
@@ -71,6 +73,10 @@ def next_run_at(schedule: dict, timezone_name: str, *, now: datetime | None = No
     """Return the next schedule occurrence as naive UTC."""
     current_utc = now or utc_now()
     local = _local_now(current_utc, timezone_name)
+    start_date = _schedule_date(schedule.get("start_date"))
+    end_date = _schedule_date(schedule.get("end_date"))
+    if start_date and local.date() < start_date:
+        local = datetime.combine(start_date, time.min) - timedelta(minutes=1)
     kind = schedule.get("kind", "daily")
     if kind in {"event", "once"}:
         return None
@@ -96,7 +102,20 @@ def next_run_at(schedule: dict, timezone_name: str, *, now: datetime | None = No
             }
             while candidate.weekday() not in numeric:
                 candidate += timedelta(days=1)
+    if end_date and candidate.date() > end_date:
+        return None
     return candidate.replace(tzinfo=ZoneInfo(timezone_name)).astimezone(timezone.utc).replace(tzinfo=None)
+
+
+def _schedule_date(value: object) -> date | None:
+    if not value:
+        return None
+    if isinstance(value, date):
+        return value
+    try:
+        return date.fromisoformat(str(value))
+    except ValueError as exc:
+        raise ValueError(f"invalid schedule date: {value!r}") from exc
 
 
 def _graph_hash(graph: dict) -> str:

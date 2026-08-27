@@ -62,9 +62,23 @@ def to_schedule_dict(parameters: dict[str, Any]) -> dict[str, Any]:
     days = list(parameters.get("days_of_week") or [])
 
     if frequency == "once":
-        return {"kind": "once", "time": None, "weekday": None, "interval_hours": None}
+        return {
+            "kind": "once",
+            "time": None,
+            "weekday": None,
+            "interval_hours": None,
+            "start_date": parameters.get("start_date") or None,
+            "end_date": parameters.get("end_date") or None,
+        }
     if frequency == "hourly":
-        return {"kind": "hourly", "time": None, "weekday": None, "interval_hours": 1}
+        return {
+            "kind": "hourly",
+            "time": None,
+            "weekday": None,
+            "interval_hours": 1,
+            "start_date": parameters.get("start_date") or None,
+            "end_date": parameters.get("end_date") or None,
+        }
     if frequency == "custom":
         return {
             "kind": "custom",
@@ -72,13 +86,37 @@ def to_schedule_dict(parameters: dict[str, Any]) -> dict[str, Any]:
             "time": time,
             "weekday": None,
             "interval_hours": None,
+            "start_date": parameters.get("start_date") or None,
+            "end_date": parameters.get("end_date") or None,
         }
     if frequency == "weekdays":
-        return {"kind": "weekdays", "time": time, "weekday": None, "interval_hours": None}
+        return {
+            "kind": "weekdays",
+            "time": time,
+            "weekday": None,
+            "interval_hours": None,
+            "start_date": parameters.get("start_date") or None,
+            "end_date": parameters.get("end_date") or None,
+        }
     if frequency == "weekly":
-        weekday = _WEEKDAY_ORDER.index(days[0]) if days else 0
-        return {"kind": "weekly", "time": time, "weekday": weekday, "interval_hours": None}
-    return {"kind": "daily", "time": time, "weekday": None, "interval_hours": None}
+        valid_days = [day for day in days if day in _WEEKDAY_ORDER]
+        return {
+            "kind": "weekly",
+            "time": time,
+            "weekday": _WEEKDAY_ORDER.index(valid_days[0]) if valid_days else 0,
+            "days_of_week": valid_days,
+            "interval_hours": None,
+            "start_date": parameters.get("start_date") or None,
+            "end_date": parameters.get("end_date") or None,
+        }
+    return {
+        "kind": "daily",
+        "time": time,
+        "weekday": None,
+        "interval_hours": None,
+        "start_date": parameters.get("start_date") or None,
+        "end_date": parameters.get("end_date") or None,
+    }
 
 
 def _parse_time(value: str) -> tuple[str, str]:

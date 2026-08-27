@@ -250,6 +250,7 @@ function SubField({
 
 export function NodeConfigForm({ node, onUpdate }: NodeConfigFormProps) {
   const { t } = useTranslation();
+  const [showAdvanced, setShowAdvanced] = React.useState(false);
   const definitions = useNodeDefinitions();
   const toolOptions = useToolOptions();
   const [modelOptions, setModelOptions] = React.useState<Array<{ name: string; value: string }>>([]);
@@ -279,6 +280,10 @@ export function NodeConfigForm({ node, onUpdate }: NodeConfigFormProps) {
   React.useEffect(() => {
     setUserOptions(users.data ?? []);
   }, [users.data]);
+
+  React.useEffect(() => {
+    setShowAdvanced(false);
+  }, [node.id]);
 
   const definition: NodeDefinition | undefined = definitions.data?.[node.kind];
   if (!definition) return null;
@@ -355,7 +360,7 @@ export function NodeConfigForm({ node, onUpdate }: NodeConfigFormProps) {
   return (
     <div className="space-y-4">
       {definition.fields
-        .filter((f) => isFieldVisible(f, parameters, definition))
+        .filter((f) => !f.advanced && isFieldVisible(f, parameters, definition))
         .map((field) => (
           <div key={field.name} className="space-y-1.5">
             <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">
@@ -373,6 +378,41 @@ export function NodeConfigForm({ node, onUpdate }: NodeConfigFormProps) {
             )}
           </div>
         ))}
+      {definition.fields.some((f) => f.advanced) && (
+        <>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="w-full justify-between text-xs text-muted-foreground"
+            onClick={() => setShowAdvanced((value) => !value)}
+          >
+            {showAdvanced
+              ? t("pages.workflows.hideAdvancedSettings", "Hide advanced settings")
+              : t("pages.workflows.showAdvancedSettings", "Show advanced settings")}
+            <span aria-hidden="true">{showAdvanced ? "−" : "+"}</span>
+          </Button>
+          {showAdvanced && definition.fields
+            .filter((f) => f.advanced && isFieldVisible(f, parameters, definition))
+            .map((field) => (
+              <div key={field.name} className="space-y-1.5">
+                <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  {t(`pages.workflows.nodeField.${field.name}`, field.label)}
+                  {field.required && <span className="text-destructive"> *</span>}
+                </Label>
+                <FieldInput
+                  field={field}
+                  value={parameters[field.name]}
+                  options={loadOptions(field)}
+                  onValue={(v) => setParam(field.name, v)}
+                />
+                {field.description && (
+                  <p className="text-[11px] text-muted-foreground/80 leading-relaxed">{field.description}</p>
+                )}
+              </div>
+            ))}
+        </>
+      )}
     </div>
   );
 }
