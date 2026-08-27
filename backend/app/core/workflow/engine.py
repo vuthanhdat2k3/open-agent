@@ -638,6 +638,22 @@ async def create_workflow_run(
     return run
 
 
+def _reachable_node_ids(nodes: list[dict[str, Any]], edges: list[dict[str, Any]], start: str) -> set[str]:
+    """Return the graph slice downstream of one trigger node."""
+    outgoing: dict[str, list[str]] = {}
+    for edge in edges:
+        outgoing.setdefault(str(edge.get("from_")), []).append(str(edge.get("to")))
+    reachable: set[str] = set()
+    pending = [start]
+    while pending:
+        node_id = pending.pop()
+        if node_id in reachable:
+            continue
+        reachable.add(node_id)
+        pending.extend(outgoing.get(node_id, []))
+    return {node["id"] for node in nodes if node.get("id") in reachable}
+
+
 async def _start_node_run(
     db: AsyncSession,
     workflow_run_id: str,
@@ -683,10 +699,19 @@ async def _run_workflow_events(
     replay_of_run_id: str | None = None,
     user_id: str | None = None,
     timezone_name: str | None = None,
+    trigger_node_id: str | None = None,
+    trigger_type: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     settings = get_settings()
     workflow_run = await create_workflow_run(
-        workflow, input_text, db, workflow_run_id, user_id, timezone_name
+        workflow,
+        input_text,
+        db,
+        workflow_run_id,
+        user_id,
+        timezone_name,
+        trigger_node_id,
+        trigger_type,
     )
     timezone_name = (workflow_run.input or {}).get("timezone") or timezone_name
     actor_user_id = workflow_run.triggered_by_user_id or user_id or workflow.created_by_user_id
@@ -757,7 +782,7 @@ async def _run_workflow_events(
             "data": {"source_run_id": replay_of_run_id, "recorded_calls": len(replay_cursor)},
         }
 
-    graph = workflow.graph or {}
+    graph = workflow_run.graph_snapshot or workflow.graph or {}
     nodes = graph.get("nodes", [])
     edges = [{**edge, "_idx": idx} for idx, edge in enumerate(graph.get("edges", []))]
     if not nodes:
@@ -793,7 +818,21 @@ async def _run_workflow_events(
         }
         return
 
-    status: dict[str, str] = {n["id"]: "pending" for n in nodes}
+    active_node_ids = set(node_by_id)
+    selected_trigger_id = workflow_run.trigger_node_id
+    if selected_trigger_id:
+        if selected_trigger_id not in node_by_id:
+            workflow_run.status = "failed"
+            workflow_run.error = f"trigger node '{selected_trigger_id}' not found in graph snapshot"
+            workflow_run.finished_at = utc_now()
+            await db.commit()
+            await resume.release_lease(db, workflow_run.id)
+            yield {"event": "error", "data": {"message": workflow_run.error}}
+            return
+        active_node_ids = _reachable_node_ids(nodes, edges, selected_trigger_id)
+    status: dict[str, str] = {
+        n["id"]: ("pending" if n["id"] in active_node_ids else "skipped") for n in nodes
+    }
     outputs: dict[str, str] = {}
     active_edges: set[int] = set()
     # Populated only when re-entering an existing run (crash recovery); empty
@@ -1094,6 +1133,10 @@ async def _run_workflow_events(
         nid = node["id"]
         if status[nid] != "pending":
             return False
+        if selected_trigger_id and nid == selected_trigger_id:
+            return True
+        if selected_trigger_id and nid not in active_node_ids:
+            return False
         if node.get("kind") in ("input", "scheduler") or not edges_to[nid]:
             return True
         inc = [e for e in edges_to[nid] if e["_idx"] in active_edges]
@@ -1265,6 +1308,8 @@ async def run_workflow_events(
     replay_of_run_id: str | None = None,
     user_id: str | None = None,
     timezone_name: str | None = None,
+    trigger_node_id: str | None = None,
+    trigger_type: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """Stream workflow events and release any executor lease on close."""
     run_id = workflow_run_id
@@ -1278,6 +1323,8 @@ async def run_workflow_events(
             replay_of_run_id=replay_of_run_id,
             user_id=user_id,
             timezone_name=timezone_name,
+            trigger_node_id=trigger_node_id,
+            trigger_type=trigger_type,
         ):
             if event.get("event") == "workflow_start":
                 run_id = event.get("data", {}).get("workflow_run_id") or run_id
@@ -1299,6 +1346,8 @@ async def run_workflow(
     replay_of_run_id: str | None = None,
     user_id: str | None = None,
     timezone_name: str | None = None,
+    trigger_node_id: str | None = None,
+    trigger_type: str | None = None,
 ) -> Any:
     """If stream=True, returns the async generator of events.
     Otherwise awaits and returns (final_output, event_log)."""
@@ -1312,6 +1361,8 @@ async def run_workflow(
             replay_of_run_id=replay_of_run_id,
             user_id=user_id,
             timezone_name=timezone_name,
+            trigger_node_id=trigger_node_id,
+            trigger_type=trigger_type,
         )
     final = ""
     log: list[dict[str, Any]] = []
@@ -1325,6 +1376,8 @@ async def run_workflow(
         replay_of_run_id=replay_of_run_id,
         user_id=user_id,
         timezone_name=timezone_name,
+        trigger_node_id=trigger_node_id,
+        trigger_type=trigger_type,
     ):
         log.append(ev)
         if ev["event"] == "workflow_start":
