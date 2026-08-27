@@ -48,7 +48,7 @@ import { Slider } from "@/components/ui/slider";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/page-header";
-import { useTranslation } from "@/lib/i18n";
+import { useTranslation, statusLabel } from "@/lib/i18n";
 import { EmptyState, ErrorState, LoadingSkeleton, DataPagination } from "@/components/shared";
 import { AgentCard } from "@/components/agents/agent-card";
 import {
@@ -263,7 +263,7 @@ export default function AgentsPage() {
         agentId: releaseAgent.id,
         version,
       });
-      toast.success(tx("Đã khôi phục về phiên bản ${release.version}", "Rolled back as version ${release.version}"));
+      toast.success(tx(`Đã khôi phục về phiên bản ${release.version}`, `Rolled back as version ${release.version}`));
     } catch (error: any) {
       toast.error(error.message);
     }
@@ -451,7 +451,7 @@ export default function AgentsPage() {
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
                         <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                          <Wrench className="h-3.5 w-3.5 text-primary" /> {tx("Công cụ (${selectedTools.length} đã chọn)", "Tools (${selectedTools.length} selected)")}
+                          <Wrench className="h-3.5 w-3.5 text-primary" /> {tx(`Công cụ (${selectedTools.length} đã chọn)`, `Tools (${selectedTools.length} selected)`)}
                         </Label>
                         <div className="relative w-48">
                           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -627,7 +627,7 @@ export default function AgentsPage() {
                 className="h-7 text-xs font-medium"
                 onClick={() => setKindFilter("all")}
               >
-                {tx("Tất cả (${data?.length ?? 0})", "All (${data?.length ?? 0})")}
+                {tx(`Tất cả (${data?.length ?? 0})`, `All (${data?.length ?? 0})`)}
               </Button>
               <Button
                 size="sm"
@@ -635,7 +635,7 @@ export default function AgentsPage() {
                 className="h-7 text-xs font-medium"
                 onClick={() => setKindFilter("orchestrator")}
               >
-                {tx("Điều phối viên (${data?.filter((a) => a.kind === \"orchestrator\").length ?? 0})", "Orchestrators (${data?.filter((a) => a.kind === \"orchestrator\").length ?? 0})")}
+                {tx(`Điều phối viên (${data?.filter((a) => a.kind === "orchestrator").length ?? 0})`, `Orchestrators (${data?.filter((a) => a.kind === "orchestrator").length ?? 0})`)}
               </Button>
               <Button
                 size="sm"
@@ -643,7 +643,7 @@ export default function AgentsPage() {
                 className="h-7 text-xs font-medium"
                 onClick={() => setKindFilter("worker")}
               >
-                {tx("Công nhân (${data?.filter((a) => a.kind === \"worker\").length ?? 0})", "Workers (${data?.filter((a) => a.kind === \"worker\").length ?? 0})")}
+                {tx(`Công nhân (${data?.filter((a) => a.kind === "worker").length ?? 0})`, `Workers (${data?.filter((a) => a.kind === "worker").length ?? 0})`)}
               </Button>
             </div>
           </div>
@@ -682,7 +682,7 @@ export default function AgentsPage() {
                         <div className="flex items-center gap-2">
                           <span className="font-semibold text-foreground font-mono">v{release.version}</span>
                           <Badge variant={release.status === "published" ? "default" : "outline"} className="text-[9.5px]">
-                            {release.status}
+                            {statusLabel(release.status, t)}
                           </Badge>
                         </div>
                         <p className="text-xs text-muted-foreground mt-0.5">{release.change_note || (tx("Không có ghi chú", "No note"))}</p>

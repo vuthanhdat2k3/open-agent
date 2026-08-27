@@ -5,7 +5,7 @@ import { Building2, Plus, Users, UserPlus, Trash2, Lock, Pencil } from "lucide-r
 import { toast } from "sonner";
 import { useCreateOrganization, useOrganizations, useCurrentRole, useMembers, useInviteMember, useRemoveMember, useRenameOrganization, useDeleteOrganization } from "@/hooks";
 import { PageHeader } from "@/components/page-header";
-import { useTranslation } from "@/lib/i18n";
+import { useTranslation, roleLabel } from "@/lib/i18n";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
@@ -22,7 +22,7 @@ interface OrgMembersDialogProps {
 }
 
 function OrgMembersDialog({ organization, open, onOpenChange }: OrgMembersDialogProps) {
-  const { locale, tx } = useTranslation();
+  const { locale, tx, t } = useTranslation();
   const members = useMembers(organization.id);
   const invite = useInviteMember(organization.id);
   const remove = useRemoveMember(organization.id);
@@ -108,10 +108,10 @@ function OrgMembersDialog({ organization, open, onOpenChange }: OrgMembersDialog
                     <p className="font-medium truncate">{m.email}</p>
                     <div className="flex items-center gap-2">
                       <Badge variant={m.role === "platform_admin" ? "default" : "outline"} className="text-xs">
-                        {m.role}
+                        {roleLabel(m.role, t)}
                       </Badge>
                       <span className="text-xs text-muted-foreground">
-                        {tx("Joined", "Joined")}{new Date(m.created_at).toLocaleDateString()}
+                        {tx("Đã tham gia", "Joined")}{new Date(m.created_at).toLocaleDateString()}
                       </span>
                     </div>
                   </div>

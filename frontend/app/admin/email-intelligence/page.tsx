@@ -104,28 +104,28 @@ export default function EmailOperationsPage() {
           icon={Database}
           label={tx("Kết nối Mail", "Connections")}
           value={`${data.connections.healthy}/${data.connections.total}`}
-          detail={data.connections.unhealthy ? (tx("${data.connections.unhealthy} lỗi kết nối", "${data.connections.unhealthy} unhealthy")) : (tx("Hoạt động tốt", "Healthy"))}
+          detail={data.connections.unhealthy ? tx(`${data.connections.unhealthy} lỗi kết nối`, `${data.connections.unhealthy} unhealthy`) : tx("Hoạt động tốt", "Healthy")}
           danger={data.connections.unhealthy > 0}
         />
         <Metric
           icon={GitBranch}
           label={tx("Hàng đợi xử lý", "Queue")}
           value={`${data.queue.ready}`}
-          detail={tx("${data.queue.retrying} đang thử lại · ${data.queue.dead_letter} lỗi tồn", "${data.queue.retrying} retrying · ${data.queue.dead_letter} dead-letter")}
+          detail={tx(`${data.queue.retrying} đang thử lại · ${data.queue.dead_letter} lỗi tồn`, `${data.queue.retrying} retrying · ${data.queue.dead_letter} dead-letter`)}
           danger={data.queue.dead_letter > 0}
         />
         <Metric
           icon={ShieldAlert}
           label={tx("Yêu cầu duyệt", "Reviews")}
           value={`${data.reviews.open}`}
-          detail={tx("${data.reviews.breached} vi phạm SLA", "${data.reviews.breached} SLA breached")}
+          detail={tx(`${data.reviews.breached} vi phạm SLA`, `${data.reviews.breached} SLA breached`)}
           danger={data.reviews.breached > 0}
         />
         <Metric
           icon={Timer}
           label={tx("Bộ lập lịch", "Scheduler")}
           value={data.scheduler.healthy ? (tx("Hoạt động tốt", "Healthy")) : (tx("Suy giảm", "Degraded"))}
-          detail={tx("${data.scheduler.missed_occurrences} lượt bị trễ", "${data.scheduler.missed_occurrences} missed occurrences")}
+          detail={tx(`${data.scheduler.missed_occurrences} lượt bị trễ`, `${data.scheduler.missed_occurrences} missed occurrences`)}
           danger={!data.scheduler.healthy}
         />
       </div>

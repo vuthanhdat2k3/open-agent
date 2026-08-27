@@ -20,6 +20,18 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
+
+const NOTIFICATION_TYPE_KEYS: Record<string, string> = {
+  CONTRACT_UPDATE: "notifications.contractUpdate",
+  CALENDAR_INVITE: "notifications.calendarInvite",
+  GENERAL: "notifications.general",
+};
+
+function notificationTypeLabel(type: string, t: (p: string, f?: string) => string): string {
+  const key = NOTIFICATION_TYPE_KEYS[type] || type;
+  if (key.includes(".")) return t(key, type);
+  return key;
+}
 import { useCustomerIntelligenceNotifications, useMarkCustomerIntelligenceNotificationRead, useUrlSearchParam } from "@/hooks";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
@@ -319,7 +331,7 @@ export default function EmailIntelligencePage() {
                           <p className="font-semibold text-xs text-foreground">{n.sender_email}</p>
                           {n.type && (
                             <Badge variant="outline" className="text-[10px] uppercase font-mono">
-                              {n.type}
+                              {notificationTypeLabel(n.type, t)}
                             </Badge>
                           )}
                           {!n.read_at && (
@@ -364,7 +376,7 @@ export default function EmailIntelligencePage() {
               {/* Standard Pager Navigation */}
               <div className="flex items-center justify-between border-t border-border/60 pt-3 text-xs text-muted-foreground">
                 <span>
-                  {tx("Trang ${pageIndex + 1}", "Page ${pageIndex + 1}")}
+                  {tx(`Trang ${pageIndex + 1}`, `Page ${pageIndex + 1}`)}
                 </span>
                 <div className="flex items-center gap-1.5">
                   <Button

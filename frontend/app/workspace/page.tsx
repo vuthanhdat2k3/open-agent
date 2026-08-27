@@ -146,7 +146,7 @@ export default function WorkspacePage() {
   async function runWorkspaceArtifact(artifact: WorkspaceArtifact) {
     try {
       await runArtifact.mutateAsync(artifact.id);
-      toast.success(tx("Đã khởi chạy ${artifact.path}", "Started ${artifact.path}"));
+      toast.success(tx(`Đã khởi chạy ${artifact.path}`, `Started ${artifact.path}`));
     } catch (err: any) {
       toast.error(err.message);
     }
@@ -291,7 +291,7 @@ export default function WorkspacePage() {
                             {isAdmin && (
                               <ConfirmDialog
                                 trigger={<Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-destructive" aria-label={`Delete ${artifact.path}`}><Trash2 className="h-3.5 w-3.5" /></Button>}
-                                title={tx("Xóa ${artifact.path}?", "Delete ${artifact.path}?")}
+                                title={tx(`Xóa ${artifact.path}?`, `Delete ${artifact.path}?`)}
                                 description={tx("Tệp workspace này sẽ bị xóa vĩnh viễn khỏi sandbox.", "This workspace artifact will be permanently removed.")}
                                 confirmLabel={tx("Xóa tệp", "Delete artifact")}
                                 destructive

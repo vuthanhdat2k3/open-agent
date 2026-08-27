@@ -101,6 +101,70 @@ export interface TranslationDictionary {
     toggleSidebar: string;
     mobileSidebarDescription: string;
   };
+  roles: {
+    platformAdmin: string;
+    orgAdmin: string;
+    admin: string;
+    operator: string;
+    user: string;
+    assistant: string;
+    system: string;
+  };
+  status: {
+    active: string;
+    inactive: string;
+    enabled: string;
+    disabled: string;
+    running: string;
+    queued: string;
+    processing: string;
+    completed: string;
+    failed: string;
+    pending: string;
+    approved: string;
+    rejected: string;
+    highRisk: string;
+    standard: string;
+    uploaded: string;
+    retrying: string;
+    ingested: string;
+    error: string;
+    deadLetter: string;
+    draft: string;
+    published: string;
+    archived: string;
+    unknown: string;
+    breached: string;
+    open: string;
+    paused: string;
+  };
+  modelTier: {
+    frontier: string;
+    balanced: string;
+    economy: string;
+  };
+  notifications: {
+    contractUpdate: string;
+    calendarInvite: string;
+    general: string;
+  };
+  automations: {
+    costLow: string;
+    costMedium: string;
+    costHigh: string;
+    approvalNone: string;
+    approvalTrusted: string;
+    approvalRequired: string;
+    categoryAll: string;
+    categoryDaily: string;
+    categoryReporting: string;
+    categoryOperations: string;
+    categoryCompliance: string;
+    categoryComms: string;
+    stepsSchedule: string;
+    stepsReview: string;
+    stepsEnable: string;
+  };
   pages: {
     dashboard: {
       greetingMorning: string;

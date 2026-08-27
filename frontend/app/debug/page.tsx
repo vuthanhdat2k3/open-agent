@@ -35,7 +35,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { EmptyState, ErrorState, LoadingSkeleton, DataPagination } from "@/components/shared";
-import { useTranslation } from "@/lib/i18n";
+import { useTranslation, roleLabel } from "@/lib/i18n";
 
 export default function DebugPage() {
   const { t, dict, locale, tx } = useTranslation();
@@ -227,7 +227,7 @@ export default function DebugPage() {
               />
             </div>
             <p className="text-xs text-muted-foreground font-mono">
-              {tx("Hiển thị ${filteredUsage.length} bản ghi chi tiết", "Showing ${filteredUsage.length} breakdown records")}
+              {tx(`Hiển thị ${filteredUsage.length} bản ghi chi tiết`, `Showing ${filteredUsage.length} breakdown records`)}
             </p>
           </div>
 
@@ -407,7 +407,7 @@ export default function DebugPage() {
                           variant={m.role === "user" ? "default" : "outline"}
                           className="text-[10px] uppercase font-mono"
                         >
-                          {m.role}
+                          {roleLabel(m.role, t)}
                         </Badge>
                         {m.meta?.cost_usd != null && (
                           <span className="font-mono text-[10.5px] text-muted-foreground bg-muted/40 px-2 py-0.5 rounded border border-border/40">

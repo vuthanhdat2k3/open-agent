@@ -10,7 +10,7 @@ import { Input, Label } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/page-header";
-import { useTranslation } from "@/lib/i18n";
+import { useTranslation, roleLabel } from "@/lib/i18n";
 import { ErrorState } from "@/components/shared";
 
 export default function ProfilePage() {
@@ -204,7 +204,7 @@ export default function ProfilePage() {
                 <div className="flex items-center gap-2">
                   <Badge variant="outline" className="capitalize">
                     <Shield className="mr-1 h-3 w-3" />
-                    {mem.role}
+                    {roleLabel(mem.role, t)}
                   </Badge>
                 </div>
               </div>
