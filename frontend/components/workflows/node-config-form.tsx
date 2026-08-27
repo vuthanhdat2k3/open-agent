@@ -1,3 +1,7 @@
+/**
+ * NodeConfigForm — Dynamic field renderer for workflow graph nodes.
+ * Accurately merges saved DB parameters, definition defaults, and resolves conditional field visibility.
+ */
 "use client";
 
 import * as React from "react";
@@ -14,18 +18,26 @@ interface NodeConfigFormProps {
   onUpdate: (patch: Partial<GraphNode>) => void;
 }
 
-/** True when a field's display rules match the current parameters. */
-function isFieldVisible(field: NodeField, parameters: Record<string, any>) {
+/** True when a field's display rules match the current parameters or fallback defaults. */
+function isFieldVisible(
+  field: NodeField,
+  parameters: Record<string, any>,
+  definition?: NodeDefinition
+) {
   const display = field.display;
   if (!display) return true;
   if (display.show) {
     for (const [key, values] of Object.entries(display.show)) {
-      if (!values.includes(parameters[key])) return false;
+      const fieldDef = definition?.fields.find((f) => f.name === key);
+      const val = parameters[key] ?? fieldDef?.default ?? definition?.default_parameters?.[key];
+      if (!values.includes(val)) return false;
     }
   }
   if (display.hide) {
     for (const [key, values] of Object.entries(display.hide)) {
-      if (values.includes(parameters[key])) return false;
+      const fieldDef = definition?.fields.find((f) => f.name === key);
+      const val = parameters[key] ?? fieldDef?.default ?? definition?.default_parameters?.[key];
+      if (values.includes(val)) return false;
     }
   }
   return true;
@@ -271,11 +283,32 @@ export function NodeConfigForm({ node, onUpdate }: NodeConfigFormProps) {
   const definition: NodeDefinition | undefined = definitions.data?.[node.kind];
   if (!definition) return null;
 
-  const parameters: Record<string, any> = node.parameters ?? node.config ?? {};
+  // Accurately extract all saved parameters from node (parameters, config, or top-level props)
+  // and overlay onto definition defaults.
+  const rootParams: Record<string, any> = {};
+  if (node.agent_id) rootParams.agent_id = node.agent_id;
+  if ((node as any).tool) rootParams.tool = (node as any).tool;
+  if ((node as any).system_prompt) rootParams.system_prompt = (node as any).system_prompt;
+  if ((node as any).model_id) rootParams.model_id = (node as any).model_id;
+  if ((node as any).tools) rootParams.tools = (node as any).tools;
+  if ((node as any).mode) rootParams.mode = (node as any).mode;
+
+  const parameters: Record<string, any> = {
+    ...(definition.default_parameters ?? {}),
+    ...rootParams,
+    ...(node.config ?? {}),
+    ...(node.parameters ?? {}),
+  };
 
   const setParam = (name: string, value: any) => {
     const next = { ...parameters, [name]: value };
-    onUpdate({ parameters: next, config: next });
+    const patch: Partial<GraphNode> = {
+      parameters: next,
+      config: next,
+    };
+    if (name === "agent_id") patch.agent_id = value;
+    if (name === "merge_mode") patch.merge_mode = value;
+    onUpdate(patch);
   };
 
   const loadOptions = (field: NodeField): Array<{ name: string; value: string; description?: string }> => {
@@ -300,7 +333,7 @@ export function NodeConfigForm({ node, onUpdate }: NodeConfigFormProps) {
   return (
     <div className="space-y-4">
       {definition.fields
-        .filter((f) => isFieldVisible(f, parameters))
+        .filter((f) => isFieldVisible(f, parameters, definition))
         .map((field) => (
           <div key={field.name} className="space-y-1.5">
             <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">
