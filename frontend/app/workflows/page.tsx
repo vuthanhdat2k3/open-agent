@@ -334,7 +334,7 @@ export default function WorkflowEditor() {
     setSelectedNode(null);
     setAiResult(null);
     setAiPrompt("");
-    toast.success(locale === "vi" ? "Đã áp dụng vào canvas — hãy xem lại và Lưu" : "Applied to canvas — review and Save");
+    toast.success(locale === "vi" ? "Đã áp dụng vào canvas — xem lại rồi lưu" : "Applied to canvas — review and Save");
   };
 
   const handleAutoLayout = () => {
@@ -582,7 +582,7 @@ export default function WorkflowEditor() {
                     <div className="flex flex-wrap gap-1.5 pt-1">
                       <button
                         type="button"
-                        onClick={() => setAiPrompt(locale === "vi" ? "Quét Google Drive 6h sáng hàng ngày, lọc các file mới cập nhật và phân tích tổng hợp báo cáo" : "Scan Google Drive daily at 6 AM, filter updated files and synthesize summary report")}
+                        onClick={() => setAiPrompt(locale === "vi" ? "Quét Google Drive 6h sáng hàng ngày, lọc các tệp mới cập nhật và tổng hợp báo cáo" : "Scan Google Drive daily at 6 AM, filter updated files and synthesize summary report")}
                         className="rounded-full border border-border/60 bg-muted/40 px-2 py-0.5 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                       >
                         {locale === "vi" ? "⚡ Quét Drive 6h sáng hàng ngày" : "⚡ Daily Drive Scan 6 AM"}
@@ -610,7 +610,7 @@ export default function WorkflowEditor() {
                     <div className="space-y-2.5 rounded-xl border border-primary/40 bg-primary/10 p-4 animate-pulse">
                       <div className="flex items-center gap-2.5 text-xs font-semibold text-primary">
                         <Sparkles className="h-4 w-4 animate-spin" />
-                        <span>{locale === "vi" ? "AI is architecting your multi-agent workflow DAG..." : "AI is architecting your multi-agent workflow DAG..."}</span>
+                        <span>{locale === "vi" ? "AI đang thiết kế workflow multi-agent của bạn..." : "AI is architecting your multi-agent workflow DAG..."}</span>
                       </div>
                       <div className="h-1.5 w-full overflow-hidden rounded-full bg-primary/20">
                         <div className="h-full w-2/3 animate-[shimmer_1.5s_infinite] bg-primary rounded-full" />

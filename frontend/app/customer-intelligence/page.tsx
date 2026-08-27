@@ -468,7 +468,7 @@ function SchedulesTabContent() {
               <div>
                 <CardTitle className="text-base font-semibold text-foreground">{locale === "vi" ? "Configured Schedules" : "Configured Schedules"}</CardTitle>
                 <CardDescription className="text-xs">
-                  {schedules.data?.length ?? 0} {locale === "vi" ? "active routine sync schedules" : "active routine sync schedules"}</CardDescription>
+                  {schedules.data?.length ?? 0} {locale === "vi" ? "lịch đồng bộ đang chạy" : "active routine sync schedules"}</CardDescription>
               </div>
               <Button variant="ghost" size="sm" onClick={() => void schedules.refetch()} disabled={schedules.isFetching}>
                 <RefreshCw className={schedules.isFetching ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
@@ -1094,7 +1094,7 @@ export default function CustomerIntelligencePage() {
               <CardTitle className="text-base font-semibold text-foreground">
                 {locale === "vi" ? "Synthesize Client Dossier" : "Synthesize Client Dossier"}</CardTitle>
               <CardDescription className="text-xs">
-                {locale === "vi" ? "Trigger background multi-source research for an executive briefing." : "Trigger background multi-source research for an executive briefing."}</CardDescription>
+                {locale === "vi" ? "Kích hoạt nghiên cứu đa nguồn nền cho báo cáo điều hành." : "Trigger background multi-source research for an executive briefing."}</CardDescription>
             </CardHeader>
             <CardContent>
               <form onSubmit={createManualCase} className="space-y-4">
