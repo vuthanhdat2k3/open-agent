@@ -11,8 +11,9 @@
 #                    .env file, e.g. G:\open-agent\.env. Kept out of git on
 #                    purpose (credentials); see .gitignore.
 #
-# NOTE: this job rebuilds images in place. It never runs `down -v`, so named
-# volumes (postgres, qdrant, minio, ...) survive every deploy.
+# Images are built and pushed by CI for the exact commit SHA. This job only
+# pulls and starts those images; it never runs `down -v`, so named volumes
+# (postgres, qdrant, minio, ...) survive every deploy.
 
 name: Deploy (self-hosted)
 
@@ -29,6 +30,9 @@ jobs:
   deploy:
     runs-on: [self-hosted, windows]
     timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: read
     steps:
       - name: Preflight - Docker must be reachable
         shell: powershell
@@ -52,13 +56,26 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build & start stack
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull & start stack
         shell: powershell
         env:
           DEPLOY_ENV_FILE: ${{ vars.DEPLOY_ENV_FILE }}
+          OPENAGENT_API_IMAGE: ghcr.io/${{ github.repository_owner }}/open-agent/api:${{ github.sha }}
+          OPENAGENT_FRONTEND_IMAGE: ghcr.io/${{ github.repository_owner }}/open-agent/frontend:${{ github.sha }}
+          OPENAGENT_RAG_IMAGE: ghcr.io/${{ github.repository_owner }}/open-agent/rag-service:${{ github.sha }}
+          OPENAGENT_DOCLING_IMAGE: ghcr.io/${{ github.repository_owner }}/open-agent/docling-service:${{ github.sha }}
+          OPENAGENT_CI_MCP_IMAGE: ghcr.io/${{ github.repository_owner }}/open-agent/customer-intelligence-mcp:${{ github.sha }}
         run: |
           docker container prune -f
-          docker compose --env-file "$env:DEPLOY_ENV_FILE" --profile identity up -d --build --remove-orphans
+          docker compose --env-file "$env:DEPLOY_ENV_FILE" --profile identity pull api worker frontend rag-service docling-service customer-intelligence-mcp
+          docker compose --env-file "$env:DEPLOY_ENV_FILE" --profile identity up -d --no-build --remove-orphans
           if ($LASTEXITCODE -ne 0) { throw "docker compose up failed" }
 
       - name: Wait for API health

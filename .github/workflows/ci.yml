@@ -4,7 +4,7 @@ on:
   pull_request:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [dev, main]
 
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
@@ -62,40 +62,105 @@ jobs:
       - run: npm run build
 
   build-images:
+    if: github.event_name != 'pull_request'
     runs-on: self-hosted
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}/open-agent
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
-      - name: Build API image with cache
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push API image
         uses: docker/build-push-action@v6
         with:
           context: ./backend
-          tags: openagent-api:ci
-          load: true
+          push: true
+          tags: ${{ env.IMAGE_PREFIX }}/api:${{ github.sha }}
           cache-from: type=gha,scope=ci-api
           cache-to: type=gha,mode=max,scope=ci-api
-      - name: Build frontend image with cache
+      - name: Build and push frontend image
         uses: docker/build-push-action@v6
         with:
           context: ./frontend
-          tags: openagent-frontend:ci
-          load: true
+          push: true
+          tags: ${{ env.IMAGE_PREFIX }}/frontend:${{ github.sha }}
           cache-from: type=gha,scope=ci-frontend
           cache-to: type=gha,mode=max,scope=ci-frontend
+      - name: Build and push RAG image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./rag-service
+          push: true
+          tags: ${{ env.IMAGE_PREFIX }}/rag-service:${{ github.sha }}
+          cache-from: type=gha,scope=ci-rag
+          cache-to: type=gha,mode=max,scope=ci-rag
+      - name: Build and push Docling image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./docling-service
+          push: true
+          tags: ${{ env.IMAGE_PREFIX }}/docling-service:${{ github.sha }}
+          cache-from: type=gha,scope=ci-docling
+          cache-to: type=gha,mode=max,scope=ci-docling
+          build-args: DOCLING_COMMIT=61d76f1ff3f8428065465889f7b4577da7df704c
+      - name: Build and push Customer Intelligence image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./customer-intelligence-mcp
+          push: true
+          tags: ${{ env.IMAGE_PREFIX }}/customer-intelligence-mcp:${{ github.sha }}
+          cache-from: type=gha,scope=ci-customer-intelligence
+          cache-to: type=gha,mode=max,scope=ci-customer-intelligence
       - run: docker compose --env-file .env.example config
 
   compose-e2e:
+    needs: build-images
+    if: always() && needs.build-images.result != 'failure'
     runs-on: self-hosted
     timeout-minutes: 20
     env:
       OPENAGENT_DB_URL: postgresql+asyncpg://openagent:openagent@postgres:5432/openagent
       OPENAGENT_JWT_SECRET_KEY: ci-secret-change-me-32-bytes-minimum
+      IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}/open-agent
     steps:
       - uses: actions/checkout@v4
       - name: Create Python environment
         run: |
           & 'C:\Users\PC\AppData\Local\Programs\Python\Python312\python.exe' -m venv .ci-venv
-      - run: docker compose -f docker-compose.yml -f .github/ci-compose.yml --env-file .env.example up -d --build postgres redis api worker frontend
+      - name: Log in to GHCR for trusted branch builds
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Pull images built by the previous job
+        if: github.event_name != 'pull_request'
+        shell: powershell
+        env:
+          OPENAGENT_API_IMAGE: ${{ env.IMAGE_PREFIX }}/api:${{ github.sha }}
+          OPENAGENT_FRONTEND_IMAGE: ${{ env.IMAGE_PREFIX }}/frontend:${{ github.sha }}
+          OPENAGENT_RAG_IMAGE: ${{ env.IMAGE_PREFIX }}/rag-service:${{ github.sha }}
+          OPENAGENT_DOCLING_IMAGE: ${{ env.IMAGE_PREFIX }}/docling-service:${{ github.sha }}
+          OPENAGENT_CI_MCP_IMAGE: ${{ env.IMAGE_PREFIX }}/customer-intelligence-mcp:${{ github.sha }}
+        run: docker compose -f docker-compose.yml -f .github/ci-compose.yml --env-file .env.example pull api worker frontend rag-service docling-service customer-intelligence-mcp
+      - name: Start E2E stack
+        shell: powershell
+        env:
+          OPENAGENT_API_IMAGE: ${{ github.event_name == 'pull_request' && 'openagent-api:local' || format('{0}/api:{1}', env.IMAGE_PREFIX, github.sha) }}
+          OPENAGENT_FRONTEND_IMAGE: ${{ github.event_name == 'pull_request' && 'openagent-frontend:local' || format('{0}/frontend:{1}', env.IMAGE_PREFIX, github.sha) }}
+          OPENAGENT_RAG_IMAGE: ${{ github.event_name == 'pull_request' && 'openagent-rag-service:local' || format('{0}/rag-service:{1}', env.IMAGE_PREFIX, github.sha) }}
+          OPENAGENT_DOCLING_IMAGE: ${{ github.event_name == 'pull_request' && 'openagent-docling-service:local' || format('{0}/docling-service:{1}', env.IMAGE_PREFIX, github.sha) }}
+          OPENAGENT_CI_MCP_IMAGE: ${{ github.event_name == 'pull_request' && 'openagent-customer-intelligence-mcp:local' || format('{0}/customer-intelligence-mcp:{1}', env.IMAGE_PREFIX, github.sha) }}
+        run: docker compose -f docker-compose.yml -f .github/ci-compose.yml --env-file .env.example up -d ${{ github.event_name == 'pull_request' && '--build' || '--no-build' }} postgres redis api worker frontend
       - run: .\.ci-venv\Scripts\python.exe scripts/e2e_agent_releases.py
       - run: .\.ci-venv\Scripts\python.exe scripts/e2e_evaluations.py
       - run: .\.ci-venv\Scripts\python.exe scripts/e2e_tenant_quotas.py
