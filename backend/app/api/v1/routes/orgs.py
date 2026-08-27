@@ -128,9 +128,6 @@ async def create_org(
     await db.flush()
     db.add(default_organization_quota(org.id))
 
-    membership = Membership(org_id=org.id, user_id=current_user.id, role=Role.org_admin)
-    db.add(membership)
-
     if body.admin_email and body.admin_email.strip().lower() != (current_user.email or "").lower():
         target_email = body.admin_email.strip().lower()
         initial_pass = body.initial_password or "OpenAgent@2026"
@@ -280,7 +277,10 @@ async def list_org_members(
     res = await db.execute(
         select(Membership, User)
         .join(User, Membership.user_id == User.id)
-        .where(Membership.org_id == id)
+        .where(
+            Membership.org_id == id,
+            Membership.role != Role.platform_admin,
+        )
     )
     rows = res.all()
     return [

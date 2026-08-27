@@ -63,7 +63,16 @@ async def list_node_options(
         return [{"name": m.display_name or m.name, "value": m.id} for m in rows.scalars().all()]
     if type == "agents":
         agents = await AgentRepository(db).list(org_id)
-        return [{"name": a.name, "value": a.id} for a in agents]
+        return [
+            {
+                "name": a.name,
+                "value": a.id,
+                "system_prompt": a.system_prompt,
+                "model_id": a.model_id,
+                "tools": a.tools,
+            }
+            for a in agents
+        ]
     if type == "workflows":
         rows = await db.execute(select(Workflow).where(Workflow.org_id == org_id))
         return [{"name": w.name, "value": w.id} for w in rows.scalars().all()]

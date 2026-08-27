@@ -410,27 +410,23 @@ def _build_definitions() -> dict[str, NodeDefinition]:
         label="Agent",
         description="Runs an agent loop — either an existing agent with overrides, or a fully custom inline agent.",
         icon="bot",
-        default_parameters={"mode": "custom", "temperature": 0.7, "max_iterations": 12},
+        default_parameters={"temperature": 0.7, "max_iterations": 12},
         fields=_with_common(
             [
                 NodeField(
-                    name="mode",
-                    label="Mode",
+                    name="agent_id",
+                    label="Load from Agent (Optional)",
                     type="options",
-                    default="custom",
-                    options=[
-                        {"name": "Custom (configure here)", "value": "custom"},
-                        {"name": "Inherit existing agent", "value": "inherit"},
-                    ],
+                    default="",
+                    load_options_from="agents",
+                    description="Select an agent to copy its system prompt, model, and tools into this node.",
                 ),
-                # custom mode
                 NodeField(
                     name="system_prompt",
                     label="System prompt",
                     type="textarea",
                     default="You are a helpful workflow agent.",
                     required=True,
-                    display={"show": {"mode": ["custom"]}},
                 ),
                 NodeField(
                     name="model_id",
@@ -439,7 +435,6 @@ def _build_definitions() -> dict[str, NodeDefinition]:
                     default="",
                     required=True,
                     load_options_from="models",
-                    display={"show": {"mode": ["custom"]}},
                 ),
                 NodeField(
                     name="tools",
@@ -447,7 +442,6 @@ def _build_definitions() -> dict[str, NodeDefinition]:
                     type="multiOptions",
                     default=[],
                     load_options_from="tools",
-                    display={"show": {"mode": ["custom"]}},
                 ),
                 NodeField(
                     name="temperature",
@@ -455,7 +449,6 @@ def _build_definitions() -> dict[str, NodeDefinition]:
                     type="number",
                     default=0.7,
                     type_options={"minValue": 0, "maxValue": 2, "numberPrecision": 1},
-                    display={"show": {"mode": ["custom"]}},
                 ),
                 NodeField(
                     name="max_iterations",
@@ -463,69 +456,12 @@ def _build_definitions() -> dict[str, NodeDefinition]:
                     type="number",
                     default=12,
                     type_options={"minValue": 1, "maxValue": 100},
-                    display={"show": {"mode": ["custom"]}},
                 ),
                 NodeField(
                     name="enable_thinking",
                     label="Enable thinking",
                     type="boolean",
                     default=False,
-                    display={"show": {"mode": ["custom"]}},
-                ),
-                # inherit mode
-                NodeField(
-                    name="agent_id",
-                    label="Agent",
-                    type="options",
-                    default="",
-                    load_options_from="agents",
-                    display={"show": {"mode": ["inherit"]}},
-                ),
-                NodeField(
-                    name="system_prompt_override",
-                    label="Override system prompt",
-                    type="textarea",
-                    default="",
-                    display={"show": {"mode": ["inherit"]}},
-                ),
-                NodeField(
-                    name="model_id_override",
-                    label="Override model",
-                    type="options",
-                    default="",
-                    load_options_from="models",
-                    display={"show": {"mode": ["inherit"]}},
-                ),
-                NodeField(
-                    name="tools_override",
-                    label="Override tools",
-                    type="multiOptions",
-                    default=[],
-                    load_options_from="tools",
-                    display={"show": {"mode": ["inherit"]}},
-                ),
-                NodeField(
-                    name="temperature_override",
-                    label="Override temperature",
-                    type="number",
-                    default=0.7,
-                    type_options={"minValue": 0, "maxValue": 2, "numberPrecision": 1},
-                    display={"show": {"mode": ["inherit"]}},
-                ),
-                NodeField(
-                    name="max_iterations_override",
-                    label="Override max iterations",
-                    type="number",
-                    default=12,
-                    type_options={"minValue": 1, "maxValue": 100},
-                    display={"show": {"mode": ["inherit"]}},
-                ),
-                NodeField(
-                    name="enable_thinking_override",
-                    label="Override thinking",
-                    type="boolean",
-                    default=False,
-                    display={"show": {"mode": ["inherit"]}},
                 ),
             ]
         ),
