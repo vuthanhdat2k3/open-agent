@@ -13,8 +13,6 @@ concurrency:
 jobs:
   backend:
     runs-on: self-hosted
-    env:
-      OPENAGENT_REDIS_URL: redis://localhost:6379/0
     defaults:
       run:
         working-directory: backend
@@ -24,7 +22,10 @@ jobs:
         run: |
           & 'C:\Users\PC\AppData\Local\Programs\Python\Python312\python.exe' -m venv ..\.ci-venv
       - name: Start Redis
-        run: docker run -d --name openagent-ci-redis-${{ github.run_id }} -p 6379:6379 redis:7
+        run: |
+          $port = 6000 + ([int64]$env:GITHUB_RUN_ID % 1000)
+          docker run -d --name openagent-ci-redis-${{ github.run_id }} -p "127.0.0.1:${port}:6379" redis:7
+          "OPENAGENT_REDIS_URL=redis://localhost:${port}/0" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - name: Cache pip downloads
         uses: actions/cache@v4
         with:
