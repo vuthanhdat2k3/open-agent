@@ -100,7 +100,7 @@ export default function Dashboard() {
           {isEndUser && (
             <>
               <Button asChild className="gap-2"><Link href="/chat"><MessageSquare className="h-4 w-4" aria-hidden="true" />{dict.pages.dashboard.btnStartChat}</Link></Button>
-              <Button asChild variant="outline" className="gap-2"><Link href="/run-workflow"><Workflow className="h-4 w-4" aria-hidden="true" />{dict.pages.dashboard.btnRunWorkflow}</Link></Button>
+              <Button asChild variant="outline" className="gap-2"><Link href="/workflows"><Workflow className="h-4 w-4" aria-hidden="true" />{dict.pages.dashboard.btnRunWorkflow}</Link></Button>
             </>
           )}
           {grafanaUrl && <Button asChild variant="ghost" className="gap-2"><a href={grafanaUrl} target="_blank" rel="noreferrer"><BarChart3 className="h-4 w-4" aria-hidden="true" />{locale === "vi" ? "Grafana" : "Grafana"}</a></Button>}
