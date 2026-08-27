@@ -471,6 +471,13 @@ export const vi: TranslationDictionary = {
     },
     organizations: {
       title: 'Organizations',
+      rename: 'Doi ten',
+      delete: 'Xoa',
+      renameTitle: 'Doi ten to chuc',
+      deleteTitle: 'Xoa to chuc',
+      deleteDescription: 'To chuc se bi vo hieu hoa va thanh vien se mat quyen truy cap.',
+      renamed: 'Da doi ten to chuc',
+      deleted: 'Da xoa to chuc',
       description: 'Quản lý danh sách các tổ chức, phân quyền tenant và gán quyền quản trị viên.',
       btnCreateOrg: 'Tạo Tổ chức mới',
       orgName: 'Tên Tổ chức',

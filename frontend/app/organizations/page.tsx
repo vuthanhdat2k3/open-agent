@@ -1,9 +1,9 @@
 "use client";
 
 import * as React from "react";
-import { Building2, Plus, Users, UserPlus, Trash2, Lock } from "lucide-react";
+import { Building2, Plus, Users, UserPlus, Trash2, Lock, Pencil } from "lucide-react";
 import { toast } from "sonner";
-import { useCreateOrganization, useOrganizations, useCurrentRole, useMembers, useInviteMember, useRemoveMember } from "@/hooks";
+import { useCreateOrganization, useOrganizations, useCurrentRole, useMembers, useInviteMember, useRemoveMember, useRenameOrganization, useDeleteOrganization } from "@/hooks";
 import { PageHeader } from "@/components/page-header";
 import { useTranslation } from "@/lib/i18n";
 import { Card, CardContent } from "@/components/ui/card";
@@ -163,10 +163,14 @@ export default function OrganizationsPage() {
   const role = useCurrentRole();
   const organizations = useOrganizations(role === "platform_admin");
   const create = useCreateOrganization();
+  const rename = useRenameOrganization();
+  const remove = useDeleteOrganization();
   const [name, setName] = React.useState("");
   const [adminEmail, setAdminEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [selectedOrg, setSelectedOrg] = React.useState<Organization | null>(null);
+  const [renameOrg, setRenameOrg] = React.useState<Organization | null>(null);
+  const [renameValue, setRenameValue] = React.useState("");
   const [page, setPage] = React.useState(1);
   const [pageSize, setPageSize] = React.useState(10);
 
@@ -194,6 +198,18 @@ export default function OrganizationsPage() {
       toast.success(locale === "vi" ? "Đã tạo tổ chức" : "Organization created");
     } catch (error: any) {
       toast.error(error.message || "Unable to create organization");
+    }
+  }
+
+  async function submitRename(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!renameOrg || !renameValue.trim()) return;
+    try {
+      await rename.mutateAsync({ orgId: renameOrg.id, name: renameValue.trim() });
+      setRenameOrg(null);
+      toast.success(dict.pages.organizations.renamed);
+    } catch (error: any) {
+      toast.error(error.message || "Unable to rename organization");
     }
   }
 
@@ -241,6 +257,20 @@ export default function OrganizationsPage() {
                       onClick={() => setSelectedOrg(organization)}
                     >
                       <Users className="h-3.5 w-3.5" />{locale === "vi" ? "Thành viên" : "Members"}</Button>
+                    {organization.slug !== "platform" && <>
+                      <Button size="sm" variant="ghost" className="h-8 w-8 p-0" aria-label={dict.pages.organizations.rename} onClick={() => { setRenameOrg(organization); setRenameValue(organization.name); }}>
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <ConfirmDialog
+                        trigger={<Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-destructive hover:bg-destructive/10 hover:text-destructive" aria-label={dict.pages.organizations.delete}><Trash2 className="h-3.5 w-3.5" /></Button>}
+                        title={dict.pages.organizations.deleteTitle}
+                        description={`${dict.pages.organizations.deleteDescription} (${organization.name})`}
+                        confirmLabel={dict.pages.organizations.delete}
+                        destructive
+                        loading={remove.isPending}
+                        onConfirm={async () => { try { await remove.mutateAsync(organization.id); toast.success(dict.pages.organizations.deleted); } catch (error: any) { toast.error(error.message || "Unable to delete organization"); } }}
+                      />
+                    </>}
                     <Badge variant="outline">{locale === "vi" ? "hoạt động" : "active"}</Badge>
                   </div>
                 </CardContent>
@@ -267,6 +297,18 @@ export default function OrganizationsPage() {
           }}
         />
       )}
+      <Dialog open={!!renameOrg} onOpenChange={(open) => { if (!open) setRenameOrg(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{dict.pages.organizations.renameTitle}</DialogTitle>
+            <DialogDescription>{renameOrg?.name}</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={submitRename} className="space-y-4">
+            <div className="space-y-2"><Label htmlFor="rename-organization-name">{dict.pages.organizations.orgName}</Label><Input id="rename-organization-name" value={renameValue} onChange={(event) => setRenameValue(event.target.value)} maxLength={128} required /></div>
+            <Button type="submit" className="w-full" loading={rename.isPending} disabled={!renameValue.trim()}>{dict.pages.organizations.rename}</Button>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
