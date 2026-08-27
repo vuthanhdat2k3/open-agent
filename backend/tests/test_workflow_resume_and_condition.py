@@ -13,8 +13,6 @@ behavior is:
 """
 from __future__ import annotations
 
-import pytest
-
 from app.core.workflow.engine import _eval_condition
 from app.schemas.workflow import NodeOutput
 
