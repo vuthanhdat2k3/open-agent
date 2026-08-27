@@ -96,7 +96,13 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 |---|---|---|---|
 | `dev` | `G:\open-agent` | Nhánh tích hợp chính — không code trực tiếp ở đây | — |
 
-> 2026-08-27: Đã dọn dẹp worktree/branch `feat/workflow-canvas-console-execution` và `feat/workflow-markdown-modal-output` (Nâng cấp Workflow: Markdown Report Modal, Node Inspector Markdown, Persist Agent Output & KPI, Dynamic Input, Resizable Console, Auto Layout, Tool sanitization) sau khi merge PR #161 & #164 vào `dev`.
+> 2026-08-27: Đã dọn dẹp toàn bộ worktree và các nhánh đã merge vào `dev` trên cả Local và Remote:
+> - `feat/workflow-canvas-console-execution` & `feat/workflow-markdown-modal-output` (PR #161, #164)
+> - `fix/ruff-zitadel-service-format`
+> - `feat/i18n-vi-terminology-polish` (PR #163)
+> - `feat/ui-final-i18n-hardcode-cleanup` (PR #160)
+> - `fix/workflow-agent-runtime-object` (PR #158)
+> - `feat/auth-callback-error-redirect-ux`, `feat/automation-dag-nodes-and-template-graphs`, `feat/deep-i18n-sweep-2`, `feat/enterprise-page-taxonomy`, `feat/executive-operator-ui`, `feat/frontend-i18n-hardtext-cleanup`, `feat/member-removal-session-revocation-lifecycle`, `feat/ui-full-i18n-localization`, `feat/ui-i18n-vietnamese-english`, `feat/ui-pagination-and-deep-i18n`, `feat/zitadel-provisioning-host-pat-fix`.
 
 > 2026-08-26: Đã dọn dẹp worktree/branch `feat/ui-pagination-and-deep-i18n` (Đồng bộ phân trang thông minh ẩn khi <= 1 trang, sửa layout automations/workspace/debug/email-intelligence, bản địa hóa sâu 100%) sau khi merge vào `dev` và deploy thành công lên `deploy/dev`.
 
