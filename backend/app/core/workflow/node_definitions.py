@@ -433,14 +433,12 @@ def _build_definitions() -> dict[str, NodeDefinition]:
                     label="System prompt",
                     type="textarea",
                     default="You are a helpful workflow agent.",
-                    required=True,
                 ),
                 NodeField(
                     name="model_id",
                     label="Model",
                     type="options",
                     default="",
-                    required=True,
                     load_options_from="models",
                 ),
                 NodeField(
