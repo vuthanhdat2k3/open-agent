@@ -366,7 +366,7 @@ export default function AgentsPage() {
                       />
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid gap-3 sm:grid-cols-3">
                       <div className="space-y-1.5">
                         <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{locale === "vi" ? "Công cụ Mô hình" : "Model Engine"}</Label>
                         <Select
@@ -398,6 +398,20 @@ export default function AgentsPage() {
                             onValueChange={([v]) => setForm({ ...form, temperature: v })}
                           />
                         </div>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                          <Sparkles className="h-3.5 w-3.5" /> {locale === "vi" ? "Suy luận" : "Thinking"}
+                        </Label>
+                        <Select
+                          value={form.enable_thinking === null ? "default" : String(form.enable_thinking)}
+                          onChange={(e) => setForm({ ...form, enable_thinking: e.target.value === "default" ? null : e.target.value === "true" })}
+                        >
+                          <option value="default">{locale === "vi" ? "Mặc định model" : "Model default"}</option>
+                          <option value="true">{locale === "vi" ? "Bật" : "Enabled"}</option>
+                          <option value="false">{locale === "vi" ? "Tắt" : "Disabled"}</option>
+                        </Select>
                       </div>
                     </div>
 
