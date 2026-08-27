@@ -32,9 +32,9 @@ export function ChatEmptyState({ currentAgent, effectiveModel, draft, onDraftCha
   const { t, locale } = useTranslation();
 
   const quickActions = locale === "vi" ? [
-    { icon: FolderSearch, label: "Tệp tài liệu gần đây", prompt: "Liệt kê 5 tệp tài liệu tôi đã tải lên hoặc truy cập gần nhất." },
-    { icon: ListTodo, label: "Tóm tắt công việc", prompt: "Tóm tắt những việc quan trọng cần tôi xử lý hôm nay." },
-    { icon: Sparkles, label: "Khả năng của bạn", prompt: "Bạn có thể giúp tôi làm những tác vụ nào?" },
+    { icon: FolderSearch, label: t("pages.chat.emptyStateRecentFiles", "Tệp tài liệu gần đây"), prompt: t("pages.chat.emptyStateRecentFilesPrompt", "Liệt kê 5 tệp tài liệu tôi đã tải lên hoặc truy cập gần nhất.") },
+    { icon: ListTodo, label: t("pages.chat.emptyStateTasks", "Tóm tắt công việc"), prompt: t("pages.chat.emptyStateTasksPrompt", "Tóm tắt những việc quan trọng cần tôi xử lý hôm nay.") },
+    { icon: Sparkles, label: t("pages.chat.emptyStateCapabilities", "Khả năng của bạn"), prompt: t("pages.chat.emptyStateCapabilitiesPrompt", "Bạn có thể giúp tôi làm những tác vụ nào?") },
   ] : [
     { icon: FolderSearch, label: "List recent files", prompt: "List the 5 most recently modified files I have access to." },
     { icon: ListTodo, label: "Summarize my day", prompt: "Summarize what needs my attention today." },

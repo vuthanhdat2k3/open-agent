@@ -386,11 +386,9 @@ export default function DebugPage() {
             </CardHeader>
             <CardContent className="p-4 flex-1">
               {!selSession ? (
-                <div className="py-16 text-center text-xs text-muted-foreground">
-                  {locale === "vi"
-                    ? "Chọn một phiên hội thoại từ danh sách bên trái để kiểm tra chi tiết."
-                    : "Select a session from the list on the left to inspect its messages."}
-                </div>
+              <div className="py-16 text-center text-xs text-muted-foreground">
+                {t("pages.debug.selectSessionDesc", "Chọn một phiên hội thoại từ danh sách bên trái để kiểm tra chi tiết.")}
+              </div>
               ) : tree.isLoading ? (
                 <LoadingSkeleton variant="table" />
               ) : tree.isError ? (
@@ -456,9 +454,7 @@ export default function DebugPage() {
                 {locale === "vi" ? "Kiểm tra Cây Thực thi Tác vụ" : "Inspect Task Execution Tree"}
               </CardTitle>
               <CardDescription className="text-xs">
-                {locale === "vi"
-                  ? "Nhập ID lượt chạy gốc (root run ID) để xem cây phân cấp subagent và trạng thái phụ thuộc."
-                  : "Enter a root run ID to inspect hierarchical subagent execution trees and dependency statuses."}
+                {t("pages.debug.rootRunIdDesc", "Nhập ID lượt chạy gốc (root run ID) để xem cây phân cấp subagent và trạng thái phụ thuộc.")}
               </CardDescription>
             </CardHeader>
             <CardContent>

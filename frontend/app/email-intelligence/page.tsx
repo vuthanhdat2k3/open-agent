@@ -429,9 +429,7 @@ export default function EmailIntelligencePage() {
                 {locale === "vi" ? "Tạo Quy tắc Phê duyệt Lịch tự động" : "Create Trusted Calendar Rule"}
               </CardTitle>
               <CardDescription className="text-xs">
-                {locale === "vi"
-                  ? "Tự động chấp thuận lời mời họp từ tên miền đối tác uy tín đáp ứng tiêu chuẩn an toàn."
-                  : "Auto-approve calendar invites from trusted partner domains that satisfy strict verification policies."}
+                {t("pages.emailIntelligence.autoApproveDesc", "Tự động chấp thuận lời mời họp từ tên miền đối tác uy tín đáp ứng tiêu chuẩn an toàn.")}
               </CardDescription>
             </CardHeader>
             <CardContent>
