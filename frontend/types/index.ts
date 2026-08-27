@@ -269,7 +269,7 @@ export interface GraphEdge {
 export interface NodeField {
   name: string;
   label: string;
-  type: "string" | "textarea" | "number" | "boolean" | "options" | "multiOptions" | "collection" | "fixedCollection" | "json";
+  type: "string" | "time" | "date" | "textarea" | "number" | "boolean" | "options" | "multiOptions" | "collection" | "fixedCollection" | "json";
   default?: any;
   required?: boolean;
   description?: string;
@@ -279,6 +279,7 @@ export interface NodeField {
   display?: { show?: Record<string, any[]>; hide?: Record<string, any[]> };
   type_options?: Record<string, any>;
   advanced?: boolean;
+  internal?: boolean;
   multiple?: boolean;
 }
 

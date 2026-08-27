@@ -192,7 +192,7 @@ async def _run_agent_node(
         if agent is None:
             raise RuntimeError(f"agent '{agent_id}' not found")
         agent = _runtime_agent(agent)
-        system_prompt = cfg.get("system_prompt_override") or agent.system_prompt or ""
+        system_prompt = cfg.get("system_prompt_override") or cfg.get("system_prompt") or agent.system_prompt or ""
         model_id = cfg.get("model_id_override") or model_id
         if "tools_override" in cfg:
             tools = cfg["tools_override"]
