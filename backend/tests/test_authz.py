@@ -11,6 +11,7 @@ from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
 from app.models.membership import Membership
+from app.models.organization import Organization
 from app.models.role import Role
 from app.models.user import User
 
@@ -629,3 +630,152 @@ async def test_remove_regular_member_still_allowed(api_client):
     assert resp.status_code == 200, resp.text
     members = (await api_client.get(f"/api/orgs/{org_id}/members", headers={"Authorization": f"Bearer {token}"})).json()
     assert all(m["email"] != "regular@example.com" for m in members)
+
+
+# ---------------------------------------------------------------------------
+# Regression: platform_admin must not be auto-assigned as org_admin on org
+# creation, and must never appear in a tenant's /members roster.
+# ---------------------------------------------------------------------------
+
+
+async def _seed_platform_admin_with_tenant(factory, pa_email: str, tenant_email: str):
+    """Seed (platform_admin user, platform org, tenant org, regular tenant user).
+
+    Returns ``(pa_id, tenant_id)``.
+    """
+    import uuid
+
+    pa_id = str(uuid.uuid4())
+    regular_id = str(uuid.uuid4())
+    platform_org_id = str(uuid.uuid4())
+    tenant_id = str(uuid.uuid4())
+
+    async with factory() as session:
+        session.add_all(
+            [
+                User(
+                    id=pa_id,
+                    email=pa_email,
+                    display_name=pa_email.split("@", 1)[0],
+                    hashed_password="$2b$12$dummy",
+                    is_active=True,
+                    lifecycle_status="active",
+                ),
+                User(
+                    id=regular_id,
+                    email=tenant_email,
+                    display_name=tenant_email.split("@", 1)[0],
+                    hashed_password="$2b$12$dummy",
+                    is_active=True,
+                    lifecycle_status="active",
+                ),
+                Organization(
+                    id=platform_org_id,
+                    name="Platform",
+                    slug="platform",
+                    lifecycle_status="active",
+                ),
+                Organization(
+                    id=tenant_id,
+                    name="Tenant One",
+                    slug="tenant-one",
+                    lifecycle_status="active",
+                ),
+            ]
+        )
+        await session.flush()
+        session.add_all(
+            [
+                Membership(
+                    user_id=pa_id,
+                    org_id=platform_org_id,
+                    role=Role.platform_admin,
+                    lifecycle_status="active",
+                ),
+                # Stale platform_admin membership inside the tenant: this is
+                # the data shape that the previous bug created. The list
+                # endpoint must still hide it.
+                Membership(
+                    user_id=pa_id,
+                    org_id=tenant_id,
+                    role=Role.platform_admin,
+                    lifecycle_status="active",
+                ),
+                Membership(
+                    user_id=regular_id,
+                    org_id=tenant_id,
+                    role=Role.user,
+                    lifecycle_status="active",
+                ),
+            ]
+        )
+        await session.commit()
+    return pa_id, tenant_id
+
+
+async def test_create_org_handler_does_not_assign_creator_as_org_admin(async_session_factory):
+    """Platform admins must remain platform-scoped after creating a tenant.
+
+    Regression: previously, ``create_org`` inserted an extra ``org_admin``
+    membership for the caller, polluting the tenant's member roster and
+    violating the role separation between platform_admin and org_admin.
+    """
+    from app.api.v1.routes.orgs import OrgCreateRequest, create_org
+
+    pa_id, _ = await _seed_platform_admin_with_tenant(
+        async_session_factory,
+        pa_email="pa-creator@example.com",
+        tenant_email="ignored@tenant.example",
+    )
+
+    async with async_session_factory() as session:
+        creator = (
+            await session.execute(select(User).where(User.id == pa_id))
+        ).scalar_one()
+        body = OrgCreateRequest(name="Tenant Without Creator Leak")
+        result = await create_org(body=body, current_user=creator, db=session)
+        new_org_id = result.id
+
+    async with async_session_factory() as session:
+        rows = (
+            await session.execute(
+                select(Membership).where(
+                    Membership.user_id == pa_id,
+                    Membership.org_id == new_org_id,
+                )
+            )
+        ).scalars().all()
+
+    assert rows == [], (
+        "platform_admin must NOT be auto-assigned as a tenant member; "
+        f"got memberships: {[(r.role.value, r.lifecycle_status) for r in rows]}"
+    )
+
+
+async def test_list_org_members_handler_excludes_platform_admin(async_session_factory):
+    """``list_org_members`` must filter out platform_admin rows.
+
+    Even if a stale platform_admin membership exists (data drift, manual
+    backfill, third-party integration), the per-tenant roster must not
+    surface it as a tenant operator/user.
+    """
+    from app.api.v1.routes.orgs import list_org_members
+
+    pa_id, tenant_id = await _seed_platform_admin_with_tenant(
+        async_session_factory,
+        pa_email="hidden-pa@example.com",
+        tenant_email="regular@tenant.example",
+    )
+
+    async with async_session_factory() as session:
+        creator = (
+            await session.execute(select(User).where(User.id == pa_id))
+        ).scalar_one()
+        members = await list_org_members(id=tenant_id, current_user=creator, db=session)
+
+    emails = [m.email for m in members]
+    assert "regular@tenant.example" in emails
+    assert "hidden-pa@example.com" not in emails, (
+        "platform_admin must not appear in the per-tenant members roster; "
+        f"got: {emails}"
+    )
