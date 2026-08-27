@@ -269,7 +269,7 @@ export interface GraphEdge {
 export interface NodeField {
   name: string;
   label: string;
-  type: "string" | "textarea" | "number" | "boolean" | "options" | "multiOptions" | "collection" | "fixedCollection" | "json";
+  type: "string" | "time" | "textarea" | "number" | "boolean" | "options" | "multiOptions" | "collection" | "fixedCollection" | "json";
   default?: any;
   required?: boolean;
   description?: string;

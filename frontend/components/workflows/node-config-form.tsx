@@ -43,6 +43,14 @@ function isFieldVisible(
   return true;
 }
 
+/** Keep legacy scheduler values (for example, "7:30") valid for a time input. */
+function normalizeTimeValue(value: unknown, fallback: unknown): string {
+  const raw = String(value ?? fallback ?? "");
+  const match = /^(\d{1,2}):(\d{2})$/.exec(raw);
+  if (!match) return raw;
+  return `${match[1].padStart(2, "0")}:${match[2]}`;
+}
+
 function FieldInput({
   field,
   value,
@@ -75,6 +83,17 @@ function FieldInput({
           value={value ?? field.default ?? ""}
           onChange={(e) => onValue(e.target.value === "" ? undefined : Number(e.target.value))}
           placeholder={field.placeholder}
+        />
+      );
+    case "time":
+      return (
+        <Input
+          className="text-xs"
+          type="time"
+          value={normalizeTimeValue(value, field.default)}
+          onChange={(e) => onValue(e.target.value)}
+          step={field.type_options?.step ?? 60}
+          aria-label={field.label}
         />
       );
     case "boolean":

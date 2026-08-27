@@ -14,6 +14,7 @@ from pydantic import BaseModel
 
 FieldType = Literal[
     "string",
+    "time",
     "textarea",
     "number",
     "boolean",
@@ -200,10 +201,10 @@ def _build_definitions() -> dict[str, NodeDefinition]:
                 NodeField(
                     name="time",
                     label="Time",
-                    type="string",
+                    type="time",
                     default="07:30",
-                    placeholder="07:30",
                     description="Time of day (HH:MM) in the selected timezone.",
+                    type_options={"step": 60},
                     display={"hide": {"frequency": ["once", "hourly", "custom"]}},
                 ),
                 NodeField(
