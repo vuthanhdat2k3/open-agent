@@ -14,9 +14,9 @@ export function ErrorState({
   description?: string;
   onRetry?: () => void;
 }) {
-  const { t, locale } = useTranslation();
-  const defaultTitle = locale === "vi" ? "Không thể tải nội dung" : "Unable to load this content";
-  const defaultDesc = locale === "vi" ? "Đã xảy ra sự cố khi tải trang này." : "Something went wrong while loading this page.";
+  const { t, locale, tx } = useTranslation();
+  const defaultTitle = tx("Không thể tải nội dung", "Unable to load this content");
+  const defaultDesc = tx("Đã xảy ra sự cố khi tải trang này.", "Something went wrong while loading this page.");
 
   return (
     <Alert variant="destructive" role="alert">
@@ -27,7 +27,7 @@ export function ErrorState({
         {onRetry && (
           <Button type="button" variant="outline" size="sm" onClick={onRetry} className="gap-2">
             <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
-            {locale === "vi" ? "Thử lại" : "Retry"}
+            {tx("Thử lại", "Retry")}
           </Button>
         )}
       </AlertDescription>

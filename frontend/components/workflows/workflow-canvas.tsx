@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import * as React from "react";
 import {
@@ -121,7 +121,7 @@ function WorkflowCanvasInner({
   onCreateNode,
   onEditEdgeCondition,
 }: WorkflowCanvasProps) {
-  const { t, locale } = useTranslation();
+  const { t, locale, tx } = useTranslation();
   const { screenToFlowPosition, setCenter, fitView } = useReactFlow();
   const [showMiniMap, setShowMiniMap] = React.useState(true);
   const [pendingDelete, setPendingDelete] = React.useState<PendingDelete | null>(null);
@@ -392,7 +392,7 @@ function WorkflowCanvasInner({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>{locale === "vi" ? "Hủy" : "Cancel"}</AlertDialogCancel>
+            <AlertDialogCancel>{tx("Hủy", "Cancel")}</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={() => {
@@ -405,8 +405,7 @@ function WorkflowCanvasInner({
                 setPendingDelete(null);
               }}
             >
-              {locale === "vi" ? "Xóa" : "Delete"}
-            </AlertDialogAction>
+              {tx("Xóa", "Delete")}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -415,6 +414,7 @@ function WorkflowCanvasInner({
 }
 
 export function WorkflowCanvas(props: WorkflowCanvasProps) {
+    const { locale, tx } = useTranslation();
   return (
     <ReactFlowProvider>
       <WorkflowCanvasInner {...props} />

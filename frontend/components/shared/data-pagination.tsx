@@ -28,7 +28,7 @@ export function DataPagination({
   hideOnSinglePage = true,
   compact = false,
 }: DataPaginationProps) {
-  const { t, locale } = useTranslation();
+  const { t, locale, tx } = useTranslation();
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
 
   // Automatically hide pagination if there's only 1 page (or 0 items) and hideOnSinglePage is true
@@ -60,7 +60,7 @@ export function DataPagination({
     return (
       <div className={`flex items-center justify-between gap-2 border-t border-border/60 pt-2 text-xs text-muted-foreground ${className}`}>
         <span>
-          {currentPage} / {totalPages} ({totalItems} {locale === "vi" ? "kết quả" : "items"})
+          {currentPage} / {totalPages} ({totalItems} {tx("kết quả", "items")})
         </span>
         <div className="flex items-center gap-1">
           <Button
@@ -93,29 +93,19 @@ export function DataPagination({
       className={`flex flex-col items-center justify-between gap-3 border-t border-border/60 px-2 py-3 text-xs text-muted-foreground sm:flex-row ${className}`}
     >
       <div className="flex items-center gap-2">
-        {locale === "vi" ? (
-          <span>
-            {t("common.showing", "Hiển thị")}{" "}
-            <span className="font-medium text-foreground">{startItem}</span> -{" "}
-            <span className="font-medium text-foreground">{endItem}</span>{" "}
-            {t("common.of", "trên")}{" "}
-            <span className="font-medium text-foreground">{totalItems}</span>{" "}
-            {t("common.results", "kết quả")}
-          </span>
-        ) : (
-          <span>
-            {t("common.showing", "Showing")}{" "}
-            <span className="font-medium text-foreground">{startItem}</span> {t("common.to", "to")} {" "}
-            <span className="font-medium text-foreground">{endItem}</span>{" "}
-            {t("common.of", "of")}{" "}
-            <span className="font-medium text-foreground">{totalItems}</span>{" "}
-            {t("common.results", "results")}
-          </span>
-        )}
+        <span>
+          {t("common.showing", "Hiển thị")}{" "}
+          <span className="font-medium text-foreground">{startItem}</span>
+          {tx(" - ", " to ")}
+          <span className="font-medium text-foreground">{endItem}</span>{" "}
+          {t("common.of", "trên")}{" "}
+          <span className="font-medium text-foreground">{totalItems}</span>{" "}
+          {t("common.results", "kết quả")}
+        </span>
 
         {onPageSizeChange && (
           <div className="flex items-center gap-1.5 pl-3 border-l border-border/60">
-            <span>{t("common.rowsPerPage", locale === "vi" ? "Mỗi trang:" : "Per page:")}</span>
+            <span>{t("common.rowsPerPage", tx("Mỗi trang:", "Per page:"))}</span>
             <select
               value={pageSize}
               onChange={(e) => {

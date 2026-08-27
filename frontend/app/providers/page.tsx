@@ -54,7 +54,7 @@ import { ModelForm } from "@/components/models/model-form";
 import { ConfirmDialog, ErrorState, LoadingSkeleton, DataPagination } from "@/components/shared";
 
 export default function ProvidersPage() {
-  const { t, dict, locale } = useTranslation();
+  const { t, dict, locale, tx } = useTranslation();
   const [tabParam, setTabParam] = useUrlSearchParam("tab");
   const activeTab = (tabParam as "providers" | "models") || "providers";
 
@@ -207,7 +207,7 @@ export default function ProvidersPage() {
       <PageHeader
         icon={Server}
         title={dict.pages.providers.title}
-        description={locale === "vi" ? "Manage AI model providers, API credentials, and benchmark endpoints." : "Manage AI model providers, API credentials, and benchmark endpoints."}
+        description={tx("Manage AI model providers, API credentials, and benchmark endpoints.", "Manage AI model providers, API credentials, and benchmark endpoints.")}
         actions={
           <div className="flex items-center gap-2">
             <Button
@@ -220,13 +220,13 @@ export default function ProvidersPage() {
               disabled={providers.isFetching || models.isFetching}
               className="gap-1.5"
             >
-              <RefreshCw className={providers.isFetching || models.isFetching ? "h-3.5 w-3.5 animate-spin" : "h-3.5 w-3.5"} />{locale === "vi" ? "Làm mới" : "Refresh"}</Button>
+              <RefreshCw className={providers.isFetching || models.isFetching ? "h-3.5 w-3.5 animate-spin" : "h-3.5 w-3.5"} />{tx("Làm mới", "Refresh")}</Button>
 
             {activeTab === "providers" ? (
               <Dialog open={providerModalOpen} onOpenChange={(v) => { setProviderModalOpen(v); if (!v) resetTemplate(); }}>
                 <DialogTrigger asChild>
                   <Button size="sm" className="gap-1.5 font-semibold">
-                    <Plus className="h-4 w-4" />{locale === "vi" ? "Provider mới" : "New Provider"}</Button>
+                    <Plus className="h-4 w-4" />{tx("Provider mới", "New Provider")}</Button>
                 </DialogTrigger>
                 <DialogContent className="max-w-2xl">
                   <DialogHeader>
@@ -239,14 +239,14 @@ export default function ProvidersPage() {
                   {selectedTemplate && selectedTemplate.key !== "custom" ? (
                     <form className="space-y-4" onSubmit={submitTemplate}>
                       <Button type="button" variant="ghost" className="-ml-2 gap-2" onClick={resetTemplate}>
-                        <ArrowLeft className="h-4 w-4" />{locale === "vi" ? "Quay lại danh sách mẫu" : "Back to templates"}</Button>
+                        <ArrowLeft className="h-4 w-4" />{tx("Quay lại danh sách mẫu", "Back to templates")}</Button>
                       <div className="rounded-xl border border-primary/25 bg-primary/5 p-4">
                         <p className="font-semibold text-foreground">{selectedTemplate.display_name}</p>
                         <p className="mt-1 text-sm text-muted-foreground">{selectedTemplate.description}</p>
                         <p className="mt-3 font-mono text-xs text-muted-foreground">{selectedTemplate.default_base_url}</p>
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="template-api-key">{locale === "vi" ? "API Key" : "API Key"}{selectedTemplate.api_key_required ? "" : " (optional)"}</Label>
+                        <Label htmlFor="template-api-key">{tx("API Key", "API Key")}{selectedTemplate.api_key_required ? "" : " (optional)"}</Label>
                         <Input
                           id="template-api-key"
                           type="password"
@@ -263,7 +263,7 @@ export default function ProvidersPage() {
                         </Button>
                         {advancedTemplate && (
                           <div className="space-y-2">
-                            <Label htmlFor="template-base-url">{locale === "vi" ? "Ghi đè Base URL" : "Base URL override"}</Label>
+                            <Label htmlFor="template-base-url">{tx("Ghi đè Base URL", "Base URL override")}</Label>
                             <Input
                               id="template-base-url"
                               value={templateBaseUrl}
@@ -272,12 +272,12 @@ export default function ProvidersPage() {
                               className="font-mono text-xs"
                             />
                             {selectedTemplate.key === "ollama" && health.data?.runtime === "docker" && (
-                              <p className="text-xs text-muted-foreground">{locale === "vi" ? "Khi OpenAgent chạy trong Docker, sử dụng http://host.docker.internal:11434/v1 hoặc hostname dịch vụ Ollama của bạn." : "When OpenAgent runs in Docker, use http://host.docker.internal:11434/v1 or your Ollama service hostname."}</p>
+                              <p className="text-xs text-muted-foreground">{tx("Khi OpenAgent chạy trong Docker, sử dụng http://host.docker.internal:11434/v1 hoặc hostname dịch vụ Ollama của bạn.", "When OpenAgent runs in Docker, use http://host.docker.internal:11434/v1 or your Ollama service hostname.")}</p>
                             )}
                           </div>
                         )}
                       </div>
-                      <Button type="submit" className="w-full font-semibold" loading={createProviderTemplate.isPending}>{locale === "vi" ? "Kiểm tra & Kết nối Provider" : "Test & Connect Provider"}</Button>
+                      <Button type="submit" className="w-full font-semibold" loading={createProviderTemplate.isPending}>{tx("Kiểm tra & Kết nối Provider", "Test & Connect Provider")}</Button>
                     </form>
                   ) : (
                     <div className="space-y-4">
@@ -315,14 +315,14 @@ export default function ProvidersPage() {
                               catalog_version: "1",
                             })
                           }
-                        >{locale === "vi" ? "Sử dụng Custom Provider Endpoint" : "Use Custom Provider Endpoint"}</Button>
+                        >{tx("Sử dụng Custom Provider Endpoint", "Use Custom Provider Endpoint")}</Button>
                       </div>
                       {selectedTemplate?.key === "custom" && (
                         <ProviderForm
                           onSubmit={async (values) => {
                             try {
                               await createProvider.mutateAsync(values);
-                              toast.success(locale === "vi" ? "Đã tạo Provider" : "Provider created");
+                              toast.success(tx("Đã tạo Provider", "Provider created"));
                               setProviderModalOpen(false);
                               resetTemplate();
                             } catch (error: any) {
@@ -339,18 +339,18 @@ export default function ProvidersPage() {
               <Dialog open={modelModalOpen} onOpenChange={setModelModalOpen}>
                 <DialogTrigger asChild>
                   <Button size="sm" className="gap-1.5 font-semibold">
-                    <Plus className="h-4 w-4" />{locale === "vi" ? "Model mới" : "New Model"}</Button>
+                    <Plus className="h-4 w-4" />{tx("Model mới", "New Model")}</Button>
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
-                    <DialogTitle>{locale === "vi" ? "Thêm Custom Model" : "Add Custom Model"}</DialogTitle>
+                    <DialogTitle>{tx("Thêm Custom Model", "Add Custom Model")}</DialogTitle>
                   </DialogHeader>
                   <ModelForm
                     providers={providers.data ?? []}
                     onSubmit={async (values) => {
                       try {
                         await createModel.mutateAsync(values);
-                        toast.success(locale === "vi" ? "Đã tạo Model" : "Model created");
+                        toast.success(tx("Đã tạo Model", "Model created"));
                         setModelModalOpen(false);
                       } catch (error: any) {
                         toast.error(error.message);
@@ -372,7 +372,7 @@ export default function ProvidersPage() {
           </div>
           <div>
             <p className="text-2xl font-bold leading-none tabular-nums text-foreground">{totalProviders}</p>
-            <p className="mt-1 text-xs text-muted-foreground font-medium">{locale === "vi" ? "Provider đã kết nối" : "Connected Providers"}</p>
+            <p className="mt-1 text-xs text-muted-foreground font-medium">{tx("Provider đã kết nối", "Connected Providers")}</p>
           </div>
         </Card>
 
@@ -382,7 +382,7 @@ export default function ProvidersPage() {
           </div>
           <div>
             <p className="text-2xl font-bold leading-none tabular-nums text-foreground">{totalModels}</p>
-            <p className="mt-1 text-xs text-muted-foreground font-medium">{locale === "vi" ? "Model đã khám phá" : "Discovered Models"}</p>
+            <p className="mt-1 text-xs text-muted-foreground font-medium">{tx("Model đã khám phá", "Discovered Models")}</p>
           </div>
         </Card>
 
@@ -392,7 +392,7 @@ export default function ProvidersPage() {
           </div>
           <div>
             <p className="text-2xl font-bold leading-none tabular-nums text-foreground">{activeModels}</p>
-            <p className="mt-1 text-xs text-muted-foreground font-medium">{locale === "vi" ? "Hoạt động & Sẵn sàng Chat" : "Active & Chat-Ready"}</p>
+            <p className="mt-1 text-xs text-muted-foreground font-medium">{tx("Hoạt động & Sẵn sàng Chat", "Active & Chat-Ready")}</p>
           </div>
         </Card>
 
@@ -402,7 +402,7 @@ export default function ProvidersPage() {
           </div>
           <div>
             <p className="text-lg font-bold leading-none capitalize text-foreground">{health.data?.runtime || "Docker"}</p>
-            <p className="mt-1 text-xs text-muted-foreground font-medium">{locale === "vi" ? "Môi trường Runtime" : "Runtime Environment"}</p>
+            <p className="mt-1 text-xs text-muted-foreground font-medium">{tx("Môi trường Runtime", "Runtime Environment")}</p>
           </div>
         </Card>
       </div>
@@ -415,7 +415,7 @@ export default function ProvidersPage() {
           onClick={() => setTabParam("providers")}
           className="gap-2 font-medium"
         >
-          <Server className="h-4 w-4" />{locale === "vi" ? "Providers" : "Providers"}<Badge variant="outline" className="ml-1 text-[10px] font-mono">
+          <Server className="h-4 w-4" />{tx("Providers", "Providers")}<Badge variant="outline" className="ml-1 text-[10px] font-mono">
             {totalProviders}
           </Badge>
         </Button>
@@ -426,7 +426,7 @@ export default function ProvidersPage() {
           onClick={() => setTabParam("models")}
           className="gap-2 font-medium"
         >
-          <Cpu className="h-4 w-4" />{locale === "vi" ? "Models" : "Models"}<Badge variant="outline" className="ml-1 text-[10px] font-mono">
+          <Cpu className="h-4 w-4" />{tx("Models", "Models")}<Badge variant="outline" className="ml-1 text-[10px] font-mono">
             {totalModels}
           </Badge>
         </Button>
@@ -437,14 +437,14 @@ export default function ProvidersPage() {
         <div className="space-y-4">
           <Dialog open={editProviderOpen} onOpenChange={setEditProviderOpen}>
             <DialogContent>
-              <DialogHeader><DialogTitle>{locale === "vi" ? "Sửa đổi Provider" : "Edit Provider"}</DialogTitle></DialogHeader>
+              <DialogHeader><DialogTitle>{tx("Sửa đổi Provider", "Edit Provider")}</DialogTitle></DialogHeader>
               {editProviderTarget && (
                 <ProviderForm
                   initial={editProviderTarget}
                   onSubmit={async (values) => {
                     try {
                       await updateProvider.mutateAsync({ id: editProviderTarget.id, ...values });
-                      toast.success(locale === "vi" ? "Đã cập nhật Provider" : "Provider updated");
+                      toast.success(tx("Đã cập nhật Provider", "Provider updated"));
                       setEditProviderOpen(false);
                       setEditProviderTarget(null);
                     } catch (error: any) {
@@ -460,8 +460,8 @@ export default function ProvidersPage() {
             <LoadingSkeleton variant="grid" />
           ) : providers.isError ? (
             <ErrorState
-              title={locale === "vi" ? "Không thể tải providers" : "Unable to load providers"}
-              description={locale === "vi" ? "Dữ liệu Provider không thể tải được." : "Provider data could not be loaded."}
+              title={tx("Không thể tải providers", "Unable to load providers")}
+              description={tx("Dữ liệu Provider không thể tải được.", "Provider data could not be loaded.")}
               onRetry={() => void providers.refetch()}
             />
           ) : providers.data && providers.data.length > 0 ? (
@@ -478,7 +478,7 @@ export default function ProvidersPage() {
                           <p className="truncate text-sm font-semibold tracking-tight text-foreground">{provider.name}</p>
                           <p className="truncate font-mono text-[10px] text-muted-foreground">{provider.key}</p>
                           <div className="mt-1 flex flex-wrap gap-1">
-                            {provider.is_default && <Badge variant="default" className="text-[9.5px]">{locale === "vi" ? "Mặc định" : "Default"}</Badge>}
+                            {provider.is_default && <Badge variant="default" className="text-[9.5px]">{tx("Mặc định", "Default")}</Badge>}
                             {provider.template_key && <Badge variant="outline" className="text-[9.5px]">{provider.template_key}</Badge>}
                           </div>
                         </div>
@@ -497,7 +497,7 @@ export default function ProvidersPage() {
                           {provider.discovery_status}
                         </Badge>
                       </div>
-                      <p className="text-[11px] text-muted-foreground">{locale === "vi" ? "Đã khám phá: " : "Discovered: "}<span className="font-semibold text-foreground">{provider.models_discovered} {locale === "vi" ? "models" : "models"}</span>
+                      <p className="text-[11px] text-muted-foreground">{tx("Đã khám phá: ", "Discovered: ")}<span className="font-semibold text-foreground">{provider.models_discovered} {tx("models", "models")}</span>
                       </p>
                       {provider.discovery_error && (
                         <p className="line-clamp-2 text-[10px] text-destructive">{provider.discovery_error}</p>
@@ -532,7 +532,7 @@ export default function ProvidersPage() {
                             }
                           }}
                         >
-                          <Zap className="h-3.5 w-3.5 text-amber-500" />{locale === "vi" ? "Kiểm tra kết nối" : "Test Connection"}</Button>
+                          <Zap className="h-3.5 w-3.5 text-amber-500" />{tx("Kiểm tra kết nối", "Test Connection")}</Button>
                         <ConfirmDialog
                           trigger={
                             <Button size="sm" variant="ghost" className="text-destructive hover:bg-destructive/10">
@@ -540,8 +540,8 @@ export default function ProvidersPage() {
                             </Button>
                           }
                           title={`Delete ${provider.name}?`}
-                          description={locale === "vi" ? "Tất cả models liên kết với provider này cũng sẽ bị xóa." : "All models associated with this provider will also be removed."}
-                          confirmLabel={locale === "vi" ? "Xóa" : "Delete"}
+                          description={tx("Tất cả models liên kết với provider này cũng sẽ bị xóa.", "All models associated with this provider will also be removed.")}
+                          confirmLabel={tx("Xóa", "Delete")}
                           destructive
                           onConfirm={() => deleteProvider.mutate(provider.id)}
                         />
@@ -562,11 +562,11 @@ export default function ProvidersPage() {
           ) : (
             <EmptyState
               icon={Server}
-              title={locale === "vi" ? "Chưa kết nối provider nào" : "No providers connected yet"}
-              description={locale === "vi" ? "Kết nối một LLM provider để bắt đầu khám phá models và chạy agents." : "Connect an LLM provider to start discovering models and running agents."}
+              title={tx("Chưa kết nối provider nào", "No providers connected yet")}
+              description={tx("Kết nối một LLM provider để bắt đầu khám phá models và chạy agents.", "Connect an LLM provider to start discovering models and running agents.")}
               action={
                 <Button className="gap-2" onClick={() => setProviderModalOpen(true)}>
-                  <Plus className="h-4 w-4" />{locale === "vi" ? "Kết nối Provider đầu tiên" : "Connect First Provider"}</Button>
+                  <Plus className="h-4 w-4" />{tx("Kết nối Provider đầu tiên", "Connect First Provider")}</Button>
               }
             />
           )}
@@ -578,7 +578,7 @@ export default function ProvidersPage() {
         <div className="space-y-4">
           <Dialog open={editModelOpen} onOpenChange={setEditModelOpen}>
             <DialogContent>
-              <DialogHeader><DialogTitle>{locale === "vi" ? "Sửa đổi Model" : "Edit Model"}</DialogTitle></DialogHeader>
+              <DialogHeader><DialogTitle>{tx("Sửa đổi Model", "Edit Model")}</DialogTitle></DialogHeader>
               {editModelTarget && (
                 <ModelForm
                   initial={editModelTarget}
@@ -586,7 +586,7 @@ export default function ProvidersPage() {
                   onSubmit={async (values) => {
                     try {
                       await updateModel.mutateAsync({ id: editModelTarget.id, ...values });
-                      toast.success(locale === "vi" ? "Đã cập nhật Model" : "Model updated");
+                      toast.success(tx("Đã cập nhật Model", "Model updated"));
                       setEditModelOpen(false);
                       setEditModelTarget(null);
                     } catch (error: any) {
@@ -605,7 +605,7 @@ export default function ProvidersPage() {
               <Input
                 value={modelQuery}
                 onChange={(event) => setModelQuery(event.target.value)}
-                placeholder={locale === "vi" ? "Tìm kiếm tên model hoặc provider..." : "Search model name or provider..."}
+                placeholder={tx("Tìm kiếm tên model hoặc provider...", "Search model name or provider...")}
                 className="pl-9 text-xs"
                 aria-label="Search models"
               />
@@ -618,9 +618,9 @@ export default function ProvidersPage() {
                 className="flex h-9 cursor-pointer rounded-lg border border-border bg-background px-3 py-1 text-xs text-foreground shadow-sm hover:border-primary/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 aria-label="Filter by active status"
               >
-                <option value="all">{locale === "vi" ? "Tất cả Trạng thái" : "All Status"}</option>
-                <option value="active">{locale === "vi" ? "Chỉ Hoạt động" : "Active Only"}</option>
-                <option value="inactive">{locale === "vi" ? "Chỉ Không hoạt động" : "Inactive Only"}</option>
+                <option value="all">{tx("Tất cả Trạng thái", "All Status")}</option>
+                <option value="active">{tx("Chỉ Hoạt động", "Active Only")}</option>
+                <option value="inactive">{tx("Chỉ Không hoạt động", "Inactive Only")}</option>
               </select>
 
               <select
@@ -629,7 +629,7 @@ export default function ProvidersPage() {
                 className="flex h-9 cursor-pointer rounded-lg border border-border bg-background px-3 py-1 text-xs text-foreground shadow-sm hover:border-primary/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 aria-label="Filter by provider"
               >
-                <option value="all">{locale === "vi" ? "Tất cả Providers" : "All Providers"}</option>
+                <option value="all">{tx("Tất cả Providers", "All Providers")}</option>
                 {(providers.data ?? []).map((p) => (
                   <option key={p.id} value={p.id}>{p.name}</option>
                 ))}
@@ -642,8 +642,8 @@ export default function ProvidersPage() {
             <LoadingSkeleton variant="grid" />
           ) : models.isError ? (
             <ErrorState
-              title={locale === "vi" ? "Không thể tải models" : "Unable to load models"}
-              description={locale === "vi" ? "Dữ liệu model không thể tải được." : "Model data could not be loaded."}
+              title={tx("Không thể tải models", "Unable to load models")}
+              description={tx("Dữ liệu model không thể tải được.", "Model data could not be loaded.")}
               onRetry={() => void models.refetch()}
             />
           ) : filteredModels.length > 0 ? (
@@ -673,13 +673,13 @@ export default function ProvidersPage() {
 
                     <div className="mt-4 flex-1 space-y-2 text-xs text-muted-foreground font-mono">
                       <div className="flex items-center justify-between rounded-lg border border-border/50 bg-muted/20 px-2.5 py-1.5 text-[11px]">
-                        <span>{locale === "vi" ? "Cửa sổ ngữ cảnh:" : "Context Window:"}</span>
+                        <span>{tx("Cửa sổ ngữ cảnh:", "Context Window:")}</span>
                         <span className="font-semibold text-foreground">{model.context_window ? `${(model.context_window / 1000).toFixed(0)}k` : "Standard"}</span>
                       </div>
                       <div className="flex flex-wrap gap-1.5 pt-1 font-sans">
-                        {model.supports_tools && <Badge variant="outline" className="text-[9.5px]">{locale === "vi" ? "Công cụ" : "Tools"}</Badge>}
-                        {model.supports_vision && <Badge variant="outline" className="text-[9.5px]">{locale === "vi" ? "Thị giác" : "Vision"}</Badge>}
-                        {model.supports_reasoning && <Badge variant="outline" className="text-[9.5px]">{locale === "vi" ? "Suy luận" : "Reasoning"}</Badge>}
+                        {model.supports_tools && <Badge variant="outline" className="text-[9.5px]">{tx("Công cụ", "Tools")}</Badge>}
+                        {model.supports_vision && <Badge variant="outline" className="text-[9.5px]">{tx("Thị giác", "Vision")}</Badge>}
+                        {model.supports_reasoning && <Badge variant="outline" className="text-[9.5px]">{tx("Suy luận", "Reasoning")}</Badge>}
                       </div>
                     </div>
 
@@ -715,7 +715,7 @@ export default function ProvidersPage() {
                           loading={testingModelId === model.id}
                           onClick={() => handleTestModel(model)}
                         >
-                          <Zap className="h-3.5 w-3.5 text-amber-500" />{locale === "vi" ? "Kiểm tra Chat" : "Test Chat"}</Button>
+                          <Zap className="h-3.5 w-3.5 text-amber-500" />{tx("Kiểm tra Chat", "Test Chat")}</Button>
                         <ConfirmDialog
                           trigger={
                             <Button size="sm" variant="ghost" className="text-destructive hover:bg-destructive/10">
@@ -723,8 +723,8 @@ export default function ProvidersPage() {
                             </Button>
                           }
                           title={`Delete ${model.display_name}?`}
-                          description={locale === "vi" ? "Model này sẽ bị xóa khỏi danh mục của bạn." : "This model will be removed from your catalog."}
-                          confirmLabel={locale === "vi" ? "Xóa" : "Delete"}
+                          description={tx("Model này sẽ bị xóa khỏi danh mục của bạn.", "This model will be removed from your catalog.")}
+                          confirmLabel={tx("Xóa", "Delete")}
                           destructive
                           onConfirm={() => deleteModel.mutate(model.id)}
                         />
@@ -745,11 +745,11 @@ export default function ProvidersPage() {
           ) : (
             <EmptyState
               icon={Cpu}
-              title={locale === "vi" ? "Không có models nào được khám phá" : "No models discovered"}
-              description={locale === "vi" ? "Kết nối AI Provider hoặc thêm model tùy chỉnh để điền vào danh mục của bạn." : "Connect an AI Provider or add a custom model to populate your catalog."}
+              title={tx("Không có models nào được khám phá", "No models discovered")}
+              description={tx("Kết nối AI Provider hoặc thêm model tùy chỉnh để điền vào danh mục của bạn.", "Connect an AI Provider or add a custom model to populate your catalog.")}
               action={
                 <Button className="gap-2" onClick={() => setModelModalOpen(true)}>
-                  <Plus className="h-4 w-4" />{locale === "vi" ? "Thêm Custom Model" : "Add Custom Model"}</Button>
+                  <Plus className="h-4 w-4" />{tx("Thêm Custom Model", "Add Custom Model")}</Button>
               }
             />
           )}

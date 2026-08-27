@@ -33,7 +33,7 @@ function useAdminResource<T>(resource: string, enabled: boolean) {
 }
 
 export default function EmailOperationsPage() {
-  const { t, dict, locale } = useTranslation();
+  const { t, dict, locale, tx } = useTranslation();
   const orgId = getActiveOrgId();
   const overview = useQuery({
     queryKey: emailIntelligenceQueryKeys(orgId).adminOverview,
@@ -58,8 +58,8 @@ export default function EmailOperationsPage() {
   if (overview.isError || !overview.data) {
     return (
       <ErrorState
-        title={locale === "vi" ? "Không thể tải bảng điều hành" : "Unable to load operations"}
-        description={locale === "vi" ? "Thông tin sức khỏe Email Gateway tạm thời chưa sẵn sàng." : "Admin email intelligence health is unavailable."}
+        title={tx("Không thể tải bảng điều hành", "Unable to load operations")}
+        description={tx("Thông tin sức khỏe Email Gateway tạm thời chưa sẵn sàng.", "Admin email intelligence health is unavailable.")}
         onRetry={() => void overview.refetch()}
       />
     );
@@ -68,11 +68,11 @@ export default function EmailOperationsPage() {
   const resource = tab === "queue" ? queue : tab === "schedulers" ? schedulers : reviews;
 
   const tabLabels: Record<string, string> = {
-    overview: locale === "vi" ? "Tổng quan" : "Overview",
-    queue: locale === "vi" ? "Hàng đợi (Queue)" : "Queue",
-    schedulers: locale === "vi" ? "Bộ lập lịch" : "Schedulers",
-    reviews: locale === "vi" ? "Phê duyệt" : "Reviews",
-    traces: locale === "vi" ? "Truy vết (Traces)" : "Traces",
+    overview: tx("Tổng quan", "Overview"),
+    queue: tx("Hàng đợi (Queue)", "Queue"),
+    schedulers: tx("Bộ lập lịch", "Schedulers"),
+    reviews: tx("Phê duyệt", "Reviews"),
+    traces: tx("Truy vết (Traces)", "Traces"),
   };
 
   return (
@@ -93,7 +93,7 @@ export default function EmailOperationsPage() {
             className="gap-2"
           >
             <RefreshCw className="h-4 w-4" />
-            {locale === "vi" ? "Làm mới" : "Refresh"}
+            {tx("Làm mới", "Refresh")}
           </Button>
         }
       />
@@ -102,30 +102,30 @@ export default function EmailOperationsPage() {
       <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4">
         <Metric
           icon={Database}
-          label={locale === "vi" ? "Kết nối Mail" : "Connections"}
+          label={tx("Kết nối Mail", "Connections")}
           value={`${data.connections.healthy}/${data.connections.total}`}
-          detail={data.connections.unhealthy ? (locale === "vi" ? `${data.connections.unhealthy} lỗi kết nối` : `${data.connections.unhealthy} unhealthy`) : (locale === "vi" ? "Hoạt động tốt" : "Healthy")}
+          detail={data.connections.unhealthy ? (tx("${data.connections.unhealthy} lỗi kết nối", "${data.connections.unhealthy} unhealthy")) : (tx("Hoạt động tốt", "Healthy"))}
           danger={data.connections.unhealthy > 0}
         />
         <Metric
           icon={GitBranch}
-          label={locale === "vi" ? "Hàng đợi xử lý" : "Queue"}
+          label={tx("Hàng đợi xử lý", "Queue")}
           value={`${data.queue.ready}`}
-          detail={locale === "vi" ? `${data.queue.retrying} đang thử lại · ${data.queue.dead_letter} lỗi tồn` : `${data.queue.retrying} retrying · ${data.queue.dead_letter} dead-letter`}
+          detail={tx("${data.queue.retrying} đang thử lại · ${data.queue.dead_letter} lỗi tồn", "${data.queue.retrying} retrying · ${data.queue.dead_letter} dead-letter")}
           danger={data.queue.dead_letter > 0}
         />
         <Metric
           icon={ShieldAlert}
-          label={locale === "vi" ? "Yêu cầu duyệt" : "Reviews"}
+          label={tx("Yêu cầu duyệt", "Reviews")}
           value={`${data.reviews.open}`}
-          detail={locale === "vi" ? `${data.reviews.breached} vi phạm SLA` : `${data.reviews.breached} SLA breached`}
+          detail={tx("${data.reviews.breached} vi phạm SLA", "${data.reviews.breached} SLA breached")}
           danger={data.reviews.breached > 0}
         />
         <Metric
           icon={Timer}
-          label={locale === "vi" ? "Bộ lập lịch" : "Scheduler"}
-          value={data.scheduler.healthy ? (locale === "vi" ? "Hoạt động tốt" : "Healthy") : (locale === "vi" ? "Suy giảm" : "Degraded")}
-          detail={locale === "vi" ? `${data.scheduler.missed_occurrences} lượt bị trễ` : `${data.scheduler.missed_occurrences} missed occurrences`}
+          label={tx("Bộ lập lịch", "Scheduler")}
+          value={data.scheduler.healthy ? (tx("Hoạt động tốt", "Healthy")) : (tx("Suy giảm", "Degraded"))}
+          detail={tx("${data.scheduler.missed_occurrences} lượt bị trễ", "${data.scheduler.missed_occurrences} missed occurrences")}
           danger={!data.scheduler.healthy}
         />
       </div>
@@ -151,11 +151,9 @@ export default function EmailOperationsPage() {
       {tab === "overview" && (
         <Card glass className="border-border/80 shadow-card">
           <CardHeader>
-            <CardTitle className="text-base">{locale === "vi" ? "Rào chắn Vận hành Doanh nghiệp" : "Operational guardrails"}</CardTitle>
+            <CardTitle className="text-base">{tx("Rào chắn Vận hành Doanh nghiệp", "Operational guardrails")}</CardTitle>
             <CardDescription className="text-xs leading-relaxed">
-              {locale === "vi"
-                ? "Tất cả các hành động quản trị viên đều được kiểm soát nghiêm ngặt theo chính sách RBAC và chỉ đọc trừ khi được cấp quyền."
-                : "Admin actions remain capability-gated and read-only until the corresponding backend policy is enabled."}
+              {tx("Tất cả các hành động quản trị viên đều được kiểm soát nghiêm ngặt theo chính sách RBAC và chỉ đọc trừ khi được cấp quyền.", "Admin actions remain capability-gated and read-only until the corresponding backend policy is enabled.")}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3 text-xs text-muted-foreground leading-relaxed">
@@ -171,8 +169,8 @@ export default function EmailOperationsPage() {
           <LoadingSkeleton variant="table" />
         ) : resource.isError ? (
           <ErrorState
-            title={locale === "vi" ? "Không thể tải tài nguyên" : "Unable to load resource"}
-            description={locale === "vi" ? "Vui lòng thử lại truy vấn." : "Retry the operation query."}
+            title={tx("Không thể tải tài nguyên", "Unable to load resource")}
+            description={tx("Vui lòng thử lại truy vấn.", "Retry the operation query.")}
             onRetry={() => void resource.refetch()}
           />
         ) : (
@@ -183,9 +181,9 @@ export default function EmailOperationsPage() {
       {tab === "traces" && (
         <Card glass className="border-border/80 shadow-card">
           <CardHeader>
-            <CardTitle className="text-base">{locale === "vi" ? "Truy vết Correlation ID" : "Trace Explorer"}</CardTitle>
+            <CardTitle className="text-base">{tx("Truy vết Correlation ID", "Trace Explorer")}</CardTitle>
             <CardDescription className="text-xs">
-              {locale === "vi" ? "Nhập Correlation ID để tra cứu lịch sử sự kiện xử lý email" : "Enter a correlation ID to inspect sanitized events"}
+              {tx("Nhập Correlation ID để tra cứu lịch sử sự kiện xử lý email", "Enter a correlation ID to inspect sanitized events")}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -193,20 +191,20 @@ export default function EmailOperationsPage() {
               <Input
                 value={traceId}
                 onChange={(event) => setTraceId(event.target.value)}
-                placeholder={locale === "vi" ? "Nhập Correlation ID..." : "Correlation ID..."}
+                placeholder={tx("Nhập Correlation ID...", "Correlation ID...")}
                 aria-label="Correlation ID"
                 className="text-xs font-mono"
               />
               <Button onClick={() => void traces.refetch()} disabled={traceId.length < 3} className="gap-1.5 font-medium">
                 <Search className="h-3.5 w-3.5" />
-                {locale === "vi" ? "Tìm kiếm" : "Search"}
+                {tx("Tìm kiếm", "Search")}
               </Button>
             </div>
             {traces.data?.events?.length ? (
               <OperationsTable rows={traces.data.events} locale={locale} />
             ) : (
               <p className="text-xs text-muted-foreground">
-                {locale === "vi" ? "Nhập correlation ID hợp lệ để tra cứu luồng sự kiện." : "Enter a correlation ID to inspect sanitized events."}
+                {tx("Nhập correlation ID hợp lệ để tra cứu luồng sự kiện.", "Enter a correlation ID to inspect sanitized events.")}
               </p>
             )}
           </CardContent>
@@ -232,6 +230,7 @@ function Metric({ icon: Icon, label, value, detail, danger }: { icon: typeof Act
 }
 
 function OperationsTable({ rows, locale }: { rows: Array<Record<string, unknown>>; locale: string }) {
+  const { tx } = useTranslation();
   const [page, setPage] = React.useState(1);
   const [pageSize, setPageSize] = React.useState(10);
 
@@ -244,8 +243,8 @@ function OperationsTable({ rows, locale }: { rows: Array<Record<string, unknown>
     return (
       <EmptyState
         icon={Activity}
-        title={locale === "vi" ? "Không có bản ghi nào cần chú ý" : "No operational records require attention"}
-        description={locale === "vi" ? "Hệ thống đang vận hành bình thường không có cảnh báo." : "System is running smoothly with no active alerts."}
+        title={tx("Không có bản ghi nào cần chú ý", "No operational records require attention")}
+        description={tx("Hệ thống đang vận hành bình thường không có cảnh báo.", "System is running smoothly with no active alerts.")}
       />
     );
   }
@@ -256,10 +255,10 @@ function OperationsTable({ rows, locale }: { rows: Array<Record<string, unknown>
         <Table>
           <TableHeader>
             <TableRow className="bg-muted/40">
-              <TableHead className="text-xs font-semibold">{locale === "vi" ? "Tài nguyên / Sự kiện" : "Resource"}</TableHead>
-              <TableHead className="text-xs font-semibold">{locale === "vi" ? "Trạng thái" : "Status"}</TableHead>
-              <TableHead className="text-xs font-semibold">{locale === "vi" ? "Thời gian" : "Time"}</TableHead>
-              <TableHead className="text-xs font-semibold">{locale === "vi" ? "Mức độ rủi ro" : "Risk"}</TableHead>
+              <TableHead className="text-xs font-semibold">{tx("Tài nguyên / Sự kiện", "Resource")}</TableHead>
+              <TableHead className="text-xs font-semibold">{tx("Trạng thái", "Status")}</TableHead>
+              <TableHead className="text-xs font-semibold">{tx("Thời gian", "Time")}</TableHead>
+              <TableHead className="text-xs font-semibold">{tx("Mức độ rủi ro", "Risk")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>

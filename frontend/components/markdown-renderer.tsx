@@ -61,7 +61,7 @@ function extractCodeText(children: React.ReactNode): string {
 }
 
 function CodeBlockWithAction({ className, children, ...props }: any) {
-    const { locale } = useTranslation();
+    const { locale, tx } = useTranslation();
   const isBlock = Boolean(className?.includes("language-") || className?.includes("math"));
   const match = /language-(\w+)/.exec(className || "");
   const lang = match ? match[1].toLowerCase() : "";
@@ -176,10 +176,10 @@ function CodeBlockWithAction({ className, children, ...props }: any) {
             <button
               onClick={handleOpenNewTab}
               type="button"
-              title={locale === "vi" ? "Mở trang HTML trong tab mới" : "Mở trang HTML trong tab mới"}
+              title={tx("Mở trang HTML trong tab mới", "Mở trang HTML trong tab mới")}
               className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-muted/60 text-foreground/80 hover:bg-muted transition-colors cursor-pointer"
             >
-              {locale === "vi" ? "↗ Mở tab mới" : "↗ Mở tab mới"}</button>
+              {tx("↗ Mở tab mới", "↗ Mở tab mới")}</button>
           </div>
         )}
         {isRunnable && (
@@ -192,7 +192,7 @@ function CodeBlockWithAction({ className, children, ...props }: any) {
             {isRunning ? (
               <>
                 <span className="h-1.5 w-1.5 rounded-full bg-success animate-ping" />
-                {locale === "vi" ? "Running..." : "Running..."}</>
+                {tx("Running...", "Running...")}</>
             ) : (
               "▶ Run"
             )}
@@ -207,14 +207,14 @@ function CodeBlockWithAction({ className, children, ...props }: any) {
       {isHtml && showPreview && (
         <div className="mt-2 rounded-lg border border-border/60 overflow-hidden bg-white dark:bg-card">
           <div className="bg-muted/40 px-3 py-1 text-[10px] font-mono text-muted-foreground border-b border-border/40 flex items-center justify-between">
-            <span>{locale === "vi" ? "HTML Sandbox Preview" : "HTML Sandbox Preview"}</span>
-            <span className="text-[9px] opacity-70">{locale === "vi" ? "iframe sandbox=&quot;allow-scripts&quot;" : "iframe sandbox=&quot;allow-scripts&quot;"}</span>
+            <span>{tx("HTML Sandbox Preview", "HTML Sandbox Preview")}</span>
+            <span className="text-[9px] opacity-70">{tx("iframe sandbox=&quot;allow-scripts&quot;", "iframe sandbox=&quot;allow-scripts&quot;")}</span>
           </div>
           <iframe
             srcDoc={codeText}
             sandbox="allow-scripts"
             className="w-full h-64 border-0 bg-white"
-            title={locale === "vi" ? "HTML Preview" : "HTML Preview"}
+            title={tx("HTML Preview", "HTML Preview")}
           />
         </div>
       )}
@@ -224,10 +224,10 @@ function CodeBlockWithAction({ className, children, ...props }: any) {
           <div className="bg-muted/40 px-3 py-1 text-[10px] text-muted-foreground border-b border-border/40 flex items-center justify-between">
             <span className="font-semibold text-foreground flex items-center gap-1.5">
               <span className={`h-2 w-2 rounded-full ${isRunning ? "bg-warning animate-pulse" : exitCode === 0 ? "bg-success" : "bg-destructive"}`} />
-              {locale === "vi" ? "Output Console" : "Output Console"}</span>
+              {tx("Output Console", "Output Console")}</span>
             {exitCode !== null && (
               <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${exitCode === 0 ? "bg-success/20 text-success" : "bg-destructive/20 text-destructive"}`}>
-                {locale === "vi" ? "exit code:" : "exit code:"}{exitCode}
+                {tx("exit code:", "exit code:")}{exitCode}
               </span>
             )}
           </div>
@@ -240,7 +240,7 @@ function CodeBlockWithAction({ className, children, ...props }: any) {
             )}
             {exitCode !== null && (
               <span className={`block font-bold mt-1.5 pt-1.5 border-t border-white/10 ${exitCode === 0 ? "text-success" : "text-destructive"}`}>
-                {locale === "vi" ? "[exit code:" : "[exit code:"}{exitCode}]
+                {tx("[exit code:", "[exit code:")}{exitCode}]
               </span>
             )}
             <div ref={logEndRef} />
@@ -256,7 +256,7 @@ interface Props {
 }
 
 function MarkdownRendererBase({ content }: Props) {
-    const { locale } = useTranslation();
+    const { locale, tx } = useTranslation();
   const normalized = React.useMemo(() => normalizeLatex(content), [content]);
 
   return (

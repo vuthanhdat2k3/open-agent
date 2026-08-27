@@ -40,7 +40,7 @@ interface WorkflowNodePaletteProps {
 }
 
 export function WorkflowNodePalette({ className, onAddNode }: WorkflowNodePaletteProps) {
-    const { locale } = useTranslation();
+    const { locale, tx } = useTranslation();
   const [collapsed, setCollapsed] = React.useState(false);
 
   const onDragStart = (e: React.DragEvent, kind: GraphNode["kind"]) => {
@@ -59,7 +59,7 @@ export function WorkflowNodePalette({ className, onAddNode }: WorkflowNodePalett
       <div className="flex items-center justify-between">
         {!collapsed && (
           <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">
-            {locale === "vi" ? "Node palette" : "Node palette"}</span>
+            {tx("Node palette", "Node palette")}</span>
         )}
         <button
           type="button"

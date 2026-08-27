@@ -33,7 +33,7 @@ const providerLabel: Record<string, string> = {
 // Integrations sheet already has its own title) and on for the standalone
 // `/integrations` route.
 export function IntegrationsPanel({ withHeader = true }: { withHeader?: boolean }) {
-  const { t, dict, locale } = useTranslation();
+  const { t, dict, locale, tx } = useTranslation();
   const [email, setEmail] = React.useState<Connection[]>([]);
   const [calendar, setCalendar] = React.useState<Connection[]>([]);
   const [drive, setDrive] = React.useState<Connection[]>([]);
@@ -103,7 +103,7 @@ export function IntegrationsPanel({ withHeader = true }: { withHeader?: boolean 
           </div>
         </div>
         <div className="flex items-center justify-between gap-2">
-          <Badge variant="outline" className="border-success/40 text-success">{locale === "vi" ? "Connected" : "Connected"}</Badge>
+          <Badge variant="outline" className="border-success/40 text-success">{tx("Connected", "Connected")}</Badge>
           <Button
             variant="ghost"
             size="sm"
@@ -112,7 +112,7 @@ export function IntegrationsPanel({ withHeader = true }: { withHeader?: boolean 
             disabled={busy === item.id}
           >
             {busy === item.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Unplug className="h-4 w-4" />}
-            {locale === "vi" ? "Disconnect" : "Disconnect"}</Button>
+            {tx("Disconnect", "Disconnect")}</Button>
         </div>
       </div>
     );
@@ -126,8 +126,8 @@ export function IntegrationsPanel({ withHeader = true }: { withHeader?: boolean 
           {busy === key ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plug className="h-4 w-4" />}
         </div>
         <div>
-          <p className="font-medium text-foreground">{locale === "vi" ? "Connect" : "Connect"}{providerLabel[provider]}</p>
-          <p className="text-sm text-muted-foreground">{locale === "vi" ? "Not connected" : "Not connected"}</p>
+          <p className="font-medium text-foreground">{tx("Connect", "Connect")}{providerLabel[provider]}</p>
+          <p className="text-sm text-muted-foreground">{tx("Not connected", "Not connected")}</p>
         </div>
       </Button>
     );
@@ -143,35 +143,35 @@ export function IntegrationsPanel({ withHeader = true }: { withHeader?: boolean 
         <PageHeader
           icon={Plug}
           title={dict.pages.integrations.title}
-          description={locale === "vi" ? "Connect work accounts (Gmail, Google Calendar, Google Drive) via secure OAuth connectors." : "Connect work accounts (Gmail, Google Calendar, Google Drive) via secure OAuth connectors."}
+          description={tx("Connect work accounts (Gmail, Google Calendar, Google Drive) via secure OAuth connectors.", "Connect work accounts (Gmail, Google Calendar, Google Drive) via secure OAuth connectors.")}
         />
       )}
       {error && <Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert>}
       {loading ? <LoadingSkeleton variant="grid" /> : <div className="grid gap-6 lg:grid-cols-3">
         <Card>
-          <CardHeader><CardTitle className="flex items-center gap-2"><Mail className="h-5 w-5 text-primary" aria-hidden="true" />{locale === "vi" ? "Email" : "Email"}</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="flex items-center gap-2"><Mail className="h-5 w-5 text-primary" aria-hidden="true" />{tx("Email", "Email")}</CardTitle></CardHeader>
           <CardContent className="space-y-3">
-            <p className="text-sm leading-relaxed text-muted-foreground">{locale === "vi" ? "Read and organize inbound email through the approval-gated connector." : "Read and organize inbound email through the approval-gated connector."}</p>
+            <p className="text-sm leading-relaxed text-muted-foreground">{tx("Read and organize inbound email through the approval-gated connector.", "Read and organize inbound email through the approval-gated connector.")}</p>
             {connectedEmail ? <ConnectionCard kind="email" item={connectedEmail} /> : <ConnectCard kind="email" provider="google" />}
           </CardContent>
         </Card>
         <Card>
-          <CardHeader><CardTitle className="flex items-center gap-2"><CalendarDays className="h-5 w-5 text-primary" aria-hidden="true" />{locale === "vi" ? "Calendar" : "Calendar"}</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="flex items-center gap-2"><CalendarDays className="h-5 w-5 text-primary" aria-hidden="true" />{tx("Calendar", "Calendar")}</CardTitle></CardHeader>
           <CardContent className="space-y-3">
-            <p className="text-sm leading-relaxed text-muted-foreground">{locale === "vi" ? "Read upcoming events and match them to customers or partners." : "Read upcoming events and match them to customers or partners."}</p>
+            <p className="text-sm leading-relaxed text-muted-foreground">{tx("Read upcoming events and match them to customers or partners.", "Read upcoming events and match them to customers or partners.")}</p>
             {connectedCalendar ? <ConnectionCard kind="calendar" item={connectedCalendar} /> : <ConnectCard kind="calendar" provider="google" />}
           </CardContent>
         </Card>
         <Card>
-          <CardHeader><CardTitle className="flex items-center gap-2"><HardDrive className="h-5 w-5 text-primary" aria-hidden="true" />{locale === "vi" ? "Google Drive" : "Google Drive"}</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="flex items-center gap-2"><HardDrive className="h-5 w-5 text-primary" aria-hidden="true" />{tx("Google Drive", "Google Drive")}</CardTitle></CardHeader>
           <CardContent className="space-y-3">
-            <p className="text-sm leading-relaxed text-muted-foreground">{locale === "vi" ? "List, read, create, update and delete files through the approval-gated connector." : "List, read, create, update and delete files through the approval-gated connector."}</p>
+            <p className="text-sm leading-relaxed text-muted-foreground">{tx("List, read, create, update and delete files through the approval-gated connector.", "List, read, create, update and delete files through the approval-gated connector.")}</p>
             {connectedDrive ? <ConnectionCard kind="drive" item={connectedDrive} /> : <ConnectCard kind="drive" provider="google" />}
           </CardContent>
         </Card>
       </div>}
       <AlertDialog open={Boolean(disconnectRequest)} onOpenChange={(open) => !open && setDisconnectRequest(null)}>
-        <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>{locale === "vi" ? "Disconnect" : "Disconnect"}{disconnectRequest?.label}?</AlertDialogTitle><AlertDialogDescription>{locale === "vi" ? "OpenAgent will stop using this account for the selected connector. You can reconnect it later." : "OpenAgent will stop using this account for the selected connector. You can reconnect it later."}</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>{locale === "vi" ? "Hủy" : "Cancel"}</AlertDialogCancel><AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => disconnectRequest && void performDisconnect(disconnectRequest.kind, disconnectRequest.id)}>{locale === "vi" ? "Disconnect" : "Disconnect"}</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
+        <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>{tx("Disconnect", "Disconnect")}{disconnectRequest?.label}?</AlertDialogTitle><AlertDialogDescription>{tx("OpenAgent will stop using this account for the selected connector. You can reconnect it later.", "OpenAgent will stop using this account for the selected connector. You can reconnect it later.")}</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>{tx("Hủy", "Cancel")}</AlertDialogCancel><AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => disconnectRequest && void performDisconnect(disconnectRequest.kind, disconnectRequest.id)}>{tx("Disconnect", "Disconnect")}</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
       </AlertDialog>
     </div>
   );

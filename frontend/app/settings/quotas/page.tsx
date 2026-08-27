@@ -61,7 +61,7 @@ function optionalNumber(value: string) {
 }
 
 export default function QuotasAndBudgetsPage() {
-  const { t, dict, locale } = useTranslation();
+  const { t, dict, locale, tx } = useTranslation();
   const me = useMe();
   const role = useCurrentRole();
   const isAdmin = role === "admin" || role === "platform_admin";
@@ -108,9 +108,9 @@ export default function QuotasAndBudgetsPage() {
         max_storage_bytes: storageBytes,
         enforcement_mode: form.enforcement_mode,
       });
-      toast.success(locale === "vi" ? "Đã lưu chính sách ngân sách & hạn mức thành công" : "Quota & budget policy saved successfully");
+      toast.success(tx("Đã lưu chính sách ngân sách & hạn mức thành công", "Quota & budget policy saved successfully"));
     } catch (error: any) {
-      toast.error(error.message || (locale === "vi" ? "Không thể cập nhật chính sách hạn mức" : "Failed to update quota policy"));
+      toast.error(error.message || (tx("Không thể cập nhật chính sách hạn mức", "Failed to update quota policy")));
     }
   };
 
@@ -119,12 +119,12 @@ export default function QuotasAndBudgetsPage() {
       <div className="space-y-6">
         <PageHeader
           icon={Gauge}
-          title={locale === "vi" ? "Hạn mức & Ngân sách" : "Quotas & Budgets"}
-          description={locale === "vi" ? "Kiểm soát truy cập và chi tiêu cho tổ chức hiện tại của bạn." : "Admission and spend controls for your active organization."}
+          title={tx("Hạn mức & Ngân sách", "Quotas & Budgets")}
+          description={tx("Kiểm soát truy cập và chi tiêu cho tổ chức hiện tại của bạn.", "Admission and spend controls for your active organization.")}
         />
         <ErrorState
-          title={locale === "vi" ? "Không thể tải dữ liệu hạn mức" : "Unable to load quota data"}
-          description={locale === "vi" ? "Không thể tải chính sách hạn mức hoặc dữ liệu sử dụng trực tiếp." : "Quota policy or live usage telemetry could not be loaded."}
+          title={tx("Không thể tải dữ liệu hạn mức", "Unable to load quota data")}
+          description={tx("Không thể tải chính sách hạn mức hoặc dữ liệu sử dụng trực tiếp.", "Quota policy or live usage telemetry could not be loaded.")}
           onRetry={() => {
             if (isAdmin) void quota.refetch();
             void usage.refetch();
@@ -140,7 +140,7 @@ export default function QuotasAndBudgetsPage() {
   const storageMB = ((usage.data?.storage_bytes ?? 0) / (1024 * 1024)).toFixed(1);
   const storageLimitMB = usage.data?.storage_limit_bytes
     ? `${(usage.data.storage_limit_bytes / (1024 * 1024)).toFixed(0)} MB`
-    : (locale === "vi" ? "Không giới hạn" : "Unlimited");
+    : (tx("Không giới hạn", "Unlimited"));
 
   return (
     <div className="space-y-6">
@@ -150,8 +150,8 @@ export default function QuotasAndBudgetsPage() {
         title={dict.pages.quotas.title}
         description={
           isAdmin
-            ? (locale === "vi" ? `Định cấu hình giới hạn ngân sách hàng tháng, giới hạn tốc độ tiếp nhận và theo dõi việc sử dụng cho ${usage.data?.month ?? "chu kỳ hiện tại"}.` : `Configure monthly budget limits, admission rate limits, and track usage for ${usage.data?.month ?? "current cycle"}.`)
-            : (locale === "vi" ? `Theo dõi mức tiêu thụ và số liệu hạn mức cho ${usage.data?.month ?? "chu kỳ hiện tại"}.` : `Track consumption and quota metrics for ${usage.data?.month ?? "the current cycle"}.`)
+            ? (tx("Định cấu hình giới hạn ngân sách hàng tháng, giới hạn tốc độ tiếp nhận và theo dõi việc sử dụng cho ${usage.data?.month ?? \"chu kỳ hiện tại\"}.", "Configure monthly budget limits, admission rate limits, and track usage for ${usage.data?.month ?? \"current cycle\"}."))
+            : (tx("Theo dõi mức tiêu thụ và số liệu hạn mức cho ${usage.data?.month ?? \"chu kỳ hiện tại\"}.", "Track consumption and quota metrics for ${usage.data?.month ?? \"the current cycle\"}."))
         }
         actions={
           isAdmin ? (
@@ -160,7 +160,7 @@ export default function QuotasAndBudgetsPage() {
               onClick={save}
               loading={updateQuota.isPending}
             >
-              <Save className="h-4 w-4" /> {locale === "vi" ? "Lưu chính sách" : "Save Policy"}
+              <Save className="h-4 w-4" /> {tx("Lưu chính sách", "Save Policy")}
             </Button>
           ) : undefined
         }
@@ -172,31 +172,31 @@ export default function QuotasAndBudgetsPage() {
           <div className="space-y-1">
             <div className="flex items-center gap-2.5">
               <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                {locale === "vi" ? `Trạng thái chi tiêu hàng tháng (${usage.data?.month || "Chu kỳ hiện tại"})` : `Monthly Spend Status (${usage.data?.month || "Current Cycle"})`}
+                {tx("Trạng thái chi tiêu hàng tháng (${usage.data?.month || \"Chu kỳ hiện tại\"})", "Monthly Spend Status (${usage.data?.month || \"Current Cycle\"})")}
               </span>
               <Badge
                 variant={spendRatio > 90 ? "destructive" : spendRatio > 70 ? "outline" : "default"}
                 className="text-[10px] font-mono"
               >
-                {spendRatio > 90 ? (locale === "vi" ? "Mức sử dụng nghiêm trọng (>90%)" : "Critical Usage (>90%)") : spendRatio > 70 ? (locale === "vi" ? "Cảnh báo (>70%)" : "Warning (>70%)") : (locale === "vi" ? "Bình thường (<70%)" : "Healthy (<70%)")}
+                {spendRatio > 90 ? (tx("Mức sử dụng nghiêm trọng (>90%)", "Critical Usage (>90%)")) : spendRatio > 70 ? (tx("Cảnh báo (>70%)", "Warning (>70%)")) : (tx("Bình thường (<70%)", "Healthy (<70%)"))}
               </Badge>
             </div>
             <div className="flex items-baseline gap-2">
               <span className="text-3xl font-bold font-mono text-foreground">${monthlyCost.toFixed(4)}</span>
-              <span className="text-sm text-muted-foreground font-mono">/ ${costLimit.toFixed(2)} {locale === "vi" ? "USD" : "USD"}{locale === "vi" ? "Tối đa" : "Cap"}</span>
+              <span className="text-sm text-muted-foreground font-mono">/ ${costLimit.toFixed(2)} {tx("USD", "USD")}{tx("Tối đa", "Cap")}</span>
             </div>
           </div>
 
           <div className="flex items-center gap-6">
             <div className="text-right">
-              <p className="text-xs font-medium text-muted-foreground">{locale === "vi" ? "Ngân sách đã tiêu thụ" : "Budget Consumed"}</p>
+              <p className="text-xs font-medium text-muted-foreground">{tx("Ngân sách đã tiêu thụ", "Budget Consumed")}</p>
               <p className="text-xl font-bold font-mono text-primary">{spendRatio.toFixed(1)}%</p>
             </div>
             <div className="h-10 w-px bg-border/80 hidden sm:block" />
             <div className="text-right">
-              <p className="text-xs font-medium text-muted-foreground">{locale === "vi" ? "Chế độ thực thi" : "Enforcement Mode"}</p>
+              <p className="text-xs font-medium text-muted-foreground">{tx("Chế độ thực thi", "Enforcement Mode")}</p>
               <p className="text-sm font-semibold capitalize font-mono text-foreground">
-                {form.enforcement_mode === "enforce" ? (locale === "vi" ? "Thực thi" : "Enforce") : (locale === "vi" ? "Quan sát" : "Observe")}
+                {form.enforcement_mode === "enforce" ? (tx("Thực thi", "Enforce")) : (tx("Quan sát", "Observe"))}
               </p>
             </div>
           </div>
@@ -215,57 +215,57 @@ export default function QuotasAndBudgetsPage() {
 
       {/* 3. Live Tenant Utilization Cards */}
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold text-foreground">{locale === "vi" ? "Sử dụng tài nguyên" : "Resource Utilization"}</h2>
+        <h2 className="text-sm font-semibold text-foreground">{tx("Sử dụng tài nguyên", "Resource Utilization")}</h2>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           <Card className="shadow-card border-border/80 p-4">
             <div className="flex items-center justify-between text-muted-foreground">
-              <span className="text-xs font-semibold uppercase tracking-wider">{locale === "vi" ? "Chi tiêu hàng tháng" : "Monthly Spend"}</span>
+              <span className="text-xs font-semibold uppercase tracking-wider">{tx("Chi tiêu hàng tháng", "Monthly Spend")}</span>
               <Coins className="h-4 w-4 text-emerald-500" />
             </div>
             <p className="mt-2 text-xl font-bold font-mono text-foreground">${monthlyCost.toFixed(2)}</p>
-            <p className="mt-0.5 text-[11px] font-mono text-muted-foreground">{locale === "vi" ? "Giới hạn" : "Limit"}: ${costLimit.toFixed(0)}</p>
+            <p className="mt-0.5 text-[11px] font-mono text-muted-foreground">{tx("Giới hạn", "Limit")}: ${costLimit.toFixed(0)}</p>
           </Card>
 
           <Card className="shadow-card border-border/80 p-4">
             <div className="flex items-center justify-between text-muted-foreground">
-              <span className="text-xs font-semibold uppercase tracking-wider">{locale === "vi" ? "Phiên hoạt động" : "Active Leases"}</span>
+              <span className="text-xs font-semibold uppercase tracking-wider">{tx("Phiên hoạt động", "Active Leases")}</span>
               <Zap className="h-4 w-4 text-sky-500" />
             </div>
             <p className="mt-2 text-xl font-bold font-mono text-foreground">{usage.data?.active_run_leases || 0}</p>
             <p className="mt-0.5 text-[11px] font-mono text-muted-foreground">
-              {locale === "vi" ? "Tối đa" : "Max"}: {usage.data?.concurrent_run_limit || 5} {locale === "vi" ? "đồng thời" : "concurrent"}
+              {tx("Tối đa", "Max")}: {usage.data?.concurrent_run_limit || 5} {tx("đồng thời", "concurrent")}
             </p>
           </Card>
 
           <Card className="shadow-card border-border/80 p-4">
             <div className="flex items-center justify-between text-muted-foreground">
-              <span className="text-xs font-semibold uppercase tracking-wider">{locale === "vi" ? "Tác nhân" : "Agents"}</span>
+              <span className="text-xs font-semibold uppercase tracking-wider">{tx("Tác nhân", "Agents")}</span>
               <Bot className="h-4 w-4 text-primary" />
             </div>
             <p className="mt-2 text-xl font-bold font-mono text-foreground">{usage.data?.agents || 0}</p>
             <p className="mt-0.5 text-[11px] font-mono text-muted-foreground">
-              {locale === "vi" ? "Tối đa" : "Cap"}: {usage.data?.agent_limit?.toLocaleString() ?? (locale === "vi" ? "Không giới hạn" : "Unlimited")}
+              {tx("Tối đa", "Cap")}: {usage.data?.agent_limit?.toLocaleString() ?? (tx("Không giới hạn", "Unlimited"))}
             </p>
           </Card>
 
           <Card className="shadow-card border-border/80 p-4">
             <div className="flex items-center justify-between text-muted-foreground">
-              <span className="text-xs font-semibold uppercase tracking-wider">{locale === "vi" ? "Luồng công việc" : "Workflows"}</span>
+              <span className="text-xs font-semibold uppercase tracking-wider">{tx("Luồng công việc", "Workflows")}</span>
               <Workflow className="h-4 w-4 text-primary" />
             </div>
             <p className="mt-2 text-xl font-bold font-mono text-foreground">{usage.data?.workflows || 0}</p>
             <p className="mt-0.5 text-[11px] font-mono text-muted-foreground">
-              {locale === "vi" ? "Tối đa" : "Cap"}: {usage.data?.workflow_limit?.toLocaleString() ?? (locale === "vi" ? "Không giới hạn" : "Unlimited")}
+              {tx("Tối đa", "Cap")}: {usage.data?.workflow_limit?.toLocaleString() ?? (tx("Không giới hạn", "Unlimited"))}
             </p>
           </Card>
 
           <Card className="shadow-card border-border/80 p-4">
             <div className="flex items-center justify-between text-muted-foreground">
-              <span className="text-xs font-semibold uppercase tracking-wider">{locale === "vi" ? "Lưu trữ kiến thức" : "Knowledge Storage"}</span>
+              <span className="text-xs font-semibold uppercase tracking-wider">{tx("Lưu trữ kiến thức", "Knowledge Storage")}</span>
               <HardDrive className="h-4 w-4 text-amber-500" />
             </div>
-            <p className="mt-2 text-xl font-bold font-mono text-foreground">{storageMB} {locale === "vi" ? "MB" : "MB"}</p>
-            <p className="mt-0.5 text-[11px] font-mono text-muted-foreground">{locale === "vi" ? "Tối đa" : "Cap"}: {storageLimitMB}</p>
+            <p className="mt-2 text-xl font-bold font-mono text-foreground">{storageMB} {tx("MB", "MB")}</p>
+            <p className="mt-0.5 text-[11px] font-mono text-muted-foreground">{tx("Tối đa", "Cap")}: {storageLimitMB}</p>
           </Card>
         </div>
       </section>
@@ -276,22 +276,22 @@ export default function QuotasAndBudgetsPage() {
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-border/60 pb-4">
             <div>
               <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
-                <ShieldCheck className="h-5 w-5 text-primary" /> {locale === "vi" ? "Cài đặt chính sách tiếp nhận & chi tiêu" : "Admission & Spend Policy Settings"}
+                <ShieldCheck className="h-5 w-5 text-primary" /> {tx("Cài đặt chính sách tiếp nhận & chi tiêu", "Admission & Spend Policy Settings")}
               </h2>
               <p className="mt-1 text-xs text-muted-foreground">
-                {locale === "vi" ? "Thiết lập ngưỡng cho giới hạn số lượng yêu cầu, số luồng chạy đồng thời và hạn mức ngân sách trên toàn bộ thành viên tổ chức." : "Set thresholds for rate limits, runtime concurrency, and budget caps across all organization members."}
+                {tx("Thiết lập ngưỡng cho giới hạn số lượng yêu cầu, số luồng chạy đồng thời và hạn mức ngân sách trên toàn bộ thành viên tổ chức.", "Set thresholds for rate limits, runtime concurrency, and budget caps across all organization members.")}
               </p>
             </div>
 
             <div className="flex items-center gap-2">
-              <Label className="text-xs font-semibold text-muted-foreground uppercase">{locale === "vi" ? "Chế độ:" : "Mode:"}</Label>
+              <Label className="text-xs font-semibold text-muted-foreground uppercase">{tx("Chế độ:", "Mode:")}</Label>
               <Select
                 className="w-36 text-xs"
                 value={form.enforcement_mode}
                 onChange={(e) => setField("enforcement_mode", e.target.value as any)}
               >
-                <option value="enforce">{locale === "vi" ? "Thực thi (Giới hạn cứng)" : "Enforce (Hard Cap)"}</option>
-                <option value="observe">{locale === "vi" ? "Quan sát (Chỉ ghi log)" : "Observe (Log Only)"}</option>
+                <option value="enforce">{tx("Thực thi (Giới hạn cứng)", "Enforce (Hard Cap)")}</option>
+                <option value="observe">{tx("Quan sát (Chỉ ghi log)", "Observe (Log Only)")}</option>
               </Select>
             </div>
           </div>
@@ -299,7 +299,7 @@ export default function QuotasAndBudgetsPage() {
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             <div className="space-y-2">
               <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                {locale === "vi" ? "Yêu cầu mỗi phút" : "Requests Per Minute"}
+                {tx("Yêu cầu mỗi phút", "Requests Per Minute")}
               </Label>
               <Input
                 type="number"
@@ -309,12 +309,12 @@ export default function QuotasAndBudgetsPage() {
                 placeholder="60"
                 className="text-xs font-mono"
               />
-              <p className="text-[11px] text-muted-foreground">{locale === "vi" ? "Giới hạn tốc độ tiếp nhận API cho tất cả các yêu cầu của người dùng." : "API admission rate limit for all user requests."}</p>
+              <p className="text-[11px] text-muted-foreground">{tx("Giới hạn tốc độ tiếp nhận API cho tất cả các yêu cầu của người dùng.", "API admission rate limit for all user requests.")}</p>
             </div>
 
             <div className="space-y-2">
               <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                {locale === "vi" ? "Số lần chạy tác nhân mỗi phút" : "Agent Runs Per Minute"}
+                {tx("Số lần chạy tác nhân mỗi phút", "Agent Runs Per Minute")}
               </Label>
               <Input
                 type="number"
@@ -324,12 +324,12 @@ export default function QuotasAndBudgetsPage() {
                 placeholder="15"
                 className="text-xs font-mono"
               />
-              <p className="text-[11px] text-muted-foreground">{locale === "vi" ? "Số lần gọi tác nhân phụ đồng thời tối đa mỗi phút." : "Maximum concurrent subagent invocations per minute."}</p>
+              <p className="text-[11px] text-muted-foreground">{tx("Số lần gọi tác nhân phụ đồng thời tối đa mỗi phút.", "Maximum concurrent subagent invocations per minute.")}</p>
             </div>
 
             <div className="space-y-2">
               <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                {locale === "vi" ? "Số lần chạy đồng thời tối đa" : "Max Concurrent Runs"}
+                {tx("Số lần chạy đồng thời tối đa", "Max Concurrent Runs")}
               </Label>
               <Input
                 type="number"
@@ -339,12 +339,12 @@ export default function QuotasAndBudgetsPage() {
                 placeholder="5"
                 className="text-xs font-mono"
               />
-              <p className="text-[11px] text-muted-foreground">{locale === "vi" ? "Số phiên thực thi đồng thời." : "Simultaneous execution worker leases."}</p>
+              <p className="text-[11px] text-muted-foreground">{tx("Số phiên thực thi đồng thời.", "Simultaneous execution worker leases.")}</p>
             </div>
 
             <div className="space-y-2">
               <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                {locale === "vi" ? "Hạn mức chi tiêu hàng tháng (USD $)" : "Monthly Spend Cap (USD $)"}
+                {tx("Hạn mức chi tiêu hàng tháng (USD $)", "Monthly Spend Cap (USD $)")}
               </Label>
               <Input
                 type="number"
@@ -355,37 +355,37 @@ export default function QuotasAndBudgetsPage() {
                 placeholder="100.00"
                 className="text-xs font-mono font-semibold"
               />
-              <p className="text-[11px] text-muted-foreground">{locale === "vi" ? "Ngưỡng dừng cứng cho lượng token mô hình tiêu thụ." : "Hard stop threshold for model token burn."}</p>
+              <p className="text-[11px] text-muted-foreground">{tx("Ngưỡng dừng cứng cho lượng token mô hình tiêu thụ.", "Hard stop threshold for model token burn.")}</p>
             </div>
 
             <div className="space-y-2">
               <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                {locale === "vi" ? "Giới hạn lưu trữ kiến thức (MB)" : "Knowledge Storage Cap (MB)"}
+                {tx("Giới hạn lưu trữ kiến thức (MB)", "Knowledge Storage Cap (MB)")}
               </Label>
               <Input
                 type="number"
                 min="0"
                 value={form.max_storage_mb}
                 onChange={(e) => setField("max_storage_mb", e.target.value)}
-                placeholder={locale === "vi" ? "Để trống cho Không giới hạn" : "Leave empty for Unlimited"}
+                placeholder={tx("Để trống cho Không giới hạn", "Leave empty for Unlimited")}
                 className="text-xs font-mono"
               />
-              <p className="text-[11px] text-muted-foreground">{locale === "vi" ? "Tổng giới hạn lưu trữ file & vector tính bằng MB." : "Total vector & file storage ceiling in MB."}</p>
+              <p className="text-[11px] text-muted-foreground">{tx("Tổng giới hạn lưu trữ file & vector tính bằng MB.", "Total vector & file storage ceiling in MB.")}</p>
             </div>
 
             <div className="space-y-2">
               <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                {locale === "vi" ? "Số tác nhân đăng ký tối đa" : "Max Registered Agents"}
+                {tx("Số tác nhân đăng ký tối đa", "Max Registered Agents")}
               </Label>
               <Input
                 type="number"
                 min="0"
                 value={form.max_agents}
                 onChange={(e) => setField("max_agents", e.target.value)}
-                placeholder={locale === "vi" ? "Để trống cho Không giới hạn" : "Leave empty for Unlimited"}
+                placeholder={tx("Để trống cho Không giới hạn", "Leave empty for Unlimited")}
                 className="text-xs font-mono"
               />
-              <p className="text-[11px] text-muted-foreground">{locale === "vi" ? "Giới hạn tổng số persona tác nhân được định cấu hình trong studio." : "Limit total configured agent personas in studio."}</p>
+              <p className="text-[11px] text-muted-foreground">{tx("Giới hạn tổng số persona tác nhân được định cấu hình trong studio.", "Limit total configured agent personas in studio.")}</p>
             </div>
           </div>
         </Card>

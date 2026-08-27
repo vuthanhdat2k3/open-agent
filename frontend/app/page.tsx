@@ -13,7 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { useTranslation } from "@/lib/i18n";
 
 export default function Dashboard() {
-  const { t, dict, locale } = useTranslation();
+  const { t, dict, locale, tx } = useTranslation();
   const role = useCurrentRole();
   const isAdmin = role === "admin" || role === "platform_admin" || role === "operator";
   const me = useMe();
@@ -55,19 +55,19 @@ export default function Dashboard() {
   const isEndUser = role === "user";
 
   const heroHeading = isPlatformAdmin
-    ? (locale === "vi" ? "Quản trị Nền tảng & Phân bổ Tenant" : "Platform Administration & Tenant Management")
+    ? (tx("Quản trị Nền tảng & Phân bổ Tenant", "Platform Administration & Tenant Management"))
     : isOrgAdmin
       ? dict.pages.dashboard.titleAdmin
       : isOperator
-        ? (locale === "vi" ? "Trung tâm Thiết kế & Giám sát Agentic DAG" : "AI Studio, Workflow & Evaluator")
+        ? (tx("Trung tâm Thiết kế & Giám sát Agentic DAG", "AI Studio, Workflow & Evaluator"))
         : dict.pages.dashboard.titleUser;
 
   const heroSubtitle = isPlatformAdmin
-    ? (locale === "vi" ? "Quản lý danh sách các Tổ chức (Tenants), bổ nhiệm Org Admin và kiểm soát trạng thái hoạt động toàn platform." : "Manage multi-tenant organizations, assign Org Admins, and govern global platform health.")
+    ? (tx("Quản lý danh sách các Tổ chức (Tenants), bổ nhiệm Org Admin và kiểm soát trạng thái hoạt động toàn platform.", "Manage multi-tenant organizations, assign Org Admins, and govern global platform health."))
     : isOrgAdmin
       ? dict.pages.dashboard.descAdmin
       : isOperator
-        ? (locale === "vi" ? `${agents.data?.length ?? 0} agent · ${workflows.data?.length ?? 0} workflow đã cấu hình. Thiết kế prompt, xây dựng workflow hoặc chạy evaluation benchmark.` : `${agents.data?.length ?? 0} agents · ${workflows.data?.length ?? 0} workflows configured. Design prompts, build workflows, or run benchmarks.`)
+        ? (tx("${agents.data?.length ?? 0} agent · ${workflows.data?.length ?? 0} workflow đã cấu hình. Thiết kế prompt, xây dựng workflow hoặc chạy evaluation benchmark.", "${agents.data?.length ?? 0} agents · ${workflows.data?.length ?? 0} workflows configured. Design prompts, build workflows, or run benchmarks."))
         : dict.pages.dashboard.descUser;
 
   return (
@@ -103,14 +103,14 @@ export default function Dashboard() {
               <Button asChild variant="outline" className="gap-2"><Link href="/workflows"><Workflow className="h-4 w-4" aria-hidden="true" />{dict.pages.dashboard.btnRunWorkflow}</Link></Button>
             </>
           )}
-          {grafanaUrl && <Button asChild variant="ghost" className="gap-2"><a href={grafanaUrl} target="_blank" rel="noreferrer"><BarChart3 className="h-4 w-4" aria-hidden="true" />{locale === "vi" ? "Grafana" : "Grafana"}</a></Button>}
+          {grafanaUrl && <Button asChild variant="ghost" className="gap-2"><a href={grafanaUrl} target="_blank" rel="noreferrer"><BarChart3 className="h-4 w-4" aria-hidden="true" />{tx("Grafana", "Grafana")}</a></Button>}
         </div>
       </section>
 
       {hasResourceError && (
         <ErrorState
-          title={locale === "vi" ? "Không thể tải toàn bộ tài nguyên" : "Failed to load all resources"}
-          description={locale === "vi" ? "Một số số liệu hoặc agent chưa tải được. Hãy thử lại." : "Some metrics or agents could not be loaded. Please retry."}
+          title={tx("Không thể tải toàn bộ tài nguyên", "Failed to load all resources")}
+          description={tx("Một số số liệu hoặc agent chưa tải được. Hãy thử lại.", "Some metrics or agents could not be loaded. Please retry.")}
           onRetry={() => void retryResources()}
         />
       )}
@@ -139,9 +139,9 @@ export default function Dashboard() {
                   <Badge variant={approval.risk_level === "HIGH" ? "destructive" : "outline"}>
                     {approval.risk_level === "HIGH" ? "HIGH RISK" : "STANDARD"}
                   </Badge>
-                  <span className="text-xs text-muted-foreground">{expiry(approval.expires_at, locale)}</span>
+                  <span className="text-xs text-muted-foreground">{expiry(approval.expires_at, locale, tx)}</span>
                 </div>
-                <p className="mt-3 font-semibold text-foreground">{approvalTitle(approval, locale)}</p>
+                <p className="mt-3 font-semibold text-foreground">{approvalTitle(approval, locale, tx)}</p>
                 <p className="mt-1 truncate text-sm text-muted-foreground">
                   {String(approval.args_snapshot?.summary || approval.args_snapshot?.title || "Review before execution")}
                 </p>
@@ -191,15 +191,15 @@ export default function Dashboard() {
                     <div className="min-w-0">
                       <p className="truncate font-semibold text-foreground">{agent.name}</p>
                       <p className="mt-1 line-clamp-2 text-sm leading-relaxed text-muted-foreground">
-                        {agent.description || (locale === "vi" ? "Chưa có mô tả" : "No description")}
+                        {agent.description || (tx("Chưa có mô tả", "No description"))}
                       </p>
                     </div>
                   </div>
                   <div className="mt-5 flex items-center justify-between">
                     <span className="rounded-full bg-muted px-2 py-1 text-xs font-medium text-muted-foreground">
                       {agent.kind === "orchestrator"
-                        ? (locale === "vi" ? "Điều phối" : "Orchestrator")
-                        : (locale === "vi" ? "Chuyên trách" : "Worker")}
+                        ? (tx("Điều phối", "Orchestrator"))
+                        : (tx("Chuyên trách", "Worker"))}
                     </span>
                     <span className="flex items-center gap-1 text-xs font-medium text-primary">
                       {dict.nav.chat} <ArrowRight className="h-3 w-3" aria-hidden="true" />
@@ -213,7 +213,7 @@ export default function Dashboard() {
           <EmptyState
             icon={Bot}
             title={dict.pages.dashboard.noAgentsTitle}
-            description={isAdmin ? dict.pages.dashboard.noAgentsDesc : (locale === "vi" ? "Chưa có agent nào được phân quyền." : "No agents currently configured.")}
+            description={isAdmin ? dict.pages.dashboard.noAgentsDesc : (tx("Chưa có agent nào được phân quyền.", "No agents currently configured."))}
             action={isAdmin ? <Button asChild><Link href="/agents">{dict.pages.dashboard.createFirstAgent}</Link></Button> : undefined}
           />
         )}
@@ -242,7 +242,7 @@ export default function Dashboard() {
                 {dict.pages.dashboard.recentUsage}
               </CardTitle>
               <p className="text-sm text-muted-foreground">
-                {locale === "vi" ? "Hoạt động của agent và phân tích mức tiêu thụ token" : "Agent activity and token usage analytics"}
+                {tx("Hoạt động của agent và phân tích mức tiêu thụ token", "Agent activity and token usage analytics")}
               </p>
             </CardHeader>
             <CardContent className="p-0">
@@ -251,8 +251,8 @@ export default function Dashboard() {
               ) : usage.isError ? (
                 <div className="p-6">
                   <ErrorState
-                    title={locale === "vi" ? "Không thể tải usage" : "Failed to load usage"}
-                    description={locale === "vi" ? "Số liệu thống kê chưa sẵn sàng. Hãy thử lại." : "Usage summary is not available. Please retry."}
+                    title={tx("Không thể tải usage", "Failed to load usage")}
+                    description={tx("Số liệu thống kê chưa sẵn sàng. Hãy thử lại.", "Usage summary is not available. Please retry.")}
                     onRetry={() => void usage.refetch()}
                   />
                 </div>
@@ -260,12 +260,12 @@ export default function Dashboard() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>{locale === "vi" ? "Agent" : "Agent"}</TableHead>
-                      <TableHead>{locale === "vi" ? "Model" : "Model"}</TableHead>
-                      <TableHead className="text-right">{locale === "vi" ? "Calls" : "Calls"}</TableHead>
-                      <TableHead className="text-right">{locale === "vi" ? "In Tokens" : "In Tokens"}</TableHead>
-                      <TableHead className="text-right">{locale === "vi" ? "Out Tokens" : "Out Tokens"}</TableHead>
-                      <TableHead className="text-right">{locale === "vi" ? "Cost" : "Cost"}</TableHead>
+                      <TableHead>{tx("Agent", "Agent")}</TableHead>
+                      <TableHead>{tx("Model", "Model")}</TableHead>
+                      <TableHead className="text-right">{tx("Calls", "Calls")}</TableHead>
+                      <TableHead className="text-right">{tx("In Tokens", "In Tokens")}</TableHead>
+                      <TableHead className="text-right">{tx("Out Tokens", "Out Tokens")}</TableHead>
+                      <TableHead className="text-right">{tx("Cost", "Cost")}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -285,8 +285,8 @@ export default function Dashboard() {
                 <div className="p-6">
                   <EmptyState
                     icon={BarChart3}
-                    title={locale === "vi" ? "Chưa có dữ liệu tiêu thụ" : "No usage recorded yet"}
-                    description={locale === "vi" ? "Bắt đầu bằng cách tạo agent hoặc thực hiện hội thoại chat." : "Start by creating an agent or running a chat."}
+                    title={tx("Chưa có dữ liệu tiêu thụ", "No usage recorded yet")}
+                    description={tx("Bắt đầu bằng cách tạo agent hoặc thực hiện hội thoại chat.", "Start by creating an agent or running a chat.")}
                   />
                 </div>
               )}

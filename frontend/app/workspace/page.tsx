@@ -67,7 +67,7 @@ const executionVariant: Record<string, "default" | "secondary" | "destructive" |
 };
 
 export default function WorkspacePage() {
-  const { t, dict, locale } = useTranslation();
+  const { t, dict, locale, tx } = useTranslation();
   const [tabParam, setTabParam] = useUrlSearchParam("tab");
   const activeTab = (tabParam as "artifacts" | "executions") || "artifacts";
 
@@ -109,7 +109,7 @@ export default function WorkspacePage() {
       const text = await res.text();
       setPreviewContent(text);
     } catch {
-      setPreviewContent(locale === "vi" ? "Không thể tải nội dung tệp tin." : "Unable to load artifact content.");
+      setPreviewContent(tx("Không thể tải nội dung tệp tin.", "Unable to load artifact content."));
     } finally {
       setPreviewLoading(false);
     }
@@ -146,7 +146,7 @@ export default function WorkspacePage() {
   async function runWorkspaceArtifact(artifact: WorkspaceArtifact) {
     try {
       await runArtifact.mutateAsync(artifact.id);
-      toast.success(locale === "vi" ? `Đã khởi chạy ${artifact.path}` : `Started ${artifact.path}`);
+      toast.success(tx("Đã khởi chạy ${artifact.path}", "Started ${artifact.path}"));
     } catch (err: any) {
       toast.error(err.message);
     }
@@ -168,7 +168,7 @@ export default function WorkspacePage() {
             }}
           >
             <RefreshCw className="h-4 w-4" />
-            {locale === "vi" ? "Làm mới" : "Refresh"}
+            {tx("Làm mới", "Refresh")}
           </Button>
         }
       />
@@ -182,7 +182,7 @@ export default function WorkspacePage() {
           className="gap-2 font-medium"
         >
           <FileCode2 className="h-4 w-4 text-primary" />
-          {locale === "vi" ? "Tệp Artifacts" : "Artifacts"} ({artifacts.data?.length ?? 0})
+          {tx("Tệp Artifacts", "Artifacts")} ({artifacts.data?.length ?? 0})
         </Button>
 
         <Button
@@ -192,7 +192,7 @@ export default function WorkspacePage() {
           className="gap-2 font-medium"
         >
           <TerminalSquare className="h-4 w-4 text-primary" />
-          {locale === "vi" ? "Lịch sử Thực thi Sandbox" : "Sandbox Executions"} ({executions.data?.length ?? 0})
+          {tx("Lịch sử Thực thi Sandbox", "Sandbox Executions")} ({executions.data?.length ?? 0})
         </Button>
       </div>
 
@@ -205,8 +205,8 @@ export default function WorkspacePage() {
             ) : artifacts.isError ? (
               <div className="p-6">
                 <ErrorState
-                  title={locale === "vi" ? "Không thể tải artifacts" : "Unable to load artifacts"}
-                  description={locale === "vi" ? "Dữ liệu artifacts không khả dụng." : "Workspace artifacts could not be loaded."}
+                  title={tx("Không thể tải artifacts", "Unable to load artifacts")}
+                  description={tx("Dữ liệu artifacts không khả dụng.", "Workspace artifacts could not be loaded.")}
                   onRetry={() => void artifacts.refetch()}
                 />
               </div>
@@ -215,11 +215,11 @@ export default function WorkspacePage() {
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/40">
-                      <TableHead className="text-xs font-semibold">{locale === "vi" ? "Đường dẫn tệp" : "Path"}</TableHead>
-                      <TableHead className="text-xs font-semibold">{locale === "vi" ? "Kích thước" : "Size"}</TableHead>
-                      <TableHead className="text-xs font-semibold">{locale === "vi" ? "Trạng thái" : "Status"}</TableHead>
-                      <TableHead className="text-xs font-semibold">{locale === "vi" ? "Cập nhật" : "Updated"}</TableHead>
-                      <TableHead className="text-right text-xs font-semibold">{locale === "vi" ? "Thao tác" : "Actions"}</TableHead>
+                      <TableHead className="text-xs font-semibold">{tx("Đường dẫn tệp", "Path")}</TableHead>
+                      <TableHead className="text-xs font-semibold">{tx("Kích thước", "Size")}</TableHead>
+                      <TableHead className="text-xs font-semibold">{tx("Trạng thái", "Status")}</TableHead>
+                      <TableHead className="text-xs font-semibold">{tx("Cập nhật", "Updated")}</TableHead>
+                      <TableHead className="text-right text-xs font-semibold">{tx("Thao tác", "Actions")}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -236,11 +236,11 @@ export default function WorkspacePage() {
                         </TableCell>
                         <TableCell>
                           <Badge variant={artifact.exists ? "default" : "secondary"} className="text-[10px]">
-                            {artifact.exists ? (locale === "vi" ? "Đã lưu" : "stored") : (locale === "vi" ? "Thất lạc" : "missing")}
+                            {artifact.exists ? (tx("Đã lưu", "stored")) : (tx("Thất lạc", "missing"))}
                           </Badge>
                         </TableCell>
                         <TableCell className="text-muted-foreground font-mono text-xs">
-                          {new Date(artifact.updated_at).toLocaleString(locale === "vi" ? "vi-VN" : "en-US")}
+                          {new Date(artifact.updated_at).toLocaleString(tx("vi-VN", "en-US"))}
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-1.5">
@@ -291,9 +291,9 @@ export default function WorkspacePage() {
                             {isAdmin && (
                               <ConfirmDialog
                                 trigger={<Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-destructive" aria-label={`Delete ${artifact.path}`}><Trash2 className="h-3.5 w-3.5" /></Button>}
-                                title={locale === "vi" ? `Xóa ${artifact.path}?` : `Delete ${artifact.path}?`}
-                                description={locale === "vi" ? "Tệp workspace này sẽ bị xóa vĩnh viễn khỏi sandbox." : "This workspace artifact will be permanently removed."}
-                                confirmLabel={locale === "vi" ? "Xóa tệp" : "Delete artifact"}
+                                title={tx("Xóa ${artifact.path}?", "Delete ${artifact.path}?")}
+                                description={tx("Tệp workspace này sẽ bị xóa vĩnh viễn khỏi sandbox.", "This workspace artifact will be permanently removed.")}
+                                confirmLabel={tx("Xóa tệp", "Delete artifact")}
                                 destructive
                                 onConfirm={() => deleteArtifact.mutateAsync(artifact.id).then(() => undefined)}
                               />
@@ -318,8 +318,8 @@ export default function WorkspacePage() {
             ) : (
               <EmptyState
                 icon={FileCode2}
-                title={locale === "vi" ? "Chưa có artifact nào" : "No artifacts yet"}
-                description={locale === "vi" ? "Yêu cầu Agent viết tệp hoặc chạy tác vụ để sinh artifacts." : "Ask an agent to write a file with write_file."}
+                title={tx("Chưa có artifact nào", "No artifacts yet")}
+                description={tx("Yêu cầu Agent viết tệp hoặc chạy tác vụ để sinh artifacts.", "Ask an agent to write a file with write_file.")}
               />
             )}
           </CardContent>
@@ -335,8 +335,8 @@ export default function WorkspacePage() {
             ) : executions.isError ? (
               <div className="p-6">
                 <ErrorState
-                  title={locale === "vi" ? "Không thể tải lịch sử thực thi" : "Unable to load executions"}
-                  description={locale === "vi" ? "Lịch sử sandbox không khả dụng." : "Sandbox execution history could not be loaded."}
+                  title={tx("Không thể tải lịch sử thực thi", "Unable to load executions")}
+                  description={tx("Lịch sử sandbox không khả dụng.", "Sandbox execution history could not be loaded.")}
                   onRetry={() => void executions.refetch()}
                 />
               </div>
@@ -345,10 +345,10 @@ export default function WorkspacePage() {
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/40">
-                      <TableHead className="text-xs font-semibold">{locale === "vi" ? "Tác vụ / Lệnh" : "Run"}</TableHead>
-                      <TableHead className="text-xs font-semibold">{locale === "vi" ? "Trạng thái" : "Status"}</TableHead>
-                      <TableHead className="text-right text-xs font-semibold">{locale === "vi" ? "Thời gian" : "Time"}</TableHead>
-                      <TableHead className="text-right text-xs font-semibold">{locale === "vi" ? "Thao tác" : "Actions"}</TableHead>
+                      <TableHead className="text-xs font-semibold">{tx("Tác vụ / Lệnh", "Run")}</TableHead>
+                      <TableHead className="text-xs font-semibold">{tx("Trạng thái", "Status")}</TableHead>
+                      <TableHead className="text-right text-xs font-semibold">{tx("Thời gian", "Time")}</TableHead>
+                      <TableHead className="text-right text-xs font-semibold">{tx("Thao tác", "Actions")}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -390,9 +390,9 @@ export default function WorkspacePage() {
                             {isAdmin && (
                               <ConfirmDialog
                                 trigger={<Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-destructive" aria-label={`Delete execution ${execution.id}`}><Trash2 className="h-3.5 w-3.5" /></Button>}
-                                title={locale === "vi" ? "Xóa bản ghi thực thi này?" : "Delete this execution?"}
-                                description={locale === "vi" ? "Bản ghi thực thi và kết quả output sẽ bị xóa vĩnh viễn." : "The execution record and its output preview will be removed."}
-                                confirmLabel={locale === "vi" ? "Xóa bản ghi" : "Delete execution"}
+                                title={tx("Xóa bản ghi thực thi này?", "Delete this execution?")}
+                                description={tx("Bản ghi thực thi và kết quả output sẽ bị xóa vĩnh viễn.", "The execution record and its output preview will be removed.")}
+                                confirmLabel={tx("Xóa bản ghi", "Delete execution")}
                                 destructive
                                 onConfirm={() => deleteExecution.mutateAsync(execution.id).then(() => undefined)}
                               />
@@ -417,8 +417,8 @@ export default function WorkspacePage() {
             ) : (
               <EmptyState
                 icon={TerminalSquare}
-                title={locale === "vi" ? "Chưa có lần thực thi nào" : "No executions yet"}
-                description={locale === "vi" ? "Các lệnh code chạy trong sandbox container sẽ xuất hiện tại đây." : "Code runs executed in isolated containers will be listed here."}
+                title={tx("Chưa có lần thực thi nào", "No executions yet")}
+                description={tx("Các lệnh code chạy trong sandbox container sẽ xuất hiện tại đây.", "Code runs executed in isolated containers will be listed here.")}
               />
             )}
           </CardContent>
@@ -444,7 +444,7 @@ export default function WorkspacePage() {
           </DialogHeader>
           <div className="max-h-[60vh] overflow-auto rounded-lg border border-border/80 bg-muted/30 p-4 font-mono text-xs">
             {previewLoading ? (
-              <p className="text-muted-foreground">{locale === "vi" ? "Đang tải nội dung tệp..." : "Loading content..."}</p>
+              <p className="text-muted-foreground">{tx("Đang tải nội dung tệp...", "Loading content...")}</p>
             ) : (
               <pre className="whitespace-pre-wrap">{previewContent}</pre>
             )}
@@ -463,40 +463,40 @@ export default function WorkspacePage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-sm font-semibold">
               <TerminalSquare className="h-4 w-4 text-primary" />
-              {locale === "vi" ? "Chi tiết thực thi" : "Execution Details"}
+              {tx("Chi tiết thực thi", "Execution Details")}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 text-xs">
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <span className="font-semibold text-muted-foreground">{locale === "vi" ? "Nguồn:" : "Source:"}</span>{" "}
+                <span className="font-semibold text-muted-foreground">{tx("Nguồn:", "Source:")}</span>{" "}
                 <span className="font-mono">{viewExecution?.source}</span>
               </div>
               <div>
-                <span className="font-semibold text-muted-foreground">{locale === "vi" ? "Trạng thái:" : "Status:"}</span>{" "}
+                <span className="font-semibold text-muted-foreground">{tx("Trạng thái:", "Status:")}</span>{" "}
                 <Badge variant={executionVariant[viewExecution?.status || ""] || "secondary"} className="text-[10px]">
                   {viewExecution?.status}
                 </Badge>
               </div>
               <div>
-                <span className="font-semibold text-muted-foreground">{locale === "vi" ? "Mã thoát:" : "Exit code:"}</span>{" "}
+                <span className="font-semibold text-muted-foreground">{tx("Mã thoát:", "Exit code:")}</span>{" "}
                 <span className="font-mono">{viewExecution?.exit_code ?? "—"}</span>
               </div>
               <div>
-                <span className="font-semibold text-muted-foreground">{locale === "vi" ? "Thời lượng:" : "Duration:"}</span>{" "}
+                <span className="font-semibold text-muted-foreground">{tx("Thời lượng:", "Duration:")}</span>{" "}
                 <span className="font-mono">{formatMs(viewExecution?.duration_ms ?? null)}</span>
               </div>
             </div>
             {viewExecution?.command && (
               <div>
-                <p className="mb-1 font-semibold text-muted-foreground">{locale === "vi" ? "Lệnh thực thi:" : "Command:"}</p>
+                <p className="mb-1 font-semibold text-muted-foreground">{tx("Lệnh thực thi:", "Command:")}</p>
                 <pre className="rounded bg-muted/40 p-2 font-mono">{viewExecution.command}</pre>
               </div>
             )}
             <div>
-              <p className="mb-1 font-semibold text-muted-foreground">{locale === "vi" ? "Kết quả Output / Logs:" : "Output preview:"}</p>
+              <p className="mb-1 font-semibold text-muted-foreground">{tx("Kết quả Output / Logs:", "Output preview:")}</p>
               <pre className="max-h-60 overflow-auto rounded bg-muted/40 p-2 font-mono whitespace-pre-wrap">
-                {viewExecution?.stdout_preview || (locale === "vi" ? "(không có output)" : "(no output)")}
+                {viewExecution?.stdout_preview || (tx("(không có output)", "(no output)"))}
               </pre>
             </div>
           </div>

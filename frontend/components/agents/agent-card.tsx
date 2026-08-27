@@ -32,7 +32,7 @@ export function AgentCard({
   onReleases,
   onDelete,
 }: AgentCardProps) {
-  const { t, locale } = useTranslation();
+  const { t, locale, tx } = useTranslation();
   const agentModel = models?.find((m) => m.id === agent.model_id);
 
   return (
@@ -74,9 +74,9 @@ export function AgentCard({
           </Button>
           <ConfirmDialog
             trigger={<Button size="icon" variant="ghost" className="h-10 w-10 text-muted-foreground hover:text-destructive" aria-label={`Delete ${agent.name}`}><Trash2 className="h-3.5 w-3.5" /></Button>}
-            title={locale === "vi" ? `Xóa agent ${agent.name}?` : `Delete ${agent.name}?`}
-            description={locale === "vi" ? "Agent này và toàn bộ cấu hình liên quan sẽ bị xóa vĩnh viễn." : "This agent and its configuration will be permanently removed."}
-            confirmLabel={locale === "vi" ? "Xóa agent" : "Delete agent"}
+            title={tx("Xóa agent ${agent.name}?", "Delete ${agent.name}?")}
+            description={tx("Agent này và toàn bộ cấu hình liên quan sẽ bị xóa vĩnh viễn.", "This agent and its configuration will be permanently removed.")}
+            confirmLabel={tx("Xóa agent", "Delete agent")}
             destructive
             onConfirm={() => onDelete(agent.id)}
           />
@@ -90,7 +90,7 @@ export function AgentCard({
 
       <div className="mt-3 flex items-center gap-2 text-[10px] text-muted-foreground">
         <History className="h-3 w-3" />
-        {locale === "vi" ? `Phiên bản phát hành v${agent.latest_release_number}` : `Active release v${agent.latest_release_number}`}
+        {tx("Phiên bản phát hành v${agent.latest_release_number}", "Active release v${agent.latest_release_number}")}
       </div>
 
       {/* Model badge row */}
@@ -100,10 +100,10 @@ export function AgentCard({
             {agentModel.tier}
           </span>
           <span className="text-[10px] font-mono text-muted-foreground/60 bg-muted/30 border border-border/30 px-2 py-0.5 rounded-full">
-            {locale === "vi" ? "ctx" : "ctx"}{agentModel.context_window.toLocaleString()}
+            {tx("ctx", "ctx")}{agentModel.context_window.toLocaleString()}
           </span>
           <span className="text-[10px] font-mono text-muted-foreground/60 bg-muted/30 border border-border/30 px-2 py-0.5 rounded-full">
-            {locale === "vi" ? "T=" : "T="}{agent.temperature.toFixed(1)}
+            {tx("T=", "T=")}{agent.temperature.toFixed(1)}
           </span>
           <span className="text-[10px] font-mono text-muted-foreground/60 bg-muted/30 border border-border/30 px-2 py-0.5 rounded-full">
             ×{agent.max_iterations}
@@ -115,7 +115,7 @@ export function AgentCard({
       {agent.tools.length > 0 && (
         <div className="mt-4 pt-3 border-t border-border/40 space-y-1.5">
           <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/80">
-            {locale === "vi" ? `Công cụ đã cấp quyền (${agent.tools.length})` : `Granted tools (${agent.tools.length})`}
+            {tx("Công cụ đã cấp quyền (${agent.tools.length})", "Granted tools (${agent.tools.length})")}
           </div>
           <div className="flex flex-wrap gap-1.5">
             {agent.tools.map((t) => (
