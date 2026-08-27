@@ -17,6 +17,7 @@ interface LanguageContextType {
   setLocale: (locale: Locale) => void;
   dict: TranslationDictionary;
   t: (path: string, defaultValue?: string) => string;
+  tx: (viText: string, enText: string) => string;
 }
 
 const LanguageContext = React.createContext<LanguageContextType>({
@@ -24,6 +25,7 @@ const LanguageContext = React.createContext<LanguageContextType>({
   setLocale: () => {},
   dict: vi,
   t: (_path: string, defaultValue?: string) => defaultValue || _path,
+  tx: (viText: string) => viText,
 });
 
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
@@ -69,8 +71,15 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
     [dict]
   );
 
+  const tx = React.useCallback(
+    (viText: string, enText: string): string => {
+      return locale === "en" ? enText : viText;
+    },
+    [locale]
+  );
+
   return (
-    <LanguageContext.Provider value={{ locale, setLocale, dict, t }}>
+    <LanguageContext.Provider value={{ locale, setLocale, dict, t, tx }}>
       {children}
     </LanguageContext.Provider>
   );
@@ -81,6 +90,6 @@ export function useLanguage() {
 }
 
 export function useTranslation() {
-  const { t, dict, locale, setLocale } = React.useContext(LanguageContext);
-  return { t, dict, locale, setLocale };
+  const { t, tx, dict, locale, setLocale } = React.useContext(LanguageContext);
+  return { t, tx, dict, locale, setLocale };
 }

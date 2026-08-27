@@ -183,7 +183,7 @@ export default function AgentsPage() {
     setIsSavingCompanion(true);
     try {
       saveCompanionConfig(companionConfig);
-      toast.success((locale === "vi" ? "Cài đặt Avatar & Operator Đồng hành 3D đã được lưu thành công!" : "3D Companion Avatar & Operator settings saved successfully!"));
+      toast.success((locale === "vi" ? "Đã lưu cấu hình Trợ lý 3D & Operator" : "3D Companion & Operator settings saved successfully"));
     } catch (err: any) {
       toast.error(err.message || (locale === "vi" ? "Lưu cài đặt đồng hành thất bại" : "Failed to save companion settings"));
     } finally {
@@ -250,7 +250,7 @@ export default function AgentsPage() {
     if (!releaseAgent) return;
     try {
       await publishRelease.mutateAsync({ agentId: releaseAgent.id, version });
-      toast.success(locale === "vi" ? `Phiên bản ${version} đã được xuất bản` : `Version ${version} published`);
+      toast.success(locale === "vi" ? `Đã phát hành phiên bản ${version}` : `Version ${version} published`);
     } catch (error: any) {
       toast.error(error.message);
     }
@@ -311,7 +311,7 @@ export default function AgentsPage() {
       <PageHeader
         icon={Bot}
         title={dict.pages.agents.title}
-        description={locale === "vi" ? "Cấu hình AI agents, lời nhắc suy luận hệ thống, mô hình và kiểm soát truy cập công cụ." : "Configure AI agents, system reasoning prompts, models, and tool access control."}
+        description={locale === "vi" ? "Cấu hình AI agent, prompt hệ thống, mô hình và quyền truy cập công cụ." : "Configure AI agents, system prompts, models, and tool access control."}
         actions={
           <div className="flex items-center gap-2">
             <Button

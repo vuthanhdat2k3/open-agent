@@ -99,7 +99,7 @@ function TemplateCard({
   onOpen: (item: WorkflowCatalogItem) => void;
   onSetup: (item: WorkflowCatalogItem) => void;
 }) {
-  const { locale } = useTranslation();
+  const { locale, tx } = useTranslation();
   const Icon = workflowIcon(item.icon);
   return (
     <Card
@@ -198,7 +198,7 @@ function SetupDialog({
   onClose: () => void;
   onInstalled: (installation: WorkflowInstallation) => void;
 }) {
-    const { locale } = useTranslation();
+    const { locale, tx } = useTranslation();
   const queryClient = useQueryClient();
   const [step, setStep] = useState(1);
   const [scheduleKind, setScheduleKind] =
@@ -370,7 +370,7 @@ function SetupDialog({
                       className="mt-0.5 h-4 w-4 shrink-0 text-primary"
                       aria-hidden="true"
                     />
-                    {approvalLabel(item.side_effect_policy)}{locale === "vi" ? ". External actions are never silently executed." : ". External actions are never silently executed."}</li>
+                    {approvalLabel(item.side_effect_policy)}{tx(". Hành động bên ngoài không bao giờ được thực thi một cách âm thầm.", ". External actions are never silently executed.")}</li>
                   <li className="flex gap-2">
                     <Gauge
                       className="mt-0.5 h-4 w-4 shrink-0 text-primary"
@@ -460,7 +460,7 @@ function TemplateDetails({
   item: WorkflowCatalogItem | null;
   onClose: () => void;
 }) {
-    const { locale } = useTranslation();
+    const { locale, tx } = useTranslation();
   const Icon = item ? workflowIcon(item.icon) : Zap;
   return (
     <Dialog
@@ -548,7 +548,7 @@ function TemplateDetails({
 }
 
 export default function AutomationsPage() {
-  const { t, dict, locale } = useTranslation();
+  const { t, dict, locale, tx } = useTranslation();
   const queryClient = useQueryClient();
   const router = useRouter();
   const [view, setView] = useState<"discover" | "active">("discover");
