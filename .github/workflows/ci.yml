@@ -22,7 +22,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Create Python environment
         run: |
-          & 'C:\Users\PC\AppData\Local\Programs\Python\Python312\python.exe' -m venv .ci-venv
+          & 'C:\Users\PC\AppData\Local\Programs\Python\Python312\python.exe' -m venv ..\.ci-venv
       - name: Start Redis
         run: docker run -d --name openagent-ci-redis-${{ github.run_id }} -p 6379:6379 redis:7
       - name: Cache pip downloads
@@ -34,10 +34,10 @@ jobs:
           key: ${{ runner.os }}-pip-${{ hashFiles('backend/pyproject.toml', 'backend/requirements*.txt') }}
           restore-keys: |
             ${{ runner.os }}-pip-
-      - run: .\.ci-venv\Scripts\python.exe -m pip install -e ".[dev]"
-      - run: .\.ci-venv\Scripts\python.exe -m ruff check .
-      - run: .\.ci-venv\Scripts\python.exe -c "import yaml; yaml.safe_load(open('../observability/prometheus/alerts.yml'))"
-      - run: .\.ci-venv\Scripts\python.exe -m pytest -q
+      - run: ..\.ci-venv\Scripts\python.exe -m pip install -e ".[dev]"
+      - run: ..\.ci-venv\Scripts\python.exe -m ruff check .
+      - run: ..\.ci-venv\Scripts\python.exe -c "import yaml; yaml.safe_load(open('../observability/prometheus/alerts.yml'))"
+      - run: ..\.ci-venv\Scripts\python.exe -m pytest -q
       - name: Stop Redis
         if: always()
         run: docker rm -f openagent-ci-redis-${{ github.run_id }}
