@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.authz.policy import Role, has_permission
-from app.core.workflow.template_dags import TEMPLATE_DAGS
+from app.core.workflow.template_dags import TEMPLATE_DAGS, materialize_template_graph
 from app.db.base import Base
 from app.models.organization import Organization
 from app.services.workflow_service import WorkflowService
@@ -53,6 +53,46 @@ def test_template_dags_pass_validation() -> None:
     for _key, graph in TEMPLATE_DAGS.items():
         # The template DAG must satisfy the (backward-compatible) validator.
         WorkflowService.validate_graph(graph)
+
+
+def test_materialized_graph_binds_installation_runtime_settings() -> None:
+    graph = materialize_template_graph(
+        "weekly-account-review",
+        timezone="Asia/Ho_Chi_Minh",
+        schedule={"kind": "daily", "time": "07:30"},
+        settings={
+            "connection_id": "gmail-1",
+            "calendar_connection_id": "calendar-1",
+        },
+        default_agent_id="agent-1",
+    )
+    scheduler = next(node for node in graph["nodes"] if node["kind"] == "scheduler")
+    integration = next(node for node in graph["nodes"] if node["kind"] == "integration")
+    agent = next(node for node in graph["nodes"] if node["kind"] == "agent")
+    assert scheduler["parameters"] == {
+        "frequency": "daily",
+        "time": "07:30",
+        "timezone": "Asia/Ho_Chi_Minh",
+        "enabled": True,
+    }
+    assert integration["parameters"]["connection_id"] == "gmail-1"
+    assert integration["parameters"]["calendar_connection_id"] == "calendar-1"
+    assert agent["parameters"]["mode"] == "inherit"
+    assert agent["parameters"]["agent_id"] == "agent-1"
+
+
+def test_event_materialization_marks_event_trigger() -> None:
+    graph = materialize_template_graph(
+        "new-customer-intelligence",
+        timezone="Asia/Ho_Chi_Minh",
+        schedule={"kind": "event"},
+        settings={"connection_id": "gmail-1"},
+    )
+    assert not any(node["kind"] == "scheduler" for node in graph["nodes"])
+    input_node = next(node for node in graph["nodes"] if node["kind"] == "input")
+    integration = next(node for node in graph["nodes"] if node["kind"] == "integration")
+    assert input_node["parameters"]["trigger_type"] == "event"
+    assert integration["parameters"]["connection_id"] == "gmail-1"
 
 
 # --- ownership scoping through the service ---
