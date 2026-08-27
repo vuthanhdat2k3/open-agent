@@ -278,6 +278,7 @@ export interface NodeField {
   load_options_from?: "tools" | "models" | "agents" | "workflows" | "connections" | "users" | "categories";
   display?: { show?: Record<string, any[]>; hide?: Record<string, any[]> };
   type_options?: Record<string, any>;
+  advanced?: boolean;
   multiple?: boolean;
 }
 

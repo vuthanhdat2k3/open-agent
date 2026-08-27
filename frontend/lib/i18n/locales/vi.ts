@@ -215,6 +215,8 @@ export const vi: TranslationDictionary = {
       aiGenerating: 'AI đang xây dựng luồng workflow DAG...',
       nodeConfigTitle: 'Cấu hình node',
       nodeConfigEditing: 'Đang chỉnh sửa "{label}" ({kind})',
+      showAdvancedSettings: 'Hiện cài đặt nâng cao',
+      hideAdvancedSettings: 'Ẩn cài đặt nâng cao',
       labelName: 'Tên nhãn',
       deleteNode: 'Xóa node',
       runInput: 'Dữ liệu chạy',

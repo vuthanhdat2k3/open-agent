@@ -215,6 +215,8 @@ export const en: TranslationDictionary = {
       aiGenerating: 'AI is architecting multi-agent workflow DAG...',
       nodeConfigTitle: 'Node configuration',
       nodeConfigEditing: 'Editing "{label}" ({kind})',
+      showAdvancedSettings: 'Show advanced settings',
+      hideAdvancedSettings: 'Hide advanced settings',
       labelName: 'Label name',
       deleteNode: 'Delete node',
       runInput: 'Run input',
