@@ -141,6 +141,24 @@ def test_platform_admin_deletes_org_without_destroying_history(client: TestClien
     assert response.status_code == 204
     assert client.get("/api/orgs", headers={"Authorization": f"Bearer {token}"}).status_code == 403
 
+
+def test_platform_admin_renames_org(client: TestClient) -> None:
+    registration = client.post(
+        "/api/auth/register",
+        json={"email": "org-rename@example.com", "password": "Password123!", "org_name": "Old Name"},
+    )
+    token = registration.json()["access_token"]
+    org_id = client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"}).json()["memberships"][0]["org_id"]
+
+    response = client.patch(
+        f"/api/orgs/{org_id}",
+        json={"name": "New Name"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["name"] == "New Name"
+
 def test_unauthenticated_request_returns_401(client: TestClient) -> None:
     client.cookies.clear()
     # Attempting to access protected endpoint without token must return 401

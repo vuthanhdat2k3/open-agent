@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -37,6 +37,10 @@ class OrgCreateRequest(BaseModel):
     name: str
     admin_email: str | None = None
     initial_password: str | None = None
+
+
+class OrgRenameRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=128)
 
 
 class OrgOut(BaseModel):
@@ -158,6 +162,40 @@ async def create_org(
             initial_password=initial_pass,
         )
 
+    await db.commit()
+    await db.refresh(org)
+    return OrgOut(id=org.id, name=org.name, slug=org.slug, created_at=org.created_at)
+
+
+@router.patch("/{id}", response_model=OrgOut)
+async def rename_org(
+    id: str,
+    body: OrgRenameRequest,
+    current_user: User = Depends(require_platform_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(Organization).where(Organization.id == id))
+    org = result.scalar_one_or_none()
+    if org is None or org.lifecycle_status == "deleted":
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organization not found")
+    if org.slug == "platform":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "The platform organization cannot be renamed")
+
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Organization name cannot be empty")
+    old_name = org.name
+    org.name = name
+    await log_action(
+        db,
+        org_id=id,
+        actor_user_id=current_user.id,
+        action="organization.renamed",
+        resource_type="organization",
+        resource_id=id,
+        metadata={"old_name": old_name, "new_name": name},
+        commit=False,
+    )
     await db.commit()
     await db.refresh(org)
     return OrgOut(id=org.id, name=org.name, slug=org.slug, created_at=org.created_at)
