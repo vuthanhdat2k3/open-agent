@@ -97,6 +97,7 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 | `dev` | `G:\open-agent` | Nhánh tích hợp chính — không code trực tiếp ở đây | — |
 
 > 2026-08-27: Đã dọn dẹp toàn bộ worktree và các nhánh đã merge vào `dev` trên cả Local và Remote:
+> - `feat/workflow-node-config-fix` (PR #167, Deploy PR #168)
 > - `feat/workflow-canvas-console-execution` & `feat/workflow-markdown-modal-output` (PR #161, #164)
 > - `fix/ruff-zitadel-service-format`
 > - `feat/i18n-vi-terminology-polish` (PR #163)
