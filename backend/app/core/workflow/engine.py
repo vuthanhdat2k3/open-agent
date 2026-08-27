@@ -206,7 +206,7 @@ async def _run_agent_node(
         model_id = agent.model_id
     else:
         # custom mode (default)
-        system_prompt = str(cfg.get("system_prompt") or "You are a helpful workflow agent.")
+        system_prompt = str(cfg.get("system_prompt") or "You are an intelligent workflow agent. Focus on completing your assigned task concisely and accurately based on the provided context. Extract factual, relevant data and do not analyze or audit irrelevant web code, scripts, or HTML markup unless explicitly requested.")
         model_id = cfg.get("model_id")
         if not model_id:
             raise RuntimeError("custom agent node requires a model")
@@ -826,7 +826,14 @@ async def _run_workflow_events(
         upstream_text = str(resolved.get("__text__", "")) or input_text
 
         if kind == "input":
-            return NodeOutput(text=input_text or "Input initialized.", data={"input": input_text})
+            parsed_data = None
+            if isinstance(input_text, str) and input_text.strip().startswith(("{", "[")):
+                try:
+                    parsed_data = json.loads(input_text)
+                except Exception:
+                    parsed_data = None
+            data_payload = parsed_data if isinstance(parsed_data, (dict, list)) else {"input": input_text}
+            return NodeOutput(text=input_text or "Input initialized.", data=data_payload)
         if kind == "scheduler":
             cron = cfg.get("cron") or cfg.get("schedule") or cfg.get("custom_cron") or "daily"
             label = (

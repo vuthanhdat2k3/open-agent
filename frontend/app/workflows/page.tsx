@@ -17,6 +17,7 @@ import { useWorkflowStore } from "@/stores";
 import { Button } from "@/components/ui/button";
 import { Input, Label, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/page-header";
 import { ErrorState, LoadingSkeleton } from "@/components/shared";
 import { useTranslation } from "@/lib/i18n";
@@ -35,35 +36,68 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
-function layout(nodes: GraphNode[], edges: GraphEdge[]) {
+function calculateDagLayout(nodes: GraphNode[], edges: GraphEdge[]) {
+  if (nodes.length === 0) return {};
   const adj: Record<string, string[]> = {};
-  edges.forEach((e) => (adj[e.from_] = adj[e.from_] || []).push(e.to));
+  const inDegree: Record<string, number> = {};
+  nodes.forEach((n) => {
+    adj[n.id] = [];
+    inDegree[n.id] = 0;
+  });
+  edges.forEach((e) => {
+    if (adj[e.from_]) adj[e.from_].push(e.to);
+    inDegree[e.to] = (inDegree[e.to] || 0) + 1;
+  });
+
+  const roots = nodes.filter((n) => inDegree[n.id] === 0 || ["input", "scheduler", "integration"].includes(n.kind));
+  const queue: { id: string; layer: number }[] = (roots.length > 0 ? roots : [nodes[0]]).map((n) => ({ id: n.id, layer: 0 }));
+
   const layer: Record<string, number> = {};
-  const input = nodes.find((n) => n.kind === "input");
-  const queue: string[] = input ? [input.id] : nodes.length ? [nodes[0].id] : [];
-  queue.forEach((id) => (layer[id] = 0));
-  const visited = new Set<string>(queue);
-  while (queue.length) {
-    const cur = queue.shift()!;
-    const curL = layer[cur] ?? 0;
+  queue.forEach((q) => (layer[q.id] = 0));
+  const visited = new Set<string>(queue.map((q) => q.id));
+
+  while (queue.length > 0) {
+    const { id: cur, layer: curL } = queue.shift()!;
     (adj[cur] || []).forEach((nxt) => {
+      const nextL = curL + 1;
+      if (!layer[nxt] || nextL > layer[nxt]) {
+        layer[nxt] = nextL;
+      }
       if (!visited.has(nxt)) {
         visited.add(nxt);
-        layer[nxt] = curL + 1;
-        queue.push(nxt);
+        queue.push({ id: nxt, layer: nextL });
       }
     });
   }
+
+  nodes.forEach((n) => {
+    if (layer[n.id] == null) layer[n.id] = 0;
+  });
+
   const perLayer: Record<number, GraphNode[]> = {};
   nodes.forEach((n) => {
     const l = layer[n.id] ?? 0;
     (perLayer[l] = perLayer[l] || []).push(n);
   });
-  // Vertical flow: BFS depth -> row (y), index within a row -> column (x).
+
+  const nodeWidth = 214;
+  const nodeGapX = 66;
+  const rankGapY = 170;
+  const centerX = 460;
+
   const pos: Record<string, { x: number; y: number }> = {};
-  Object.entries(perLayer).forEach(([l, ns]) => {
-    ns.forEach((n, i) => (pos[n.id] = { x: 40 + i * 240, y: 40 + +l * 160 }));
+  Object.entries(perLayer).forEach(([lStr, ns]) => {
+    const l = parseInt(lStr, 10);
+    const rowWidth = ns.length * nodeWidth + (ns.length - 1) * nodeGapX;
+    const startX = Math.max(40, centerX - rowWidth / 2);
+    ns.forEach((n, i) => {
+      pos[n.id] = {
+        x: Math.round(startX + i * (nodeWidth + nodeGapX)),
+        y: Math.round(40 + l * rankGapY),
+      };
+    });
   });
+
   return pos;
 }
 
@@ -136,6 +170,8 @@ export default function WorkflowEditor() {
     graph: { nodes: GraphNode[]; edges: GraphEdge[] };
   } | null>(null);
   const [input, setInput] = React.useState("");
+  const [inputMode, setInputMode] = React.useState<"text" | "json">("text");
+  const [followRunningNode, setFollowRunningNode] = React.useState(true);
   const [running, setRunning] = React.useState(false);
   const [nodeStatus, setNodeStatus] = React.useState<Record<string, string>>({});
   const [output, setOutput] = React.useState("");
@@ -171,7 +207,7 @@ export default function WorkflowEditor() {
 
   React.useEffect(() => {
     if (nodes.length > 0 && !nodes.every((n) => n.position?.x != null)) {
-      const calculatedPos = layout(nodes, edges);
+      const calculatedPos = calculateDagLayout(nodes, edges);
       const updatedNodes = nodes.map((n) => ({
         ...n,
         position: n.position || calculatedPos[n.id] || { x: 40, y: 40 },
@@ -325,7 +361,7 @@ export default function WorkflowEditor() {
     if (!aiResult) return;
     setWfName(aiResult.name);
     setEditId(null);
-    const calculatedPos = layout(aiResult.graph.nodes, aiResult.graph.edges);
+    const calculatedPos = calculateDagLayout(aiResult.graph.nodes, aiResult.graph.edges);
     const positionedNodes = aiResult.graph.nodes.map((n) => ({
       ...n,
       position: n.position || calculatedPos[n.id] || { x: 40, y: 40 },
@@ -338,7 +374,7 @@ export default function WorkflowEditor() {
   };
 
   const handleAutoLayout = () => {
-    const calculatedPos = layout(nodes, edges);
+    const calculatedPos = calculateDagLayout(nodes, edges);
     const updatedNodes = nodes.map((n) => ({
       ...n,
       position: calculatedPos[n.id] || { x: 40, y: 40 },
@@ -373,6 +409,17 @@ export default function WorkflowEditor() {
       e.from_ === fromId && e.to === toId ? { ...e, condition: input.trim() || undefined } : e,
     );
     setGraph(nodes, nextEdges);
+  };
+
+  const formatJsonInput = () => {
+    if (!input.trim()) return;
+    try {
+      const parsed = JSON.parse(input);
+      setInput(JSON.stringify(parsed, null, 2));
+      toast.success(t("pages.workflows.formatJson", "Formatted JSON"));
+    } catch {
+      toast.error(t("pages.workflows.invalidJson", "Invalid JSON payload"));
+    }
   };
 
   const run = async () => {
