@@ -32,7 +32,7 @@ def test_every_definition_has_common_fields() -> None:
 
 
 def test_definition_has_default_parameters() -> None:
-    assert NODE_DEFINITIONS["agent"].default_parameters["mode"] == "custom"
+    assert NODE_DEFINITIONS["agent"].default_parameters.get("temperature") == 0.7
     assert NODE_DEFINITIONS["scheduler"].default_parameters["frequency"] == "daily"
 
 

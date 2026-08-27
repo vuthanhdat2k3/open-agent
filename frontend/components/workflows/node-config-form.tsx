@@ -314,7 +314,21 @@ export function NodeConfigForm({ node, onUpdate }: NodeConfigFormProps) {
       parameters: next,
       config: next,
     };
-    if (name === "agent_id") patch.agent_id = value;
+    if (name === "agent_id") {
+      patch.agent_id = value;
+      const found = (agents.data as any[])?.find((a) => a.value === value);
+      if (found) {
+        if (found.system_prompt && !next.system_prompt) {
+          next.system_prompt = found.system_prompt;
+        }
+        if (found.model_id && !next.model_id) {
+          next.model_id = found.model_id;
+        }
+        if (found.tools && (!next.tools || next.tools.length === 0)) {
+          next.tools = found.tools;
+        }
+      }
+    }
     if (name === "merge_mode") patch.merge_mode = value;
     onUpdate(patch);
   };

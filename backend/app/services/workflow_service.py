@@ -282,7 +282,14 @@ class WorkflowService:
                     {"node_id": nid, "field": "kind", "message": f"unknown node kind: {kind}"}
                 )
                 continue
-            parameters = dict(n.get("parameters") or n.get("config") or {})
+            field_defaults = {f.name: f.default for f in definition.fields if f.default is not None}
+            parameters = {
+                **field_defaults,
+                **(definition.default_parameters or {}),
+                **dict(n.get("parameters") or n.get("config") or {}),
+            }
+            if n.get("agent_id"):
+                parameters.setdefault("agent_id", n.get("agent_id"))
 
             for field in definition.fields:
                 if not field.required:
@@ -295,6 +302,14 @@ class WorkflowService:
                     kind == "scheduler"
                     and field.name == "frequency"
                     and (parameters.get("cron") or parameters.get("custom_cron"))
+                ):
+                    continue
+                # If this is an agent node and an agent_id is provided, system_prompt and model_id
+                # are optional overrides (the base agent supplies them).
+                if (
+                    kind == "agent"
+                    and parameters.get("agent_id")
+                    and field.name in ("system_prompt", "model_id")
                 ):
                     continue
                 # Catalog-template input nodes are event/trigger placeholders
@@ -322,16 +337,12 @@ class WorkflowService:
                         }
                     )
 
-            # agent custom mode requires model_id; legacy top-level agent_id => inherit
+            # agent custom mode requires model_id & system_prompt; agent_id uses existing agent
             if kind == "agent":
-                mode = parameters.get("mode")
-                legacy_agent_id = n.get("agent_id")
-                # Catalog-template agents leave model binding to runtime (org
-                # default model); the editor UI fills model_id when saved.
-                if graph.get("kind") == "catalog_template":
-                    mode = None
-                if mode == "custom":
-                    if not parameters.get("model_id"):
+                agent_id = parameters.get("agent_id") or n.get("agent_id")
+                if not agent_id and graph.get("kind") != "catalog_template":
+                    # Only enforce model_id if not an empty legacy node
+                    if not parameters.get("model_id") and not (n.get("config") == {} and n.get("parameters") is None):
                         errors.append(
                             {
                                 "node_id": nid,
@@ -339,16 +350,14 @@ class WorkflowService:
                                 "message": "custom agent requires a model",
                             }
                         )
-                elif (mode == "inherit" or (mode is None and legacy_agent_id)) and not (
-                    parameters.get("agent_id") or legacy_agent_id
-                ):
-                    errors.append(
-                        {
-                            "node_id": nid,
-                            "field": "agent_id",
-                            "message": "inherit mode requires an agent",
-                        }
-                    )
+                    if not parameters.get("system_prompt"):
+                        errors.append(
+                            {
+                                "node_id": nid,
+                                "field": "system_prompt",
+                                "message": "custom agent requires a system prompt",
+                            }
+                        )
             # tool requires a tool name
             if kind == "tool" and not parameters.get("tool"):
                 errors.append(
