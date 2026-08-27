@@ -125,8 +125,11 @@ async def publish_workflow_to_catalog(
     body: WorkflowPublishRequest,
     org_id: str = Depends(get_current_org_id),
     current_user: User = Depends(get_current_user),
+    principal: PrincipalContext = Depends(require_permission("workflows:update")),
     db: AsyncSession = Depends(get_db),
 ) -> WorkflowCatalogItem:
+    if principal.role != Role.operator:
+        raise HTTPException(403, "Only operators can publish to the workflow marketplace")
     """Publish an organization workflow to the Workflow Marketplace (Operator/Admin)."""
     workflow = await db.scalar(
         select(Workflow).where(Workflow.id == body.workflow_id, Workflow.org_id == org_id)
@@ -209,8 +212,11 @@ async def unpublish_workflow_from_catalog(
     key: str,
     org_id: str = Depends(get_current_org_id),
     current_user: User = Depends(get_current_user),
+    principal: PrincipalContext = Depends(require_permission("workflows:delete")),
     db: AsyncSession = Depends(get_db),
 ):
+    if principal.role != Role.operator:
+        raise HTTPException(403, "Only operators can unpublish from the workflow marketplace")
     """Remove a published template from the Marketplace (Operator/Admin)."""
     template = await db.scalar(
         select(WorkflowTemplate).where(WorkflowTemplate.key == key)
