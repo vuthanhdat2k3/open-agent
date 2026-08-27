@@ -285,6 +285,12 @@ export interface TranslationDictionary {
       startedAt: string;
       finishedAt: string;
       searchLogs: string;
+      viewMarkdownModal: string;
+      finalReportModalTitle: string;
+      downloadReport: string;
+      rawJson: string;
+      formattedMarkdown: string;
+      viewInMarkdown: string;
       nodeField: {
         inputField: string;
         required: string;

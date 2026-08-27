@@ -23,7 +23,7 @@ export function Companion3D({
   initialNotifications,
   initialCases,
 }: Companion3DProps) {
-    const { locale } = useTranslation();
+    const { locale, tx } = useTranslation();
   const router = useRouter();
   const [config, setConfig] = React.useState<CompanionConfig>(DEFAULT_COMPANION_CONFIG);
 
@@ -337,7 +337,7 @@ export function Companion3D({
               <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500 shadow-[0_0_8px_#f59e0b]" />
             </span>
             <span>
-              ⚡ {approvals.length} {locale === "vi" ? "action" : "action"}{approvals.length > 1 ? "s" : ""} {locale === "vi" ? "need" : "need"}{approvals.length === 1 ? "s" : ""} {locale === "vi" ? "review →" : "review →"}</span>
+              ⚡ {approvals.length} {tx("action", "action")}{approvals.length > 1 ? "s" : ""} {tx("need", "need")}{approvals.length === 1 ? "s" : ""} {tx("review →", "review →")}</span>
           </div>
         )}
 
@@ -406,7 +406,7 @@ export function Companion3D({
 
           {/* Cognition Metric Badge */}
           <div className="pointer-events-none absolute right-[8%] top-[8%] rounded-md border border-border/80 bg-card/90 px-1.5 py-0.5 font-mono text-[9px] font-medium text-primary shadow-sm backdrop-blur-md">
-            {locale === "vi" ? "COGNITION //" : "COGNITION //"}{activeRoutinesCount}
+            {tx("COGNITION //", "COGNITION //")}{activeRoutinesCount}
           </div>
 
           {/* Holographic Pedestal Glow */}

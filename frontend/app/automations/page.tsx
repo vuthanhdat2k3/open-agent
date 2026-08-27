@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import * as React from "react";
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
@@ -99,7 +99,7 @@ function TemplateCard({
   onOpen: (item: WorkflowCatalogItem) => void;
   onSetup: (item: WorkflowCatalogItem) => void;
 }) {
-  const { locale } = useTranslation();
+  const { locale, tx } = useTranslation();
   const Icon = workflowIcon(item.icon);
   return (
     <Card
@@ -114,7 +114,7 @@ function TemplateCard({
           {item.recommendation.recommended && (
             <Badge variant="info">
               <Sparkles className="h-3 w-3" aria-hidden="true" />
-              {locale === "vi" ? "Recommended" : "Recommended"}</Badge>
+              {tx("Recommended", "Recommended")}</Badge>
           )}
         </div>
         <div>
@@ -161,7 +161,7 @@ function TemplateCard({
             size="sm"
             onClick={() => onOpen(item)}
           >
-            {locale === "vi" ? "Xem chi tiết" : "View details"}
+            {tx("Xem chi tiết", "View details")}
           </Button>
           <Button
             type="button"
@@ -177,7 +177,7 @@ function TemplateCard({
           >
             {item.capabilities.can_install ? (
               <>
-                {locale === "vi" ? "Set up" : "Set up"}<ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+                {tx("Set up", "Set up")}<ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
               </>
             ) : (
               "Preview only"
@@ -198,7 +198,7 @@ function SetupDialog({
   onClose: () => void;
   onInstalled: (installation: WorkflowInstallation) => void;
 }) {
-    const { locale } = useTranslation();
+    const { locale, tx } = useTranslation();
   const queryClient = useQueryClient();
   const [step, setStep] = useState(1);
   const [scheduleKind, setScheduleKind] =
@@ -251,9 +251,9 @@ function SetupDialog({
       {item && (
         <DialogContent className="max-w-xl">
           <DialogHeader>
-            <DialogTitle>{locale === "vi" ? "Set up" : "Set up"}{item.name}</DialogTitle>
+            <DialogTitle>{tx("Set up", "Set up")}{item.name}</DialogTitle>
             <DialogDescription>
-              {locale === "vi" ? "Choose a safe schedule. You can change it later." : "Choose a safe schedule. You can change it later."}</DialogDescription>
+              {tx("Choose a safe schedule. You can change it later.", "Choose a safe schedule. You can change it later.")}</DialogDescription>
           </DialogHeader>
           <div
             className="flex items-center gap-2 border-b border-border/70 pb-4 text-xs font-medium text-muted-foreground"
@@ -286,7 +286,7 @@ function SetupDialog({
           {step === 1 && (
             <div className="space-y-4">
               <div className="rounded-lg border border-primary/20 bg-primary/[0.04] p-4 text-sm">
-                <p className="font-semibold">{locale === "vi" ? "What will happen" : "What will happen"}</p>
+                <p className="font-semibold">{tx("What will happen", "What will happen")}</p>
                 <p className="mt-1 leading-6 text-muted-foreground">
                   {item.outcome}
                 </p>
@@ -296,7 +296,7 @@ function SetupDialog({
                   htmlFor="automation-name"
                   className="text-sm font-medium"
                 >
-                  {locale === "vi" ? "Automation name" : "Automation name"}</label>
+                  {tx("Automation name", "Automation name")}</label>
                 <Input
                   id="automation-name"
                   value={name}
@@ -310,7 +310,7 @@ function SetupDialog({
                     htmlFor="automation-frequency"
                     className="text-sm font-medium"
                   >
-                    {locale === "vi" ? "Run frequency" : "Run frequency"}</label>
+                    {tx("Run frequency", "Run frequency")}</label>
                   <select
                     id="automation-frequency"
                     value={scheduleKind}
@@ -322,11 +322,11 @@ function SetupDialog({
                     }
                     className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
-                    <option value="hourly">{locale === "vi" ? "Every hour" : "Every hour"}</option>
-                    <option value="daily">{locale === "vi" ? "Every day" : "Every day"}</option>
-                    <option value="weekdays">{locale === "vi" ? "Weekdays" : "Weekdays"}</option>
-                    <option value="weekly">{locale === "vi" ? "Weekly" : "Weekly"}</option>
-                    <option value="event">{locale === "vi" ? "When a relevant event arrives" : "When a relevant event arrives"}</option>
+                    <option value="hourly">{tx("Every hour", "Every hour")}</option>
+                    <option value="daily">{tx("Every day", "Every day")}</option>
+                    <option value="weekdays">{tx("Weekdays", "Weekdays")}</option>
+                    <option value="weekly">{tx("Weekly", "Weekly")}</option>
+                    <option value="event">{tx("When a relevant event arrives", "When a relevant event arrives")}</option>
                   </select>
                 </div>
                 <div className="space-y-2">
@@ -334,7 +334,7 @@ function SetupDialog({
                     htmlFor="automation-time"
                     className="text-sm font-medium"
                   >
-                    {locale === "vi" ? "Time · Vietnam" : "Time · Vietnam"}</label>
+                    {tx("Time · Vietnam", "Time · Vietnam")}</label>
                   <Input
                     id="automation-time"
                     type="time"
@@ -347,54 +347,54 @@ function SetupDialog({
                 </div>
               </div>
               <p className="text-xs text-muted-foreground">
-                {locale === "vi" ? "Timezone: Asia/Ho_Chi_Minh. The server calculates the next run." : "Timezone: Asia/Ho_Chi_Minh. The server calculates the next run."}</p>
+                {tx("Timezone: Asia/Ho_Chi_Minh. The server calculates the next run.", "Timezone: Asia/Ho_Chi_Minh. The server calculates the next run.")}</p>
             </div>
           )}
           {step === 2 && (
             <div className="space-y-4 text-sm">
               <div className="rounded-lg border border-border/70 p-4">
-                <p className="font-semibold">{locale === "vi" ? "Data and safety" : "Data and safety"}</p>
+                <p className="font-semibold">{tx("Data and safety", "Data and safety")}</p>
                 <ul className="mt-3 space-y-3 text-muted-foreground">
                   <li className="flex gap-2">
                     <Plug
                       className="mt-0.5 h-4 w-4 shrink-0 text-primary"
                       aria-hidden="true"
                     />
-                    {locale === "vi" ? "Uses" : "Uses"}{" "}
+                    {tx("Uses", "Uses")}{" "}
                     {item.required_integrations
                       .map(integrationLabel)
                       .join(" and ")}{" "}
-                    {locale === "vi" ? "when connected." : "when connected."}</li>
+                    {tx("when connected.", "when connected.")}</li>
                   <li className="flex gap-2">
                     <ShieldCheck
                       className="mt-0.5 h-4 w-4 shrink-0 text-primary"
                       aria-hidden="true"
                     />
-                    {approvalLabel(item.side_effect_policy)}{locale === "vi" ? ". External actions are never silently executed." : ". External actions are never silently executed."}</li>
+                    {approvalLabel(item.side_effect_policy)}{tx(". Hành động bên ngoài không bao giờ được thực thi một cách âm thầm.", ". External actions are never silently executed.")}</li>
                   <li className="flex gap-2">
                     <Gauge
                       className="mt-0.5 h-4 w-4 shrink-0 text-primary"
                       aria-hidden="true"
                     />
-                    {locale === "vi" ? "Estimated cost:" : "Estimated cost:"}{costLabel(item.cost_tier)} {locale === "vi" ? "· up to $" : "· up to $"}{item.estimated_cost_usd.per_run_max ?? "—"}{locale === "vi" ? "/run." : "/run."}</li>
+                    {tx("Estimated cost:", "Estimated cost:")}{costLabel(item.cost_tier)} {tx("· up to $", "· up to $")}{item.estimated_cost_usd.per_run_max ?? "—"}{tx("/run.", "/run.")}</li>
                 </ul>
               </div>
               <p className="text-xs text-muted-foreground">
-                {locale === "vi" ? "Connection binding and permission checks are enforced by the server before a run is dispatched." : "Connection binding and permission checks are enforced by the server before a run is dispatched."}</p>
+                {tx("Connection binding and permission checks are enforced by the server before a run is dispatched.", "Connection binding and permission checks are enforced by the server before a run is dispatched.")}</p>
             </div>
           )}
           {step === 3 && (
             <div className="space-y-4 text-sm">
               <div className="rounded-lg border border-border/70 p-4">
-                <p className="font-semibold">{locale === "vi" ? "Ready to enable" : "Ready to enable"}</p>
+                <p className="font-semibold">{tx("Ready to enable", "Ready to enable")}</p>
                 <dl className="mt-3 grid gap-3 sm:grid-cols-2">
                   <div>
                     <dt className="text-xs text-muted-foreground">
-                      {locale === "vi" ? "Automation" : "Automation"}</dt>
+                      {tx("Automation", "Automation")}</dt>
                     <dd className="mt-1 font-medium">{name || item.name}</dd>
                   </div>
                   <div>
-                    <dt className="text-xs text-muted-foreground">{locale === "vi" ? "Schedule" : "Schedule"}</dt>
+                    <dt className="text-xs text-muted-foreground">{tx("Schedule", "Schedule")}</dt>
                     <dd className="mt-1 font-medium">
                       {scheduleKind === "hourly"
                         ? "Every hour"
@@ -404,11 +404,11 @@ function SetupDialog({
                     </dd>
                   </div>
                   <div>
-                    <dt className="text-xs text-muted-foreground">{locale === "vi" ? "Timezone" : "Timezone"}</dt>
-                    <dd className="mt-1 font-medium">{locale === "vi" ? "Asia/Ho_Chi_Minh" : "Asia/Ho_Chi_Minh"}</dd>
+                    <dt className="text-xs text-muted-foreground">{tx("Timezone", "Timezone")}</dt>
+                    <dd className="mt-1 font-medium">{tx("Asia/Ho_Chi_Minh", "Asia/Ho_Chi_Minh")}</dd>
                   </div>
                   <div>
-                    <dt className="text-xs text-muted-foreground">{locale === "vi" ? "Safety" : "Safety"}</dt>
+                    <dt className="text-xs text-muted-foreground">{tx("Safety", "Safety")}</dt>
                     <dd className="mt-1 font-medium">
                       {approvalLabel(item.side_effect_policy)}
                     </dd>
@@ -417,7 +417,7 @@ function SetupDialog({
               </div>
               {install.isError && (
                 <p className="text-sm text-destructive" role="alert">
-                  {locale === "vi" ? "Could not enable this automation. It may already be installed or a connection may need attention." : "Could not enable this automation. It may already be installed or a connection may need attention."}</p>
+                  {tx("Could not enable this automation. It may already be installed or a connection may need attention.", "Could not enable this automation. It may already be installed or a connection may need attention.")}</p>
               )}
             </div>
           )}
@@ -437,14 +437,14 @@ function SetupDialog({
                 onClick={() => setStep((value) => value + 1)}
                 disabled={!name.trim()}
               >
-                {locale === "vi" ? "Continue" : "Continue"}</Button>
+                {tx("Continue", "Continue")}</Button>
             ) : (
               <Button
                 type="button"
                 loading={install.isPending}
                 onClick={() => install.mutate()}
               >
-                {locale === "vi" ? "Enable automation" : "Enable automation"}</Button>
+                {tx("Enable automation", "Enable automation")}</Button>
             )}
           </DialogFooter>
         </DialogContent>
@@ -460,7 +460,7 @@ function TemplateDetails({
   item: WorkflowCatalogItem | null;
   onClose: () => void;
 }) {
-    const { locale } = useTranslation();
+    const { locale, tx } = useTranslation();
   const Icon = item ? workflowIcon(item.icon) : Zap;
   return (
     <Dialog
@@ -481,65 +481,65 @@ function TemplateDetails({
           <div className="space-y-5 text-sm">
             <section className="rounded-lg border border-primary/20 bg-primary/[0.04] p-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-primary">
-                {locale === "vi" ? "What you receive" : "What you receive"}</p>
+                {tx("What you receive", "What you receive")}</p>
               <p className="mt-2 leading-6 text-foreground">{item.outcome}</p>
             </section>
             <section className="space-y-3">
-              <h3 className="font-semibold">{locale === "vi" ? "How it works" : "How it works"}</h3>
+              <h3 className="font-semibold">{tx("How it works", "How it works")}</h3>
               <ol className="space-y-3 text-muted-foreground">
                 <li className="flex gap-3">
                   <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-muted font-mono text-xs text-foreground">
                     1
                   </span>
                   <span>
-                    {locale === "vi" ? "Read only the connected data needed for this workflow." : "Read only the connected data needed for this workflow."}</span>
+                    {tx("Read only the connected data needed for this workflow.", "Read only the connected data needed for this workflow.")}</span>
                 </li>
                 <li className="flex gap-3">
                   <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-muted font-mono text-xs text-foreground">
                     2
                   </span>
                   <span>
-                    {locale === "vi" ? "Analyze and organize useful information with bounded cost and latency." : "Analyze and organize useful information with bounded cost and latency."}</span>
+                    {tx("Analyze and organize useful information with bounded cost and latency.", "Analyze and organize useful information with bounded cost and latency.")}</span>
                 </li>
                 <li className="flex gap-3">
                   <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-muted font-mono text-xs text-foreground">
                     3
                   </span>
                   <span>
-                    {locale === "vi" ? "Send a private result to your Automation Hub and notification bell." : "Send a private result to your Automation Hub and notification bell."}</span>
+                    {tx("Send a private result to your Automation Hub and notification bell.", "Send a private result to your Automation Hub and notification bell.")}</span>
                 </li>
               </ol>
             </section>
             <section className="grid gap-3 sm:grid-cols-2">
               <div className="rounded-lg border border-border/70 p-3">
-                <p className="text-xs text-muted-foreground">{locale === "vi" ? "Required" : "Required"}</p>
+                <p className="text-xs text-muted-foreground">{tx("Required", "Required")}</p>
                 <p className="mt-1 font-medium">
                   {item.required_integrations.map(integrationLabel).join(" · ")}
                 </p>
               </div>
               <div className="rounded-lg border border-border/70 p-3">
-                <p className="text-xs text-muted-foreground">{locale === "vi" ? "Schedule" : "Schedule"}</p>
+                <p className="text-xs text-muted-foreground">{tx("Schedule", "Schedule")}</p>
                 <p className="mt-1 font-medium">
                   {item.default_schedule_label}
                 </p>
               </div>
               <div className="rounded-lg border border-border/70 p-3">
                 <p className="text-xs text-muted-foreground">
-                  {locale === "vi" ? "External actions" : "External actions"}</p>
+                  {tx("External actions", "External actions")}</p>
                 <p className="mt-1 font-medium">
                   {approvalLabel(item.side_effect_policy)}
                 </p>
               </div>
               <div className="rounded-lg border border-border/70 p-3">
-                <p className="text-xs text-muted-foreground">{locale === "vi" ? "Estimated cost" : "Estimated cost"}</p>
+                <p className="text-xs text-muted-foreground">{tx("Estimated cost", "Estimated cost")}</p>
                 <p className="mt-1 font-medium">
-                  {costLabel(item.cost_tier)} {locale === "vi" ? "· up to $" : "· up to $"}{item.estimated_cost_usd.per_run_max ?? "—"}{locale === "vi" ? "/run" : "/run"}</p>
+                  {costLabel(item.cost_tier)} {tx("· up to $", "· up to $")}{item.estimated_cost_usd.per_run_max ?? "—"}{tx("/run", "/run")}</p>
               </div>
             </section>
           </div>
           <DialogFooter>
             <Button type="button" onClick={onClose}>
-              {locale === "vi" ? "Đóng" : "Close"}</Button>
+              {tx("Đóng", "Close")}</Button>
           </DialogFooter>
         </DialogContent>
       )}
@@ -548,7 +548,7 @@ function TemplateDetails({
 }
 
 export default function AutomationsPage() {
-  const { t, dict, locale } = useTranslation();
+  const { t, dict, locale, tx } = useTranslation();
   const queryClient = useQueryClient();
   const router = useRouter();
   const [view, setView] = useState<"discover" | "active">("discover");
@@ -634,22 +634,22 @@ export default function AutomationsPage() {
       />
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="rounded-xl border border-border/70 bg-card/60 p-4">
-          <p className="text-xs text-muted-foreground">{locale === "vi" ? "Quy trình khả dụng" : "Available workflows"}</p>
+          <p className="text-xs text-muted-foreground">{tx("Quy trình khả dụng", "Available workflows")}</p>
           <p className="mt-1 text-2xl font-semibold tabular-nums">
             {catalog.isLoading ? "—" : items.length}
           </p>
         </div>
         <div className="rounded-xl border border-border/70 bg-card/60 p-4">
-          <p className="text-xs text-muted-foreground">{locale === "vi" ? "Gợi ý cho bạn" : "Recommended for you"}</p>
+          <p className="text-xs text-muted-foreground">{tx("Gợi ý cho bạn", "Recommended for you")}</p>
           <p className="mt-1 text-2xl font-semibold tabular-nums">
             {catalog.isLoading ? "—" : recommended.length}
           </p>
         </div>
         <div className="rounded-xl border border-border/70 bg-card/60 p-4">
-          <p className="text-xs text-muted-foreground">{locale === "vi" ? "Chính sách an toàn" : "Safety default"}</p>
+          <p className="text-xs text-muted-foreground">{tx("Chính sách an toàn", "Safety default")}</p>
           <p className="mt-1 flex items-center gap-1.5 text-sm font-medium">
             <CheckCircle2 className="h-4 w-4 text-success" aria-hidden="true" />
-            {locale === "vi" ? "Tác vụ bên ngoài cần phê duyệt" : "External actions need approval"}
+            {tx("Tác vụ bên ngoài cần phê duyệt", "External actions need approval")}
           </p>
         </div>
       </div>
@@ -672,7 +672,7 @@ export default function AutomationsPage() {
                 className="mr-1.5 inline h-3.5 w-3.5"
                 aria-hidden="true"
               />
-              {locale === "vi" ? "Khám phá" : "Discover"}
+              {tx("Khám phá", "Discover")}
             </button>
             <button
               type="button"
@@ -682,13 +682,13 @@ export default function AutomationsPage() {
               className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${view === "active" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
             >
               <Zap className="mr-1.5 inline h-3.5 w-3.5" aria-hidden="true" />
-              {locale === "vi" ? "Đang chạy" : "Active"}
+              {tx("Đang chạy", "Active")}
             </button>
           </div>
           <p className="mt-3 text-sm text-muted-foreground">
             {view === "discover"
-              ? (locale === "vi" ? "Chọn quy trình tự động hóa dựa trên kết quả bạn mong muốn." : "Choose a routine by the result you want, not by technical configuration.")
-              : (locale === "vi" ? "Quản lý và điều khiển các quy trình tự động hóa đang hoạt động." : "See the routines you have enabled and pause them when needed.")}
+              ? (tx("Chọn quy trình tự động hóa dựa trên kết quả bạn mong muốn.", "Choose a routine by the result you want, not by technical configuration."))
+              : (tx("Quản lý và điều khiển các quy trình tự động hóa đang hoạt động.", "See the routines you have enabled and pause them when needed."))}
           </p>
         </div>
         {view === "discover" && (
@@ -702,7 +702,7 @@ export default function AutomationsPage() {
                 aria-label="Search workflows"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder={locale === "vi" ? "Tìm kiếm quy trình..." : "Search workflows"}
+                placeholder={tx("Tìm kiếm quy trình...", "Search workflows")}
                 className="w-full pl-9 sm:w-56"
               />
             </div>
@@ -727,15 +727,15 @@ export default function AutomationsPage() {
           <LoadingSkeleton variant="grid" />
         ) : catalog.isError ? (
           <ErrorState
-            title={locale === "vi" ? "Không thể tải quy trình" : "Unable to load workflows"}
-            description={locale === "vi" ? "Danh mục quy trình chưa sẵn sàng." : "The workflow catalog could not be loaded."}
+            title={tx("Không thể tải quy trình", "Unable to load workflows")}
+            description={tx("Danh mục quy trình chưa sẵn sàng.", "The workflow catalog could not be loaded.")}
             onRetry={() => void catalog.refetch()}
           />
         ) : items.length === 0 ? (
           <EmptyState
             icon={LibraryBig}
-            title={locale === "vi" ? "Không tìm thấy quy trình nào" : "No workflows found"}
-            description={locale === "vi" ? "Thử xóa bộ lọc tìm kiếm hoặc danh mục." : "Try clearing your search or category filter."}
+            title={tx("Không tìm thấy quy trình nào", "No workflows found")}
+            description={tx("Thử xóa bộ lọc tìm kiếm hoặc danh mục.", "Try clearing your search or category filter.")}
             action={
               <Button
                 type="button"
@@ -745,7 +745,7 @@ export default function AutomationsPage() {
                   setCategory("");
                 }}
               >
-                {locale === "vi" ? "Xóa bộ lọc" : "Clear filters"}
+                {tx("Xóa bộ lọc", "Clear filters")}
               </Button>
             }
           />
@@ -775,8 +775,8 @@ export default function AutomationsPage() {
         <LoadingSkeleton variant="table" />
       ) : installations.isError ? (
         <ErrorState
-          title={locale === "vi" ? "Không thể tải quy trình tự động" : "Unable to load active automations"}
-          description={locale === "vi" ? "Danh sách quy trình đã kích hoạt chưa sẵn sàng." : "Your enabled workflows could not be loaded."}
+          title={tx("Không thể tải quy trình tự động", "Unable to load active automations")}
+          description={tx("Danh sách quy trình đã kích hoạt chưa sẵn sàng.", "Your enabled workflows could not be loaded.")}
           onRetry={() => void installations.refetch()}
         />
       ) : (
@@ -790,7 +790,7 @@ export default function AutomationsPage() {
               className="gap-2 font-medium"
             >
               <Zap className="h-4 w-4 text-primary" />
-              {locale === "vi" ? "Quy trình đang chạy" : "Active Routines"} ({installations.data?.length ?? 0})
+              {tx("Quy trình đang chạy", "Active Routines")} ({installations.data?.length ?? 0})
             </Button>
             <Button
               type="button"
@@ -800,7 +800,7 @@ export default function AutomationsPage() {
               className="gap-2 font-medium"
             >
               <Clock3 className="h-4 w-4 text-primary" />
-              {locale === "vi" ? "Lịch sử thực thi" : "Execution Activity"} ({activity.data?.items?.length ?? 0})
+              {tx("Lịch sử thực thi", "Execution Activity")} ({activity.data?.items?.length ?? 0})
             </Button>
           </div>
 
@@ -825,20 +825,20 @@ export default function AutomationsPage() {
                               className="text-[10px]"
                             >
                               {installation.status === "paused"
-                                ? (locale === "vi" ? "Tạm dừng" : "Paused")
-                                : (locale === "vi" ? "Đang bật" : "Enabled")}
+                                ? (tx("Tạm dừng", "Paused"))
+                                : (tx("Đang bật", "Enabled"))}
                             </Badge>
                           </div>
                           <p className="mt-1 text-xs text-muted-foreground">
                             {installation.schedule.kind === "hourly"
-                              ? (locale === "vi" ? "Mỗi giờ" : "Every hour")
+                              ? (tx("Mỗi giờ", "Every hour"))
                               : installation.schedule.kind === "event"
-                                ? (locale === "vi" ? "Khi có sự kiện liên quan" : "When a relevant event arrives")
-                                : `${installation.schedule.kind === "weekdays" ? (locale === "vi" ? "Ngày trong tuần" : "Weekdays") : installation.schedule.kind === "weekly" ? (locale === "vi" ? "Hàng tuần" : "Weekly") : (locale === "vi" ? "Hàng ngày" : "Daily")} ${locale === "vi" ? "lúc" : "at"} ${installation.schedule.time ?? "—"}`}{" "}
+                                ? (tx("Khi có sự kiện liên quan", "When a relevant event arrives"))
+                                : `${installation.schedule.kind === "weekdays" ? (tx("Ngày trong tuần", "Weekdays")) : installation.schedule.kind === "weekly" ? (tx("Hàng tuần", "Weekly")) : (tx("Hàng ngày", "Daily"))} ${tx("lúc", "at")} ${installation.schedule.time ?? "—"}`}{" "}
                             · {installation.timezone}
                           </p>
                           <p className="mt-1 text-[11px] font-mono text-muted-foreground/70">
-                            {locale === "vi" ? "Mẫu:" : "Template:"} {installation.template_key}
+                            {tx("Mẫu:", "Template:")} {installation.template_key}
                           </p>
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
@@ -854,7 +854,7 @@ export default function AutomationsPage() {
                             className="text-xs"
                           >
                             <Pencil className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
-                            {locale === "vi" ? "Mở trong trình soạn thảo" : "Open in editor"}
+                            {tx("Mở trong trình soạn thảo", "Open in editor")}
                           </Button>
                           <Button
                             type="button"
@@ -864,7 +864,7 @@ export default function AutomationsPage() {
                             onClick={() => runNow.mutate(installation.id)}
                             className="text-xs"
                           >
-                            {locale === "vi" ? "Chạy ngay" : "Run now"}
+                            {tx("Chạy ngay", "Run now")}
                           </Button>
                           <Button
                             type="button"
@@ -879,8 +879,8 @@ export default function AutomationsPage() {
                             className="text-xs"
                           >
                             {installation.status === "paused"
-                              ? (locale === "vi" ? "Tiếp tục" : "Resume")
-                              : (locale === "vi" ? "Tạm dừng" : "Pause")}
+                              ? (tx("Tiếp tục", "Resume"))
+                              : (tx("Tạm dừng", "Pause"))}
                           </Button>
                           <Button
                             type="button"
@@ -888,12 +888,12 @@ export default function AutomationsPage() {
                             variant="destructive"
                             disabled={remove.isPending}
                             onClick={() => {
-                              if (window.confirm(locale === "vi" ? `Xóa quy trình ${installation.name}?` : `Remove ${installation.name}?`))
+                              if (window.confirm(tx("Xóa quy trình ${installation.name}?", "Remove ${installation.name}?")))
                                 remove.mutate(installation.id);
                             }}
                             className="text-xs"
                           >
-                            {locale === "vi" ? "Xóa" : "Remove"}
+                            {tx("Xóa", "Remove")}
                           </Button>
                         </div>
                       </CardContent>
@@ -912,11 +912,11 @@ export default function AutomationsPage() {
             ) : (
               <EmptyState
                 icon={Zap}
-                title={locale === "vi" ? "Chưa có quy trình tự động nào" : "No active automations"}
-                description={locale === "vi" ? "Khám phá quy trình mẫu và kích hoạt để bắt đầu tự động hóa công việc." : "Discover a workflow and enable it to start building your personal command center."}
+                title={tx("Chưa có quy trình tự động nào", "No active automations")}
+                description={tx("Khám phá quy trình mẫu và kích hoạt để bắt đầu tự động hóa công việc.", "Discover a workflow and enable it to start building your personal command center.")}
                 action={
                   <Button type="button" onClick={() => setView("discover")}>
-                    {locale === "vi" ? "Khám phá quy trình" : "Discover workflows"}
+                    {tx("Khám phá quy trình", "Discover workflows")}
                   </Button>
                 }
               />
@@ -926,9 +926,9 @@ export default function AutomationsPage() {
           {activeSubTab === "activity" && (
             <Card glass className="shadow-card border-border/80">
               <CardHeader>
-                <CardTitle className="text-base">{locale === "vi" ? "Lịch sử thực thi gần đây" : "Recent activity"}</CardTitle>
+                <CardTitle className="text-base">{tx("Lịch sử thực thi gần đây", "Recent activity")}</CardTitle>
                 <CardDescription className="text-xs">
-                  {locale === "vi" ? "Các lượt chạy theo lịch và trạng thái máy chủ chuẩn hóa." : "Scheduled runs and their canonical server status."}
+                  {tx("Các lượt chạy theo lịch và trạng thái máy chủ chuẩn hóa.", "Scheduled runs and their canonical server status.")}
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -936,7 +936,7 @@ export default function AutomationsPage() {
                   <LoadingSkeleton variant="table" />
                 ) : activity.isError ? (
                   <p className="text-sm text-destructive">
-                    {locale === "vi" ? "Không thể tải dữ liệu hoạt động gần đây." : "Activity is temporarily unavailable."}
+                    {tx("Không thể tải dữ liệu hoạt động gần đây.", "Activity is temporarily unavailable.")}
                   </p>
                 ) : activity.data?.items.length ? (
                   <div className="space-y-2">
@@ -949,7 +949,7 @@ export default function AutomationsPage() {
                           <p className="font-semibold text-foreground">{entry.name}</p>
                           <p className="text-[11px] text-muted-foreground font-mono mt-0.5">
                             {new Date(entry.scheduled_for).toLocaleString(
-                              locale === "vi" ? "vi-VN" : "en-US",
+                              tx("vi-VN", "en-US"),
                               { timeZone: "Asia/Ho_Chi_Minh" },
                             )}
                           </p>
@@ -971,7 +971,7 @@ export default function AutomationsPage() {
                   </div>
                 ) : (
                   <p className="text-xs text-muted-foreground">
-                    {locale === "vi" ? "Chưa có lượt chạy nào. Lịch chạy đầu tiên sẽ hiển thị tại đây." : "No runs yet. The scheduler will show the first occurrence here."}
+                    {tx("Chưa có lượt chạy nào. Lịch chạy đầu tiên sẽ hiển thị tại đây.", "No runs yet. The scheduler will show the first occurrence here.")}
                   </p>
                 )}
               </CardContent>

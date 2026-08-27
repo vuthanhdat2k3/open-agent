@@ -13,7 +13,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 
 export function UserNav({ collapsed }: { collapsed?: boolean }) {
   const profile = useProfile();
-  const { t, dict, locale, setLocale } = useTranslation();
+  const { t, dict, locale, setLocale, tx } = useTranslation();
   const user = profile.data;
   const displayName = user?.display_name || user?.email?.split("@")[0] || "User";
   const email = user?.email || "";
@@ -45,10 +45,10 @@ export function UserNav({ collapsed }: { collapsed?: boolean }) {
         {canManageOrg && <DropdownMenuItem asChild><Link href="/settings/members"><Settings className="h-4 w-4" aria-hidden="true" />{dict.nav.members}</Link></DropdownMenuItem>}
         <DropdownMenuItem onSelect={toggleLanguage} className="cursor-pointer">
           <Globe className="h-4 w-4" aria-hidden="true" />
-          <span>{locale === "vi" ? "Ngôn ngữ: Tiếng Việt 🇻🇳" : "Language: English 🇬🇧"}</span>
+          <span>{tx("Ngôn ngữ: Tiếng Việt 🇻🇳", "Language: English 🇬🇧")}</span>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={() => void handleLogout()} className="text-destructive focus:bg-destructive/10 focus:text-destructive"><LogOut className="h-4 w-4" aria-hidden="true" />{locale === "vi" ? "Đăng xuất" : "Sign Out"}</DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => void handleLogout()} className="text-destructive focus:bg-destructive/10 focus:text-destructive"><LogOut className="h-4 w-4" aria-hidden="true" />{tx("Đăng xuất", "Sign Out")}</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );

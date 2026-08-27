@@ -23,7 +23,7 @@ export function ApprovalCarousel({
   onBatchDecideAll,
   onOpenDetail,
 }: ApprovalCarouselProps) {
-  const { t, locale } = useTranslation();
+  const { t, locale, tx } = useTranslation();
   const [currentIndex, setCurrentIndex] = React.useState(0);
   const [isDeciding, setIsDeciding] = React.useState(false);
   const [isBatchDeciding, setIsBatchDeciding] = React.useState(false);
@@ -49,7 +49,7 @@ export function ApprovalCarousel({
   }
 
   const current = approvals[currentIndex];
-  const title = approvalTitle(current, locale);
+  const title = approvalTitle(current, locale, tx);
   const isHighRisk = current.risk_level === "HIGH" || current.risk_level === "high" || current.tool_name?.includes("send") || current.tool_name?.includes("delete");
 
   const handleNext = () => {
@@ -125,7 +125,7 @@ export function ApprovalCarousel({
             {isHighRisk ? "⚡ HIGH RISK" : "STANDARD ACTION"}
           </Badge>
           <span className="font-mono text-[10.5px] text-muted-foreground">
-            98% {t("pages.approvals.confidence", "Confidence")} · {expiry(current.expires_at, locale)}
+            98% {t("pages.approvals.confidence", "Confidence")} · {expiry(current.expires_at, locale, tx)}
           </span>
         </div>
 

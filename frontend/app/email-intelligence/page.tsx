@@ -82,7 +82,7 @@ function createIdempotencyKey() {
 }
 
 export default function EmailIntelligencePage() {
-  const { t, dict, locale } = useTranslation();
+  const { t, dict, locale, tx } = useTranslation();
   const [tabParam, setTabParam] = useUrlSearchParam("tab");
   const activeTab = (tabParam as "inbox" | "rules") || "inbox";
 
@@ -132,10 +132,10 @@ export default function EmailIntelligencePage() {
       setRuleDomain("");
       setCalendarConnectionId("");
       setRuleExpiry("");
-      toast.success(locale === "vi" ? "Đã tạo quy tắc phê duyệt tự động" : "Trusted calendar rule created");
+      toast.success(tx("Đã tạo quy tắc phê duyệt tự động", "Trusted calendar rule created"));
       void qc.invalidateQueries({ queryKey: emailIntelligenceQueryKeys(orgId).rules() });
     },
-    onError: (value) => setRuleError(value instanceof Error ? value.message : (locale === "vi" ? "Lỗi khi tạo quy tắc" : "Failed to create rule")),
+    onError: (value) => setRuleError(value instanceof Error ? value.message : (tx("Lỗi khi tạo quy tắc", "Failed to create rule"))),
   });
 
   React.useEffect(() => {
@@ -203,7 +203,7 @@ export default function EmailIntelligencePage() {
             className="gap-2"
           >
             <RefreshCw className="h-4 w-4" />
-            {locale === "vi" ? "Làm mới" : "Refresh"}
+            {tx("Làm mới", "Refresh")}
           </Button>
         }
       />
@@ -217,7 +217,7 @@ export default function EmailIntelligencePage() {
           className="gap-2 font-medium"
         >
           <Mail className="h-4 w-4 text-primary" />
-          {locale === "vi" ? "Hộp thư thông minh" : "Inbox"}
+          {tx("Hộp thư thông minh", "Inbox")}
         </Button>
 
         <Button
@@ -227,7 +227,7 @@ export default function EmailIntelligencePage() {
           className="gap-2 font-medium"
         >
           <ShieldCheck className="h-4 w-4 text-primary" />
-          {locale === "vi" ? "Quy tắc Tự động duyệt" : "Trusted Rules"}
+          {tx("Quy tắc Tự động duyệt", "Trusted Rules")}
         </Button>
       </div>
 
@@ -241,7 +241,7 @@ export default function EmailIntelligencePage() {
               <Input
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
-                placeholder={locale === "vi" ? "Tìm theo người gửi, tiêu đề, công ty..." : "Search sender, subject, company..."}
+                placeholder={tx("Tìm theo người gửi, tiêu đề, công ty...", "Search sender, subject, company...")}
                 className="pl-9 text-xs"
               />
             </div>
@@ -254,7 +254,7 @@ export default function EmailIntelligencePage() {
                   className="h-7 text-xs font-medium"
                   onClick={() => changeUnread(false)}
                 >
-                  {locale === "vi" ? "Tất cả" : "All"}
+                  {tx("Tất cả", "All")}
                 </Button>
                 <Button
                   size="sm"
@@ -262,7 +262,7 @@ export default function EmailIntelligencePage() {
                   className="h-7 text-xs font-medium"
                   onClick={() => changeUnread(true)}
                 >
-                  {locale === "vi" ? "Chưa đọc" : "Unread"}
+                  {tx("Chưa đọc", "Unread")}
                 </Button>
               </div>
 
@@ -271,10 +271,10 @@ export default function EmailIntelligencePage() {
                 onChange={(e) => changeRange(e.target.value as DateRange)}
                 className="flex h-8 cursor-pointer rounded-lg border border-border bg-background px-2.5 py-1 text-xs text-foreground shadow-sm hover:border-primary/40 focus-visible:outline-none"
               >
-                <option value="all">{locale === "vi" ? "Toàn thời gian" : "All Time"}</option>
-                <option value="today">{locale === "vi" ? "Hôm nay" : "Today"}</option>
-                <option value="7d">{locale === "vi" ? "7 ngày qua" : "Last 7 Days"}</option>
-                <option value="30d">{locale === "vi" ? "30 ngày qua" : "Last 30 Days"}</option>
+                <option value="all">{tx("Toàn thời gian", "All Time")}</option>
+                <option value="today">{tx("Hôm nay", "Today")}</option>
+                <option value="7d">{tx("7 ngày qua", "Last 7 Days")}</option>
+                <option value="30d">{tx("30 ngày qua", "Last 30 Days")}</option>
               </select>
 
               <select
@@ -282,10 +282,10 @@ export default function EmailIntelligencePage() {
                 onChange={(e) => changeType(e.target.value)}
                 className="flex h-8 cursor-pointer rounded-lg border border-border bg-background px-2.5 py-1 text-xs text-foreground shadow-sm hover:border-primary/40 focus-visible:outline-none"
               >
-                <option value="">{locale === "vi" ? "Tất cả danh mục" : "All Categories"}</option>
-                <option value="CONTRACT_UPDATE">{locale === "vi" ? "Cập nhật hợp đồng" : "Contract Updates"}</option>
-                <option value="CALENDAR_INVITE">{locale === "vi" ? "Lời mời họp lịch" : "Calendar Invites"}</option>
-                <option value="GENERAL">{locale === "vi" ? "Tổng hợp thông thường" : "General"}</option>
+                <option value="">{tx("Tất cả danh mục", "All Categories")}</option>
+                <option value="CONTRACT_UPDATE">{tx("Cập nhật hợp đồng", "Contract Updates")}</option>
+                <option value="CALENDAR_INVITE">{tx("Lời mời họp lịch", "Calendar Invites")}</option>
+                <option value="GENERAL">{tx("Tổng hợp thông thường", "General")}</option>
               </select>
             </div>
           </div>
@@ -295,8 +295,8 @@ export default function EmailIntelligencePage() {
             <LoadingSkeleton variant="table" />
           ) : notifications.isError ? (
             <ErrorState
-              title={locale === "vi" ? "Không thể tải thông báo email" : "Unable to load notifications"}
-              description={locale === "vi" ? "Luồng dữ liệu email chưa sẵn sàng." : "Email triage feed could not be retrieved."}
+              title={tx("Không thể tải thông báo email", "Unable to load notifications")}
+              description={tx("Luồng dữ liệu email chưa sẵn sàng.", "Email triage feed could not be retrieved.")}
               onRetry={() => void notifications.refetch()}
             />
           ) : items.length ? (
@@ -330,7 +330,7 @@ export default function EmailIntelligencePage() {
                         <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">{n.body}</p>
                         {n.classification && (
                           <div className="mt-2 rounded bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 text-[11px] text-amber-600 dark:text-amber-400 font-medium">
-                            🏷️ {locale === "vi" ? "Phân loại:" : "Classification:"} {n.classification}
+                            🏷️ {tx("Phân loại:", "Classification:")} {n.classification}
                           </div>
                         )}
                       </div>
@@ -338,7 +338,7 @@ export default function EmailIntelligencePage() {
 
                     <div className="flex flex-col items-end gap-2 shrink-0">
                       <span className="text-[11px] text-muted-foreground font-mono">
-                        {new Date(n.received_at).toLocaleDateString(locale === "vi" ? "vi-VN" : "en-US", {
+                        {new Date(n.received_at).toLocaleDateString(tx("vi-VN", "en-US"), {
                           month: "short",
                           day: "numeric",
                           hour: "2-digit",
@@ -353,7 +353,7 @@ export default function EmailIntelligencePage() {
                           onClick={() => markRead.mutate(n.id)}
                         >
                           <CheckCheck className="h-3.5 w-3.5" />
-                          {locale === "vi" ? "Đã xem" : "Mark read"}
+                          {tx("Đã xem", "Mark read")}
                         </Button>
                       )}
                     </div>
@@ -364,7 +364,7 @@ export default function EmailIntelligencePage() {
               {/* Standard Pager Navigation */}
               <div className="flex items-center justify-between border-t border-border/60 pt-3 text-xs text-muted-foreground">
                 <span>
-                  {locale === "vi" ? `Trang ${pageIndex + 1}` : `Page ${pageIndex + 1}`}
+                  {tx("Trang ${pageIndex + 1}", "Page ${pageIndex + 1}")}
                 </span>
                 <div className="flex items-center gap-1.5">
                   <Button
@@ -374,7 +374,7 @@ export default function EmailIntelligencePage() {
                     disabled={pageIndex === 0 || notifications.isLoading}
                     onClick={() => setPageIndex((p) => Math.max(0, p - 1))}
                   >
-                    {locale === "vi" ? "Trang trước" : "Previous"}
+                    {tx("Trang trước", "Previous")}
                   </Button>
                   <Button
                     size="sm"
@@ -392,7 +392,7 @@ export default function EmailIntelligencePage() {
                       }
                     }}
                   >
-                    {locale === "vi" ? "Trang sau" : "Next"}
+                    {tx("Trang sau", "Next")}
                   </Button>
                 </div>
               </div>
@@ -400,8 +400,8 @@ export default function EmailIntelligencePage() {
           ) : (
             <EmptyState
               icon={Inbox}
-              title={locale === "vi" ? "Hộp thư đã xử lý gọn gàng" : "All caught up in your inbox"}
-              description={locale === "vi" ? "Không có email nào khớp với bộ lọc đang chọn." : "No incoming emails matched your active filters."}
+              title={tx("Hộp thư đã xử lý gọn gàng", "All caught up in your inbox")}
+              description={tx("Không có email nào khớp với bộ lọc đang chọn.", "No incoming emails matched your active filters.")}
             />
           )}
         </div>
@@ -413,12 +413,10 @@ export default function EmailIntelligencePage() {
           <Card className="border-amber-500/30 bg-amber-500/[0.04] shadow-card">
             <CardContent className="space-y-1.5 p-4 text-xs">
               <p className="font-semibold text-amber-500 flex items-center gap-1.5">
-                <ShieldCheck className="h-4 w-4" /> {locale === "vi" ? "Chính sách An toàn Doanh nghiệp" : "Production Safety Policy Defaults"}
+                <ShieldCheck className="h-4 w-4" /> {tx("Chính sách An toàn Doanh nghiệp", "Production Safety Policy Defaults")}
               </p>
               <p className="text-muted-foreground leading-relaxed">
-                {locale === "vi"
-                  ? "Các quy tắc tự động đặt lịch chạy trong phạm vi nghiêm ngặt (CALENDAR_AUTO_CREATE). Yêu cầu tên miền doanh nghiệp chính xác, ngày hết hạn, giới hạn số sự kiện mỗi ngày và xác thực SPF/DKIM/DMARC."
-                  : "Rules currently operate with strict safety boundaries (CALENDAR_AUTO_CREATE). Rules require a verified exact company domain, expiration date, daily execution caps, and SPF/DKIM/DMARC authentication."}
+                {tx("Các quy tắc tự động đặt lịch chạy trong phạm vi nghiêm ngặt (CALENDAR_AUTO_CREATE). Yêu cầu tên miền doanh nghiệp chính xác, ngày hết hạn, giới hạn số sự kiện mỗi ngày và xác thực SPF/DKIM/DMARC.", "Rules currently operate with strict safety boundaries (CALENDAR_AUTO_CREATE). Rules require a verified exact company domain, expiration date, daily execution caps, and SPF/DKIM/DMARC authentication.")}
               </p>
             </CardContent>
           </Card>
@@ -426,7 +424,7 @@ export default function EmailIntelligencePage() {
           <Card glass className="shadow-card border-border/80">
             <CardHeader className="pb-3">
               <CardTitle className="text-base font-semibold text-foreground">
-                {locale === "vi" ? "Tạo Quy tắc Phê duyệt Lịch tự động" : "Create Trusted Calendar Rule"}
+                {tx("Tạo Quy tắc Phê duyệt Lịch tự động", "Create Trusted Calendar Rule")}
               </CardTitle>
               <CardDescription className="text-xs">
                 {t("pages.emailIntelligence.autoApproveDesc", "Tự động chấp thuận lời mời họp từ tên miền đối tác uy tín đáp ứng tiêu chuẩn an toàn.")}
@@ -442,37 +440,37 @@ export default function EmailIntelligencePage() {
                 className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 items-end"
               >
                 <div className="space-y-1">
-                  <Label className="text-xs">{locale === "vi" ? "Tên quy tắc" : "Rule Name"}</Label>
+                  <Label className="text-xs">{tx("Tên quy tắc", "Rule Name")}</Label>
                   <Input
                     value={ruleName}
                     onChange={(e) => setRuleName(e.target.value)}
-                    placeholder={locale === "vi" ? "ví dụ: Khách hàng VIP" : "e.g. Strategic Partner"}
+                    placeholder={tx("ví dụ: Khách hàng VIP", "e.g. Strategic Partner")}
                     required
                     className="text-xs"
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-xs">{locale === "vi" ? "Tên miền đối tác" : "Partner Domain"}</Label>
+                  <Label className="text-xs">{tx("Tên miền đối tác", "Partner Domain")}</Label>
                   <Input
                     value={ruleDomain}
                     onChange={(e) => setRuleDomain(e.target.value)}
-                    placeholder={locale === "vi" ? "partner.com" : "partner.com"}
+                    placeholder={tx("partner.com", "partner.com")}
                     required
                     className="text-xs font-mono"
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-xs">{locale === "vi" ? "ID Kết nối Lịch" : "Calendar Connection ID"}</Label>
+                  <Label className="text-xs">{tx("ID Kết nối Lịch", "Calendar Connection ID")}</Label>
                   <Input
                     value={calendarConnectionId}
                     onChange={(e) => setCalendarConnectionId(e.target.value)}
-                    placeholder={locale === "vi" ? "conn-google-..." : "conn-google-..."}
+                    placeholder={tx("conn-google-...", "conn-google-...")}
                     required
                     className="text-xs font-mono"
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-xs">{locale === "vi" ? "Ngày hết hạn" : "Expiration Date"}</Label>
+                  <Label className="text-xs">{tx("Ngày hết hạn", "Expiration Date")}</Label>
                   <Input
                     type="date"
                     value={ruleExpiry}
@@ -486,7 +484,7 @@ export default function EmailIntelligencePage() {
                   <div className="ml-auto">
                     <Button type="submit" disabled={createRule.isPending} className="gap-1.5 font-medium text-xs">
                       <Plus className="h-4 w-4" />
-                      {locale === "vi" ? "Lưu quy tắc" : "Create Rule"}
+                      {tx("Lưu quy tắc", "Create Rule")}
                     </Button>
                   </div>
                 </div>
@@ -498,7 +496,7 @@ export default function EmailIntelligencePage() {
           <Card glass className="overflow-hidden shadow-card border-border/80">
             <CardHeader className="pb-3">
               <CardTitle className="text-base font-semibold text-foreground">
-                {locale === "vi" ? "Danh sách Quy tắc đang hiệu lực" : "Active Trusted Rules"}
+                {tx("Danh sách Quy tắc đang hiệu lực", "Active Trusted Rules")}
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
@@ -507,8 +505,8 @@ export default function EmailIntelligencePage() {
               ) : rules.isError ? (
                 <div className="p-6">
                   <ErrorState
-                    title={locale === "vi" ? "Không thể tải quy tắc" : "Unable to load rules"}
-                    description={locale === "vi" ? "Dữ liệu quy tắc tin cậy chưa sẵn sàng." : "Trusted rules could not be loaded."}
+                    title={tx("Không thể tải quy tắc", "Unable to load rules")}
+                    description={tx("Dữ liệu quy tắc tin cậy chưa sẵn sàng.", "Trusted rules could not be loaded.")}
                     onRetry={() => void rules.refetch()}
                   />
                 </div>
@@ -517,11 +515,11 @@ export default function EmailIntelligencePage() {
                   <Table>
                     <TableHeader>
                       <TableRow className="bg-muted/40">
-                        <TableHead className="text-xs font-semibold">{locale === "vi" ? "Tên quy tắc" : "Name"}</TableHead>
-                        <TableHead className="text-xs font-semibold">{locale === "vi" ? "Tên miền" : "Domain"}</TableHead>
-                        <TableHead className="text-xs font-semibold">{locale === "vi" ? "Hành động" : "Action"}</TableHead>
-                        <TableHead className="text-xs font-semibold">{locale === "vi" ? "Hết hạn" : "Expires"}</TableHead>
-                        <TableHead className="text-xs font-semibold">{locale === "vi" ? "Trạng thái" : "Status"}</TableHead>
+                        <TableHead className="text-xs font-semibold">{tx("Tên quy tắc", "Name")}</TableHead>
+                        <TableHead className="text-xs font-semibold">{tx("Tên miền", "Domain")}</TableHead>
+                        <TableHead className="text-xs font-semibold">{tx("Hành động", "Action")}</TableHead>
+                        <TableHead className="text-xs font-semibold">{tx("Hết hạn", "Expires")}</TableHead>
+                        <TableHead className="text-xs font-semibold">{tx("Trạng thái", "Status")}</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -533,11 +531,11 @@ export default function EmailIntelligencePage() {
                             <Badge variant="outline">{r.action}</Badge>
                           </TableCell>
                           <TableCell className="text-xs font-mono text-muted-foreground">
-                            {new Date(r.expires_at).toLocaleDateString(locale === "vi" ? "vi-VN" : "en-US")}
+                            {new Date(r.expires_at).toLocaleDateString(tx("vi-VN", "en-US"))}
                           </TableCell>
                           <TableCell>
                             <Badge variant={r.is_active ? "success" : "secondary"} className="text-[10px]">
-                              {r.is_active ? (locale === "vi" ? "Đang chạy" : "active") : (locale === "vi" ? "Tắt" : "disabled")}
+                              {r.is_active ? (tx("Đang chạy", "active")) : (tx("Tắt", "disabled"))}
                             </Badge>
                           </TableCell>
                         </TableRow>
@@ -559,8 +557,8 @@ export default function EmailIntelligencePage() {
                 <div className="p-6">
                   <EmptyState
                     icon={ShieldAlert}
-                    title={locale === "vi" ? "Chưa có quy tắc tin cậy nào" : "No trusted rules yet"}
-                    description={locale === "vi" ? "Thêm tên miền đối tác để kích hoạt tự động đặt lịch an toàn." : "Add a partner domain to enable automated meeting approvals."}
+                    title={tx("Chưa có quy tắc tin cậy nào", "No trusted rules yet")}
+                    description={tx("Thêm tên miền đối tác để kích hoạt tự động đặt lịch an toàn.", "Add a partner domain to enable automated meeting approvals.")}
                   />
                 </div>
               )}

@@ -80,7 +80,7 @@ export function ChatThread({
   bottomRef,
   onThreadScroll,
 }: ChatThreadProps) {
-    const { locale } = useTranslation();
+    const { locale, tx } = useTranslation();
   const hasPendingApproval = messages.some((m) => m.role === "approval" && m.status === "pending");
   const lastMessage = messages[messages.length - 1];
   // Hide the global ChatStatusRow when the last assistant message is already
@@ -142,7 +142,7 @@ export function ChatThread({
             }
           >
             <Bug className={`h-3.5 w-3.5 ${debug ? "text-primary" : ""}`} aria-hidden="true" />
-            <span>{locale === "vi" ? "Debug" : "Debug"}</span>
+            <span>{tx("Debug", "Debug")}</span>
             {debug && <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-hidden="true" />}
           </Button>
           {messages.length > 0 && (
@@ -153,7 +153,7 @@ export function ChatThread({
               className="h-8 w-8 text-muted-foreground hover:text-destructive"
               onClick={onClearMessages}
               aria-label="Clear conversation"
-              title={locale === "vi" ? "Clear conversation" : "Clear conversation"}
+              title={tx("Clear conversation", "Clear conversation")}
             >
               <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
             </Button>
