@@ -75,3 +75,12 @@ def test_custom_cron_uses_next_matching_minute() -> None:
         "UTC",
         now=datetime(2026, 8, 27, 10, 7),
     ) == datetime(2026, 8, 27, 10, 15)
+
+
+def test_custom_cron_uses_standard_monday_to_friday_numbers() -> None:
+    # 1-5 means Monday-Friday in standard five-field cron syntax.
+    assert next_run_at(
+        {"kind": "custom", "cron": "0 7 * * 1-5"},
+        "UTC",
+        now=datetime(2026, 8, 28, 8, 0),  # Friday after the scheduled time
+    ) == datetime(2026, 8, 31, 7, 0)

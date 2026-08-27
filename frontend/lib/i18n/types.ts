@@ -215,6 +215,8 @@ export interface TranslationDictionary {
       aiGenerating: string;
       nodeConfigTitle: string;
       nodeConfigEditing: string;
+      showAdvancedSettings: string;
+      hideAdvancedSettings: string;
       labelName: string;
       deleteNode: string;
       runInput: string;
