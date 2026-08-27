@@ -9,8 +9,8 @@ unauthenticated (webhooks can't send cookies) but requires a shared token in the
 from __future__ import annotations
 
 import copy
-import hmac
 import hashlib
+import hmac
 import json
 from typing import Any
 
