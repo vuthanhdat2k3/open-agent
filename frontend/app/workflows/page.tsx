@@ -10,7 +10,11 @@ import {
   FilePlus,
   RefreshCw,
   Sparkles,
+  LibraryBig,
+  UploadCloud,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { publishWorkflowToCatalog } from "@/lib/automations/api";
 import { api, streamSSE } from "@/lib/api";
 import { useWorkflows, useCreateWorkflow, useUpdateWorkflow, useAgents, useModels, useGenerateWorkflow, useWorkflowRun } from "@/hooks";
 import { useWorkflowStore } from "@/stores";
@@ -120,6 +124,34 @@ export default function WorkflowEditor() {
     setActiveRun,
   } = useWorkflowStore();
   const workflowRun = useWorkflowRun(activeRunId);
+  const router = useRouter();
+  const [publishDialogOpen, setPublishDialogOpen] = React.useState(false);
+  const [publishCategory, setPublishCategory] = React.useState("custom");
+  const [publishDescription, setPublishDescription] = React.useState("");
+  const [isPublishing, setIsPublishing] = React.useState(false);
+
+  const handlePublishToMarketplace = async () => {
+    if (!editId) {
+      toast.error(tx("Vui lòng lưu workflow trước khi đẩy lên Marketplace", "Please save the workflow before publishing to Marketplace"));
+      return;
+    }
+    setIsPublishing(true);
+    try {
+      await publishWorkflowToCatalog({
+        workflow_id: editId,
+        category: publishCategory,
+        description: publishDescription || undefined,
+        outcome: publishDescription || undefined,
+        icon: "zap",
+      });
+      toast.success(tx("Đã đẩy quy trình lên Marketplace thành công!", "Successfully published workflow to Marketplace!"));
+      setPublishDialogOpen(false);
+    } catch (e: any) {
+      toast.error(e.message || tx("Không thể xuất bản lên Marketplace", "Failed to publish to Marketplace"));
+    } finally {
+      setIsPublishing(false);
+    }
+  };
 
   // Initialize activeRunId once on mount if 'run' is present in URL
   React.useEffect(() => {
@@ -556,6 +588,61 @@ export default function WorkflowEditor() {
         description={dict.pages.workflows.description}
         actions={
           <>
+            <Button
+              variant="outline"
+              className="gap-2 active-tactile transition-transform text-primary border-primary/30 hover:bg-primary/10"
+              onClick={() => router.push("/automations")}
+            >
+              <LibraryBig className="h-4 w-4 text-primary" /> {tx("Marketplace", "Marketplace")}
+            </Button>
+            {editId && (
+              <Dialog open={publishDialogOpen} onOpenChange={setPublishDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="outline" className="gap-2 active-tactile transition-transform border-emerald-500/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10">
+                    <UploadCloud className="h-4 w-4" /> {tx("Đẩy lên Market", "Publish to Market")}
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>{tx("Xuất bản lên Workflow Marketplace", "Publish to Workflow Marketplace")}</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4 py-2 text-xs">
+                    <p className="text-muted-foreground">
+                      {tx(
+                        "Quy trình này sẽ xuất hiện trên Marketplace của tổ chức để các thành viên khác có thể cài đặt và sử dụng bản sao độc lập.",
+                        "This workflow will be available on the organization Marketplace for other members to install and run independently."
+                      )}
+                    </p>
+                    <div className="space-y-1.5">
+                      <Label>{tx("Danh mục (Category)", "Category")}</Label>
+                      <Select className="w-full text-xs" value={publishCategory} onChange={(e) => setPublishCategory(e.target.value)}>
+                        <option value="custom">{tx("Tùy chỉnh (Custom)", "Custom")}</option>
+                        <option value="daily_planning">{tx("Lập kế hoạch hàng ngày (Daily planning)", "Daily planning")}</option>
+                        <option value="customer_intelligence">{tx("Thông tin khách hàng (Customer intelligence)", "Customer intelligence")}</option>
+                        <option value="research">{tx("Nghiên cứu & Báo cáo (Research)", "Research")}</option>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>{tx("Mô tả tóm tắt", "Summary Description")}</Label>
+                      <Textarea
+                        className="text-xs"
+                        placeholder={tx("Mô tả mục tiêu của workflow mẫu...", "Describe the template goal...")}
+                        value={publishDescription}
+                        onChange={(e) => setPublishDescription(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setPublishDialogOpen(false)}>
+                      {tx("Hủy", "Cancel")}
+                    </Button>
+                    <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white" disabled={isPublishing} onClick={handlePublishToMarketplace}>
+                      {isPublishing ? tx("Đang xuất bản...", "Publishing...") : tx("Xác nhận Đẩy lên Market", "Publish Now")}
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            )}
             <Button variant="outline" className="gap-2 active-tactile transition-transform" onClick={newWorkflow}>
               <FilePlus className="h-4 w-4" /> {dict.pages.workflows.btnNew}
             </Button>
