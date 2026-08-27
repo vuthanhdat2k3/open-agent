@@ -66,9 +66,13 @@ def to_schedule_dict(parameters: dict[str, Any]) -> dict[str, Any]:
     if frequency == "hourly":
         return {"kind": "hourly", "time": None, "weekday": None, "interval_hours": 1}
     if frequency == "custom":
-        # The cron tick uses the schedule dict; custom cron falls back to a
-        # daily schedule at the configured time so the node still fires.
-        return {"kind": "daily", "time": time, "weekday": None, "interval_hours": None}
+        return {
+            "kind": "custom",
+            "cron": str(parameters.get("custom_cron") or "").strip(),
+            "time": time,
+            "weekday": None,
+            "interval_hours": None,
+        }
     if frequency == "weekdays":
         return {"kind": "weekdays", "time": time, "weekday": None, "interval_hours": None}
     if frequency == "weekly":

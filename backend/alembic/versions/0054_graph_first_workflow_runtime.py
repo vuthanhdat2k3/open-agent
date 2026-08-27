@@ -17,6 +17,13 @@ def upgrade() -> None:
     op.add_column("workflow_runs", sa.Column("graph_hash", sa.String(length=64), nullable=True))
     op.add_column("workflow_runs", sa.Column("trigger_node_id", sa.String(length=128), nullable=True))
     op.add_column("workflow_runs", sa.Column("trigger_type", sa.String(length=32), nullable=True))
+    op.add_column("workflow_runs", sa.Column("trigger_occurrence_key", sa.String(length=192), nullable=True))
+    op.create_index(
+        "uq_workflow_run_trigger_occurrence",
+        "workflow_runs",
+        ["trigger_occurrence_key"],
+        unique=True,
+    )
 
     op.create_table(
         "workflow_trigger_states",
@@ -59,6 +66,8 @@ def downgrade() -> None:
     op.drop_index("ix_workflow_trigger_states_workflow_id", table_name="workflow_trigger_states")
     op.drop_index("ix_workflow_trigger_states_org_id", table_name="workflow_trigger_states")
     op.drop_table("workflow_trigger_states")
+    op.drop_index("uq_workflow_run_trigger_occurrence", table_name="workflow_runs")
+    op.drop_column("workflow_runs", "trigger_occurrence_key")
     op.drop_column("workflow_runs", "trigger_type")
     op.drop_column("workflow_runs", "trigger_node_id")
     op.drop_column("workflow_runs", "graph_hash")

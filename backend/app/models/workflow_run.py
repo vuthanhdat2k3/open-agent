@@ -34,6 +34,7 @@ class WorkflowRun(Base):
     graph_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     trigger_node_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     trigger_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    trigger_occurrence_key: Mapped[str | None] = mapped_column(String(192), nullable=True, unique=True)
 
     # --- Durable execution (M14) ---
     # How many times a worker has picked this run back up after a crash.
