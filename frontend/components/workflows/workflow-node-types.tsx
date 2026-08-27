@@ -14,6 +14,8 @@ import {
   GitFork,
   Cable,
   AlertCircle,
+  CheckCircle2,
+  Loader2,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -27,6 +29,7 @@ export type WorkflowNodeData = {
   kind: GraphNode["kind"];
   status: NodeStatus;
   onDelete?: (id: string) => void;
+  onInspect?: (id: string) => void;
 };
 
 const KIND_META: Record<
@@ -102,9 +105,9 @@ const KIND_META: Record<
 
 const statusBorderClass: Record<NodeStatus, string> = {
   idle: "border-border/80 hover:border-primary/50 hover:shadow-3d-card",
-  running: "border-info shadow-[0_0_22px_hsl(var(--info)/0.4)] animate-pulse-soft",
-  done: "border-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.2)]",
-  error: "border-destructive shadow-[0_0_15px_rgba(239,68,68,0.2)]",
+  running: "border-info shadow-[0_0_25px_hsl(var(--info)/0.45)] ring-2 ring-info/60 animate-pulse",
+  done: "border-emerald-500/80 shadow-[0_0_15px_rgba(16,185,129,0.25)] ring-1 ring-emerald-500/40",
+  error: "border-destructive/80 shadow-[0_0_18px_rgba(239,68,68,0.3)] ring-1 ring-destructive/40",
 };
 
 function BaseWorkflowNode({ id, data, selected }: NodeProps & { data: WorkflowNodeData }) {
@@ -119,11 +122,16 @@ function BaseWorkflowNode({ id, data, selected }: NodeProps & { data: WorkflowNo
   return (
     <div
       className={cn(
-        "group relative flex h-[92px] w-[210px] select-none flex-col justify-between rounded-2xl border bg-card/95 p-3 text-xs shadow-3d-card backdrop-blur-xl transition-[border-color,box-shadow,transform,background-color] duration-200",
+        "group relative flex h-[94px] w-[214px] select-none flex-col justify-between rounded-2xl border bg-card/95 p-3 text-xs shadow-3d-card backdrop-blur-xl transition-all duration-200",
         statusBorderClass[data.status],
-        selected && data.status === "idle" && "ring-2 ring-primary border-primary/70 shadow-lg",
+        selected && data.status === "idle" && "ring-2 ring-primary border-primary/80 shadow-lg",
       )}
     >
+      {/* Running pulse radar wave */}
+      {data.status === "running" && (
+        <span className="pointer-events-none absolute -inset-0.5 rounded-2xl bg-info/20 animate-ping opacity-60" />
+      )}
+
       {/* Node Delete Button on hover or when selected */}
       {data.onDelete && (
         <button
@@ -155,14 +163,17 @@ function BaseWorkflowNode({ id, data, selected }: NodeProps & { data: WorkflowNo
         className="!h-3 !w-3 !border !border-border !bg-background transition-transform hover:!scale-125 hover:!border-primary"
       />
 
-      <div className="flex items-center gap-2.5">
+      <div className="flex items-center gap-2.5 relative z-10">
         <div
           className={cn(
-            "grid h-8 w-8 shrink-0 place-items-center rounded-xl border shadow-inner-edge",
+            "grid h-8 w-8 shrink-0 place-items-center rounded-xl border shadow-inner-edge relative",
             meta.badgeClass,
           )}
         >
           <Icon className="h-4.5 w-4.5" />
+          {data.status === "running" && (
+            <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-info ring-2 ring-background animate-pulse" />
+          )}
         </div>
         <div className="flex min-w-0 flex-1 flex-col">
           <span className="truncate text-[11px] font-bold leading-tight text-foreground">
@@ -172,12 +183,18 @@ function BaseWorkflowNode({ id, data, selected }: NodeProps & { data: WorkflowNo
             {meta.description}
           </span>
         </div>
+        {data.status === "running" && (
+          <Loader2 className="ml-auto h-4 w-4 shrink-0 text-info animate-spin" />
+        )}
+        {data.status === "done" && (
+          <CheckCircle2 className="ml-auto h-4 w-4 shrink-0 text-emerald-500" />
+        )}
         {data.status === "error" && (
           <AlertCircle className="ml-auto h-4 w-4 shrink-0 text-destructive animate-pulse" />
         )}
       </div>
 
-      <div className="flex items-center justify-between gap-1 pt-1">
+      <div className="flex items-center justify-between gap-1 pt-1 relative z-10">
         <div
           className={cn(
             "truncate rounded-md border px-1.5 py-0.5 font-mono text-[9px] font-medium tracking-tight",
@@ -186,7 +203,7 @@ function BaseWorkflowNode({ id, data, selected }: NodeProps & { data: WorkflowNo
         >
           {data.kind}
         </div>
-        <div className="text-[9px] font-mono text-muted-foreground/60 uppercase">
+        <div className="text-[9px] font-mono text-muted-foreground/70 uppercase font-semibold">
           {data.status !== "idle" ? data.status : ""}
         </div>
       </div>

@@ -478,6 +478,8 @@ export interface ChatRunDetail {
   finished_at?: string | null;
 }
 
+export type WorkflowNodeRunDetail = WorkflowRunDetail["nodes"][number];
+
 export interface WorkflowRunDetail {
   id: string;
   org_id?: string;

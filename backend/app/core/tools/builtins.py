@@ -69,6 +69,27 @@ async def _read_attachment(args: dict[str, Any], ctx: ToolContext) -> str:
 
 MAX_FETCH_REDIRECTS = 5
 
+def _sanitize_html_to_markdown(html: str) -> str:
+    """Strip script, style, navigation and extract clean readable text/markdown."""
+    if not html or ("<" not in html and ">" not in html):
+        return html
+    import html as html_lib
+    import re
+    # Strip dangerous/irrelevant blocks
+    text = re.sub(r"<(script|style|noscript|svg|header|footer|nav)[\s\S]*?</\\1>", " ", html, flags=re.IGNORECASE)
+    text = re.sub(r"<!--[\s\S]*?-->", " ", text)
+    # Headings and lists
+    text = re.sub(r"<h[1-6][^>]*>(.*?)</h[1-6]>", r"\n\n# \\1\n", text, flags=re.IGNORECASE | re.DOTALL)
+    text = re.sub(r"<li[^>]*>(.*?)</li>", r"\n- \\1", text, flags=re.IGNORECASE | re.DOTALL)
+    text = re.sub(r"<p[^>]*>", "\n\n", text, flags=re.IGNORECASE)
+    text = re.sub(r"<br\s*/?>", "\n", text, flags=re.IGNORECASE)
+    # Strip other tags
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = html_lib.unescape(text)
+    lines = [re.sub(r"[ \t]+", " ", line).strip() for line in text.splitlines()]
+    return "\n".join(line for line in lines if line)
+
+
 
 async def _crawler_fetch(crawler_url: str, url: str, api_token: str = "") -> str | None:
     """POST to a self-hosted crawl4ai instance; returns rendered markdown or None on any failure."""
