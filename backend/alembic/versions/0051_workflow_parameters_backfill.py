@@ -24,6 +24,15 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     conn = op.get_bind()
     dialect = conn.dialect.name
+    workflow_columns = {column["name"] for column in sa.inspect(conn).get_columns("workflows")}
+
+    # Older databases called this JSON column ``definition``.  Add the
+    # canonical column before the backfill so upgrades from those schemas do
+    # not fail while reading ``workflows.graph``.
+    if "graph" not in workflow_columns:
+        op.add_column("workflows", sa.Column("graph", sa.JSON(), nullable=True))
+        if "definition" in workflow_columns:
+            conn.execute(sa.text("UPDATE workflows SET graph = definition WHERE graph IS NULL"))
 
     if dialect == "postgresql":
         # JSONB surgery: for each node with config and no parameters, copy.
