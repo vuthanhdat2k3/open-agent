@@ -82,6 +82,47 @@ async def test_workflow_persists_run_and_node_runs_inline() -> None:
     await engine.dispose()
 
 
+async def test_workflow_runs_only_downstream_of_selected_trigger() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with session_factory() as session:
+        workflow = await _seed_workflow(
+            session,
+            {
+                "nodes": [
+                    {"id": "manual", "kind": "input"},
+                    {"id": "scheduled", "kind": "scheduler"},
+                    {"id": "manual_out", "kind": "output"},
+                    {"id": "scheduled_out", "kind": "output"},
+                ],
+                "edges": [
+                    {"from_": "manual", "to": "manual_out"},
+                    {"from_": "scheduled", "to": "scheduled_out"},
+                ],
+            },
+        )
+
+        output, _events, run_id = await run_workflow(
+            workflow,
+            "manual payload",
+            session,
+            trigger_node_id="manual",
+            trigger_type="input",
+        )
+
+        run = await session.get(WorkflowRun, run_id)
+        assert output == "manual payload"
+        assert run is not None
+        assert run.trigger_node_id == "manual"
+        assert run.trigger_type == "input"
+        assert run.graph_snapshot == workflow.graph
+
+    await engine.dispose()
+
+
 async def test_workflow_retry_records_each_attempt() -> None:
     attempts = 0
 

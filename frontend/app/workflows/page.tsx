@@ -206,14 +206,19 @@ export default function WorkflowEditor() {
   }, [nodeStatus, running]);
 
   React.useEffect(() => {
-    if (nodes.length > 0 && !nodes.every((n) => n.position?.x != null)) {
-      const calculatedPos = calculateDagLayout(nodes, edges);
-      const updatedNodes = nodes.map((n) => ({
-        ...n,
-        position: n.position || calculatedPos[n.id] || { x: 40, y: 40 },
-      }));
-      setGraph(updatedNodes, edges);
-    }
+    // Only auto-place nodes that the user has not positioned yet.
+    // Re-laying out the whole graph on any change would clobber positions
+    // the user just dragged — the effect must be a no-op for already-placed
+    // nodes and only compute coordinates for new arrivals.
+    const unplaced = nodes.filter((n) => n.position?.x == null);
+    if (unplaced.length === 0) return;
+    const calculatedPos = calculateDagLayout(nodes, edges);
+    const updatedNodes = nodes.map((n) =>
+      n.position?.x != null
+        ? n
+        : { ...n, position: calculatedPos[n.id] || { x: 40, y: 40 } },
+    );
+    setGraph(updatedNodes, edges);
   }, [nodes, edges, setGraph]);
 
   const addNode = (kind: GraphNode["kind"], position: { x: number; y: number }) => {

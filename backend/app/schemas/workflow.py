@@ -76,6 +76,7 @@ class RunWorkflowRequest(BaseModel):
     stream: bool = True
     workflow_run_id: str | None = None
     timezone: str | None = None
+    trigger_node_id: str | None = None
 
 
 class WorkflowGenerateRequest(BaseModel):

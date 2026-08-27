@@ -190,6 +190,13 @@ def _build_definitions() -> dict[str, NodeDefinition]:
                     ],
                 ),
                 NodeField(
+                    name="enabled",
+                    label="Enabled",
+                    type="boolean",
+                    default=True,
+                    description="Whether this scheduler trigger is active.",
+                ),
+                NodeField(
                     name="time",
                     label="Time",
                     type="string",

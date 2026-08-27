@@ -8,7 +8,6 @@ from app.db.base import utc_now
 from app.db.session import SessionLocal
 from app.models.task import Task
 from app.models.workflow import Workflow
-from app.models.workflow_installation import WorkflowInstallation
 from app.models.workflow_occurrence import WorkflowOccurrence
 from app.models.workflow_run import WorkflowRun
 from app.schemas.chat import ChatRequest
@@ -16,111 +15,31 @@ from app.services.chat_service import ChatService
 
 
 async def run_workflow(ctx, workflow_run_id: str) -> None:  # noqa: ARG001
+    """Execute every queued workflow through its persisted graph.
+
+    Catalog metadata may remain attached to a run for audit/backward
+    compatibility, but it never selects an executor. The graph snapshot and
+    trigger identity are the only execution inputs.
+    """
     async with SessionLocal() as session:
         res = await session.execute(select(WorkflowRun).where(WorkflowRun.id == workflow_run_id))
         workflow_run = res.scalar_one_or_none()
         if workflow_run is None or workflow_run.status == "succeeded":
             return
-        wf_res = await session.execute(
+        workflow = await session.scalar(
             select(Workflow).where(
                 Workflow.id == workflow_run.workflow_id,
                 Workflow.org_id == workflow_run.org_id,
             )
         )
-        workflow = wf_res.scalar_one_or_none()
         if workflow is None:
             workflow_run.status = "failed"
             workflow_run.error = "workflow not found"
             await session.commit()
             return
+
+        occurrence_id = (workflow_run.input or {}).get("occurrence_id")
         try:
-            template_key = str((workflow_run.input or {}).get("template_key") or "")
-            installation_id = str((workflow_run.input or {}).get("installation_id") or "")
-            if template_key and installation_id:
-                installation = await session.scalar(
-                    select(WorkflowInstallation).where(
-                        WorkflowInstallation.id == installation_id,
-                        WorkflowInstallation.org_id == workflow_run.org_id,
-                        WorkflowInstallation.workflow_id == workflow.id,
-                    )
-                )
-                if installation is None or installation.status == "archived":
-                    raise RuntimeError("workflow installation is no longer active")
-                # If the user edited this installed workflow's DAG in the editor,
-                # run the generic engine over their graph instead of the catalog
-                # executor — the user now owns the workflow.
-                if (installation.settings or {}).get("editor_overridden"):
-                    await run_workflow_engine(
-                        workflow,
-                        str((workflow_run.input or {}).get("text", "")),
-                        session,
-                        stream=False,
-                        workflow_run_id=workflow_run.id,
-                        force_inline=True,
-                        user_id=workflow_run.triggered_by_user_id,
-                        timezone_name=(workflow_run.input or {}).get("timezone"),
-                    )
-                    occurrence_id = (workflow_run.input or {}).get("occurrence_id")
-                    if occurrence_id:
-                        occurrence = await session.get(WorkflowOccurrence, occurrence_id)
-                        if occurrence is not None:
-                            occurrence.status = (
-                                "succeeded" if workflow_run.status == "succeeded" else workflow_run.status
-                            )
-                    await session.commit()
-                    return
-                if template_key == "gmail_monitor_and_triage":
-                    from app.customer_intelligence.ingest import sync_connection
-
-                    connection_id = str((installation.settings or {}).get("connection_id") or "")
-                    if not connection_id:
-                        raise RuntimeError("Gmail monitor has no connection binding")
-                    result = await sync_connection(
-                        session,
-                        org_id=workflow_run.org_id,
-                        connection_id=connection_id,
-                        trigger=str((workflow_run.input or {}).get("trigger") or "scheduled"),
-                        actor_user_id=workflow_run.triggered_by_user_id,
-                    )
-                    workflow_run.output = {
-                        "kind": "catalog_execution",
-                        "template_key": template_key,
-                        "result": result,
-                    }
-                    workflow_run.status = "succeeded"
-                    workflow_run.finished_at = utc_now()
-                    occurrence_id = (workflow_run.input or {}).get("occurrence_id")
-                    if occurrence_id:
-                        occurrence = await session.get(WorkflowOccurrence, occurrence_id)
-                        if occurrence is not None:
-                            occurrence.status = "succeeded"
-                    await session.commit()
-                    return
-                if template_key in {
-                    "morning-command-center",
-                    "follow-up-radar",
-                    "meeting-preparation",
-                    "end-of-day-client-digest",
-                    "weekly-account-review",
-                }:
-                    from app.workflows.catalog_executors import execute_catalog_report
-
-                    result = await execute_catalog_report(
-                        session,
-                        installation=installation,
-                        trigger=str((workflow_run.input or {}).get("trigger") or "scheduled"),
-                    )
-                    workflow_run.output = result
-                    workflow_run.status = "succeeded"
-                    workflow_run.finished_at = utc_now()
-                    occurrence_id = (workflow_run.input or {}).get("occurrence_id")
-                    if occurrence_id:
-                        occurrence = await session.get(WorkflowOccurrence, occurrence_id)
-                        if occurrence is not None:
-                            occurrence.status = "succeeded"
-                    await session.commit()
-                    return
-                raise RuntimeError(f"template executor is not implemented: {template_key}")
             await run_workflow_engine(
                 workflow,
                 str((workflow_run.input or {}).get("text", "")),
@@ -130,18 +49,20 @@ async def run_workflow(ctx, workflow_run_id: str) -> None:  # noqa: ARG001
                 force_inline=True,
                 user_id=workflow_run.triggered_by_user_id,
                 timezone_name=(workflow_run.input or {}).get("timezone"),
+                trigger_node_id=workflow_run.trigger_node_id,
+                trigger_type=workflow_run.trigger_type,
             )
-            occurrence_id = (workflow_run.input or {}).get("occurrence_id")
             if occurrence_id:
                 occurrence = await session.get(WorkflowOccurrence, occurrence_id)
                 if occurrence is not None:
-                    occurrence.status = "succeeded" if workflow_run.status == "succeeded" else workflow_run.status
+                    occurrence.status = (
+                        "succeeded" if workflow_run.status == "succeeded" else workflow_run.status
+                    )
             await session.commit()
         except Exception as exc:  # noqa: BLE001
             workflow_run.status = "failed"
             workflow_run.error = str(exc)
             workflow_run.finished_at = utc_now()
-            occurrence_id = (workflow_run.input or {}).get("occurrence_id")
             if occurrence_id:
                 occurrence = await session.get(WorkflowOccurrence, occurrence_id)
                 if occurrence is not None:

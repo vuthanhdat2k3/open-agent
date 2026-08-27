@@ -278,12 +278,21 @@ async def run_workflow_endpoint(
             workflow_run_id=body.workflow_run_id,
             user_id=current_user.id,
             timezone_name=body.timezone,
+            trigger_node_id=body.trigger_node_id,
+            trigger_type="manual" if body.trigger_node_id else None,
         )
         return {"workflow_run_id": workflow_run_id, "output": output, "events": log}
 
     try:
         run = await create_workflow_run(
-            wf, body.input, db, body.workflow_run_id, current_user.id, body.timezone
+            wf,
+            body.input,
+            db,
+            body.workflow_run_id,
+            current_user.id,
+            body.timezone,
+            body.trigger_node_id,
+            "manual" if body.trigger_node_id else None,
         )
     except ValueError as exc:
         raise HTTPException(404, str(exc)) from exc
