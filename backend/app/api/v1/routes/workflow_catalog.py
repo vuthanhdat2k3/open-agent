@@ -97,3 +97,127 @@ async def list_workflow_templates(
         data=items,
         meta=WorkflowCatalogMeta(server_time=utc_now()),
     )
+
+from pydantic import BaseModel, Field
+from app.core.workflow.template_dags import TEMPLATE_DAGS
+from app.models.user import User
+from app.models.workflow import Workflow
+from app.models.role import Role
+from app.dependencies import get_current_user
+from app.db.base import gen_id
+from fastapi import HTTPException
+
+
+class WorkflowPublishRequest(BaseModel):
+    workflow_id: str = Field(..., description="ID of the workflow to publish to Marketplace")
+    category: str = Field("custom", description="Category for the marketplace template")
+    description: str | None = Field(None, description="Optional custom description")
+    outcome: str | None = Field(None, description="Expected outcome summary")
+    icon: str = Field("zap", description="Icon name for the marketplace card")
+
+
+@router.post(
+    "/publish",
+    response_model=WorkflowCatalogItem,
+    dependencies=[Depends(require_permission("workflows:update"))],
+)
+async def publish_workflow_to_catalog(
+    body: WorkflowPublishRequest,
+    org_id: str = Depends(get_current_org_id),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> WorkflowCatalogItem:
+    """Publish an organization workflow to the Workflow Marketplace (Operator/Admin)."""
+    workflow = await db.scalar(
+        select(Workflow).where(Workflow.id == body.workflow_id, Workflow.org_id == org_id)
+    )
+    if workflow is None:
+        raise HTTPException(404, "workflow not found")
+
+    template_key = f"market-{workflow.id[:12]}"
+    template = await db.scalar(
+        select(WorkflowTemplate).where(WorkflowTemplate.key == template_key)
+    )
+    if template is None:
+        template = WorkflowTemplate(
+            id=gen_id(),
+            key=template_key,
+            status="published",
+        )
+        db.add(template)
+        await db.flush()
+    else:
+        template.status = "published"
+
+    version_row = await db.scalar(
+        select(WorkflowTemplateVersion)
+        .where(WorkflowTemplateVersion.template_id == template.id)
+        .order_by(WorkflowTemplateVersion.version.desc())
+        .limit(1)
+    )
+    next_ver = (version_row.version + 1) if version_row else 1
+
+    new_version = WorkflowTemplateVersion(
+        id=gen_id(),
+        template_id=template.id,
+        version=next_ver,
+        name=workflow.name,
+        description=body.description or workflow.description or "",
+        outcome=body.outcome or workflow.description or "Custom organization automation.",
+        category=body.category,
+        icon=body.icon,
+        published_at=utc_now(),
+    )
+    db.add(new_version)
+
+    # Register graph in runtime TEMPLATE_DAGS map so it can be installed immediately
+    TEMPLATE_DAGS[template_key] = {
+        "kind": "catalog_template",
+        "template_key": template_key,
+        "template_version": next_ver,
+        "nodes": (workflow.graph or {}).get("nodes", []),
+        "edges": (workflow.graph or {}).get("edges", []),
+    }
+
+    await db.commit()
+
+    return WorkflowCatalogItem(
+        key=template.key,
+        version=new_version.version,
+        name=new_version.name,
+        description=new_version.description,
+        outcome=new_version.outcome,
+        category=new_version.category,
+        icon=new_version.icon,
+        required_integrations=[],
+        optional_integrations=[],
+        default_schedule_label="",
+        cost_tier="low",
+        estimated_cost_usd={},
+        side_effect_policy="safe",
+        recommendation=WorkflowCatalogRecommendation(recommended=False, reason_code=None),
+        capabilities=WorkflowCatalogCapabilities(can_view=True, can_install=True),
+        blocked_reasons={},
+    )
+
+
+@router.delete(
+    "/templates/{key}",
+    dependencies=[Depends(require_permission("workflows:delete"))],
+)
+async def unpublish_workflow_from_catalog(
+    key: str,
+    org_id: str = Depends(get_current_org_id),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Remove a published template from the Marketplace (Operator/Admin)."""
+    template = await db.scalar(
+        select(WorkflowTemplate).where(WorkflowTemplate.key == key)
+    )
+    if template is None:
+        raise HTTPException(404, "template not found")
+    template.status = "archived"
+    TEMPLATE_DAGS.pop(key, None)
+    await db.commit()
+    return {"ok": True}

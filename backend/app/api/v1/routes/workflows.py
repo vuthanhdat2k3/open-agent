@@ -137,9 +137,13 @@ async def _run_workflow_detached(workflow_id: str, org_id: str, workflow_run_id:
 
 @router.get("", response_model=list[WorkflowOut], dependencies=[Depends(require_permission("workflows:read"))])
 async def list_workflows(
-    org_id: str = Depends(get_current_org_id), db: AsyncSession = Depends(get_db)
+    org_id: str = Depends(get_current_org_id),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
-    return await WorkflowService(db).list(org_id)
+    from app.core.authz.scope import ownership_user_id
+    owner_id = ownership_user_id(db)
+    return await WorkflowService(db).list(org_id, created_by_user_id=owner_id)
 
 
 @router.post(
@@ -154,10 +158,11 @@ async def list_workflows(
 async def create_workflow(
     body: WorkflowCreate,
     org_id: str = Depends(get_current_org_id),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     try:
-        return await WorkflowService(db).create(org_id, body.model_dump())
+        return await WorkflowService(db).create(org_id, body.model_dump(), user_id=current_user.id)
     except WorkflowValidationError as e:
         raise HTTPException(400, detail={"errors": e.errors}) from e
     except ValueError as e:
