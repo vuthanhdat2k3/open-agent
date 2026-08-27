@@ -81,6 +81,7 @@ export const navGroups: NavGroup[] = [
     i18nKey: "nav.groups.workspace",
     roles: ["user"],
     items: [
+      { href: "/", label: "Overview", i18nKey: "nav.dashboard", icon: LayoutDashboard, roles: ["user"] },
       { href: "/chat", label: "Chat", i18nKey: "nav.chat", icon: MessageSquare, roles: ["user"] },
       { href: "/workflows", label: "Workflows", i18nKey: "nav.workflows", icon: Workflow, roles: ["user"], permission: "workflows:read" },
       { href: "/run-workflow", label: "Run Workflow", i18nKey: "nav.runWorkflow", icon: PlayCircle, roles: ["user"], permission: "workflows:run" },
