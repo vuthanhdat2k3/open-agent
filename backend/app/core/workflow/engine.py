@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import copy
 import json
 import re
 import time
@@ -117,6 +116,31 @@ def resolve_inputs(
     return mapped
 
 
+def _runtime_agent(agent: Agent) -> Agent:
+    """Build a detached runtime agent without copying SQLAlchemy state."""
+    return Agent(
+        id=agent.id,
+        org_id=agent.org_id,
+        created_by_user_id=agent.created_by_user_id,
+        name=agent.name,
+        description=agent.description,
+        system_prompt=agent.system_prompt,
+        model_id=agent.model_id,
+        tools=list(agent.tools or []),
+        allowed_risk_tiers=list(agent.allowed_risk_tiers or []),
+        kind=agent.kind,
+        max_iterations=agent.max_iterations,
+        temperature=agent.temperature,
+        enable_thinking=agent.enable_thinking,
+        active_release_id=agent.active_release_id,
+        latest_release_number=agent.latest_release_number,
+        auto_rollback_enabled=agent.auto_rollback_enabled,
+        auto_rollback_min_pass_rate=agent.auto_rollback_min_pass_rate,
+        auto_rollback_cooldown_minutes=agent.auto_rollback_cooldown_minutes,
+        a2a_exposed=agent.a2a_exposed,
+    )
+
+
 async def _run_agent_node(
     node: dict[str, Any],
     cfg: dict[str, Any],
@@ -150,7 +174,7 @@ async def _run_agent_node(
         agent = res.scalar_one_or_none()
         if agent is None:
             raise RuntimeError(f"agent '{agent_id}' not found")
-        agent = copy.copy(agent)
+        agent = _runtime_agent(agent)
         system_prompt = cfg.get("system_prompt_override") or agent.system_prompt or ""
         model_id = cfg.get("model_id_override") or model_id
         if "tools_override" in cfg:
@@ -177,7 +201,7 @@ async def _run_agent_node(
                 text=f"[{node.get('label', 'Agent')}] Completed synthesis:\n{text[:600]}",
                 data={"synthesized": True},
             )
-        agent = copy.copy(agent)
+        agent = _runtime_agent(agent)
         system_prompt = agent.system_prompt or ""
         model_id = agent.model_id
     else:
