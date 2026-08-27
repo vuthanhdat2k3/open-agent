@@ -3,7 +3,7 @@ import { api } from "@/lib/api";
 import type { Agent, AgentToolInfo, McpServer, Model, Provider, Session, SandboxExecution, UploadedFile, UsageSummary, Workflow as WorkflowT, WorkspaceArtifact } from "@/types";
 import {
   Bell, Bot, Bug, Building2, CalendarDays, Cpu, FileUp, FlaskConical, FolderKanban,
-  Gauge, LayoutDashboard, MessageSquare, PlayCircle, Plug, Search, Server, SlidersHorizontal, ShieldCheck, Users, Workflow, Zap,
+  Gauge, LayoutDashboard, MessageSquare, Plug, Search, Server, SlidersHorizontal, ShieldCheck, Users, Workflow, Zap,
   type LucideIcon,
 } from "lucide-react";
 
@@ -84,7 +84,6 @@ export const navGroups: NavGroup[] = [
       { href: "/", label: "Overview", i18nKey: "nav.dashboard", icon: LayoutDashboard, roles: ["user"] },
       { href: "/chat", label: "Chat", i18nKey: "nav.chat", icon: MessageSquare, roles: ["user"] },
       { href: "/workflows", label: "Workflows", i18nKey: "nav.workflows", icon: Workflow, roles: ["user"], permission: "workflows:read" },
-      { href: "/run-workflow", label: "Run Workflow", i18nKey: "nav.runWorkflow", icon: PlayCircle, roles: ["user"], permission: "workflows:run" },
       { href: "/integrations", label: "Integrations", i18nKey: "nav.integrations", icon: Plug, roles: ["user"], permission: "ci:personal:manage" },
       { href: "/email-intelligence", label: "Email Intelligence", i18nKey: "nav.emailIntelligence", icon: Bell, roles: ["user"], permission: "ci:personal:manage" },
       { href: "/automations", label: "Automations", i18nKey: "nav.automations", icon: Zap, roles: ["user"], permission: "workflows:read" },
@@ -118,7 +117,6 @@ const tabQueries: Record<string, PrefetchSpec[]> = {
   ],
   "/mcp": [{ queryKey: ["mcp"], queryFn: () => api.get<McpServer[]>("/api/mcp/servers") }],
   "/workflows": [{ queryKey: ["workflows"], queryFn: () => api.get<WorkflowT[]>("/api/workflows") }],
-  "/run-workflow": [{ queryKey: ["workflows"], queryFn: () => api.get<WorkflowT[]>("/api/workflows") }],
   "/workspace": [
     { queryKey: ["workspace-artifacts"], queryFn: () => api.get<WorkspaceArtifact[]>("/api/workspace/artifacts") },
     { queryKey: ["sandbox-executions"], queryFn: () => api.get<SandboxExecution[]>("/api/workspace/executions") },
