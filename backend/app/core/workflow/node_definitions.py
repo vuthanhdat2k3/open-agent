@@ -15,6 +15,7 @@ from pydantic import BaseModel
 FieldType = Literal[
     "string",
     "time",
+    "date",
     "textarea",
     "number",
     "boolean",
@@ -52,6 +53,7 @@ class NodeField(BaseModel):
     type_options: dict[str, Any] = {}
     multiple: bool = False
     advanced: bool = False
+    internal: bool = False
 
 
 class NodeDefinition(BaseModel):
@@ -164,6 +166,20 @@ def _build_definitions() -> dict[str, NodeDefinition]:
                     default="",
                     description="Help text for the input field.",
                 ),
+                NodeField(
+                    name="trigger_type",
+                    label="Trigger type",
+                    type="string",
+                    default="",
+                    internal=True,
+                ),
+                NodeField(
+                    name="template_key",
+                    label="Template key",
+                    type="string",
+                    default="",
+                    internal=True,
+                ),
             ]
         ),
     )
@@ -245,7 +261,7 @@ def _build_definitions() -> dict[str, NodeDefinition]:
                 NodeField(
                     name="start_date",
                     label="Start date",
-                    type="string",
+                    type="date",
                     default="",
                     description="Optional ISO date (YYYY-MM-DD) to start the schedule.",
                     advanced=True,
@@ -253,7 +269,7 @@ def _build_definitions() -> dict[str, NodeDefinition]:
                 NodeField(
                     name="end_date",
                     label="End date",
-                    type="string",
+                    type="date",
                     default="",
                     description="Optional ISO date (YYYY-MM-DD) to stop the schedule.",
                     advanced=True,
@@ -280,6 +296,7 @@ def _build_definitions() -> dict[str, NodeDefinition]:
                         {"name": "Gmail", "value": "gmail"},
                         {"name": "Google Calendar", "value": "google_calendar"},
                         {"name": "Google Drive", "value": "google_drive"},
+                        {"name": "Gmail + Google Calendar", "value": "gmail_and_calendar"},
                         {"name": "Webhook", "value": "webhook"},
                     ],
                 ),
@@ -291,6 +308,15 @@ def _build_definitions() -> dict[str, NodeDefinition]:
                     description="Your connected account for this source.",
                     load_options_from="connections",
                     display={"hide": {"source": ["webhook"]}},
+                ),
+                NodeField(
+                    name="calendar_connection_id",
+                    label="Calendar connection",
+                    type="options",
+                    default="",
+                    description="Google Calendar account used when the source combines Gmail and Calendar.",
+                    load_options_from="connections",
+                    display={"show": {"source": ["gmail_and_calendar"]}},
                 ),
                 NodeField(
                     name="operation",
@@ -342,6 +368,20 @@ def _build_definitions() -> dict[str, NodeDefinition]:
                     placeholder="my-events",
                     description="Path segment for POST /api/webhooks/workflow/{id}/{path}.",
                     display={"show": {"source": ["webhook"]}},
+                ),
+                NodeField(
+                    name="trigger_type",
+                    label="Trigger type",
+                    type="string",
+                    default="",
+                    internal=True,
+                ),
+                NodeField(
+                    name="template_key",
+                    label="Template key",
+                    type="string",
+                    default="",
+                    internal=True,
                 ),
             ]
         ),
@@ -422,9 +462,20 @@ def _build_definitions() -> dict[str, NodeDefinition]:
         label="Agent",
         description="Runs an agent loop — either an existing agent with overrides, or a fully custom inline agent.",
         icon="bot",
-        default_parameters={"temperature": 0.7, "max_iterations": 12},
+        default_parameters={"mode": "custom", "temperature": 0.7, "max_iterations": 12},
         fields=_with_common(
             [
+                NodeField(
+                    name="mode",
+                    label="Mode",
+                    type="options",
+                    default="custom",
+                    options=[
+                        {"name": "Custom", "value": "custom"},
+                        {"name": "Use existing agent", "value": "inherit"},
+                    ],
+                    description="Run an inline agent or use an existing agent as the base.",
+                ),
                 NodeField(
                     name="agent_id",
                     label="Load from Agent (Optional)",

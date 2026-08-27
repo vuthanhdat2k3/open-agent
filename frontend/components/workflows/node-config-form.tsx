@@ -83,6 +83,9 @@ function FieldInput({
           value={value ?? field.default ?? ""}
           onChange={(e) => onValue(e.target.value === "" ? undefined : Number(e.target.value))}
           placeholder={field.placeholder}
+          min={field.type_options?.minValue}
+          max={field.type_options?.maxValue}
+          step={field.type_options?.step ?? (field.type_options?.numberPrecision ? 10 ** -field.type_options.numberPrecision : 1)}
         />
       );
     case "time":
@@ -93,6 +96,16 @@ function FieldInput({
           value={normalizeTimeValue(value, field.default)}
           onChange={(e) => onValue(e.target.value)}
           step={field.type_options?.step ?? 60}
+          aria-label={field.label}
+        />
+      );
+    case "date":
+      return (
+        <Input
+          className="text-xs"
+          type="date"
+          value={value ?? field.default ?? ""}
+          onChange={(e) => onValue(e.target.value)}
           aria-label={field.label}
         />
       );
@@ -379,7 +392,7 @@ export function NodeConfigForm({ node, onUpdate }: NodeConfigFormProps) {
   return (
     <div className="space-y-4">
       {definition.fields
-        .filter((f) => !f.advanced && isFieldVisible(f, parameters, definition))
+        .filter((f) => !f.internal && !f.advanced && isFieldVisible(f, parameters, definition))
         .map((field) => (
           <div key={field.name} className="space-y-1.5">
             <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">
@@ -412,7 +425,7 @@ export function NodeConfigForm({ node, onUpdate }: NodeConfigFormProps) {
             <span aria-hidden="true">{showAdvanced ? "−" : "+"}</span>
           </Button>
           {showAdvanced && definition.fields
-            .filter((f) => f.advanced && isFieldVisible(f, parameters, definition))
+            .filter((f) => !f.internal && f.advanced && isFieldVisible(f, parameters, definition))
             .map((field) => (
               <div key={field.name} className="space-y-1.5">
                 <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">

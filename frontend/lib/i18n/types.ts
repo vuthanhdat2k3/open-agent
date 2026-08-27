@@ -307,11 +307,14 @@ export interface TranslationDictionary {
         agentId: string;
         frequency: string;
         time: string;
+        startDate: string;
+        endDate: string;
         daysOfWeek: string;
         timezone: string;
         customCron: string;
         source: string;
         connectionId: string;
+        calendarConnectionId: string;
         operation: string;
         maxResults: string;
         query: string;
