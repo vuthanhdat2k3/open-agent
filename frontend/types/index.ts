@@ -484,6 +484,9 @@ export interface WorkflowRunDetail {
   id: string;
   org_id?: string;
   workflow_id: string;
+  trigger_node_id?: string | null;
+  trigger_type?: string | null;
+  graph_hash?: string | null;
   status: string;
   input: Record<string, unknown>;
   output: Record<string, unknown>;

@@ -8,7 +8,10 @@ unauthenticated (webhooks can't send cookies) but requires a shared token in the
 
 from __future__ import annotations
 
+import copy
+import hashlib
 import hmac
+import json
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -64,6 +67,21 @@ async def workflow_webhook(
     if path.strip("/") not in webhook_paths:
         raise HTTPException(404, "webhook path not found")
 
+    trigger_node = next(
+        node
+        for node in (workflow.graph or {}).get("nodes", [])
+        if isinstance(node, dict)
+        and node.get("kind") == "integration"
+        and str((node.get("parameters") or node.get("config") or {}).get("source", "")).lower()
+        == "webhook"
+        and str((node.get("parameters") or node.get("config") or {}).get("webhook_path", "")).strip("/")
+        == path.strip("/")
+    )
+    graph_snapshot = copy.deepcopy(workflow.graph or {})
+    graph_hash = hashlib.sha256(
+        json.dumps(graph_snapshot, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
     content_length = request.headers.get("content-length")
     if content_length and int(content_length) > _MAX_BODY_BYTES:
         raise HTTPException(413, "payload too large")
@@ -76,8 +94,6 @@ async def workflow_webhook(
     except UnicodeDecodeError:
         raise HTTPException(400, "payload must be UTF-8 text or JSON") from None
     try:
-        import json
-
         parsed_payload: Any = json.loads(payload)
     except json.JSONDecodeError:
         parsed_payload = payload
@@ -98,6 +114,10 @@ async def workflow_webhook(
                 "path": path,
             },
             triggered_by_user_id=workflow.created_by_user_id,
+            graph_snapshot=graph_snapshot,
+            graph_hash=graph_hash,
+            trigger_node_id=trigger_node["id"],
+            trigger_type="integration",
         )
     )
     await db.flush()

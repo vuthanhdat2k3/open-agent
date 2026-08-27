@@ -239,6 +239,10 @@ async def run_installation_now(
     item = await db.scalar(select(WorkflowInstallation).where(WorkflowInstallation.id == installation_id, WorkflowInstallation.org_id == org_id, WorkflowInstallation.owner_user_id == current_user.id))
     if item is None:
         raise HTTPException(404, "workflow installation not found")
+    if item.status == "archived":
+        # Archived installations are soft-deleted; an archived run would
+        # still hit the worker, cost tokens, and pollute the activity log.
+        raise HTTPException(409, "workflow installation is archived")
     if (item.schedule or {}).get("kind") == "event":
         raise HTTPException(409, "event-triggered workflow runs when its provider event arrives")
     now = utc_now()
@@ -268,6 +272,8 @@ async def pause_installation(
     item = await db.scalar(select(WorkflowInstallation).where(WorkflowInstallation.id == installation_id, WorkflowInstallation.org_id == org_id, WorkflowInstallation.owner_user_id == current_user.id))
     if item is None:
         raise HTTPException(404, "workflow installation not found")
+    if item.status == "archived":
+        raise HTTPException(409, "workflow installation is archived")
     item.status = "paused"
     item.next_run_at = None
     await db.commit()
@@ -285,6 +291,8 @@ async def resume_installation(
     item = await db.scalar(select(WorkflowInstallation).where(WorkflowInstallation.id == installation_id, WorkflowInstallation.org_id == org_id, WorkflowInstallation.owner_user_id == current_user.id))
     if item is None:
         raise HTTPException(404, "workflow installation not found")
+    if item.status == "archived":
+        raise HTTPException(409, "workflow installation is archived")
     item.status = "enabled"
     item.next_run_at = next_run_at(item.schedule, item.timezone)
     await db.commit()

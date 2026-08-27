@@ -8,6 +8,8 @@ orphaned run after a restart.
 
 from __future__ import annotations
 
+import os
+import socket
 import uuid
 from datetime import timedelta
 from typing import Any
@@ -27,7 +29,31 @@ MAX_RESUME_ATTEMPTS = 3
 # runs become claimable quickly. Workers extend it while they run.
 DEFAULT_LEASE_SECONDS = 300
 
-WORKER_ID = f"worker-{uuid.uuid4().hex[:12]}"
+
+def _process_worker_id() -> str:
+    """Return a stable per-process identity used as the DB lease owner.
+
+    ``hostname-pid-<rand>`` is unique per process even when many processes
+    import this module — a random UUID was process-wide but identical
+    across processes started from the same image, which broke multi-process
+    ARQ deployments (heartbeat from a different process would still match
+    the row's ``lease_owner`` and silently extend the wrong lease).
+    """
+    return f"{socket.gethostname()}-{os.getpid()}-{uuid.uuid4().hex[:6]}"
+
+
+def _split_worker_id(worker_id: str) -> tuple[str, str, str]:
+    """Parse a worker id into ``(hostname, pid, rand)``.
+
+    The hostname may itself contain dashes, so we split on the last two
+    separators only. The random suffix is always 6 hex chars; pid is
+    everything between hostname and that suffix.
+    """
+    hostname, pid, rand = worker_id.rsplit("-", 2)
+    return hostname, pid, rand
+
+
+WORKER_ID = _process_worker_id()
 
 
 async def completed_node_outputs(db: AsyncSession, workflow_run_id: str) -> dict[str, Any]:
