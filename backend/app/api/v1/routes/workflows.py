@@ -137,12 +137,12 @@ async def _run_workflow_detached(workflow_id: str, org_id: str, workflow_run_id:
 
 @router.get("", response_model=list[WorkflowOut], dependencies=[Depends(require_permission("workflows:read"))])
 async def list_workflows(
+    all: bool = False,
     org_id: str = Depends(get_current_org_id),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    from app.core.authz.scope import ownership_user_id
-    owner_id = ownership_user_id(db)
+    owner_id = None if all else current_user.id
     return await WorkflowService(db).list(org_id, created_by_user_id=owner_id)
 
 
