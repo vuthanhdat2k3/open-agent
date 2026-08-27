@@ -429,8 +429,9 @@ class WorkflowService:
         workflow pointing at an agent from a different org and only hit the
         "agent not found" failure deep inside the worker.
         """
-        from app.models.agent import Agent
         from sqlalchemy import select as _select
+
+        from app.models.agent import Agent
 
         errors: list[dict[str, str]] = []
         for n in graph.get("nodes", []) or []:

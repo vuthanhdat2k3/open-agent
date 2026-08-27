@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import copy
+from typing import Any
+
 TEMPLATE_DAGS = {
     "morning-command-center": {
         "kind": "catalog_template",
@@ -291,3 +294,96 @@ TEMPLATE_DAGS = {
         ],
     },
 }
+
+
+_WEEKDAY_NAMES = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+
+
+def materialize_template_graph(
+    template_key: str,
+    *,
+    timezone: str | None = None,
+    schedule: dict[str, Any] | None = None,
+    settings: dict[str, Any] | None = None,
+    default_agent_id: str | None = None,
+    default_model_id: str | None = None,
+) -> dict[str, Any]:
+    """Create an editable graph with installation settings bound to its nodes.
+
+    Catalog templates are deliberately provider-agnostic. Once installed, the
+    user's schedule, connections, and default agent must become part of the
+    graph so the graph is the runtime source of truth.
+    """
+    template = TEMPLATE_DAGS.get(template_key)
+    if template is None:
+        raise KeyError(f"unknown workflow template: {template_key}")
+    graph = copy.deepcopy(template)
+    settings = dict(settings or {})
+    schedule = dict(schedule or {})
+    schedule_kind = str(schedule.get("kind") or "daily")
+
+    for node in graph.get("nodes", []):
+        parameters = dict(node.get("parameters") or {})
+        kind = node.get("kind")
+
+        if kind == "scheduler":
+            if schedule_kind == "hourly":
+                parameters.update({"frequency": "hourly", "timezone": timezone or "UTC"})
+            elif schedule_kind in {"daily", "weekdays", "weekly"}:
+                frequency = schedule_kind
+                parameters.update(
+                    {
+                        "frequency": frequency,
+                        "time": schedule.get("time") or parameters.get("time") or "07:30",
+                        "timezone": timezone or "UTC",
+                    }
+                )
+                if frequency == "weekly":
+                    weekday = schedule.get("weekday")
+                    if isinstance(weekday, int) and 0 <= weekday <= 6:
+                        parameters["days_of_week"] = [_WEEKDAY_NAMES[weekday]]
+                else:
+                    parameters.pop("days_of_week", None)
+            elif schedule_kind == "event":
+                # Event templates should not retain a dormant scheduler node.
+                continue
+            parameters["enabled"] = True
+
+        elif kind == "integration":
+            source = str(parameters.get("source") or "").lower()
+            if source == "gmail":
+                if settings.get("connection_id"):
+                    parameters["connection_id"] = settings["connection_id"]
+            elif source == "google_calendar":
+                connection_id = settings.get("calendar_connection_id") or settings.get("connection_id")
+                if connection_id:
+                    parameters["connection_id"] = connection_id
+            elif source in {"gmail_and_calendar", "gmail_calendar"}:
+                if settings.get("connection_id"):
+                    parameters["connection_id"] = settings["connection_id"]
+                if settings.get("calendar_connection_id"):
+                    parameters["calendar_connection_id"] = settings["calendar_connection_id"]
+
+        elif kind == "agent":
+            agent_id = settings.get("agent_id") or node.get("agent_id") or default_agent_id
+            model_id = settings.get("model_id") or parameters.get("model_id") or default_model_id
+            if agent_id:
+                node["agent_id"] = agent_id
+                parameters["mode"] = "inherit"
+                parameters["agent_id"] = agent_id
+            elif model_id:
+                parameters["mode"] = "custom"
+                parameters["model_id"] = model_id
+            else:
+                # Runtime resolves this legacy-compatible node to the first
+                # enabled org agent; do not invent an org-specific ID here.
+                parameters.pop("mode", None)
+                parameters.pop("system_prompt", None)
+
+        if kind in {"input", "integration"} and schedule_kind == "event":
+            parameters["trigger_type"] = "event"
+            parameters["template_key"] = template_key
+
+        node["parameters"] = parameters
+        node["config"] = {}
+    return graph

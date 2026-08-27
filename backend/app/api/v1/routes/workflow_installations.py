@@ -5,11 +5,13 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.workflow.template_dags import TEMPLATE_DAGS
+from app.core.workflow.template_dags import TEMPLATE_DAGS, materialize_template_graph
 from app.db.base import gen_id, utc_now
 from app.db.session import get_db
 from app.dependencies import get_current_org_id, get_current_user, require_permission
+from app.models.agent import Agent
 from app.models.customer_intelligence import CalendarConnection, EmailConnection
+from app.models.model import Model
 from app.models.outbox import OutboxEvent
 from app.models.user import User
 from app.models.workflow import Workflow
@@ -169,11 +171,35 @@ async def install_template(
         raise HTTPException(409, "workflow template is already installed")
 
     installation_id = gen_id()
+    schedule = body.schedule.model_dump()
+    if body.template_key in {"gmail_monitor_and_triage", "new-customer-intelligence"}:
+        schedule = {"kind": "event", "time": None, "interval_hours": None, "weekday": None}
+
     # Materialize the real template DAG so the user owns an editable workflow,
     # not an opaque "catalog_template" placeholder.
     template_graph = TEMPLATE_DAGS.get(body.template_key)
     if template_graph is None:
         raise HTTPException(404, f"template {body.template_key} has no DAG graph")
+    default_agent = await db.scalar(
+        select(Agent)
+        .where(Agent.org_id == org_id, Agent.model_id.is_not(None))
+        .order_by(Agent.created_at.asc())
+        .limit(1)
+    )
+    default_model_id = await db.scalar(
+        select(Model.id)
+        .where(Model.org_id == org_id, Model.enabled.is_(True), Model.active.is_(True))
+        .order_by(Model.created_at.asc())
+        .limit(1)
+    )
+    template_graph = materialize_template_graph(
+        body.template_key,
+        timezone=body.timezone,
+        schedule=schedule,
+        settings=settings,
+        default_agent_id=default_agent.id if default_agent else None,
+        default_model_id=default_model_id,
+    )
     workflow = Workflow(
         id=gen_id(),
         org_id=org_id,
@@ -182,10 +208,6 @@ async def install_template(
         description=f"Managed installation of {version.name}",
         graph=template_graph,
     )
-    schedule = body.schedule.model_dump()
-    if body.template_key in {"gmail_monitor_and_triage", "new-customer-intelligence"}:
-        schedule = {"kind": "event", "time": None, "interval_hours": None, "weekday": None}
-
     installation = WorkflowInstallation(
         id=installation_id,
         org_id=org_id,

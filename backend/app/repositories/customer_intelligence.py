@@ -75,10 +75,17 @@ class CalendarConnectionRepository(BaseRepository[CalendarConnection]):
         )
         return res.scalar_one_or_none()
 
-    async def get_connected(self, org_id: str, user_id: str | None = None) -> CalendarConnection | None:
+    async def get_connected(
+        self,
+        org_id: str,
+        user_id: str | None = None,
+        connection_id: str | None = None,
+    ) -> CalendarConnection | None:
         filters = [CalendarConnection.org_id == org_id, CalendarConnection.status == "connected"]
         if user_id:
             filters.append(CalendarConnection.created_by_user_id == user_id)
+        if connection_id:
+            filters.append(CalendarConnection.id == connection_id)
         res = await self.db.execute(
             select(CalendarConnection)
             .where(*filters)

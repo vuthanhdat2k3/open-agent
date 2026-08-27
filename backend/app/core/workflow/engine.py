@@ -457,8 +457,16 @@ async def _integration_gmail(
 
     conn_repo = EmailConnectionRepository(db)
     conns = await conn_repo.list(org_id)
+    configured_connection_id = cfg.get("connection_id")
     conn = next(
-        (c for c in conns if c.status == "connected" and c.provider == "gmail" and c.created_by_user_id == user_id),
+        (
+            c
+            for c in conns
+            if c.status == "connected"
+            and c.provider == "gmail"
+            and c.created_by_user_id == user_id
+            and (not configured_connection_id or c.id == configured_connection_id)
+        ),
         None,
     )
     if conn is None or not getattr(conn, "credentials_enc", None):
@@ -528,7 +536,8 @@ async def _integration_calendar(
     )
     from app.repositories.customer_intelligence import CalendarConnectionRepository
 
-    conn = await CalendarConnectionRepository(db).get_connected(org_id, user_id)
+    configured_connection_id = cfg.get("connection_id") or cfg.get("calendar_connection_id")
+    conn = await CalendarConnectionRepository(db).get_connected(org_id, user_id, connection_id=configured_connection_id)
     if conn is None or not getattr(conn, "credentials_enc", None):
         raise ValueError("no connected Google Calendar account; connect one in Settings")
     creds = await load_fresh_credentials(db, conn)
