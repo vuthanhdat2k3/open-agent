@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.config import get_settings
 from app.core.auth.oauth import oauth
 from app.db.base import Base
 from app.db.session import get_db
@@ -82,44 +83,36 @@ def test_register_login_me(client: TestClient) -> None:
 
 
 def test_switch_org(client: TestClient) -> None:
-    # Register Alice with Org 1
+    # Register Alice with Org 1.
     reg1 = client.post(
         "/api/auth/register",
         json={"email": "switch@example.com", "password": "Password123!", "org_name": "Org 1"},
     )
     token1 = reg1.json()["access_token"]
-    me1 = client.get("/api/auth/me", headers={"Authorization": f"Bearer {token1}"})
-    org1_id = me1.json()["memberships"][0]["org_id"]
 
-    # Create Org 2
+    # Local development intentionally allows this bootstrap operation. In the
+    # Zitadel deployment only a platform_admin can provision another org.
     create_org_resp = client.post(
         "/api/orgs",
         json={"name": "Org 2"},
         headers={"Authorization": f"Bearer {token1}"},
     )
+    if get_settings().auth_provider == "zitadel":
+        assert create_org_resp.status_code == 403
+        return
+
     assert create_org_resp.status_code == 201
     org2_id = create_org_resp.json()["id"]
 
-    # Switch Org to Org 2
+    # Creating an organization does not grant a regular user membership in it.
     switch_resp = client.post(
         "/api/auth/switch-org",
         json={"org_id": org2_id},
         headers={"Authorization": f"Bearer {token1}"},
     )
-    assert switch_resp.status_code == 200
-    token2 = switch_resp.json()["access_token"]
-    assert token2 != token1
+    assert switch_resp.status_code == 403
 
-    # Verify refresh token endpoint returns token bound to Org 2 (persisted via cookie)
-    refresh_resp = client.post("/api/auth/refresh")
-    assert refresh_resp.status_code == 200
-    refreshed_token = refresh_resp.json()["access_token"]
-    
-    from app.core.auth.jwt import verify_access_token
-    payload = verify_access_token(refreshed_token)
-    assert payload["org_id"] == org2_id
-
-    # Switch Org to forbidden org should return 403
+    # Switching to an organization the user does not belong to remains denied.
     forbidden_resp = client.post(
         "/api/auth/switch-org",
         json={"org_id": "non-existent-org-id"},
