@@ -155,7 +155,7 @@ export default function McpPage() {
                       size="icon"
                       variant="ghost"
                       className="h-8 w-8 text-muted-foreground hover:text-foreground active-tactile transition-transform"
-                      aria-label={tx("Chỉnh sửa ${s.name}", "Edit ${s.name}")}
+                      aria-label={tx(`Chỉnh sửa ${s.name}`, `Edit ${s.name}`)}
                       onClick={() => {
                         setEditTarget(s);
                         setEditOpen(true);
@@ -187,7 +187,7 @@ export default function McpPage() {
                     )}
                     <ConfirmDialog
                       trigger={<Button size="sm" variant="destructive" className="gap-1.5"><Trash2 className="h-3.5 w-3.5" /> {tx("Xóa", "Delete")}</Button>}
-                      title={tx("Xóa ${s.name}?", "Delete ${s.name}?")}
+                      title={tx(`Xóa ${s.name}?`, `Delete ${s.name}?`)}
                       description={tx("Cấu hình máy chủ MCP này sẽ bị xóa vĩnh viễn.", "This MCP server configuration will be permanently removed.")}
                       confirmLabel={tx("Xóa máy chủ", "Delete server")}
                       destructive

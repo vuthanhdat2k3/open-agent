@@ -86,7 +86,7 @@ export default function LoginPage() {
   const errorInfo = errorParam
     ? errDict[errorParam] || {
         title: tx("Đăng nhập không thành công", "Sign In Failed"),
-        desc: tx("Đã xảy ra lỗi xác thực (${errorParam}). Vui lòng liên hệ quản trị viên để được hỗ trợ.", "An authentication error occurred (${errorParam}). Please contact your administrator."),
+        desc: tx(`Đã xảy ra lỗi xác thực (${errorParam}). Vui lòng liên hệ quản trị viên để được hỗ trợ.`, `An authentication error occurred (${errorParam}). Please contact your administrator.`),
       }
     : null;
 

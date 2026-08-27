@@ -366,7 +366,7 @@ function SchedulesTabContent() {
             enabled,
           },
         });
-        toast.success("Schedule updated successfully");
+        toast.success(tx("Đã cập nhật lịch đồng bộ", "Schedule updated successfully"));
         setEditing(null);
       } else {
         await create.mutateAsync({
@@ -375,29 +375,29 @@ function SchedulesTabContent() {
           timezone,
           enabled,
         });
-        toast.success("Schedule created successfully");
+        toast.success(tx("Đã tạo lịch đồng bộ", "Schedule created successfully"));
       }
     } catch (err: any) {
-      toast.error(err.message || "Failed to save schedule");
+      toast.error(err.message || tx("Không thể lưu lịch đồng bộ", "Failed to save schedule"));
     }
   }
 
   async function deleteSchedule(id: string) {
-    if (!window.confirm("Are you sure you want to delete this schedule?")) return;
+    if (!window.confirm(tx("Bạn có chắc chắn muốn xóa lịch đồng bộ này?", "Are you sure you want to delete this schedule?"))) return;
     try {
       await remove.mutateAsync(id);
-      toast.success("Schedule removed");
+      toast.success(tx("Đã xóa lịch đồng bộ", "Schedule removed"));
     } catch (err: any) {
-      toast.error(err.message || "Failed to remove schedule");
+      toast.error(err.message || tx("Không thể xóa lịch đồng bộ", "Failed to remove schedule"));
     }
   }
 
   async function runSchedule(id: string) {
     try {
       await runNow.mutateAsync(id);
-      toast.success("Schedule execution triggered in background");
+      toast.success(tx("Đã kích hoạt thực thi trong nền", "Schedule execution triggered in background"));
     } catch (err: any) {
-      toast.error(err.message || "Failed to trigger schedule");
+      toast.error(err.message || tx("Không thể kích hoạt lịch đồng bộ", "Failed to trigger schedule"));
     }
   }
 
@@ -621,21 +621,21 @@ export default function CustomerIntelligencePage() {
         ...(companyDomain.trim() ? { company_domain: companyDomain.trim() } : {}),
         ...(question.trim() ? { question: question.trim() } : {}),
       });
-      toast.success(`Research initiated for "${companyName.trim()}"`);
+      toast.success(tx(`Đã kích hoạt nghiên cứu "${companyName.trim()}"`, `Research initiated for "${companyName.trim()}"`));
       setCompanyName("");
       setCompanyDomain("");
       setQuestion("");
       setIsNewModalOpen(false);
     } catch (err: any) {
-      toast.error(err.message || "Failed to create dossier");
+      toast.error(err.message || tx("Không thể tạo hồ sơ doanh nghiệp", "Failed to create dossier"));
     }
   }
 
   async function deleteSelectedCase() {
-    if (!selected || !window.confirm("Delete this client dossier? The source email will be preserved.")) return;
+    if (!selected || !window.confirm(tx("Xóa hồ sơ doanh nghiệp này? Email nguồn sẽ được giữ nguyên.", "Delete this client dossier? The source email will be preserved."))) return;
     await remove.mutateAsync(selected);
     setSelected(null);
-    toast.success("Dossier deleted successfully");
+    toast.success(tx("Đã xóa hồ sơ doanh nghiệp", "Dossier deleted successfully"));
   }
 
   const totalCount = cases.data?.length ?? 0;

@@ -17,7 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
-import { useTranslation } from "@/lib/i18n";
+import { useTranslation, statusLabel } from "@/lib/i18n";
 import { ConfirmDialog, ErrorState, LoadingSkeleton, DataPagination } from "@/components/shared";
 import {
   Table,
@@ -69,7 +69,7 @@ export default function FilesPage() {
     if (!file) return;
     try {
       await upload.mutateAsync(file);
-      toast.success(tx("Đã tải lên ${file.name}", "Uploaded ${file.name}"));
+      toast.success(tx(`Đã tải lên ${file.name}`, `Uploaded ${file.name}`));
     } catch (err: any) {
       toast.error(err.message);
     } finally {
@@ -137,7 +137,7 @@ export default function FilesPage() {
                       </TableCell>
                       <TableCell>
                         <Badge variant={statusVariant[f.status] || "secondary"} className="uppercase tracking-wider text-[10px]">
-                          {f.status}
+                          {statusLabel(f.status, t)}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-muted-foreground font-mono text-xs">
@@ -160,7 +160,7 @@ export default function FilesPage() {
                                   });
                                   toast.success(
                                     r.rag_document_id
-                                      ? (tx("Nạp được chấp nhận ${r.rag_document_id}", "Ingestion accepted ${r.rag_document_id}"))
+                                      ? (tx(`Nạp được chấp nhận ${r.rag_document_id}`, `Ingestion accepted ${r.rag_document_id}`))
                                       : (tx("Nạp đã được gửi", "Ingestion submitted")),
                                   );
                                 } catch (err: any) {
@@ -182,13 +182,13 @@ export default function FilesPage() {
                               </Button>
                             }
                             title={tx("Xóa tệp", "Delete File")}
-                            description={tx("Bạn có chắc chắn muốn xóa ${f.original_name}? Hành động này không thể hoàn tác.", "Are you sure you want to delete ${f.original_name}? This action cannot be undone.")}
+                            description={tx(`Bạn có chắc chắn muốn xóa ${f.original_name}? Hành động này không thể hoàn tác.`, `Are you sure you want to delete ${f.original_name}? This action cannot be undone.`)}
                             confirmLabel={tx("Xóa", "Delete")}
                             destructive
                             onConfirm={async () => {
                               try {
                                 await del.mutateAsync(f.id);
-                                toast.success(tx("Đã xóa ${f.original_name}", "Deleted ${f.original_name}"));
+                                toast.success(tx(`Đã xóa ${f.original_name}`, `Deleted ${f.original_name}`));
                               } catch (err: any) {
                                 toast.error(err.message);
                               }

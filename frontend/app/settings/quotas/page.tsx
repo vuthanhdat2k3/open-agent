@@ -150,8 +150,8 @@ export default function QuotasAndBudgetsPage() {
         title={dict.pages.quotas.title}
         description={
           isAdmin
-            ? (tx("Định cấu hình giới hạn ngân sách hàng tháng, giới hạn tốc độ tiếp nhận và theo dõi việc sử dụng cho ${usage.data?.month ?? \"chu kỳ hiện tại\"}.", "Configure monthly budget limits, admission rate limits, and track usage for ${usage.data?.month ?? \"current cycle\"}."))
-            : (tx("Theo dõi mức tiêu thụ và số liệu hạn mức cho ${usage.data?.month ?? \"chu kỳ hiện tại\"}.", "Track consumption and quota metrics for ${usage.data?.month ?? \"the current cycle\"}."))
+            ? (tx(`Định cấu hình giới hạn ngân sách hàng tháng, giới hạn tốc độ tiếp nhận và theo dõi việc sử dụng cho ${usage.data?.month ?? "chu kỳ hiện tại"}.`, `Configure monthly budget limits, admission rate limits, and track usage for ${usage.data?.month ?? "current cycle"}.`))
+            : (tx(`Theo dõi mức tiêu thụ và số liệu hạn mức cho ${usage.data?.month ?? "chu kỳ hiện tại"}.`, `Track consumption and quota metrics for ${usage.data?.month ?? "the current cycle"}.`))
         }
         actions={
           isAdmin ? (
@@ -172,7 +172,7 @@ export default function QuotasAndBudgetsPage() {
           <div className="space-y-1">
             <div className="flex items-center gap-2.5">
               <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                {tx("Trạng thái chi tiêu hàng tháng (${usage.data?.month || \"Chu kỳ hiện tại\"})", "Monthly Spend Status (${usage.data?.month || \"Current Cycle\"})")}
+                {tx(`Trạng thái chi tiêu hàng tháng (${usage.data?.month || "Chu kỳ hiện tại"})`, `Monthly Spend Status (${usage.data?.month || "Current Cycle"})`)}
               </span>
               <Badge
                 variant={spendRatio > 90 ? "destructive" : spendRatio > 70 ? "outline" : "default"}

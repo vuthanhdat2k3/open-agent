@@ -7,7 +7,7 @@ import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
-import { useTranslation } from "@/lib/i18n";
+import { useTranslation, roleLabel } from "@/lib/i18n";
 
 export function OrgSwitcher({ collapsed }: { collapsed?: boolean }) {
   const { t, locale, tx } = useTranslation();
@@ -52,7 +52,7 @@ export function OrgSwitcher({ collapsed }: { collapsed?: boolean }) {
       <DropdownMenuContent align="start" className="w-60">
         <DropdownMenuLabel>{tx("Chuyển tổ chức", "Switch organization")}</DropdownMenuLabel>
         <DropdownMenuSeparator />
-        {memberships.map((membership) => <DropdownMenuItem key={membership.org_id} onSelect={() => void switchOrg(membership.org_id)} className="gap-3"><span className="min-w-0 flex-1 truncate">{membership.org_name || membership.org_id}</span><span className="text-[10px] uppercase text-muted-foreground">{membership.role}</span>{membership.org_id === activeOrgId && <Check className="h-4 w-4 shrink-0 text-primary" aria-label="Active organization" />}</DropdownMenuItem>)}
+        {memberships.map((membership) => <DropdownMenuItem key={membership.org_id} onSelect={() => void switchOrg(membership.org_id)} className="gap-3"><span className="min-w-0 flex-1 truncate">{membership.org_name || membership.org_id}</span><span className="text-[10px] uppercase text-muted-foreground">{roleLabel(membership.role, t)}</span>{membership.org_id === activeOrgId && <Check className="h-4 w-4 shrink-0 text-primary" aria-label="Active organization" />}</DropdownMenuItem>)}
       </DropdownMenuContent>
     </DropdownMenu>
   );
