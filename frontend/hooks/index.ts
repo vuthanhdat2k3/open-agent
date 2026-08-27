@@ -740,6 +740,22 @@ export function useCreateOrganization() {
   });
 }
 
+export function useRenameOrganization() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ orgId, name }: { orgId: string; name: string }) => api.patch<Organization>(`/api/orgs/${orgId}`, { name }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["organizations"] }),
+  });
+}
+
+export function useDeleteOrganization() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (orgId: string) => api.delete(`/api/orgs/${orgId}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["organizations"] }),
+  });
+}
+
 export function useMembers(orgId?: string) {
   return useQuery({
     queryKey: ["members", orgId],

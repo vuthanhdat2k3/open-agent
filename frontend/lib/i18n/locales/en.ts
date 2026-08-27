@@ -471,6 +471,13 @@ export const en: TranslationDictionary = {
     },
     organizations: {
       title: 'Organizations',
+      rename: 'Rename',
+      delete: 'Delete',
+      renameTitle: 'Rename organization',
+      deleteTitle: 'Delete organization',
+      deleteDescription: 'This organization will be deactivated and its members will lose access.',
+      renamed: 'Organization renamed',
+      deleted: 'Organization deleted',
       description: 'Manage multi-tenant organizations, tenant scopes, and assign org administrators.',
       btnCreateOrg: 'Create Organization',
       orgName: 'Organization Name',
