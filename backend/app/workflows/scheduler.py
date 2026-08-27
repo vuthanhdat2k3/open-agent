@@ -6,7 +6,8 @@ import json
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+import structlog
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.workflow.schedule import to_schedule_dict
@@ -15,6 +16,8 @@ from app.models.outbox import OutboxEvent
 from app.models.workflow import Workflow
 from app.models.workflow_run import WorkflowRun
 from app.models.workflow_trigger_state import WorkflowTriggerState
+
+logger = structlog.get_logger(__name__)
 
 
 def _local_now(now: datetime, timezone_name: str) -> datetime:
@@ -124,10 +127,27 @@ async def reconcile_trigger_states(db: AsyncSession, *, now: datetime | None = N
             desired.add((workflow.id, node_id))
             parameters = dict(node.get("parameters") or node.get("config") or {})
             timezone_name = str(parameters.get("timezone") or "UTC")
-            schedule = to_schedule_dict(parameters)
+            enabled = parameters.get("enabled", True) is not False
+            try:
+                schedule = to_schedule_dict(parameters)
+                first_run_at = next_run_at(schedule, timezone_name, now=current) if enabled else None
+            except Exception as exc:  # noqa: BLE001
+                logger.error(
+                    "workflow_scheduler_trigger_invalid",
+                    workflow_id=workflow.id,
+                    node_id=node_id,
+                    error=str(exc),
+                    error_type=type(exc).__name__,
+                )
+                state = by_key.get((workflow.id, node_id))
+                if state is not None:
+                    state.enabled = False
+                    state.next_run_at = None
+                    state.version += 1
+                    changed += 1
+                continue
             schedule_hash = _graph_hash({"schedule": schedule, "timezone": timezone_name})
             state = by_key.get((workflow.id, node_id))
-            enabled = parameters.get("enabled", True) is not False
             if state is None:
                 state = WorkflowTriggerState(
                     org_id=workflow.org_id,
@@ -136,7 +156,7 @@ async def reconcile_trigger_states(db: AsyncSession, *, now: datetime | None = N
                     trigger_type="scheduler",
                     schedule_hash=schedule_hash,
                     enabled=enabled,
-                    next_run_at=next_run_at(schedule, timezone_name, now=current) if enabled else None,
+                    next_run_at=first_run_at,
                     version=1,
                 )
                 db.add(state)
@@ -144,7 +164,7 @@ async def reconcile_trigger_states(db: AsyncSession, *, now: datetime | None = N
             elif state.schedule_hash != schedule_hash or state.enabled != enabled:
                 state.schedule_hash = schedule_hash
                 state.enabled = enabled
-                state.next_run_at = next_run_at(schedule, timezone_name, now=current) if enabled else None
+                state.next_run_at = first_run_at
                 state.version += 1
                 changed += 1
     for state in states:
@@ -176,60 +196,81 @@ async def run_due_workflows(db: AsyncSession, *, now: datetime | None = None) ->
     )
     queued = 0
     for state in states:
-        scheduled_for = state.next_run_at
-        if scheduled_for is None:
-            continue
-        workflow = await db.scalar(
-            select(Workflow).where(Workflow.id == state.workflow_id, Workflow.org_id == state.org_id)
-        )
-        if workflow is None:
-            state.enabled = False
-            state.next_run_at = None
-            continue
-        node = _scheduler_nodes(workflow).get(state.node_id)
-        if node is None:
-            state.enabled = False
-            state.next_run_at = None
-            continue
-        parameters = dict(node.get("parameters") or node.get("config") or {})
-        timezone_name = str(parameters.get("timezone") or "UTC")
-        schedule = to_schedule_dict(parameters)
-        occurrence_key = f"{workflow.org_id}:{workflow.id}:{state.node_id}:{scheduled_for.isoformat()}"
-        existing = await db.scalar(
-            select(WorkflowRun.id).where(WorkflowRun.trigger_occurrence_key == occurrence_key)
-        )
-        if existing is None:
-            graph = copy.deepcopy(workflow.graph or {})
-            run = WorkflowRun(
-                org_id=workflow.org_id,
-                workflow_id=workflow.id,
-                status="queued",
-                input={"text": "", "timezone": timezone_name, "trigger": "scheduled"},
-                triggered_by_user_id=workflow.created_by_user_id,
-                graph_snapshot=graph,
-                graph_hash=_graph_hash(graph),
-                trigger_node_id=state.node_id,
-                trigger_type="scheduler",
-                trigger_occurrence_key=occurrence_key,
-            )
-            db.add(run)
-            await db.flush()
-            event_id = gen_id()
-            db.add(
-                OutboxEvent(
-                    id=event_id,
-                    event_type="workflow.run.requested",
-                    aggregate_type="workflow_trigger",
-                    aggregate_id=state.id,
-                    org_id=workflow.org_id,
-                    user_id=workflow.created_by_user_id,
-                    correlation_id=run.id,
-                    payload={"run_id": run.id, "trigger_node_id": state.node_id},
-                    dedupe_key=f"scheduler:{occurrence_key}",
+        state_id = state.id
+        workflow_id = state.workflow_id
+        node_id = state.node_id
+        try:
+            async with db.begin_nested():
+                scheduled_for = state.next_run_at
+                if scheduled_for is None:
+                    continue
+                workflow = await db.scalar(
+                    select(Workflow).where(
+                        Workflow.id == state.workflow_id, Workflow.org_id == state.org_id
+                    )
                 )
+                if workflow is None:
+                    state.enabled = False
+                    state.next_run_at = None
+                    continue
+                node = _scheduler_nodes(workflow).get(state.node_id)
+                if node is None:
+                    state.enabled = False
+                    state.next_run_at = None
+                    continue
+                parameters = dict(node.get("parameters") or node.get("config") or {})
+                timezone_name = str(parameters.get("timezone") or "UTC")
+                schedule = to_schedule_dict(parameters)
+                occurrence_key = f"{workflow.org_id}:{workflow.id}:{state.node_id}:{scheduled_for.isoformat()}"
+                existing = await db.scalar(
+                    select(WorkflowRun.id).where(
+                        WorkflowRun.trigger_occurrence_key == occurrence_key
+                    )
+                )
+                if existing is None:
+                    graph = copy.deepcopy(workflow.graph or {})
+                    run = WorkflowRun(
+                        org_id=workflow.org_id,
+                        workflow_id=workflow.id,
+                        status="queued",
+                        input={"text": "", "timezone": timezone_name, "trigger": "scheduled"},
+                        triggered_by_user_id=workflow.created_by_user_id,
+                        graph_snapshot=graph,
+                        graph_hash=_graph_hash(graph),
+                        trigger_node_id=state.node_id,
+                        trigger_type="scheduler",
+                        trigger_occurrence_key=occurrence_key,
+                    )
+                    db.add(run)
+                    await db.flush()
+                    db.add(
+                        OutboxEvent(
+                            id=gen_id(),
+                            event_type="workflow.run.requested",
+                            aggregate_type="workflow_trigger",
+                            aggregate_id=state.id,
+                            org_id=workflow.org_id,
+                            user_id=workflow.created_by_user_id,
+                            correlation_id=run.id,
+                            payload={"run_id": run.id, "trigger_node_id": state.node_id},
+                            dedupe_key=f"scheduler:{occurrence_key}",
+                        )
+                    )
+                    queued += 1
+                state.last_run_at = scheduled_for
+                state.next_run_at = next_run_at(schedule, timezone_name, now=current)
+        except Exception as exc:  # noqa: BLE001
+            await db.execute(
+                update(WorkflowTriggerState)
+                .where(WorkflowTriggerState.id == state_id)
+                .values(enabled=False, next_run_at=None)
             )
-            queued += 1
-        state.last_run_at = scheduled_for
-        state.next_run_at = next_run_at(schedule, timezone_name, now=current)
+            logger.error(
+                "workflow_scheduler_trigger_failed",
+                workflow_id=workflow_id,
+                node_id=node_id,
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
     await db.commit()
     return {"due": len(states), "queued": queued}
