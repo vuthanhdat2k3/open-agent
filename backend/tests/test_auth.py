@@ -128,6 +128,18 @@ def test_switch_org(client: TestClient) -> None:
     assert forbidden_resp.status_code == 403
 
 
+def test_platform_admin_deletes_org_without_destroying_history(client: TestClient) -> None:
+    registration = client.post(
+        "/api/auth/register",
+        json={"email": "org-delete@example.com", "password": "Password123!", "org_name": "Delete Me"},
+    )
+    token = registration.json()["access_token"]
+    org_id = client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"}).json()["memberships"][0]["org_id"]
+
+    response = client.delete(f"/api/orgs/{org_id}", headers={"Authorization": f"Bearer {token}"})
+
+    assert response.status_code == 204
+    assert client.get("/api/orgs", headers={"Authorization": f"Bearer {token}"}).status_code == 403
 
 def test_unauthenticated_request_returns_401(client: TestClient) -> None:
     client.cookies.clear()

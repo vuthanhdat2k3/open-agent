@@ -68,7 +68,7 @@ async def _is_platform_admin(db: AsyncSession, user_id: str) -> bool:
             Membership.lifecycle_status == "active",
         )
     )
-    return result.scalar_one_or_none() is not None
+    return result.scalars().first() is not None
 
 
 async def _ensure_user_belongs_to_org(
@@ -163,6 +163,46 @@ async def create_org(
     return OrgOut(id=org.id, name=org.name, slug=org.slug, created_at=org.created_at)
 
 
+@router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_org(
+    id: str,
+    current_user: User = Depends(require_platform_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Revoke a tenant organization without destroying its historical data."""
+    result = await db.execute(select(Organization).where(Organization.id == id))
+    org = result.scalar_one_or_none()
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organization not found")
+    if org.slug == "platform":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "The platform organization cannot be deleted")
+    if org.lifecycle_status == "deleted":
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organization not found")
+
+    await db.execute(
+        update(Membership)
+        .where(Membership.org_id == id, Membership.lifecycle_status == "active")
+        .values(lifecycle_status="revoked")
+    )
+    await db.execute(
+        update(ApplicationSession)
+        .where(ApplicationSession.organization_id == id, ApplicationSession.revoked_at.is_(None))
+        .values(revoked_at=utc_now(), revocation_reason="organization_deleted")
+    )
+    org.lifecycle_status = "deleted"
+    await log_action(
+        db,
+        org_id=id,
+        actor_user_id=current_user.id,
+        action="organization.deleted",
+        resource_type="organization",
+        resource_id=id,
+        commit=False,
+    )
+    await db.commit()
+    return None
+
+
 @router.get("", response_model=list[OrgOut], dependencies=[Depends(require_permission("orgs:read"))])
 async def list_orgs(
     current_user: User = Depends(get_current_user),
@@ -175,12 +215,18 @@ async def list_orgs(
     )
     memberships = (await db.execute(membership_query)).scalars().all()
     if any(mem.role == Role.platform_admin for mem in memberships):
-        result = await db.execute(select(Organization).order_by(Organization.created_at.desc()))
+        result = await db.execute(
+            select(Organization)
+            .where(Organization.lifecycle_status == "active")
+            .order_by(Organization.created_at.desc())
+        )
         organizations = result.scalars().all()
     else:
         org_ids = [mem.org_id for mem in memberships]
         result = await db.execute(
-            select(Organization).where(Organization.id.in_(org_ids)).order_by(Organization.created_at.desc())
+            select(Organization)
+            .where(Organization.id.in_(org_ids), Organization.lifecycle_status == "active")
+            .order_by(Organization.created_at.desc())
         )
         organizations = result.scalars().all()
     return [OrgOut(id=org.id, name=org.name, slug=org.slug, created_at=org.created_at) for org in organizations]
