@@ -74,8 +74,8 @@ class WorkflowService:
     async def delete(self, org_id: str, id: str) -> bool:
         return await self.repo.delete(org_id, id)
 
-    async def list(self, org_id: str) -> list[Workflow]:
-        return await self.repo.list(org_id)
+    async def list(self, org_id: str, created_by_user_id: str | None = None) -> list[Workflow]:
+        return await self.repo.list(org_id, created_by_user_id=created_by_user_id)
 
     async def get(self, org_id: str, id: str) -> Workflow | None:
         return await self.repo.get(org_id, id)

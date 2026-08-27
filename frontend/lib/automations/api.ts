@@ -89,3 +89,17 @@ export function runWorkflowInstallation(id: string) {
 export function deleteWorkflowInstallation(id: string) {
   return api.delete<void>(`/api/workflow-catalog/installations/${id}`);
 }
+
+export function publishWorkflowToCatalog(body: {
+  workflow_id: string;
+  category?: string;
+  description?: string;
+  outcome?: string;
+  icon?: string;
+}) {
+  return api.post<WorkflowCatalogItem>("/api/workflow-catalog/publish", body);
+}
+
+export function unpublishWorkflowFromCatalog(key: string) {
+  return api.delete<{ ok: boolean }>(`/api/workflow-catalog/templates/${key}`);
+}
