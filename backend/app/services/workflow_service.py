@@ -56,6 +56,7 @@ class WorkflowService:
 
     async def create(self, org_id: str, data: dict, user_id: str | None = None) -> Workflow:
         self.validate_graph(data.get("graph", {}))
+        await self._validate_agent_ownership(data.get("graph", {}), org_id=org_id)
         data["org_id"] = org_id
         if user_id:
             data["created_by_user_id"] = user_id
@@ -67,6 +68,7 @@ class WorkflowService:
             raise ValueError("workflow not found")
         if "graph" in data:
             self.validate_graph(data["graph"])
+            await self._validate_agent_ownership(data["graph"], org_id=org_id)
         return await self.repo.update(wf, data)
 
     async def delete(self, org_id: str, id: str) -> bool:
@@ -136,6 +138,7 @@ class WorkflowService:
         if not isinstance(graph, dict):
             raise ValueError("generated response missing 'graph'")
         self.validate_graph(graph)
+        await self._validate_agent_ownership(graph, org_id=org_id)
 
         valid_agent_ids = {a.id for a in agents}
         first_agent_id = agents[0].id if agents else None
@@ -405,6 +408,52 @@ class WorkflowService:
                     }
                 )
 
+        if errors:
+            raise WorkflowValidationError(errors)
+
+    async def _validate_agent_ownership(self, graph: dict, *, org_id: str) -> None:
+        """Reject cross-org ``agent_id`` references on inherit-mode agent nodes.
+
+        ``validate_graph`` is a sync structural check; this async helper adds
+        the DB lookup that proves every inherited agent actually belongs to
+        the org that owns the workflow. Without it, a user could save a
+        workflow pointing at an agent from a different org and only hit the
+        "agent not found" failure deep inside the worker.
+        """
+        from app.models.agent import Agent
+        from sqlalchemy import select as _select
+
+        errors: list[dict[str, str]] = []
+        for n in graph.get("nodes", []) or []:
+            if n.get("kind") != "agent":
+                continue
+            parameters = dict(n.get("parameters") or n.get("config") or {})
+            mode = parameters.get("mode")
+            legacy_agent_id = n.get("agent_id")
+            # Catalog templates intentionally leave agent binding to runtime.
+            if graph.get("kind") == "catalog_template":
+                continue
+            is_inherit = mode == "inherit" or (mode is None and legacy_agent_id)
+            if not is_inherit:
+                continue
+            agent_id_value = parameters.get("agent_id") or legacy_agent_id
+            if not agent_id_value:
+                # Structural validator already raised this — skip silently.
+                continue
+            agent_row = await self.repo.db.scalar(
+                _select(Agent.id).where(
+                    Agent.id == agent_id_value,
+                    Agent.org_id == org_id,
+                )
+            )
+            if agent_row is None:
+                errors.append(
+                    {
+                        "node_id": n.get("id", ""),
+                        "field": "agent_id",
+                        "message": f"agent '{agent_id_value}' is not in this organization",
+                    }
+                )
         if errors:
             raise WorkflowValidationError(errors)
 
