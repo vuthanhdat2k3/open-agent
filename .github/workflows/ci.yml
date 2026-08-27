@@ -20,6 +20,9 @@ jobs:
         working-directory: backend
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - name: Start Redis
         run: docker run -d --name openagent-ci-redis-${{ github.run_id }} -p 6379:6379 redis:7
       - name: Cache pip downloads
@@ -31,10 +34,10 @@ jobs:
           key: ${{ runner.os }}-pip-${{ hashFiles('backend/pyproject.toml', 'backend/requirements*.txt') }}
           restore-keys: |
             ${{ runner.os }}-pip-
-      - run: pip install -e ".[dev]"
-      - run: ruff check .
+      - run: python -m pip install -e ".[dev]"
+      - run: python -m ruff check .
       - run: python -c "import yaml; yaml.safe_load(open('../observability/prometheus/alerts.yml'))"
-      - run: pytest -q
+      - run: python -m pytest -q
       - name: Stop Redis
         if: always()
         run: docker rm -f openagent-ci-redis-${{ github.run_id }}
@@ -89,6 +92,9 @@ jobs:
       OPENAGENT_JWT_SECRET_KEY: ci-secret-change-me-32-bytes-minimum
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - run: docker compose -f docker-compose.yml -f .github/ci-compose.yml --env-file .env.example up -d --build postgres redis api worker frontend
       - run: python scripts/e2e_agent_releases.py
       - run: python scripts/e2e_evaluations.py
