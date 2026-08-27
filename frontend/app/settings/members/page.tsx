@@ -25,7 +25,7 @@ import {
   useUrlSearchParam,
 } from "@/hooks";
 import { PageHeader } from "@/components/page-header";
-import { useTranslation } from "@/lib/i18n";
+import { useTranslation, roleLabel } from "@/lib/i18n";
 import { ConfirmDialog, EmptyState, ErrorState, LoadingSkeleton, DataPagination } from "@/components/shared";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -275,7 +275,7 @@ export default function MembersAndAccessPage() {
 
                       <div className="flex items-center gap-2.5">
                         <Badge variant={member.role === "org_admin" || member.role === "admin" ? "default" : "outline"} className="font-mono text-[10px] uppercase">
-                          {member.role}
+                          {roleLabel(member.role, t)}
                         </Badge>
                         {canRemoveMember(member) ? (
                           <ConfirmDialog

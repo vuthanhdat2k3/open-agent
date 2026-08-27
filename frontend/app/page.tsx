@@ -67,7 +67,7 @@ export default function Dashboard() {
     : isOrgAdmin
       ? dict.pages.dashboard.descAdmin
       : isOperator
-        ? (tx("${agents.data?.length ?? 0} agent · ${workflows.data?.length ?? 0} workflow đã cấu hình. Thiết kế prompt, xây dựng workflow hoặc chạy evaluation benchmark.", "${agents.data?.length ?? 0} agents · ${workflows.data?.length ?? 0} workflows configured. Design prompts, build workflows, or run benchmarks."))
+        ? (tx(`${agents.data?.length ?? 0} agent · ${workflows.data?.length ?? 0} workflow đã cấu hình. Thiết kế prompt, xây dựng workflow hoặc chạy evaluation benchmark.`, `${agents.data?.length ?? 0} agents · ${workflows.data?.length ?? 0} workflows configured. Design prompts, build workflows, or run benchmarks.`))
         : dict.pages.dashboard.descUser;
 
   return (
