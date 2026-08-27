@@ -285,13 +285,18 @@ export function NodeConfigForm({ node, onUpdate }: NodeConfigFormProps) {
 
   // Accurately extract all saved parameters from node (parameters, config, or top-level props)
   // and overlay onto definition defaults.
+  let inferredMode = (node as any).mode || (node.parameters as any)?.mode || (node.config as any)?.mode;
+  if (!inferredMode && (node.agent_id || (node.parameters as any)?.agent_id || (node.config as any)?.agent_id)) {
+    inferredMode = "inherit";
+  }
+
   const rootParams: Record<string, any> = {};
   if (node.agent_id) rootParams.agent_id = node.agent_id;
+  if (inferredMode) rootParams.mode = inferredMode;
   if ((node as any).tool) rootParams.tool = (node as any).tool;
   if ((node as any).system_prompt) rootParams.system_prompt = (node as any).system_prompt;
   if ((node as any).model_id) rootParams.model_id = (node as any).model_id;
   if ((node as any).tools) rootParams.tools = (node as any).tools;
-  if ((node as any).mode) rootParams.mode = (node as any).mode;
 
   const parameters: Record<string, any> = {
     ...(definition.default_parameters ?? {}),
@@ -299,6 +304,9 @@ export function NodeConfigForm({ node, onUpdate }: NodeConfigFormProps) {
     ...(node.config ?? {}),
     ...(node.parameters ?? {}),
   };
+  if (inferredMode) {
+    parameters.mode = inferredMode;
+  }
 
   const setParam = (name: string, value: any) => {
     const next = { ...parameters, [name]: value };
