@@ -56,6 +56,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Resolve source image SHA
+        shell: powershell
+        run: |
+          $parents = (git rev-list --parents -n 1 HEAD).Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries)
+          # deploy/dev may receive dev through a merge commit. The second
+          # parent is the exact dev commit that CI built and pushed.
+          if ($parents.Length -gt 2) { $imageTag = $parents[2] } else { $imageTag = $parents[1] }
+          "IMAGE_TAG=$imageTag" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "Using image tag: $imageTag"
+
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
@@ -67,12 +77,12 @@ jobs:
         shell: powershell
         env:
           DEPLOY_ENV_FILE: ${{ vars.DEPLOY_ENV_FILE }}
-          OPENAGENT_API_IMAGE: ghcr.io/${{ github.repository_owner }}/open-agent/api:${{ github.sha }}
-          OPENAGENT_FRONTEND_IMAGE: ghcr.io/${{ github.repository_owner }}/open-agent/frontend:${{ github.sha }}
-          OPENAGENT_RAG_IMAGE: ghcr.io/${{ github.repository_owner }}/open-agent/rag-service:${{ github.sha }}
-          OPENAGENT_DOCLING_IMAGE: ghcr.io/${{ github.repository_owner }}/open-agent/docling-service:${{ github.sha }}
-          OPENAGENT_CI_MCP_IMAGE: ghcr.io/${{ github.repository_owner }}/open-agent/customer-intelligence-mcp:${{ github.sha }}
         run: |
+          $env:OPENAGENT_API_IMAGE = "ghcr.io/${{ github.repository_owner }}/open-agent/api:$env:IMAGE_TAG"
+          $env:OPENAGENT_FRONTEND_IMAGE = "ghcr.io/${{ github.repository_owner }}/open-agent/frontend:$env:IMAGE_TAG"
+          $env:OPENAGENT_RAG_IMAGE = "ghcr.io/${{ github.repository_owner }}/open-agent/rag-service:$env:IMAGE_TAG"
+          $env:OPENAGENT_DOCLING_IMAGE = "ghcr.io/${{ github.repository_owner }}/open-agent/docling-service:$env:IMAGE_TAG"
+          $env:OPENAGENT_CI_MCP_IMAGE = "ghcr.io/${{ github.repository_owner }}/open-agent/customer-intelligence-mcp:$env:IMAGE_TAG"
           docker container prune -f
           docker compose --env-file "$env:DEPLOY_ENV_FILE" --profile identity pull api worker frontend rag-service docling-service customer-intelligence-mcp
           docker compose --env-file "$env:DEPLOY_ENV_FILE" --profile identity up -d --no-build --remove-orphans
