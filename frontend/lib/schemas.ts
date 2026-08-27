@@ -93,5 +93,6 @@ export const runWorkflowRequest = z.object({
   input: z.string().min(1),
   stream: z.boolean().optional().default(true),
   timezone: z.string().optional(),
+  trigger_node_id: z.string().optional(),
 });
 export type RunWorkflowRequest = z.infer<typeof runWorkflowRequest>;
