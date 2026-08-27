@@ -9,6 +9,7 @@ import time
 from collections.abc import AsyncIterator
 from typing import Any
 
+import structlog
 from simpleeval import simple_eval
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -31,6 +32,8 @@ from app.models.workflow import Workflow
 from app.models.workflow_node_run import WorkflowNodeRun
 from app.models.workflow_run import WorkflowRun
 from app.schemas.workflow import NodeOutput
+
+logger = structlog.get_logger(__name__)
 
 
 def _eval_condition(cond: str, output: Any) -> bool:
@@ -64,7 +67,19 @@ def _eval_condition(cond: str, output: Any) -> bool:
             names[f"output_{key}"] = value
     try:
         return bool(simple_eval(cond, names=names, functions={"contains": lambda s, sub: sub in str(s)}))
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
+        # Surface the failure so an operator can fix a typo'd condition
+        # instead of debugging a silent skip in the downstream node. The
+        # return-False behavior is preserved on purpose — the existing
+        # guardrail test (``test_workflow_condition_rejects_malicious_expression``)
+        # depends on it for hostile expressions, and a broken condition
+        # should still prevent an unintended branch from firing.
+        logger.warning(
+            "workflow_edge_condition_failed",
+            condition=cond,
+            error=str(exc),
+            error_type=type(exc).__name__,
+        )
         return False
 
 
@@ -849,9 +864,18 @@ async def _run_workflow_events(
             status[node_id] = "done"
             raw = resumed_outputs[node_id]
             if isinstance(raw, dict):
-                outputs[node_id] = NodeOutput(text=str(raw.get("text", "")), data=raw.get("data") or {})
+                outputs[node_id] = NodeOutput(
+                    text=str(raw.get("text", "")),
+                    data=raw.get("data") or {},
+                )
             else:
-                outputs[node_id] = NodeOutput(text=str(raw))
+                # Legacy / non-dict checkpoint: keep text but never pretend
+                # we have structured data. An empty ``data`` means any
+                # ``output_data`` / ``output_<key>`` reference in downstream
+                # edge conditions will evaluate to None (and fail loudly
+                # via the warning in ``_eval_condition``) instead of
+                # silently skipping the wrong branches.
+                outputs[node_id] = NodeOutput(text=str(raw), data={})
     for node in nodes:
         if status[node["id"]] != "done":
             continue
