@@ -21,7 +21,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Create Python environment
-        run: & 'C:\Users\PC\AppData\Local\Programs\Python\Python312\python.exe' -m venv .ci-venv
+        run: |
+          & 'C:\Users\PC\AppData\Local\Programs\Python\Python312\python.exe' -m venv .ci-venv
       - name: Start Redis
         run: docker run -d --name openagent-ci-redis-${{ github.run_id }} -p 6379:6379 redis:7
       - name: Cache pip downloads
@@ -92,7 +93,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Create Python environment
-        run: & 'C:\Users\PC\AppData\Local\Programs\Python\Python312\python.exe' -m venv .ci-venv
+        run: |
+          & 'C:\Users\PC\AppData\Local\Programs\Python\Python312\python.exe' -m venv .ci-venv
       - run: docker compose -f docker-compose.yml -f .github/ci-compose.yml --env-file .env.example up -d --build postgres redis api worker frontend
       - run: .\.ci-venv\Scripts\python.exe scripts/e2e_agent_releases.py
       - run: .\.ci-venv\Scripts\python.exe scripts/e2e_evaluations.py
