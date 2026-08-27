@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import copy
+import hashlib
 import json
 import re
 import time
@@ -588,6 +590,8 @@ async def create_workflow_run(
     workflow_run_id: str | None = None,
     user_id: str | None = None,
     timezone_name: str | None = None,
+    trigger_node_id: str | None = None,
+    trigger_type: str | None = None,
 ) -> WorkflowRun:
     if workflow_run_id:
         res = await db.execute(
@@ -601,6 +605,21 @@ async def create_workflow_run(
         if existing is not None:
             return existing
         raise ValueError("workflow run not found")
+    graph_snapshot = copy.deepcopy(workflow.graph or {})
+    graph_nodes = graph_snapshot.get("nodes", []) if isinstance(graph_snapshot, dict) else []
+    if trigger_node_id is None:
+        trigger_node = next(
+            (node for node in graph_nodes if node.get("kind") == "input"), None
+        )
+        trigger_node_id = trigger_node.get("id") if trigger_node else None
+    if trigger_type is None and trigger_node_id:
+        trigger_type = next(
+            (node.get("kind") for node in graph_nodes if node.get("id") == trigger_node_id),
+            None,
+        )
+    graph_hash = hashlib.sha256(
+        json.dumps(graph_snapshot, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
     run = WorkflowRun(
         org_id=workflow.org_id,
         workflow_id=workflow.id,
@@ -608,6 +627,10 @@ async def create_workflow_run(
         input={"text": input_text, "timezone": timezone_name},
         triggered_by_user_id=user_id or workflow.created_by_user_id,
         started_at=utc_now(),
+        graph_snapshot=graph_snapshot,
+        graph_hash=graph_hash,
+        trigger_node_id=trigger_node_id,
+        trigger_type=trigger_type,
     )
     db.add(run)
     await db.commit()
