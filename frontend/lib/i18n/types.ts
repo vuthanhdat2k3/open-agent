@@ -476,6 +476,13 @@ export interface TranslationDictionary {
       orgName: string;
       adminEmail: string;
       totalTenants: string;
+      rename: string;
+      delete: string;
+      renameTitle: string;
+      deleteTitle: string;
+      deleteDescription: string;
+      renamed: string;
+      deleted: string;
     };
     members: {
       title: string;
