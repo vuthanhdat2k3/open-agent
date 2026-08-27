@@ -25,7 +25,7 @@ import { isActive, navGroups, prefetchTab, type UserRole } from "./navigation";
 
 export function AppSidebar({ queryClient }: { queryClient: QueryClient }) {
   const pathname = usePathname();
-  const { t, locale } = useTranslation();
+  const { t, locale, tx } = useTranslation();
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const summary = useEmailIntelligenceNavigationSummary();
@@ -56,8 +56,8 @@ export function AppSidebar({ queryClient }: { queryClient: QueryClient }) {
             />
           </div>
           <div className="min-w-0 group-data-[collapsible=icon]:hidden">
-            <div className="truncate text-base font-bold tracking-tight text-foreground">{locale === "vi" ? "OpenAgent" : "OpenAgent"}</div>
-            <div className="truncate text-xs text-muted-foreground">{locale === "vi" ? "Agent Platform" : "Agent Platform"}</div>
+            <div className="truncate text-base font-bold tracking-tight text-foreground">{tx("OpenAgent", "OpenAgent")}</div>
+            <div className="truncate text-xs text-muted-foreground">{tx("Agent Platform", "Agent Platform")}</div>
           </div>
         </div>
         <div className="group-data-[collapsible=icon]:hidden">
@@ -101,7 +101,7 @@ export function AppSidebar({ queryClient }: { queryClient: QueryClient }) {
                     </SidebarMenuButton>
                     {item.href === "/approvals" && pending > 0 && (
                       <SidebarMenuBadge aria-label={`${pending} pending approvals${urgent ? `, ${urgent} urgent` : ""}`}>
-                        <span>{pending}</span>{urgent > 0 && <span className="ml-1 text-[9px] text-destructive">· {urgent} {locale === "vi" ? "urgent" : "urgent"}</span>}
+                        <span>{pending}</span>{urgent > 0 && <span className="ml-1 text-[9px] text-destructive">· {urgent} {tx("urgent", "urgent")}</span>}
                       </SidebarMenuBadge>
                     )}
                   </SidebarMenuItem>

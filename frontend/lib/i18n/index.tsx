@@ -25,7 +25,7 @@ const LanguageContext = React.createContext<LanguageContextType>({
   setLocale: () => {},
   dict: vi,
   t: (_path: string, defaultValue?: string) => defaultValue || _path,
-  tx: (viText: string) => viText,
+  tx: (viText: string, enText: string) => viText,
 });
 
 export function LanguageProvider({ children }: { children: React.ReactNode }) {

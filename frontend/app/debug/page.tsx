@@ -38,7 +38,7 @@ import { EmptyState, ErrorState, LoadingSkeleton, DataPagination } from "@/compo
 import { useTranslation } from "@/lib/i18n";
 
 export default function DebugPage() {
-  const { t, dict, locale } = useTranslation();
+  const { t, dict, locale, tx } = useTranslation();
   const [tabParam, setTabParam] = useUrlSearchParam("tab");
   const activeTab = (tabParam as "usage" | "sessions" | "tasks") || "usage";
 
@@ -114,7 +114,7 @@ export default function DebugPage() {
             className="gap-1.5"
           >
             <RefreshCw className={usage.isFetching || sessions.isFetching ? "h-3.5 w-3.5 animate-spin" : "h-3.5 w-3.5"} />
-            {locale === "vi" ? "Làm mới" : "Refresh"}
+            {tx("Làm mới", "Refresh")}
           </Button>
         }
       />
@@ -130,7 +130,7 @@ export default function DebugPage() {
               ${totalCost.toFixed(4)}
             </p>
             <p className="mt-1 text-xs text-muted-foreground font-medium">
-              {locale === "vi" ? "Chi phí LLM (USD)" : "Total LLM Spend (USD)"}
+              {tx("Chi phí LLM (USD)", "Total LLM Spend (USD)")}
             </p>
           </div>
         </Card>
@@ -144,7 +144,7 @@ export default function DebugPage() {
               {totalCalls.toLocaleString()}
             </p>
             <p className="mt-1 text-xs text-muted-foreground font-medium">
-              {locale === "vi" ? "Lượt gọi AI" : "Total AI Invocations"}
+              {tx("Lượt gọi AI", "Total AI Invocations")}
             </p>
           </div>
         </Card>
@@ -160,7 +160,7 @@ export default function DebugPage() {
                 : `${(totalTokens / 1_000).toFixed(1)}k`}
             </p>
             <p className="mt-1 text-xs text-muted-foreground font-medium">
-              {locale === "vi" ? "Tokens tiêu thụ" : "Tokens Burned"}
+              {tx("Tokens tiêu thụ", "Tokens Burned")}
             </p>
           </div>
         </Card>
@@ -174,7 +174,7 @@ export default function DebugPage() {
               {sessions.data?.length ?? 0}
             </p>
             <p className="mt-1 text-xs text-muted-foreground font-medium">
-              {locale === "vi" ? "Phiên hội thoại" : "Recorded Sessions"}
+              {tx("Phiên hội thoại", "Recorded Sessions")}
             </p>
           </div>
         </Card>
@@ -189,7 +189,7 @@ export default function DebugPage() {
           className="gap-2 font-medium"
         >
           <BarChart3 className="h-4 w-4 text-primary" />
-          {locale === "vi" ? "Phân tích Chi phí" : "Cost Analytics"}
+          {tx("Phân tích Chi phí", "Cost Analytics")}
         </Button>
 
         <Button
@@ -199,7 +199,7 @@ export default function DebugPage() {
           className="gap-2 font-medium"
         >
           <MessageSquare className="h-4 w-4 text-primary" />
-          {locale === "vi" ? "Lịch sử Phiên" : "Session Audit"}
+          {tx("Lịch sử Phiên", "Session Audit")}
         </Button>
 
         <Button
@@ -209,7 +209,7 @@ export default function DebugPage() {
           className="gap-2 font-medium"
         >
           <GitBranch className="h-4 w-4 text-primary" />
-          {locale === "vi" ? "Cây Tác vụ" : "Task Graph"}
+          {tx("Cây Tác vụ", "Task Graph")}
         </Button>
       </div>
 
@@ -222,12 +222,12 @@ export default function DebugPage() {
               <Input
                 value={usageSearch}
                 onChange={(e) => setUsageSearch(e.target.value)}
-                placeholder={locale === "vi" ? "Lọc theo agent hoặc model..." : "Filter by agent or model..."}
+                placeholder={tx("Lọc theo agent hoặc model...", "Filter by agent or model...")}
                 className="pl-9 text-xs"
               />
             </div>
             <p className="text-xs text-muted-foreground font-mono">
-              {locale === "vi" ? `Hiển thị ${filteredUsage.length} bản ghi chi tiết` : `Showing ${filteredUsage.length} breakdown records`}
+              {tx("Hiển thị ${filteredUsage.length} bản ghi chi tiết", "Showing ${filteredUsage.length} breakdown records")}
             </p>
           </div>
 
@@ -236,8 +236,8 @@ export default function DebugPage() {
               <LoadingSkeleton variant="table" />
             ) : usage.isError ? (
               <ErrorState
-                title={locale === "vi" ? "Không thể tải phân tích chi phí" : "Unable to load usage analytics"}
-                description={locale === "vi" ? "Dữ liệu đo lường chi phí chưa sẵn sàng." : "Usage telemetry data could not be retrieved."}
+                title={tx("Không thể tải phân tích chi phí", "Unable to load usage analytics")}
+                description={tx("Dữ liệu đo lường chi phí chưa sẵn sàng.", "Usage telemetry data could not be retrieved.")}
                 onRetry={() => void usage.refetch()}
               />
             ) : filteredUsage.length ? (
@@ -245,12 +245,12 @@ export default function DebugPage() {
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/40">
-                      <TableHead className="text-xs font-semibold">{locale === "vi" ? "Tên Agent" : "Agent Name"}</TableHead>
-                      <TableHead className="text-xs font-semibold">{locale === "vi" ? "Mô hình" : "Model Provider"}</TableHead>
-                      <TableHead className="text-right text-xs font-semibold">{locale === "vi" ? "Lượt gọi" : "Calls"}</TableHead>
-                      <TableHead className="text-right text-xs font-semibold">{locale === "vi" ? "Tokens Đầu vào" : "Prompt In"}</TableHead>
-                      <TableHead className="text-right text-xs font-semibold">{locale === "vi" ? "Tokens Đầu ra" : "Completion Out"}</TableHead>
-                      <TableHead className="text-right text-xs font-semibold">{locale === "vi" ? "Tổng Chi phí" : "Total Cost"}</TableHead>
+                      <TableHead className="text-xs font-semibold">{tx("Tên Agent", "Agent Name")}</TableHead>
+                      <TableHead className="text-xs font-semibold">{tx("Mô hình", "Model Provider")}</TableHead>
+                      <TableHead className="text-right text-xs font-semibold">{tx("Lượt gọi", "Calls")}</TableHead>
+                      <TableHead className="text-right text-xs font-semibold">{tx("Tokens Đầu vào", "Prompt In")}</TableHead>
+                      <TableHead className="text-right text-xs font-semibold">{tx("Tokens Đầu ra", "Completion Out")}</TableHead>
+                      <TableHead className="text-right text-xs font-semibold">{tx("Tổng Chi phí", "Total Cost")}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -295,8 +295,8 @@ export default function DebugPage() {
             ) : (
               <EmptyState
                 icon={BarChart3}
-                title={locale === "vi" ? "Không tìm thấy dữ liệu tiêu thụ" : "No usage data found"}
-                description={locale === "vi" ? "Thực hiện các cuộc trò chuyện AI để xem phân tích chi phí." : "Perform AI interactions to inspect token telemetry."}
+                title={tx("Không tìm thấy dữ liệu tiêu thụ", "No usage data found")}
+                description={tx("Thực hiện các cuộc trò chuyện AI để xem phân tích chi phí.", "Perform AI interactions to inspect token telemetry.")}
               />
             )}
           </Card>
@@ -310,12 +310,10 @@ export default function DebugPage() {
           <Card className="shadow-card border-border/80 lg:col-span-1 flex flex-col">
             <CardHeader className="border-b border-border/60 pb-3">
               <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <MessageSquare className="h-4 w-4 text-primary" /> {locale === "vi" ? "Chọn Phiên kiểm toán" : "Select Audit Session"}
+                <MessageSquare className="h-4 w-4 text-primary" /> {tx("Chọn Phiên kiểm toán", "Select Audit Session")}
               </CardTitle>
               <CardDescription className="text-xs">
-                {locale === "vi"
-                  ? "Kiểm tra raw prompt messages và tool calls của từng hội thoại."
-                  : "Inspect raw prompt messages and tool calls for any chat conversation."}
+                {tx("Kiểm tra raw prompt messages và tool calls của từng hội thoại.", "Inspect raw prompt messages and tool calls for any chat conversation.")}
               </CardDescription>
             </CardHeader>
             <CardContent className="p-3 flex-1 flex flex-col justify-between">
@@ -323,8 +321,8 @@ export default function DebugPage() {
                 <LoadingSkeleton variant="table" />
               ) : sessions.isError ? (
                 <ErrorState
-                  title={locale === "vi" ? "Không thể tải danh sách phiên" : "Unable to load sessions"}
-                  description={locale === "vi" ? "Danh sách phiên chưa sẵn sàng." : "Session list could not be loaded."}
+                  title={tx("Không thể tải danh sách phiên", "Unable to load sessions")}
+                  description={tx("Danh sách phiên chưa sẵn sàng.", "Session list could not be loaded.")}
                   onRetry={() => void sessions.refetch()}
                 />
               ) : sessions.data?.length ? (
@@ -344,10 +342,10 @@ export default function DebugPage() {
                           }`}
                         >
                           <p className={`text-xs font-semibold truncate ${isSelected ? "text-primary" : "text-foreground"}`}>
-                            {s.title || (locale === "vi" ? "Hội thoại không tên" : "Untitled Conversation")}
+                            {s.title || (tx("Hội thoại không tên", "Untitled Conversation"))}
                           </p>
                           <p className="font-mono text-[10px] text-muted-foreground truncate">
-                            {locale === "vi" ? "ID:" : "ID:"}{s.id}
+                            {tx("ID:", "ID:")}{s.id}
                           </p>
                         </button>
                       );
@@ -366,7 +364,7 @@ export default function DebugPage() {
               ) : (
                 <EmptyState
                   icon={MessageSquare}
-                  title={locale === "vi" ? "Không có phiên nào được ghi lại" : "No recorded sessions"}
+                  title={tx("Không có phiên nào được ghi lại", "No recorded sessions")}
                 />
               )}
             </CardContent>
@@ -376,10 +374,10 @@ export default function DebugPage() {
           <Card className="shadow-card border-border/80 lg:col-span-2 flex flex-col">
             <CardHeader className="border-b border-border/60 pb-3">
               <CardTitle className="text-sm font-semibold flex items-center justify-between">
-                <span>{locale === "vi" ? "Luồng Tin nhắn & Truy vết Thực thi" : "Message Stream & Execution Trace"}</span>
+                <span>{tx("Luồng Tin nhắn & Truy vết Thực thi", "Message Stream & Execution Trace")}</span>
                 {tree.data && (
                   <Badge variant="outline" className="font-mono text-[10px]">
-                    {tree.data.messages.length} {locale === "vi" ? "tin nhắn" : "messages"}
+                    {tree.data.messages.length} {tx("tin nhắn", "messages")}
                   </Badge>
                 )}
               </CardTitle>
@@ -393,8 +391,8 @@ export default function DebugPage() {
                 <LoadingSkeleton variant="table" />
               ) : tree.isError ? (
                 <ErrorState
-                  title={locale === "vi" ? "Không thể tải truy vết phiên" : "Unable to load session trace"}
-                  description={locale === "vi" ? "Phiên được chọn không thể kiểm tra." : "Selected session could not be inspected."}
+                  title={tx("Không thể tải truy vết phiên", "Unable to load session trace")}
+                  description={tx("Phiên được chọn không thể kiểm tra.", "Selected session could not be inspected.")}
                   onRetry={() => void tree.refetch()}
                 />
               ) : tree.data?.messages.length ? (
@@ -413,7 +411,7 @@ export default function DebugPage() {
                         </Badge>
                         {m.meta?.cost_usd != null && (
                           <span className="font-mono text-[10.5px] text-muted-foreground bg-muted/40 px-2 py-0.5 rounded border border-border/40">
-                            ${Number(m.meta.cost_usd).toFixed(6)} · {m.meta.latency_ms || 0}{locale === "vi" ? "ms" : "ms"}</span>
+                            ${Number(m.meta.cost_usd).toFixed(6)} · {m.meta.latency_ms || 0}{tx("ms", "ms")}</span>
                         )}
                       </div>
 
@@ -423,7 +421,7 @@ export default function DebugPage() {
 
                       {m.meta?.tools?.length > 0 && (
                         <div className="mt-2.5 pt-2 border-t border-border/50 text-[11px] text-muted-foreground flex flex-wrap items-center gap-1.5">
-                          <span className="font-semibold text-foreground">{locale === "vi" ? "Công cụ đã gọi:" : "Tools Dispatched:"}</span>
+                          <span className="font-semibold text-foreground">{tx("Công cụ đã gọi:", "Tools Dispatched:")}</span>
                           {m.meta.tools.map((t: any, idx: number) => (
                             <Badge key={idx} variant="outline" className="font-mono text-[10px] bg-primary/5 text-primary border-primary/30">
                               {t.name}
@@ -437,7 +435,7 @@ export default function DebugPage() {
               ) : (
                 <EmptyState
                   icon={MessageSquare}
-                  title={locale === "vi" ? "Không có tin nhắn nào trong phiên" : "No messages in session"}
+                  title={tx("Không có tin nhắn nào trong phiên", "No messages in session")}
                 />
               )}
             </CardContent>
@@ -451,7 +449,7 @@ export default function DebugPage() {
           <Card className="shadow-card border-border/80">
             <CardHeader className="pb-3">
               <CardTitle className="text-base font-semibold">
-                {locale === "vi" ? "Kiểm tra Cây Thực thi Tác vụ" : "Inspect Task Execution Tree"}
+                {tx("Kiểm tra Cây Thực thi Tác vụ", "Inspect Task Execution Tree")}
               </CardTitle>
               <CardDescription className="text-xs">
                 {t("pages.debug.rootRunIdDesc", "Nhập ID lượt chạy gốc (root run ID) để xem cây phân cấp subagent và trạng thái phụ thuộc.")}
@@ -467,7 +465,7 @@ export default function DebugPage() {
                   onKeyDown={(e) => {
                     if (e.key === "Enter") setRootRunParam(rootRunDraft.trim() || null);
                   }}
-                  placeholder={locale === "vi" ? "Nhập root_run_id (ví dụ: run-98a72...)" : "Enter root_run_id (e.g. run-98a72...)"}
+                  placeholder={tx("Nhập root_run_id (ví dụ: run-98a72...)", "Enter root_run_id (e.g. run-98a72...)")}
                   className="font-mono text-xs"
                 />
                 <Button
@@ -475,7 +473,7 @@ export default function DebugPage() {
                   onClick={() => setRootRunParam(rootRunDraft.trim() || null)}
                   className="font-semibold text-xs"
                 >
-                  {locale === "vi" ? "Kiểm tra" : "Inspect Run"}
+                  {tx("Kiểm tra", "Inspect Run")}
                 </Button>
               </div>
             </CardContent>
@@ -485,8 +483,8 @@ export default function DebugPage() {
             <LoadingSkeleton variant="table" />
           ) : taskTree.isError ? (
             <ErrorState
-              title={locale === "vi" ? "Không thể tải cây tác vụ" : "Unable to load task tree"}
-              description={locale === "vi" ? "Cây tác vụ không khả dụng." : "Task graph could not be retrieved."}
+              title={tx("Không thể tải cây tác vụ", "Unable to load task tree")}
+              description={tx("Cây tác vụ không khả dụng.", "Task graph could not be retrieved.")}
               onRetry={() => void taskTree.refetch()}
             />
           ) : taskTree.data?.tasks?.length ? (
@@ -503,8 +501,8 @@ export default function DebugPage() {
                     </Badge>
                   </div>
                   <div className="mt-2 text-xs font-mono text-muted-foreground flex items-center gap-4">
-                    <span>{locale === "vi" ? "Task ID:" : "Task ID:"}{node.id}</span>
-                    <span>{locale === "vi" ? "Tác vụ cha:" : "Parent:"} {node.parent_task_id || "Root"}</span>
+                    <span>{tx("Task ID:", "Task ID:")}{node.id}</span>
+                    <span>{tx("Tác vụ cha:", "Parent:")} {node.parent_task_id || "Root"}</span>
                   </div>
                 </Card>
               ))}
@@ -512,8 +510,8 @@ export default function DebugPage() {
           ) : (
             <EmptyState
               icon={GitBranch}
-              title={locale === "vi" ? "Chưa tải cây tác vụ nào" : "No task tree loaded"}
-              description={locale === "vi" ? "Cung cấp root run ID đang chạy hoặc đã hoàn tất để hiển thị biểu đồ." : "Provide an active or completed root run ID to visualize its execution graph."}
+              title={tx("Chưa tải cây tác vụ nào", "No task tree loaded")}
+              description={tx("Cung cấp root run ID đang chạy hoặc đã hoàn tất để hiển thị biểu đồ.", "Provide an active or completed root run ID to visualize its execution graph.")}
             />
           )}
         </div>

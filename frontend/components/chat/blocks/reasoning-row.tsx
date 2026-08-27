@@ -24,7 +24,7 @@ function latestLine(text: string): string {
 import { useTranslation } from "@/lib/i18n";
 
 export function ReasoningRow({ content, streaming }: ReasoningRowProps) {
-  const { t, locale } = useTranslation();
+  const { t, locale, tx } = useTranslation();
   const [open, setOpen] = React.useState(streaming || !content);
   const summaryRef = React.useRef<HTMLSpanElement>(null);
 
@@ -49,8 +49,8 @@ export function ReasoningRow({ content, streaming }: ReasoningRowProps) {
   if (!content && !streaming) return null;
 
   const summary = streaming ? latestLine(content) : firstLine(content);
-  const thinkingLabel = locale === "vi" ? "Suy luận" : "Think";
-  const defaultThinkingText = locale === "vi" ? "Đang suy luận…" : "Thinking…";
+  const thinkingLabel = tx("Suy luận", "Think");
+  const defaultThinkingText = tx("Đang suy luận…", "Thinking…");
 
   return (
     <div className="w-full" data-variant="think" data-state={streaming ? "running" : "ok"}>

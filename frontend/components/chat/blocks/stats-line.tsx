@@ -29,12 +29,12 @@ function formatDuration(ms: number, debug?: boolean): string {
 }
 
 export function StatsLine({ block, debug }: StatsLineProps) {
-    const { locale } = useTranslation();
+    const { locale, tx } = useTranslation();
   if (block.noAnswer) {
     return (
       <div className="flex items-center gap-1.5 text-xs text-destructive mt-1 font-mono">
         <AlertCircle className="h-3.5 w-3.5" />
-        <span>{locale === "vi" ? "No answer was generated. Please try again." : "No answer was generated. Please try again."}</span>
+        <span>{tx("No answer was generated. Please try again.", "No answer was generated. Please try again.")}</span>
       </div>
     );
   }
@@ -89,7 +89,7 @@ export function StatsLine({ block, debug }: StatsLineProps) {
   if (debug) {
     items.push(
       <span key="dbg-tag" className="rounded bg-primary/10 px-1 py-0.2 text-[10px] font-semibold text-primary">
-        {locale === "vi" ? "TRACE" : "TRACE"}</span>
+        {tx("TRACE", "TRACE")}</span>
     );
   }
 

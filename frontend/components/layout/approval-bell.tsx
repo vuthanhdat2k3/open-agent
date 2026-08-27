@@ -18,22 +18,27 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useTranslation } from "@/lib/i18n";
 
-function approvalTitle(item: ApprovalRequest, locale: string) {
+function approvalTitle(item: ApprovalRequest, locale: string, tx: (vi: string, en: string) => string) {
   const args = item.args_snapshot || {};
-  if (item.tool_name === "calendar_create_event" || args.start || args.attendees) return locale === "vi" ? "Tạo sự kiện" : "Create calendar event";
-  if (item.tool_name === "drive_create_file") return locale === "vi" ? "Lưu tài liệu" : "Save research briefing";
-  return item.action || item.tool_name || item.node_id || (locale === "vi" ? "Xem xét hành động" : "Review requested action");
+  if (item.tool_name === "calendar_create_event" || args.start || args.attendees) return tx("Tạo sự kiện", "Create calendar event");
+  if (item.tool_name === "drive_create_file") return tx("Lưu tài liệu", "Save research briefing");
+  return item.action || item.tool_name || item.node_id || (tx("Xem xét hành động", "Review requested action"));
 }
 
-function expiry(expiresAt: string | null | undefined, locale: string) {
-  if (!expiresAt) return locale === "vi" ? "Không hết hạn" : "No expiry";
+function expiry(expiresAt: string | null | undefined, locale: string, tx: (vi: string, en: string) => string) {
+  if (!expiresAt) return tx("Không hết hạn", "No expiry");
   const ms = new Date(expiresAt).getTime() - Date.now();
-  if (ms <= 0) return locale === "vi" ? "Đã hết hạn" : "Expired";
+  if (ms <= 0) return tx("Đã hết hạn", "Expired");
   const minutes = Math.ceil(ms / 60000);
-  if (locale === "vi") {
-    return minutes < 60 ? `Hết hạn sau ${minutes} phút` : `Hết hạn sau ${Math.ceil(minutes / 60)} giờ`;
+  if (minutes < 60) {
+    return locale === "vi"
+      ? `Hết hạn sau ${minutes} phút`
+      : `Expires in ${minutes} minute${minutes === 1 ? "" : "s"}`;
   }
-  return minutes < 60 ? `Expires in ${minutes} minute${minutes === 1 ? "" : "s"}` : `Expires in ${Math.ceil(minutes / 60)} hour${minutes < 120 ? "" : "s"}`;
+  const hours = Math.ceil(minutes / 60);
+  return locale === "vi"
+    ? `Hết hạn sau ${hours} giờ`
+    : `Expires in ${hours} hour${hours < 120 ? "" : "s"}`;
 }
 
 export function ApprovalBell() {
@@ -43,7 +48,7 @@ export function ApprovalBell() {
   const pending = summary.data?.user_workspace.approvals.pending ?? approvals.data?.length ?? 0;
   const urgent = summary.data?.user_workspace.approvals.urgent ?? approvals.data?.filter((item) => item.risk_level === "HIGH").length ?? 0;
 
-  const { t, locale } = useTranslation();
+  const { t, locale, tx } = useTranslation();
 
   React.useEffect(() => {
     if (!approvals.data) return;
@@ -51,10 +56,10 @@ export function ApprovalBell() {
     if (previousIds.current) {
       for (const fresh of approvals.data) {
         if (previousIds.current.has(fresh.id)) continue;
-        toast(locale === "vi" ? "Cần phê duyệt" : "Approval required", {
-          description: approvalTitle(fresh, locale),
+        toast(tx("Cần phê duyệt", "Approval required"), {
+          description: approvalTitle(fresh, locale, tx),
           duration: 5000,
-          action: { label: locale === "vi" ? "Xem ngay" : "Review now", onClick: () => { window.location.href = `/approvals?approval_id=${encodeURIComponent(fresh.id)}`; } },
+          action: { label: tx("Xem ngay", "Review now"), onClick: () => { window.location.href = `/approvals?approval_id=${encodeURIComponent(fresh.id)}`; } },
         });
       }
     }
@@ -83,9 +88,9 @@ export function ApprovalBell() {
                 {item.risk_level === "HIGH" && <ShieldAlert className="h-3.5 w-3.5 text-destructive" aria-hidden="true" />}
                 <span className={item.risk_level === "HIGH" ? "text-destructive" : "text-muted-foreground"}>{item.risk_level || "STANDARD"} · {item.approval_mode || "EXPLICIT"}</span>
               </div>
-              <div className="mt-1 truncate text-sm font-semibold text-foreground">{approvalTitle(item, locale)}</div>
+              <div className="mt-1 truncate text-sm font-semibold text-foreground">{approvalTitle(item, locale, tx)}</div>
               <div className="mt-1 flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                <span className="flex items-center gap-1"><Clock3 className="h-3 w-3" aria-hidden="true" />{expiry(item.expires_at, locale)}</span>
+                <span className="flex items-center gap-1"><Clock3 className="h-3 w-3" aria-hidden="true" />{expiry(item.expires_at, locale, tx)}</span>
                 <span className="flex items-center gap-1 text-primary">{t("pages.approvals.btnReview", "Review")} <ChevronRight className="h-3 w-3" aria-hidden="true" /></span>
               </div>
             </Link>

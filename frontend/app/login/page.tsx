@@ -59,8 +59,13 @@ const ERROR_KEY_MAP: Record<string, string> = {
   CODE_EXCHANGE_FAILED: "codeExchangeFailed",
 };
 
+const ERROR_MESSAGES_BY_LOCALE = {
+  vi: ERROR_MESSAGES_VI,
+  en: ERROR_MESSAGES_EN,
+};
+
 export default function LoginPage() {
-  const { t, locale } = useTranslation();
+  const { t, locale, tx } = useTranslation();
   const searchParams = useSearchParams();
   const errorParam = searchParams.get("error");
   const [email, setEmail] = React.useState("");
@@ -76,12 +81,12 @@ export default function LoginPage() {
     }
   }, []);
 
-  const errDict = locale === "vi" ? ERROR_MESSAGES_VI : ERROR_MESSAGES_EN;
+  const errDict = ERROR_MESSAGES_BY_LOCALE[locale];
   const errorKey = errorParam ? (ERROR_KEY_MAP[errorParam] ?? errorParam) : null;
   const errorInfo = errorParam
     ? errDict[errorParam] || {
-        title: locale === "vi" ? "Đăng nhập không thành công" : "Sign In Failed",
-        desc: locale === "vi" ? `Đã xảy ra lỗi xác thực (${errorParam}). Vui lòng liên hệ quản trị viên để được hỗ trợ.` : `An authentication error occurred (${errorParam}). Please contact your administrator.`,
+        title: tx("Đăng nhập không thành công", "Sign In Failed"),
+        desc: tx("Đã xảy ra lỗi xác thực (${errorParam}). Vui lòng liên hệ quản trị viên để được hỗ trợ.", "An authentication error occurred (${errorParam}). Please contact your administrator."),
       }
     : null;
 
@@ -119,7 +124,7 @@ export default function LoginPage() {
             </div>
             <div>
               <CardTitle className="text-xl">
-                {locale === "vi" ? "Đăng nhập OpenAgent" : "Sign in to OpenAgent"}
+                {tx("Đăng nhập OpenAgent", "Sign in to OpenAgent")}
               </CardTitle>
               <p className="mt-2 text-sm text-muted-foreground">
                 {t("pages.login.ssoDesc", "Xác thực danh tính doanh nghiệp tập trung qua Single Sign-On.")}
@@ -145,7 +150,7 @@ export default function LoginPage() {
                 window.location.href = "/api/auth/login";
               }}
             >
-              {locale === "vi" ? "Tiếp tục qua SSO Doanh nghiệp" : "Continue with organization SSO"}
+              {tx("Tiếp tục qua SSO Doanh nghiệp", "Continue with organization SSO")}
               <ArrowRight className="h-4 w-4" aria-hidden="true" />
             </Button>
           </CardContent>
@@ -166,7 +171,7 @@ export default function LoginPage() {
           </div>
           <div>
             <CardTitle className="text-xl">
-              {locale === "vi" ? "Đăng nhập nội bộ đã tắt" : "Local authentication is disabled"}
+              {tx("Đăng nhập nội bộ đã tắt", "Local authentication is disabled")}
             </CardTitle>
               <p className="mt-2 text-sm text-muted-foreground">
                 {t("pages.login.useOrgProviderDesc", "Vui lòng sử dụng nhà cung cấp danh tính tổ chức để đăng nhập.")}

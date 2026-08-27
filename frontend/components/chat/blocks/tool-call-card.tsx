@@ -30,7 +30,7 @@ function sanitizeSvg(html: string): string {
 }
 
 function SvgPreview({ html }: { html: string }) {
-    const { t, locale } = useTranslation();
+    const { t, locale, tx } = useTranslation();
   const clean = sanitizeSvg(html);
   return (
     <Dialog>
@@ -65,7 +65,7 @@ interface ToolCallCardProps {
 }
 
 export function ToolCallCard({ block, compact = false }: ToolCallCardProps) {
-    const { locale } = useTranslation();
+    const { locale, tx } = useTranslation();
   const isCodeTool = block.name === "run_code" || block.name === "write_file";
   const isSubagent = block.name === "call_agent" || Boolean(block.subagent);
   const isSvg =
@@ -116,13 +116,13 @@ export function ToolCallCard({ block, compact = false }: ToolCallCardProps) {
         <div className="flex items-center gap-1 text-[10px] font-mono shrink-0 ml-2">
           {isRunning ? (
             <span className="flex items-center gap-1 text-primary">
-              <Loader2 className="h-3 w-3 animate-spin" /> {locale === "vi" ? "Running" : "Running"}</span>
+              <Loader2 className="h-3 w-3 animate-spin" /> {tx("Running", "Running")}</span>
           ) : isError ? (
             <span className="flex items-center gap-1 text-destructive">
-              <XCircle className="h-3 w-3" /> {locale === "vi" ? "Thất bại" : "Failed"}</span>
+              <XCircle className="h-3 w-3" /> {tx("Thất bại", "Failed")}</span>
           ) : (
             <span className="flex items-center gap-1 text-success">
-              <CheckCircle2 className="h-3 w-3" /> {locale === "vi" ? "Done" : "Done"}</span>
+              <CheckCircle2 className="h-3 w-3" /> {tx("Done", "Done")}</span>
           )}
         </div>
       </div>
@@ -132,7 +132,7 @@ export function ToolCallCard({ block, compact = false }: ToolCallCardProps) {
         <div className="border-b border-border/40 bg-indigo-950/10 p-3 space-y-2.5">
           {subagentInstruction && (
             <div className="text-[11px] text-muted-foreground">
-              <span className="font-semibold text-foreground/80">{locale === "vi" ? "Goal:" : "Goal:"}</span>
+              <span className="font-semibold text-foreground/80">{tx("Goal:", "Goal:")}</span>
               {subagentInstruction}
             </div>
           )}
@@ -143,7 +143,7 @@ export function ToolCallCard({ block, compact = false }: ToolCallCardProps) {
               <CollapsibleTrigger className="group flex w-full cursor-pointer items-center justify-between rounded bg-muted/30 px-2.5 py-1 text-[10px] font-medium text-indigo-300 hover:bg-muted/50">
                 <span className="flex items-center gap-1.5">
                   <Brain className="h-3 w-3 text-indigo-400" />
-                  {locale === "vi" ? "Subagent Thinking" : "Subagent Thinking"}{isRunning && <span className="inline-block h-1.5 w-1.5 rounded-full bg-indigo-400 animate-ping" />}
+                  {tx("Subagent Thinking", "Subagent Thinking")}{isRunning && <span className="inline-block h-1.5 w-1.5 rounded-full bg-indigo-400 animate-ping" />}
                 </span>
                 <ChevronDown className="h-3 w-3 transition-transform duration-200 group-data-[state=closed]:-rotate-90" />
               </CollapsibleTrigger>
@@ -159,7 +159,7 @@ export function ToolCallCard({ block, compact = false }: ToolCallCardProps) {
           {/* Subagent Sub-tools */}
           {subagent?.tools && subagent.tools.length > 0 && (
             <div className="flex flex-wrap items-center gap-1.5 pt-1">
-              <span className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">{locale === "vi" ? "Sub-tools:" : "Sub-tools:"}</span>
+              <span className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">{tx("Sub-tools:", "Sub-tools:")}</span>
               {subagent.tools.map((t, i) => (
                 <Badge key={i} variant="outline" className="text-[10px] gap-1 font-mono py-0 px-2 bg-muted/40 border-border/60">
                   {t.status === "running" ? (
@@ -178,7 +178,7 @@ export function ToolCallCard({ block, compact = false }: ToolCallCardProps) {
             <div className="space-y-1 pt-1">
               <div className="flex items-center gap-1.5 text-[10px] font-semibold text-foreground/80">
                 <Sparkles className="h-3 w-3 text-indigo-400" />
-                {locale === "vi" ? "Subagent Response Stream" : "Subagent Response Stream"}</div>
+                {tx("Subagent Response Stream", "Subagent Response Stream")}</div>
               <div className="rounded-lg bg-card/60 border border-border/40 p-2.5 text-[12px] text-foreground leading-relaxed max-h-60 overflow-y-auto">
                 <React.Suspense fallback={<div className="whitespace-pre-wrap">{subagent.response}</div>}>
                   <LazyMarkdownRenderer content={subagent.response} />
@@ -193,7 +193,7 @@ export function ToolCallCard({ block, compact = false }: ToolCallCardProps) {
       {/* Arguments / Code content */}
       <Collapsible defaultOpen={!isSubagent && (isRunning || !block.result)}>
         <CollapsibleTrigger className="group flex w-full cursor-pointer items-center justify-between bg-muted/10 px-3 py-1 text-[9px] font-mono uppercase tracking-wider text-muted-foreground select-none hover:bg-muted/20">
-          <span>{locale === "vi" ? "Arguments / Payload" : "Arguments / Payload"}</span>
+          <span>{tx("Arguments / Payload", "Arguments / Payload")}</span>
           <ChevronDown className="h-3 w-3 transition-transform duration-200 group-data-[state=closed]:-rotate-90" />
         </CollapsibleTrigger>
         <CollapsibleContent>
@@ -207,7 +207,7 @@ export function ToolCallCard({ block, compact = false }: ToolCallCardProps) {
       {block.progress && isRunning ? (
         <div className="border-t border-border/40">
           <div className="flex items-center gap-1.5 bg-muted/20 px-3 py-1 text-[9px] uppercase tracking-wider text-muted-foreground/70">
-            <Play className="h-2.5 w-2.5 text-primary animate-pulse" /> {locale === "vi" ? "Live output & progress" : "Live output & progress"}</div>
+            <Play className="h-2.5 w-2.5 text-primary animate-pulse" /> {tx("Live output & progress", "Live output & progress")}</div>
           <pre className="block max-h-48 overflow-y-auto overflow-x-auto p-3 font-mono text-[10.5px] text-muted-foreground leading-relaxed scrollbar-thin whitespace-pre-wrap break-all bg-muted/30">
             {block.progress}
           </pre>
@@ -218,7 +218,7 @@ export function ToolCallCard({ block, compact = false }: ToolCallCardProps) {
       {block.result != null && (
         <div className="border-t border-border/60 bg-muted/10">
           <div className="flex items-center gap-1.5 bg-muted/30 px-3 py-1 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">
-            <span>{locale === "vi" ? "Result" : "Result"}</span>
+            <span>{tx("Result", "Result")}</span>
           </div>
 
           {isSvg ? (

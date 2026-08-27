@@ -43,10 +43,8 @@ export function ChatComposer({
   placeholder,
   className,
 }: ChatComposerProps) {
-  const { t, locale } = useTranslation();
-  const defaultPlaceholder = locale === "vi"
-    ? "Nhập tin nhắn… (Enter để gửi, Shift+Enter để xuống dòng)"
-    : "Type a message… (Enter to send, Shift+Enter for newline)";
+  const { t, locale, tx } = useTranslation();
+  const defaultPlaceholder = tx("Nhập tin nhắn… (Enter để gửi, Shift+Enter để xuống dòng)", "Type a message… (Enter to send, Shift+Enter for newline)");
   const activePlaceholder = placeholder || defaultPlaceholder;
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -92,7 +90,7 @@ export function ChatComposer({
         </div>
       )}
 
-      <label htmlFor="chat-composer" className="sr-only">{locale === "vi" ? "Message" : "Message"}</label>
+      <label htmlFor="chat-composer" className="sr-only">{tx("Message", "Message")}</label>
       <Textarea
         id="chat-composer"
         ref={textareaRef}
@@ -122,7 +120,7 @@ export function ChatComposer({
           onClick={() => fileInputRef.current?.click()}
           disabled={upload.isPending}
           aria-label="Attach file"
-          title={locale === "vi" ? "Attach file" : "Attach file"}
+          title={tx("Attach file", "Attach file")}
         >
           {upload.isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Paperclip className="h-4 w-4" aria-hidden="true" />}
         </Button>

@@ -29,16 +29,24 @@ const QUICK_ACTIONS = [
 import { useTranslation } from "@/lib/i18n";
 
 export function ChatEmptyState({ currentAgent, effectiveModel, draft, onDraftChange, onSubmit, disabled, attachments, onAttachmentsChange }: ChatEmptyStateProps) {
-  const { t, locale } = useTranslation();
+  const { t, locale, tx } = useTranslation();
 
-  const quickActions = locale === "vi" ? [
-    { icon: FolderSearch, label: t("pages.chat.emptyStateRecentFiles", "Tệp tài liệu gần đây"), prompt: t("pages.chat.emptyStateRecentFilesPrompt", "Liệt kê 5 tệp tài liệu tôi đã tải lên hoặc truy cập gần nhất.") },
-    { icon: ListTodo, label: t("pages.chat.emptyStateTasks", "Tóm tắt công việc"), prompt: t("pages.chat.emptyStateTasksPrompt", "Tóm tắt những việc quan trọng cần tôi xử lý hôm nay.") },
-    { icon: Sparkles, label: t("pages.chat.emptyStateCapabilities", "Khả năng của bạn"), prompt: t("pages.chat.emptyStateCapabilitiesPrompt", "Bạn có thể giúp tôi làm những tác vụ nào?") },
-  ] : [
-    { icon: FolderSearch, label: "List recent files", prompt: "List the 5 most recently modified files I have access to." },
-    { icon: ListTodo, label: "Summarize my day", prompt: "Summarize what needs my attention today." },
-    { icon: Sparkles, label: "What can you do?", prompt: "What can you help me with?" },
+  const quickActions = [
+    {
+      icon: FolderSearch,
+      label: t("pages.chat.emptyStateRecentFiles", "Tệp tài liệu gần đây"),
+      prompt: t("pages.chat.emptyStateRecentFilesPrompt", "Liệt kê 5 tệp tài liệu tôi đã tải lên hoặc truy cập gần nhất."),
+    },
+    {
+      icon: ListTodo,
+      label: t("pages.chat.emptyStateTasks", "Tóm tắt công việc"),
+      prompt: t("pages.chat.emptyStateTasksPrompt", "Tóm tắt những việc quan trọng cần tôi xử lý hôm nay."),
+    },
+    {
+      icon: Sparkles,
+      label: t("pages.chat.emptyStateCapabilities", "Khả năng của bạn"),
+      prompt: t("pages.chat.emptyStateCapabilitiesPrompt", "Bạn có thể giúp tôi làm những tác vụ nào?"),
+    },
   ];
 
   return (
@@ -57,7 +65,7 @@ export function ChatEmptyState({ currentAgent, effectiveModel, draft, onDraftCha
           {currentAgent?.name ?? "OpenAgent"}
         </h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          {locale === "vi" ? "Xây dựng mọi ý tưởng — bắt đầu gửi tin nhắn ngay bên dưới." : "Build something amazing — just start typing below."}
+          {tx("Xây dựng mọi ý tưởng — bắt đầu gửi tin nhắn ngay bên dưới.", "Build something amazing — just start typing below.")}
           {effectiveModel && <span className="ml-1 font-mono text-xs text-foreground/60">({effectiveModel.display_name || effectiveModel.name})</span>}
         </p>
       </div>
@@ -71,7 +79,7 @@ export function ChatEmptyState({ currentAgent, effectiveModel, draft, onDraftCha
           attachments={attachments}
           onAttachmentsChange={onAttachmentsChange}
           variant="floating"
-          placeholder={locale === "vi" ? "Nhập yêu cầu của bạn…" : "Type your request…"}
+          placeholder={tx("Nhập yêu cầu của bạn…", "Type your request…")}
         />
 
         <div className="mt-5 flex flex-wrap items-center justify-center gap-2">

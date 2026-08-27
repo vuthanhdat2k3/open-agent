@@ -14,7 +14,7 @@ import { useTranslation } from "@/lib/i18n";
 import { ErrorState } from "@/components/shared";
 
 export default function ProfilePage() {
-  const { t, dict, locale } = useTranslation();
+  const { t, dict, locale, tx } = useTranslation();
   const profile = useProfile();
   const updateProfile = useUpdateProfile();
 
@@ -33,20 +33,20 @@ export default function ProfilePage() {
     e.preventDefault();
     try {
       await updateProfile.mutateAsync({ display_name: displayName });
-      toast.success(locale === "vi" ? "Cập nhật hồ sơ thành công" : "Profile updated successfully");
+      toast.success(tx("Cập nhật hồ sơ thành công", "Profile updated successfully"));
     } catch (err: any) {
-      toast.error(err.message || (locale === "vi" ? "Cập nhật hồ sơ thất bại" : "Failed to update profile"));
+      toast.error(err.message || (tx("Cập nhật hồ sơ thất bại", "Failed to update profile")));
     }
   }
 
   async function handleChangePassword(e: React.FormEvent) {
     e.preventDefault();
     if (newPassword !== confirmPassword) {
-      toast.error(locale === "vi" ? "Mật khẩu mới không khớp" : "New passwords do not match");
+      toast.error(tx("Mật khẩu mới không khớp", "New passwords do not match"));
       return;
     }
     if (newPassword.length < 6) {
-      toast.error(locale === "vi" ? "Mật khẩu mới phải có ít nhất 6 ký tự" : "New password must be at least 6 characters");
+      toast.error(tx("Mật khẩu mới phải có ít nhất 6 ký tự", "New password must be at least 6 characters"));
       return;
     }
     try {
@@ -54,19 +54,19 @@ export default function ProfilePage() {
         old_password: oldPassword,
         new_password: newPassword,
       });
-      toast.success(locale === "vi" ? "Đổi mật khẩu thành công" : "Password changed successfully");
+      toast.success(tx("Đổi mật khẩu thành công", "Password changed successfully"));
       setOldPassword("");
       setNewPassword("");
       setConfirmPassword("");
     } catch (err: any) {
-      toast.error(err.message || (locale === "vi" ? "Đổi mật khẩu thất bại" : "Failed to change password"));
+      toast.error(err.message || (tx("Đổi mật khẩu thất bại", "Failed to change password")));
     }
   }
 
   if (profile.isLoading) {
     return (
       <div className="space-y-6">
-        <PageHeader icon={User} title={dict.pages.profile.title} description={locale === "vi" ? "Quản lý hồ sơ tài khoản và bảo mật của bạn" : "Manage your account profile and security"} />
+        <PageHeader icon={User} title={dict.pages.profile.title} description={tx("Quản lý hồ sơ tài khoản và bảo mật của bạn", "Manage your account profile and security")} />
         <Skeleton className="h-48 w-full rounded-xl" />
         <Skeleton className="h-48 w-full rounded-xl" />
       </div>
@@ -77,7 +77,7 @@ export default function ProfilePage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader icon={User} title={locale === "vi" ? "Hồ sơ" : "Profile"} description={locale === "vi" ? "Quản lý hồ sơ tài khoản và bảo mật của bạn" : "Manage your account profile and security"} />
+      <PageHeader icon={User} title={tx("Hồ sơ", "Profile")} description={tx("Quản lý hồ sơ tài khoản và bảo mật của bạn", "Manage your account profile and security")} />
 
       <div className="grid gap-6 md:grid-cols-2">
         {/* Profile Info Card */}
@@ -88,28 +88,28 @@ export default function ProfilePage() {
                 <User className="h-5 w-5" />
               </div>
               <div>
-                <CardTitle>{locale === "vi" ? "Thông tin cá nhân" : "Personal Info"}</CardTitle>
-                <CardDescription>{locale === "vi" ? "Cập nhật tên hiển thị và xem chi tiết tài khoản" : "Update your display name and view account details"}</CardDescription>
+                <CardTitle>{tx("Thông tin cá nhân", "Personal Info")}</CardTitle>
+                <CardDescription>{tx("Cập nhật tên hiển thị và xem chi tiết tài khoản", "Update your display name and view account details")}</CardDescription>
               </div>
             </div>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleUpdateProfile} className="space-y-4">
               <div className="space-y-1.5">
-                <Label htmlFor="profile-email">{locale === "vi" ? "Email" : "Email"}</Label>
+                <Label htmlFor="profile-email">{tx("Email", "Email")}</Label>
                 <Input id="profile-email" value={user?.email || ""} disabled className="bg-muted/50" />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="profile-display-name">{locale === "vi" ? "Tên hiển thị" : "Display Name"}</Label>
+                <Label htmlFor="profile-display-name">{tx("Tên hiển thị", "Display Name")}</Label>
                 <Input
                   id="profile-display-name"
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
-                  placeholder={locale === "vi" ? "Tên hiển thị của bạn" : "Your display name"}
+                  placeholder={tx("Tên hiển thị của bạn", "Your display name")}
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="profile-created">{locale === "vi" ? "Tài khoản được tạo" : "Account Created"}</Label>
+                <Label htmlFor="profile-created">{tx("Tài khoản được tạo", "Account Created")}</Label>
                 <Input
                   id="profile-created"
                   value={user?.created_at ? new Date(user.created_at).toLocaleDateString() : ""}
@@ -118,7 +118,7 @@ export default function ProfilePage() {
                 />
               </div>
               <Button type="submit" disabled={updateProfile.isPending}>
-                {updateProfile.isPending ? (locale === "vi" ? "Đang lưu..." : "Saving...") : (locale === "vi" ? "Lưu thay đổi" : "Save Changes")}
+                {updateProfile.isPending ? (tx("Đang lưu...", "Saving...")) : (tx("Lưu thay đổi", "Save Changes"))}
               </Button>
             </form>
           </CardContent>
@@ -132,15 +132,15 @@ export default function ProfilePage() {
                 <KeyRound className="h-5 w-5" />
               </div>
               <div>
-                <CardTitle>{locale === "vi" ? "Đổi mật khẩu" : "Change Password"}</CardTitle>
-                <CardDescription>{locale === "vi" ? "Đảm bảo tài khoản của bạn đang sử dụng mật khẩu dài, ngẫu nhiên" : "Ensure your account is using a long, random password"}</CardDescription>
+                <CardTitle>{tx("Đổi mật khẩu", "Change Password")}</CardTitle>
+                <CardDescription>{tx("Đảm bảo tài khoản của bạn đang sử dụng mật khẩu dài, ngẫu nhiên", "Ensure your account is using a long, random password")}</CardDescription>
               </div>
             </div>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleChangePassword} className="space-y-4">
               <div className="space-y-1.5">
-                <Label htmlFor="profile-current-password">{locale === "vi" ? "Mật khẩu hiện tại" : "Current Password"}</Label>
+                <Label htmlFor="profile-current-password">{tx("Mật khẩu hiện tại", "Current Password")}</Label>
                 <Input
                   id="profile-current-password"
                   type="password"
@@ -151,7 +151,7 @@ export default function ProfilePage() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="profile-new-password">{locale === "vi" ? "Mật khẩu mới" : "New Password"}</Label>
+                <Label htmlFor="profile-new-password">{tx("Mật khẩu mới", "New Password")}</Label>
                 <Input
                   id="profile-new-password"
                   type="password"
@@ -162,7 +162,7 @@ export default function ProfilePage() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="profile-confirm-password">{locale === "vi" ? "Xác nhận mật khẩu mới" : "Confirm New Password"}</Label>
+                <Label htmlFor="profile-confirm-password">{tx("Xác nhận mật khẩu mới", "Confirm New Password")}</Label>
                 <Input
                   id="profile-confirm-password"
                   type="password"
@@ -173,7 +173,7 @@ export default function ProfilePage() {
                 />
               </div>
               <Button type="submit" variant="secondary" disabled={updateProfile.isPending}>
-                {updateProfile.isPending ? (locale === "vi" ? "Đang cập nhật..." : "Updating...") : (locale === "vi" ? "Cập nhật mật khẩu" : "Update Password")}
+                {updateProfile.isPending ? (tx("Đang cập nhật...", "Updating...")) : (tx("Cập nhật mật khẩu", "Update Password"))}
               </Button>
             </form>
           </CardContent>
@@ -188,8 +188,8 @@ export default function ProfilePage() {
               <Building2 className="h-5 w-5" />
             </div>
             <div>
-              <CardTitle>{locale === "vi" ? "Tổ chức & Vai trò" : "Organizations & Roles"}</CardTitle>
-              <CardDescription>{locale === "vi" ? "Các tổ chức bạn hiện đang là thành viên" : "Organizations you are currently a member of"}</CardDescription>
+              <CardTitle>{tx("Tổ chức & Vai trò", "Organizations & Roles")}</CardTitle>
+              <CardDescription>{tx("Các tổ chức bạn hiện đang là thành viên", "Organizations you are currently a member of")}</CardDescription>
             </div>
           </div>
         </CardHeader>
@@ -199,7 +199,7 @@ export default function ProfilePage() {
               <div key={mem.org_id} className="flex items-center justify-between p-4">
                 <div className="space-y-1">
                   <div className="font-semibold">{mem.org_name}</div>
-                  <div className="text-xs text-muted-foreground">{locale === "vi" ? "ID:" : "ID:"}{mem.org_id}</div>
+                  <div className="text-xs text-muted-foreground">{tx("ID:", "ID:")}{mem.org_id}</div>
                 </div>
                 <div className="flex items-center gap-2">
                   <Badge variant="outline" className="capitalize">
