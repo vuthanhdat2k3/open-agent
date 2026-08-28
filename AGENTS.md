@@ -95,6 +95,7 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 | Branch | Worktree path | Phạm vi/task | Agent/người phụ trách |
 |---|---|---|---|
 | `dev` | `G:\open-agent` | Nhánh tích hợp chính — không code trực tiếp ở đây | — |
+| `feat/i18n-hardcode-sweep-3` | `G:\open-agent\.worktrees\i18n-hardcode-sweep-3` | Quét + sửa toàn bộ hardcode UI text frontend sang i18n (tx()) | DeepSeek agent |
 
 > 2026-08-27: Đã dọn dẹp toàn bộ worktree và các nhánh đã merge vào `dev` trên cả Local và Remote:
 > - `feat/workflow-node-config-fix` (PR #167, Deploy PR #168)
