@@ -261,11 +261,11 @@ export default function Dashboard() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>{tx("Agent", "Agent")}</TableHead>
-                      <TableHead>{tx("Model", "Model")}</TableHead>
-                      <TableHead className="text-right">{tx("Calls", "Calls")}</TableHead>
-                      <TableHead className="text-right">{tx("In Tokens", "In Tokens")}</TableHead>
-                      <TableHead className="text-right">{tx("Out Tokens", "Out Tokens")}</TableHead>
-                      <TableHead className="text-right">{tx("Cost", "Cost")}</TableHead>
+                      <TableHead>{tx("Mô hình", "Model")}</TableHead>
+                      <TableHead className="text-right">{tx("Lượt gọi", "Calls")}</TableHead>
+                      <TableHead className="text-right">{tx("Token vào", "In Tokens")}</TableHead>
+                      <TableHead className="text-right">{tx("Token ra", "Out Tokens")}</TableHead>
+                      <TableHead className="text-right">{tx("Chi phí", "Cost")}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
