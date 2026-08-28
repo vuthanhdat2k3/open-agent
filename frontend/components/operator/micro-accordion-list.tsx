@@ -29,9 +29,9 @@ export function EmailTriageAccordion({
         <div className="flex h-10 w-10 items-center justify-center rounded-full bg-sky-500/10 text-sky-500">
           <Inbox className="h-5 w-5" />
         </div>
-        <p className="mt-3 text-sm font-semibold text-foreground">{tx("All Caught Up", "All Caught Up")}</p>
+        <p className="mt-3 text-sm font-semibold text-foreground">{tx("Đã xử lý hết", "All Caught Up")}</p>
         <p className="mt-1 text-xs text-muted-foreground">
-          {tx("No new emails requiring classification or action.", "No new emails requiring classification or action.")}</p>
+          {tx("Không có email mới cần phân loại hay hành động.", "No new emails requiring classification or action.")}</p>
       </div>
     );
   }
@@ -46,7 +46,7 @@ export function EmailTriageAccordion({
     <div className="flex flex-col gap-2.5">
       {/* Header with 5-item Pagination Controls */}
       <div className="flex items-center justify-between font-mono text-[10.5px] text-muted-foreground">
-        <span>{tx("INBOUND EMAIL TRIAGE (", "INBOUND EMAIL TRIAGE (")}{notifications.length} {tx("NEW)", "NEW)")}</span>
+        <span>{tx("PHÂN LOẠI EMAIL ĐẾN (", "INBOUND EMAIL TRIAGE (")}{notifications.length} {tx("MỚI)", "NEW)")}</span>
         {totalPages > 1 && (
           <div className="flex items-center gap-1">
             <span>
@@ -58,7 +58,7 @@ export function EmailTriageAccordion({
               className="h-5 w-5 rounded border-border bg-card text-muted-foreground hover:text-foreground"
               onClick={() => setPage((p) => Math.max(0, p - 1))}
               disabled={page === 0}
-              title={tx("Previous 5 items", "Previous 5 items")}
+              title={tx("5 mục trước", "Previous 5 items")}
             >
               <ChevronLeft className="h-3 w-3" />
             </Button>
@@ -68,7 +68,7 @@ export function EmailTriageAccordion({
               className="h-5 w-5 rounded border-border bg-card text-muted-foreground hover:text-foreground"
               onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
               disabled={page >= totalPages - 1}
-              title={tx("Next 5 items", "Next 5 items")}
+              title={tx("5 mục sau", "Next 5 items")}
             >
               <ChevronRight className="h-3 w-3" />
             </Button>
@@ -135,7 +135,7 @@ export function EmailTriageAccordion({
                   </p>
                   <div className="mt-3 flex items-center justify-between border-t border-border/50 pt-2.5 text-[11px]">
                     <span className="font-mono text-muted-foreground">
-                      {tx("Type:", "Type:")}{category}
+                      {tx("Loại:", "Type:")}{category}
                     </span>
                     {onOpenEmail && (
                       <Button
@@ -144,7 +144,7 @@ export function EmailTriageAccordion({
                         className="h-6 px-2 text-xs font-medium text-primary hover:text-primary hover:underline gap-1"
                         onClick={() => onOpenEmail(n)}
                       >
-                        {tx("Inspect Full Email", "Inspect Full Email")}<ExternalLink className="h-3 w-3" />
+                        {tx("Xem toàn bộ email", "Inspect Full Email")}<ExternalLink className="h-3 w-3" />
                       </Button>
                     )}
                   </div>
@@ -160,7 +160,7 @@ export function EmailTriageAccordion({
           href="/email-intelligence"
           className="flex items-center gap-1 font-mono text-[11px] text-muted-foreground hover:text-primary hover:underline transition-colors"
         >
-          {tx("View All", "View All")}{notifications.length} {tx("Emails in Smart Inbox (/email-intelligence)", "Emails in Smart Inbox (/email-intelligence)")}<ArrowRight className="h-3 w-3" />
+          {tx("Xem tất cả", "View All")}{notifications.length} {tx("Email trong Hộp thư thông minh (/email-intelligence)", "Emails in Smart Inbox (/email-intelligence)")}<ArrowRight className="h-3 w-3" />
         </Link>
       </div>
     </div>
@@ -182,9 +182,9 @@ export function BriefingsAccordion({
         <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-500">
           <FileText className="h-5 w-5" />
         </div>
-        <p className="mt-3 text-sm font-semibold text-foreground">{tx("No Briefings Available", "No Briefings Available")}</p>
+        <p className="mt-3 text-sm font-semibold text-foreground">{tx("Chưa có thông báo", "No Briefings Available")}</p>
         <p className="mt-1 text-xs text-muted-foreground">
-          {tx("New company dossiers and meeting briefs will appear here after automated synthesis.", "New company dossiers and meeting briefs will appear here after automated synthesis.")}</p>
+          {tx("Hồ sơ doanh nghiệp và bản tóm tắt họp mới sẽ xuất hiện ở đây sau khi tổng hợp tự động.", "New company dossiers and meeting briefs will appear here after automated synthesis.")}</p>
       </div>
     );
   }
@@ -199,7 +199,7 @@ export function BriefingsAccordion({
     <div className="flex flex-col gap-2.5">
       {/* Header with 5-item Pagination Controls */}
       <div className="flex items-center justify-between font-mono text-[10.5px] text-muted-foreground">
-        <span>{tx("BRIEFINGS & DOSSIERS (", "BRIEFINGS & DOSSIERS (")}{cases.length} {tx("READY)", "READY)")}</span>
+        <span>{tx("THÔNG BÁO & HỒ SƠ (", "BRIEFINGS & DOSSIERS (")}{cases.length} {tx("SẴN SÀNG)", "READY)")}</span>
         {totalPages > 1 && (
           <div className="flex items-center gap-1">
             <span>
@@ -211,7 +211,7 @@ export function BriefingsAccordion({
               className="h-5 w-5 rounded border-border bg-card text-muted-foreground hover:text-foreground"
               onClick={() => setPage((p) => Math.max(0, p - 1))}
               disabled={page === 0}
-              title={tx("Previous 5 items", "Previous 5 items")}
+              title={tx("5 mục trước", "Previous 5 items")}
             >
               <ChevronLeft className="h-3 w-3" />
             </Button>
@@ -221,7 +221,7 @@ export function BriefingsAccordion({
               className="h-5 w-5 rounded border-border bg-card text-muted-foreground hover:text-foreground"
               onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
               disabled={page >= totalPages - 1}
-              title={tx("Next 5 items", "Next 5 items")}
+              title={tx("5 mục sau", "Next 5 items")}
             >
               <ChevronRight className="h-3 w-3" />
             </Button>
@@ -252,7 +252,7 @@ export function BriefingsAccordion({
             </div>
 
             <div className="flex items-center gap-1 text-[11px] font-medium text-primary">
-              <span>{tx("View Dossier", "View Dossier")}</span>
+              <span>{tx("Xem hồ sơ", "View Dossier")}</span>
               <ChevronRight className="h-3.5 w-3.5" />
             </div>
           </Link>
@@ -264,7 +264,7 @@ export function BriefingsAccordion({
           href="/customer-intelligence"
           className="flex items-center gap-1 font-mono text-[11px] text-muted-foreground hover:text-primary hover:underline transition-colors"
         >
-          {tx("View All", "View All")}{cases.length} {tx("Dossiers in Client Intelligence (/customer-intelligence)", "Dossiers in Client Intelligence (/customer-intelligence)")}<ArrowRight className="h-3 w-3" />
+          {tx("Xem tất cả", "View All")}{cases.length} {tx("Hồ sơ trong Client Intelligence (/customer-intelligence)", "Dossiers in Client Intelligence (/customer-intelligence)")}<ArrowRight className="h-3 w-3" />
         </Link>
       </div>
     </div>

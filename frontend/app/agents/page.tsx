@@ -656,7 +656,7 @@ export default function AgentsPage() {
           <Dialog open={Boolean(releaseAgent)} onOpenChange={(v) => { if (!v) setReleaseAgent(null); }}>
             <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>{tx("Releases —", "Releases —")}{releaseAgent?.name}</DialogTitle>
+                <DialogTitle>{tx("Bản phát hành —", "Releases —")}{releaseAgent?.name}</DialogTitle>
               </DialogHeader>
               <div className="space-y-4 pt-2">
                 <div className="space-y-2 rounded-xl border border-border/60 bg-muted/20 p-4">
@@ -779,7 +779,7 @@ export default function AgentsPage() {
                 {companionConfig.showThoughtBubbles && (
                   <div className="animate-bounce-subtle absolute top-2 z-10 flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-card/95 px-3 py-1 text-[10px] font-medium text-amber-500 shadow-md">
                     <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-                    <span>{tx("⚡ 2 actions need your review →", "⚡ 2 actions need your review →")}</span>
+                    <span>{tx("⚡ 2 hành động cần bạn xem lại →", "⚡ 2 actions need your review →")}</span>
                   </div>
                 )}
 
@@ -810,7 +810,7 @@ export default function AgentsPage() {
                 <div className="absolute bottom-2 flex items-center gap-2 rounded-full border border-border/90 bg-card/95 px-3 py-1 text-xs text-muted-foreground shadow-sm backdrop-blur-md">
                   <span className="h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_8px_#10b981]" />
                   <span className="font-semibold text-foreground">{companionConfig.name || (tx("Người điều hành Cá nhân", "Personal Operator"))}</span>
-                  <span className="font-mono text-[10.5px] text-primary font-medium">{tx("ready", "ready")}</span>
+                  <span className="font-mono text-[10.5px] text-primary font-medium">{tx("sẵn sàng", "ready")}</span>
                 </div>
               </div>
 
@@ -826,52 +826,52 @@ export default function AgentsPage() {
             <div className="flex items-center justify-between border-b border-border/60 pb-4">
               <div>
                 <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
-                  <SlidersHorizontal className="h-5 w-5 text-primary" /> {tx("3D Companion & Executive Operator Config", "3D Companion & Executive Operator Config")}</h2>
+                  <SlidersHorizontal className="h-5 w-5 text-primary" /> {tx("Cấu hình 3D Companion & Operator điều hành", "3D Companion & Executive Operator Config")}</h2>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  {tx("Operators and Org Admins configure this persona to maintain, develop, and customize the live assistant for users.", "Operators and Org Admins configure this persona to maintain, develop, and customize the live assistant for users.")}</p>
+                  {tx("Operator và Quản trị tổ chức cấu hình nhân vật này để bảo trì, phát triển và tùy biến trợ lý trực tiếp cho người dùng.", "Operators and Org Admins configure this persona to maintain, develop, and customize the live assistant for users.")}</p>
               </div>
               <Button
                 className="gap-2 font-semibold"
                 onClick={handleSaveCompanion}
                 loading={isSavingCompanion}
               >
-                <Save className="h-4 w-4" /> {tx("Save Configuration", "Save Configuration")}</Button>
+                <Save className="h-4 w-4" /> {tx("Lưu cấu hình", "Save Configuration")}</Button>
             </div>
 
             <div className="space-y-5">
               {/* Section A: Identity & Brain Binding */}
               <div className="space-y-3">
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-primary">
-                  {tx("1. Identity & Brain Persona Binding", "1. Identity & Brain Persona Binding")}</h3>
+                  {tx("1. Danh tính & liên kết nhân vật Brain", "1. Identity & Brain Persona Binding")}</h3>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="space-y-1.5">
-                    <Label className="text-xs font-medium">{tx("Companion Display Name", "Companion Display Name")}</Label>
+                    <Label className="text-xs font-medium">{tx("Tên hiển thị Companion", "Companion Display Name")}</Label>
                     <Input
                       value={companionConfig.name}
                       onChange={(e) => setCompanionConfig({ ...companionConfig, name: e.target.value })}
-                      placeholder={tx("e.g. Personal Operator, Executive Chief of Staff", "e.g. Personal Operator, Executive Chief of Staff")}
+                      placeholder={tx("VD: Personal Operator, Executive Chief of Staff", "e.g. Personal Operator, Executive Chief of Staff")}
                       className="text-xs"
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-xs font-medium">{tx("Tagline / Role Description", "Tagline / Role Description")}</Label>
+                    <Label className="text-xs font-medium">{tx("Khẩu hiệu / Mô tả vai trò", "Tagline / Role Description")}</Label>
                     <Input
                       value={companionConfig.tagline}
                       onChange={(e) => setCompanionConfig({ ...companionConfig, tagline: e.target.value })}
-                      placeholder={tx("e.g. Personal Executive Chief of Staff", "e.g. Personal Executive Chief of Staff")}
+                      placeholder={tx("VD: Chánh văn phòng điều hành cá nhân", "e.g. Personal Executive Chief of Staff")}
                       className="text-xs"
                     />
                   </div>
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">{tx("Underlying Brain Agent (Studio Agent Persona)", "Underlying Brain Agent (Studio Agent Persona)")}</Label>
+                  <Label className="text-xs font-medium">{tx("Brain Agent nền (nhân vật Studio Agent)", "Underlying Brain Agent (Studio Agent Persona)")}</Label>
                   <Select
                     value={companionConfig.brainAgentId || ""}
                     onChange={(e) => setCompanionConfig({ ...companionConfig, brainAgentId: e.target.value || null })}
                     className="text-xs"
                   >
-                    <option value="">{tx("Default Organization Orchestrator", "Default Organization Orchestrator")}</option>
+                    <option value="">{tx("Orchestrator tổ chức mặc định", "Default Organization Orchestrator")}</option>
                     {data?.map((a) => (
                       <option key={a.id} value={a.id}>
                         {a.name} — {a.description || tx("Persona Agent đang hoạt động", "Active Agent Persona")}
@@ -879,14 +879,14 @@ export default function AgentsPage() {
                     ))}
                   </Select>
                   <p className="text-[11px] text-muted-foreground">
-                    {tx("When users send prompts or dispatch actions to the 3D Companion, this agent persona and its system prompts will process the request.", "When users send prompts or dispatch actions to the 3D Companion, this agent persona and its system prompts will process the request.")}</p>
+                    {tx("Khi người dùng gửi prompt hoặc điều phối hành động tới 3D Companion, nhân vật agent này cùng system prompt sẽ xử lý yêu cầu.", "When users send prompts or dispatch actions to the 3D Companion, this agent persona and its system prompts will process the request.")}</p>
                 </div>
               </div>
 
               {/* Section B: 3D Avatar Asset Model */}
               <div className="space-y-3 border-t border-border/60 pt-4">
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-primary">
-                  {tx("2. 3D Model Asset & Visual Avatar", "2. 3D Model Asset & Visual Avatar")}</h3>
+                  {tx("2. Asset mô hình 3D & avatar trực quan", "2. 3D Model Asset & Visual Avatar")}</h3>
 
                 <div className="grid gap-3 sm:grid-cols-3">
                   {AVATAR_3D_PRESETS.map((preset) => {
@@ -935,11 +935,11 @@ export default function AgentsPage() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">{tx("Custom 3D Model Asset URL (.glb / .gltf)", "Custom 3D Model Asset URL (.glb / .gltf)")}</Label>
+                  <Label className="text-xs font-medium">{tx("URL asset mô hình 3D tùy chỉnh (.glb / .gltf)", "Custom 3D Model Asset URL (.glb / .gltf)")}</Label>
                   <Input
                     value={companionConfig.modelUrl}
                     onChange={(e) => setCompanionConfig({ ...companionConfig, modelUrl: e.target.value })}
-                    placeholder={tx("/agent-service-robot.glb or https://your-cdn.com/avatar.glb", "/agent-service-robot.glb or https://your-cdn.com/avatar.glb")}
+                    placeholder={tx("/agent-service-robot.glb hoặc https://your-cdn.com/avatar.glb", "/agent-service-robot.glb or https://your-cdn.com/avatar.glb")}
                     className="text-xs font-mono"
                   />
                 </div>
@@ -948,7 +948,7 @@ export default function AgentsPage() {
               {/* Section C: Docking Position & Screen Placement */}
               <div className="space-y-3 border-t border-border/60 pt-4">
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-primary">
-                  {tx("3. Default Screen Placement & Docking", "3. Default Screen Placement & Docking")}</h3>
+                  {tx("3. Vị trí mặc định trên màn hình & neo đậu", "3. Default Screen Placement & Docking")}</h3>
                 <div className="grid gap-3 sm:grid-cols-4">
                   {[
                     { id: "bottom-right", label: tx("Dưới-phải (Mặc định)", "Bottom-Right (Default)") },
@@ -983,7 +983,7 @@ export default function AgentsPage() {
               {/* Section D: Feature Toggles & Capabilities */}
               <div className="space-y-3 border-t border-border/60 pt-4">
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-primary">
-                  {tx("4. Interactive Capabilities & Surface Controls", "4. Interactive Capabilities & Surface Controls")}</h3>
+                  {tx("4. Khả năng tương tác & điều khiển bề mặt", "4. Interactive Capabilities & Surface Controls")}</h3>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="flex items-center gap-2.5 rounded-lg border border-border/70 p-3 text-xs text-foreground cursor-pointer hover:bg-muted/30">
                     <input
@@ -993,8 +993,8 @@ export default function AgentsPage() {
                       className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
                     />
                     <div>
-                      <p className="font-semibold">{tx("Live Thought Bubble Alerts", "Live Thought Bubble Alerts")}</p>
-                      <p className="text-[10px] text-muted-foreground">{tx("Show urgent action notifications above avatar head", "Show urgent action notifications above avatar head")}</p>
+                      <p className="font-semibold">{tx("Cảnh báo bong bóng suy nghĩ trực tiếp", "Live Thought Bubble Alerts")}</p>
+                      <p className="text-[10px] text-muted-foreground">{tx("Hiện thông báo hành động khẩn phía trên đầu avatar", "Show urgent action notifications above avatar head")}</p>
                     </div>
                   </label>
 
@@ -1006,8 +1006,8 @@ export default function AgentsPage() {
                       className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
                     />
                     <div>
-                      <p className="font-semibold">{tx("1-Click Technical Approvals", "1-Click Technical Approvals")}</p>
-                      <p className="text-[10px] text-muted-foreground">{tx("Allow instant approving from floating operator surface", "Allow instant approving from floating operator surface")}</p>
+                      <p className="font-semibold">{tx("Phê duyệt kỹ thuật 1-chạm", "1-Click Technical Approvals")}</p>
+                      <p className="text-[10px] text-muted-foreground">{tx("Cho phép phê duyệt tức thì từ bảng operator nổi", "Allow instant approving from floating operator surface")}</p>
                     </div>
                   </label>
 
@@ -1019,8 +1019,8 @@ export default function AgentsPage() {
                       className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
                     />
                     <div>
-                      <p className="font-semibold">{tx("Email Triage Feed", "Email Triage Feed")}</p>
-                      <p className="text-[10px] text-muted-foreground">{tx("Expose incoming classified emails in operator surface", "Expose incoming classified emails in operator surface")}</p>
+                      <p className="font-semibold">{tx("Luồng phân loại email", "Email Triage Feed")}</p>
+                      <p className="text-[10px] text-muted-foreground">{tx("Hiển thị email đầu vào đã phân loại trong bảng operator", "Expose incoming classified emails in operator surface")}</p>
                     </div>
                   </label>
 
@@ -1032,8 +1032,8 @@ export default function AgentsPage() {
                       className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
                     />
                     <div>
-                      <p className="font-semibold">{tx("Direct Operator Dispatch", "Direct Operator Dispatch")}</p>
-                      <p className="text-[10px] text-muted-foreground">{tx("Enable natural language command dispatch bar", "Enable natural language command dispatch bar")}</p>
+                      <p className="font-semibold">{tx("Điều phối operator trực tiếp", "Direct Operator Dispatch")}</p>
+                      <p className="text-[10px] text-muted-foreground">{tx("Bật thanh điều phối lệnh bằng ngôn ngữ tự nhiên", "Enable natural language command dispatch bar")}</p>
                     </div>
                   </label>
                 </div>

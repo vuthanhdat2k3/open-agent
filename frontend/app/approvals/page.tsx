@@ -418,7 +418,7 @@ export default function ApprovalsPage() {
                         : false
                     }
                   >
-                    {tx("Approve", "Approve")}</Button>
+                    {tx("Phê duyệt", "Approve")}</Button>
                 </DialogFooter>
               </>
             );

@@ -90,7 +90,7 @@ export function ChatComposer({
         </div>
       )}
 
-      <label htmlFor="chat-composer" className="sr-only">{tx("Message", "Message")}</label>
+      <label htmlFor="chat-composer" className="sr-only">{tx("Tin nhắn", "Message")}</label>
       <Textarea
         id="chat-composer"
         ref={textareaRef}

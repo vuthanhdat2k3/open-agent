@@ -19,7 +19,7 @@ export default function OAuthCallbackPage() {
       <Card glass className="w-full shadow-3d-floating text-center border-border/80 animate-scale-in">
         <CardContent className="flex items-center justify-center gap-3 p-8 text-sm font-medium text-foreground">
           <Loader2 className="h-5 w-5 animate-spin text-primary" />
-          {tx("Completing OAuth sign in...", "Completing OAuth sign in...")}</CardContent>
+          {tx("Đang hoàn tất đăng nhập OAuth...", "Completing OAuth sign in...")}</CardContent>
       </Card>
     </div>
   );

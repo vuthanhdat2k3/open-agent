@@ -864,7 +864,7 @@ export default function WorkflowEditor() {
             <WorkflowIcon className="h-7 w-7 text-primary" />
             {activeTab === "editor"
               ? tx("Quy trình của tôi", "My Workflows")
-              : tx("Workflow Marketplace", "Workflow Marketplace")}
+              : tx("Kho workflow dùng chung", "Workflow Marketplace")}
           </h1>
           <p className="text-xs text-muted-foreground mt-1">
             {activeTab === "editor"
@@ -904,7 +904,7 @@ export default function WorkflowEditor() {
               }`}
             >
               <LibraryBig className="h-4 w-4 text-primary" />
-              {tx("Marketplace", "Marketplace")}
+              {tx("Kho dùng chung", "Marketplace")}
             </button>
           </div>
         </div>
@@ -1077,7 +1077,7 @@ export default function WorkflowEditor() {
                       />
                     </div>
                     <div className="space-y-1.5">
-                      <Label className="font-semibold text-muted-foreground">{tx("AI Model", "AI Model")}</Label>
+                      <Label className="font-semibold text-muted-foreground">{tx("Mô hình AI", "AI Model")}</Label>
                       <Select className="text-xs w-full" value={aiModelId} onChange={(e) => setAiModelId(e.target.value)}>
                         {models.data?.map((m) => (
                           <option key={m.id} value={m.id}>{m.display_name || m.name}</option>

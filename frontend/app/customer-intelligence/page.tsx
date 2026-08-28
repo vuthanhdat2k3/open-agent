@@ -135,7 +135,7 @@ function DetailedDossierView({
           <div className="flex items-center gap-2 mb-2">
             <Sparkles className="h-4 w-4 text-primary" />
             <h3 className="text-sm font-semibold uppercase tracking-wider text-primary">
-              {tx("Executive Briefing Summary", "Executive Briefing Summary")}</h3>
+              {tx("Tóm tắt thông báo điều hành", "Executive Briefing Summary")}</h3>
           </div>
           <p className="text-sm leading-relaxed text-foreground whitespace-pre-wrap font-sans font-medium">
             {data.executive_summary}
@@ -161,7 +161,7 @@ function DetailedDossierView({
                       {formatVietnamDateTime(m.start_time)}
                     </p>
                   )}
-                  {m.organizer && <p className="truncate">{tx("Organizer:", "Organizer:")}{m.organizer}</p>}
+                  {m.organizer && <p className="truncate">{tx("Người tổ chức:", "Organizer:")}{m.organizer}</p>}
                 </div>
                 {m.participants?.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-1">
@@ -188,7 +188,7 @@ function DetailedDossierView({
         <section className="space-y-3">
           <div className="flex items-center gap-2">
             <Building2 className="h-4 w-4 text-primary" />
-            <h3 className="text-sm font-semibold text-foreground">{tx("Company Intelligence", "Company Intelligence")}</h3>
+            <h3 className="text-sm font-semibold text-foreground">{tx("Thông tin doanh nghiệp", "Company Intelligence")}</h3>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             {companies.map((c, idx) => (
@@ -211,7 +211,7 @@ function DetailedDossierView({
         <section className="space-y-3">
           <div className="flex items-center gap-2">
             <Newspaper className="h-4 w-4 text-sky-500" />
-            <h3 className="text-sm font-semibold text-foreground">{tx("Recent Market News & Public Signals", "Recent Market News & Public Signals")}</h3>
+            <h3 className="text-sm font-semibold text-foreground">{tx("Tin tức thị trường & tín hiệu công khai gần đây", "Recent Market News & Public Signals")}</h3>
           </div>
           <div className="space-y-2.5">
             {news.map((item, idx) => (
@@ -248,7 +248,7 @@ function DetailedDossierView({
         <section className="space-y-3">
           <div className="flex items-center gap-2">
             <Users className="h-4 w-4 text-emerald-500" />
-            <h3 className="text-sm font-semibold text-foreground">{tx("Key Stakeholders & Contacts", "Key Stakeholders & Contacts")}</h3>
+            <h3 className="text-sm font-semibold text-foreground">{tx("Bên liên quan & liên hệ chính", "Key Stakeholders & Contacts")}</h3>
           </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {contacts.map((contact, idx) => (
@@ -270,7 +270,7 @@ function DetailedDossierView({
         <section className="space-y-3">
           <div className="flex items-center gap-2">
             <AlertTriangle className="h-4 w-4 text-amber-500" />
-            <h3 className="text-sm font-semibold text-foreground">{tx("Discovery Questions & Deal Risks", "Discovery Questions & Deal Risks")}</h3>
+            <h3 className="text-sm font-semibold text-foreground">{tx("Câu hỏi thăm dò & rủi ro thỏa thuận", "Discovery Questions & Deal Risks")}</h3>
           </div>
           <Card className="border-amber-500/30 bg-amber-500/[0.03] p-4 shadow-sm">
             <ul className="space-y-2 text-xs text-muted-foreground">
@@ -290,7 +290,7 @@ function DetailedDossierView({
         <section className="space-y-3">
           <div className="flex items-center gap-2">
             <Globe className="h-4 w-4 text-primary" />
-            <h3 className="text-sm font-semibold text-foreground">{tx("Verified Grounded Citations", "Verified Grounded Citations")}</h3>
+            <h3 className="text-sm font-semibold text-foreground">{tx("Trích dẫn có kiểm chứng", "Verified Grounded Citations")}</h3>
           </div>
           <div className="flex flex-wrap gap-2">
             {reportSources.map((s, idx) => (
@@ -418,12 +418,12 @@ function SchedulesTabContent() {
               {editing ? tx("Sửa lịch đồng bộ", "Edit Schedule") : tx("Thiết lập đồng bộ hàng ngày mới", "New Daily Sync Routine")}
             </CardTitle>
             <CardDescription className="text-xs">
-              {tx("Configure daily automatic background scan of calendar invites and emails.", "Configure daily automatic background scan of calendar invites and emails.")}</CardDescription>
+              {tx("Cấu hình quét nền tự động hàng ngày cho lời mời lịch và email.", "Configure daily automatic background scan of calendar invites and emails.")}</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={submitSchedule} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="ci-schedule-conn" className="text-xs font-medium">{tx("Mail / Calendar Connection", "Mail / Calendar Connection")}</Label>
+                <Label htmlFor="ci-schedule-conn" className="text-xs font-medium">{tx("Kết nối Mail / Lịch", "Mail / Calendar Connection")}</Label>
                 <Select
                   id="ci-schedule-conn"
                   value={connectionId}
@@ -435,16 +435,16 @@ function SchedulesTabContent() {
                   ))}
                 </Select>
                 {!connected.length && (
-                  <p className="text-xs text-muted-foreground">{tx("No connected Gmail accounts found. Connect one in Integrations first.", "No connected Gmail accounts found. Connect one in Integrations first.")}</p>
+                  <p className="text-xs text-muted-foreground">{tx("Không tìm thấy tài khoản Gmail nào đã kết nối. Hãy kết nối trong Tích hợp trước.", "No connected Gmail accounts found. Connect one in Integrations first.")}</p>
                 )}
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="ci-schedule-time" className="text-xs font-medium">{tx("Run Time", "Run Time")}</Label>
+                  <Label htmlFor="ci-schedule-time" className="text-xs font-medium">{tx("Thời gian chạy", "Run Time")}</Label>
                   <Input id="ci-schedule-time" type="time" value={runTime} onChange={(event) => setRunTime(event.target.value)} required />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="ci-schedule-timezone" className="text-xs font-medium">{tx("Timezone", "Timezone")}</Label>
+                  <Label htmlFor="ci-schedule-timezone" className="text-xs font-medium">{tx("Múi giờ", "Timezone")}</Label>
                   <Select id="ci-schedule-timezone" value={timezone} onChange={(event) => setTimezone(event.target.value)}>
                     {SCHEDULE_TIMEZONES.map((item) => (
                       <option key={item} value={item}>{item}</option>
@@ -454,7 +454,7 @@ function SchedulesTabContent() {
               </div>
               <label className="flex items-center gap-2 text-xs font-medium text-foreground cursor-pointer">
                 <input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} className="h-4 w-4 rounded border-border text-primary focus:ring-primary" />
-                {tx("Enabled", "Enabled")}</label>
+                {tx("Bật", "Enabled")}</label>
               <Button type="submit" loading={saving} disabled={!editing && !connected.length} className="w-full sm:w-auto font-semibold">
                 <Plus className="mr-1 h-4 w-4" />
                 {editing ? tx("Lưu thay đổi", "Save Changes") : tx("Tạo lịch đồng bộ", "Create Schedule")}
@@ -467,9 +467,9 @@ function SchedulesTabContent() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle className="text-base font-semibold text-foreground">{tx("Configured Schedules", "Configured Schedules")}</CardTitle>
+                <CardTitle className="text-base font-semibold text-foreground">{tx("Lịch đã cấu hình", "Configured Schedules")}</CardTitle>
                 <CardDescription className="text-xs">
-                  {schedules.data?.length ?? 0} {tx("active routine sync schedules", "active routine sync schedules")}</CardDescription>
+                  {schedules.data?.length ?? 0} {tx("lịch đồng bộ thường lệ đang hoạt động", "active routine sync schedules")}</CardDescription>
               </div>
               <Button variant="ghost" size="sm" onClick={() => void schedules.refetch()} disabled={schedules.isFetching}>
                 <RefreshCw className={schedules.isFetching ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
@@ -477,16 +477,16 @@ function SchedulesTabContent() {
             </div>
           </CardHeader>
           <CardContent className="space-y-3">
-            {schedules.isLoading && <p className="text-xs text-muted-foreground">{tx("Loading schedules...", "Loading schedules...")}</p>}
+            {schedules.isLoading && <p className="text-xs text-muted-foreground">{tx("Đang tải lịch...", "Loading schedules...")}</p>}
             {schedules.data?.map((schedule) => (
               <div key={schedule.id} className="rounded-xl border border-border/80 bg-card p-4 transition-colors hover:border-primary/40">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <Clock3 className="h-4 w-4 text-primary" />
-                      <span className="font-semibold text-sm text-foreground">{tx("Daily at", "Daily at")}{schedule.run_time}</span>
+                      <span className="font-semibold text-sm text-foreground">{tx("Hàng ngày lúc", "Daily at")}{schedule.run_time}</span>
                       <Badge variant={schedule.enabled ? "default" : "outline"} className="text-[9.5px]">
-                        {schedule.enabled ? "Active" : "Paused"}
+                        {schedule.enabled ? tx("Hoạt động", "Active") : tx("Tạm dừng", "Paused")}
                       </Badge>
                     </div>
                     <p className="mt-1 truncate text-xs text-muted-foreground">
@@ -503,17 +503,17 @@ function SchedulesTabContent() {
                   </div>
                 </div>
                 <div className="mt-3 flex items-center justify-between border-t border-border/50 pt-2 text-[11px] text-muted-foreground">
-                  <span>{tx("Last run:", "Last run:")}{schedule.last_run_at ? formatVietnamDateTime(schedule.last_run_at) : "Not run yet"}</span>
+                  <span>{tx("Chạy lần cuối:", "Last run:")}{schedule.last_run_at ? formatVietnamDateTime(schedule.last_run_at) : tx("chưa chạy lần nào", "Not run yet")}</span>
                   <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => void runSchedule(schedule.id)} loading={runNow.isPending}>
-                    <Play className="mr-1 h-3 w-3" /> {tx("Run Now", "Run Now")}</Button>
+                    <Play className="mr-1 h-3 w-3" /> {tx("Chạy ngay", "Run Now")}</Button>
                 </div>
               </div>
             ))}
             {!schedules.isLoading && !schedules.data?.length && (
               <div className="rounded-xl border border-dashed border-border p-8 text-center">
                 <Clock3 className="mx-auto h-8 w-8 text-muted-foreground" />
-                <p className="mt-2 text-sm font-semibold text-foreground">{tx("No sync schedules yet", "No sync schedules yet")}</p>
-                <p className="mt-1 text-xs text-muted-foreground">{tx("Create one to automatically sync client emails and generate dossiers.", "Create one to automatically sync client emails and generate dossiers.")}</p>
+                <p className="mt-2 text-sm font-semibold text-foreground">{tx("Chưa có lịch đồng bộ", "No sync schedules yet")}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{tx("Tạo lịch để tự động đồng bộ email khách hàng và tạo hồ sơ.", "Create one to automatically sync client emails and generate dossiers.")}</p>
               </div>
             )}
           </CardContent>
@@ -730,7 +730,7 @@ export default function CustomerIntelligencePage() {
       <PageHeader
         icon={Building2}
         title={dict.pages.customerIntelligence.title}
-        description={tx("Automated company background research, market briefings, and pre-meeting dossiers.", "Automated company background research, market briefings, and pre-meeting dossiers.")}
+        description={tx("Tự động nghiên cứu nền doanh nghiệp, thông báo thị trường và hồ sơ trước cuộc họp.", "Automated company background research, market briefings, and pre-meeting dossiers.")}
         actions={
           <div className="flex items-center gap-2">
             <Button
@@ -748,7 +748,7 @@ export default function CustomerIntelligencePage() {
               className="h-9 gap-1.5 font-semibold"
             >
               <Plus className="h-4 w-4" />
-              {tx("Research New Company", "Research New Company")}</Button>
+              {tx("Nghiên cứu doanh nghiệp mới", "Research New Company")}</Button>
           </div>
         }
       />
@@ -771,7 +771,7 @@ export default function CustomerIntelligencePage() {
           </div>
           <div>
             <p className="text-2xl font-bold leading-none tabular-nums text-foreground">{readyCount}</p>
-            <p className="mt-1 text-xs text-muted-foreground font-medium">{tx("Briefings Ready", "Briefings Ready")}</p>
+            <p className="mt-1 text-xs text-muted-foreground font-medium">{tx("Thông báo sẵn sàng", "Briefings Ready")}</p>
           </div>
         </Card>
 
@@ -781,7 +781,7 @@ export default function CustomerIntelligencePage() {
           </div>
           <div>
             <p className="text-2xl font-bold leading-none tabular-nums text-foreground">{actionRequiredCount}</p>
-            <p className="mt-1 text-xs text-muted-foreground font-medium">{tx("Action Required", "Action Required")}</p>
+            <p className="mt-1 text-xs text-muted-foreground font-medium">{tx("Cần hành động", "Action Required")}</p>
           </div>
         </Card>
 
@@ -791,7 +791,7 @@ export default function CustomerIntelligencePage() {
           </div>
           <div>
             <p className="text-2xl font-bold leading-none tabular-nums text-foreground">{schedules.data?.length ?? 0}</p>
-            <p className="mt-1 text-xs text-muted-foreground font-medium">{tx("Sync Schedules", "Sync Schedules")}</p>
+            <p className="mt-1 text-xs text-muted-foreground font-medium">{tx("Đồng bộ lịch", "Sync Schedules")}</p>
           </div>
         </Card>
       </div>
@@ -805,7 +805,7 @@ export default function CustomerIntelligencePage() {
           className="gap-2 font-medium"
         >
           <FileText className="h-4 w-4" />
-          {tx("Dossiers", "Dossiers")}</Button>
+          {tx("Hồ sơ", "Dossiers")}</Button>
         <Button
           type="button"
           variant={activeTab === "schedules" ? "secondary" : "ghost"}
@@ -813,7 +813,7 @@ export default function CustomerIntelligencePage() {
           className="gap-2 font-medium"
         >
           <Clock3 className="h-4 w-4" />
-          {tx("Schedules", "Schedules")}</Button>
+          {tx("Lịch", "Schedules")}</Button>
       </div>
 
       {/* 4. Main Body */}
@@ -832,7 +832,7 @@ export default function CustomerIntelligencePage() {
                       className={`p-1 rounded text-xs transition-colors ${
                         viewMode === "compact" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
                       }`}
-                      title={tx("Compact List", "Compact List")}
+                      title={tx("Danh sách gọn", "Compact List")}
                     >
                       <List className="h-3.5 w-3.5" />
                     </button>
@@ -842,7 +842,7 @@ export default function CustomerIntelligencePage() {
                       className={`p-1 rounded text-xs transition-colors ${
                         viewMode === "card" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
                       }`}
-                      title={tx("Card Grid", "Card Grid")}
+                      title={tx("Lưới thẻ", "Card Grid")}
                     >
                       <LayoutGrid className="h-3.5 w-3.5" />
                     </button>
@@ -862,7 +862,7 @@ export default function CustomerIntelligencePage() {
                     businessFilter === "all" ? "bg-card text-foreground font-semibold shadow-sm border border-border/40" : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
-                  {tx("All", "All")}</button>
+                  {tx("Tất cả", "All")}</button>
                 <button
                   type="button"
                   onClick={() => setBusinessFilter("action_required")}
@@ -918,7 +918,7 @@ export default function CustomerIntelligencePage() {
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-xs font-semibold text-primary">
                     <span className="flex items-center gap-1.5">
-                      <Sparkles className="h-3.5 w-3.5" /> {tx("Today & Upcoming Meetings (", "Today & Upcoming Meetings (")}{timelineBuckets.today.length})
+                      <Sparkles className="h-3.5 w-3.5" /> {tx("Họp hôm nay & sắp tới (", "Today & Upcoming Meetings (")}{timelineBuckets.today.length})
                     </span>
                   </div>
                   <div className="space-y-1.5">
@@ -932,7 +932,7 @@ export default function CustomerIntelligencePage() {
                 <div className="space-y-2 pt-2 border-t border-border/40">
                   <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground">
                     <span className="flex items-center gap-1.5">
-                      <Clock className="h-3.5 w-3.5" /> {tx("This Week (", "This Week (")}{timelineBuckets.thisWeek.length})
+                      <Clock className="h-3.5 w-3.5" /> {tx("Tuần này (", "This Week (")}{timelineBuckets.thisWeek.length})
                     </span>
                   </div>
                   <div className="space-y-1.5">
@@ -950,7 +950,7 @@ export default function CustomerIntelligencePage() {
                     className="flex w-full items-center justify-between text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
                   >
                     <span className="flex items-center gap-1.5">
-                      <Layers className="h-3.5 w-3.5" /> {tx("Earlier Archives (", "Earlier Archives (")}{timelineBuckets.earlier.length})
+                      <Layers className="h-3.5 w-3.5" /> {tx("Lưu trữ trước đó (", "Earlier Archives (")}{timelineBuckets.earlier.length})
                     </span>
                     {collapsedSections.earlier ? (
                       <ChevronRight className="h-3.5 w-3.5" />
@@ -980,8 +980,8 @@ export default function CustomerIntelligencePage() {
               {!cases.isLoading && !displayCases.length && (
                 <div className="rounded-xl border border-dashed border-border p-8 text-center text-xs text-muted-foreground">
                   <Building2 className="mx-auto h-8 w-8 text-muted-foreground mb-2" />
-                  <p className="font-semibold text-foreground">{tx("No client dossiers in this category", "No client dossiers in this category")}</p>
-                  <p className="mt-1">{tx("Try switching filter tabs or create a new research case.", "Try switching filter tabs or create a new research case.")}</p>
+                  <p className="font-semibold text-foreground">{tx("Không có hồ sơ khách hàng trong mục này", "No client dossiers in this category")}</p>
+                  <p className="mt-1">{tx("Thử chuyển tab lọc hoặc tạo ca nghiên cứu mới.", "Try switching filter tabs or create a new research case.")}</p>
                 </div>
               )}
             </CardContent>
@@ -1004,7 +1004,7 @@ export default function CustomerIntelligencePage() {
                   </div>
                   {detail.data?.company_domain && (
                     <p className="text-xs text-muted-foreground font-mono mt-1">
-                      {tx("Domain:", "Domain:")}{detail.data.company_domain}
+                      {tx("Tên miền:", "Domain:")}{detail.data.company_domain}
                     </p>
                   )}
                 </div>
@@ -1048,7 +1048,7 @@ export default function CustomerIntelligencePage() {
                   <FileText className="mx-auto h-12 w-12 text-muted-foreground/50 mb-3" />
                   <h3 className="text-base font-semibold text-foreground">{tx("Chưa chọn hồ sơ nào", "No Dossier Selected")}</h3>
                   <p className="mt-1 text-xs text-muted-foreground max-w-sm mx-auto">
-                    {tx("Select a client from the stream on the left to view synthesized background briefings, company signals, and meeting preparation.", "Select a client from the stream on the left to view synthesized background briefings, company signals, and meeting preparation.")}</p>
+                    {tx("Chọn một khách hàng từ luồng bên trái để xem thông báo nền tổng hợp, tín hiệu doanh nghiệp và chuẩn bị họp.", "Select a client from the stream on the left to view synthesized background briefings, company signals, and meeting preparation.")}</p>
                 </div>
               ) : detail.isLoading ? (
                 <div className="space-y-4 py-8">
@@ -1067,9 +1067,9 @@ export default function CustomerIntelligencePage() {
               ) : (
                 <div className="py-16 text-center">
                   <Activity className="mx-auto h-10 w-10 text-sky-500 animate-spin mb-3" />
-                  <h3 className="text-base font-semibold text-foreground">{tx("Synthesizing Dossier...", "Synthesizing Dossier...")}</h3>
+                  <h3 className="text-base font-semibold text-foreground">{tx("Đang tổng hợp hồ sơ...", "Synthesizing Dossier...")}</h3>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {tx("Research is actively compiling email exchanges, company profiles, and market news.", "Research is actively compiling email exchanges, company profiles, and market news.")}</p>
+                    {tx("Nghiên cứu đang tổng hợp trao đổi email, hồ sơ doanh nghiệp và tin tức thị trường.", "Research is actively compiling email exchanges, company profiles, and market news.")}</p>
                   <Button
                     variant="outline"
                     size="sm"
@@ -1077,7 +1077,7 @@ export default function CustomerIntelligencePage() {
                     onClick={() => void retry.mutateAsync(selected)}
                     loading={retry.isPending}
                   >
-                    {tx("Retry Synthesis", "Retry Synthesis")}</Button>
+                    {tx("Thử tổng hợp lại", "Retry Synthesis")}</Button>
                 </div>
               )}
             </CardContent>
@@ -1093,17 +1093,17 @@ export default function CustomerIntelligencePage() {
           <Card className="w-full max-w-md shadow-2xl border-border bg-card">
             <CardHeader>
               <CardTitle className="text-base font-semibold text-foreground">
-                {tx("Synthesize Client Dossier", "Synthesize Client Dossier")}</CardTitle>
+                {tx("Tổng hợp hồ sơ khách hàng", "Synthesize Client Dossier")}</CardTitle>
               <CardDescription className="text-xs">
-                {tx("Trigger background multi-source research for an executive briefing.", "Trigger background multi-source research for an executive briefing.")}</CardDescription>
+                {tx("Kích hoạt nghiên cứu đa nguồn nền cho thông báo điều hành.", "Trigger background multi-source research for an executive briefing.")}</CardDescription>
             </CardHeader>
             <CardContent>
               <form onSubmit={createManualCase} className="space-y-4">
                 <div className="space-y-1.5">
-                  <Label htmlFor="manual-comp-name" className="text-xs font-medium">{tx("Company Name *", "Company Name *")}</Label>
+                  <Label htmlFor="manual-comp-name" className="text-xs font-medium">{tx("Tên doanh nghiệp *", "Company Name *")}</Label>
                   <Input
                     id="manual-comp-name"
-                    placeholder={tx("e.g. OpenAI, Stripe, FPT Software", "e.g. OpenAI, Stripe, FPT Software")}
+                    placeholder={tx("VD: OpenAI, Stripe, FPT Software", "e.g. OpenAI, Stripe, FPT Software")}
                     value={companyName}
                     onChange={(e) => setCompanyName(e.target.value)}
                     required
@@ -1111,20 +1111,20 @@ export default function CustomerIntelligencePage() {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="manual-comp-domain" className="text-xs font-medium">{tx("Company Website / Domain", "Company Website / Domain")}</Label>
+                  <Label htmlFor="manual-comp-domain" className="text-xs font-medium">{tx("Website / Tên miền doanh nghiệp", "Company Website / Domain")}</Label>
                   <Input
                     id="manual-comp-domain"
-                    placeholder={tx("e.g. stripe.com", "e.g. stripe.com")}
+                    placeholder={tx("VD: stripe.com", "e.g. stripe.com")}
                     value={companyDomain}
                     onChange={(e) => setCompanyDomain(e.target.value)}
                     className="text-xs font-mono"
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="manual-comp-q" className="text-xs font-medium">{tx("Specific Research Objective", "Specific Research Objective")}</Label>
+                  <Label htmlFor="manual-comp-q" className="text-xs font-medium">{tx("Mục tiêu nghiên cứu cụ thể", "Specific Research Objective")}</Label>
                   <Input
                     id="manual-comp-q"
-                    placeholder={tx("e.g. What are their recent expansion initiatives and key executives?", "e.g. What are their recent expansion initiatives and key executives?")}
+                    placeholder={tx("VD: Các sáng kiến mở rộng gần đây và lãnh đạo chủ chốt của họ là gì?", "e.g. What are their recent expansion initiatives and key executives?")}
                     value={question}
                     onChange={(e) => setQuestion(e.target.value)}
                     className="text-xs"
@@ -1146,7 +1146,7 @@ export default function CustomerIntelligencePage() {
                     disabled={!companyName.trim()}
                     className="text-xs font-semibold"
                   >
-                    {tx("Start Research", "Start Research")}</Button>
+                    {tx("Bắt đầu nghiên cứu", "Start Research")}</Button>
                 </div>
               </form>
             </CardContent>

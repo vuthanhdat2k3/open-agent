@@ -207,7 +207,7 @@ export default function ProvidersPage() {
       <PageHeader
         icon={Server}
         title={dict.pages.providers.title}
-        description={tx("Manage AI model providers, API credentials, and benchmark endpoints.", "Manage AI model providers, API credentials, and benchmark endpoints.")}
+        description={tx("Quản lý provider mô hình AI, thông tin xác thực API và endpoint benchmark.", "Manage AI model providers, API credentials, and benchmark endpoints.")}
         actions={
           <div className="flex items-center gap-2">
             <Button
@@ -426,7 +426,7 @@ export default function ProvidersPage() {
           onClick={() => setTabParam("models")}
           className="gap-2 font-medium"
         >
-          <Cpu className="h-4 w-4" />{tx("Models", "Models")}<Badge variant="outline" className="ml-1 text-[10px] font-mono">
+          <Cpu className="h-4 w-4" />{tx("Mô hình", "Models")}<Badge variant="outline" className="ml-1 text-[10px] font-mono">
             {totalModels}
           </Badge>
         </Button>
@@ -497,7 +497,7 @@ export default function ProvidersPage() {
                           {provider.discovery_status}
                         </Badge>
                       </div>
-                      <p className="text-[11px] text-muted-foreground">{tx("Đã khám phá: ", "Discovered: ")}<span className="font-semibold text-foreground">{provider.models_discovered} {tx("models", "models")}</span>
+                      <p className="text-[11px] text-muted-foreground">{tx("Đã khám phá: ", "Discovered: ")}<span className="font-semibold text-foreground">{provider.models_discovered} {tx("mô hình", "models")}</span>
                       </p>
                       {provider.discovery_error && (
                         <p className="line-clamp-2 text-[10px] text-destructive">{provider.discovery_error}</p>
