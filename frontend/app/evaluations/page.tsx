@@ -143,14 +143,14 @@ export default function EvaluationsPage() {
       <PageHeader
         icon={FlaskConical}
         title={dict.pages.evaluations.title}
-        description={tx("Run benchmark test suites, track pass rates, and verify model quality.", "Run benchmark test suites, track pass rates, and verify model quality.")}
+        description={tx("Chạy bộ benchmark, theo dõi tỷ lệ đạt và xác minh chất lượng mô hình.", "Run benchmark test suites, track pass rates, and verify model quality.")}
         actions={
           <Button className="gap-2 active-tactile transition-transform" onClick={() => setSuiteDialog(true)}>
-            <Plus className="h-4 w-4" /> {tx("New Suite", "New Suite")}</Button>
+            <Plus className="h-4 w-4" /> {tx("Suite mới", "New Suite")}</Button>
         }
       />
 
-      {suites.isLoading ? <LoadingSkeleton variant="table" /> : suites.isError ? <ErrorState title={tx("Unable to load evaluation suites", "Unable to load evaluation suites")} description={tx("Evaluation data could not be loaded.", "Evaluation data could not be loaded.")} onRetry={() => void suites.refetch()} /> : suites.data?.length ? (
+      {suites.isLoading ? <LoadingSkeleton variant="table" /> : suites.isError ? <ErrorState title={tx("Không thể tải các evaluation suite", "Unable to load evaluation suites")} description={tx("Không thể tải dữ liệu đánh giá.", "Evaluation data could not be loaded.")} onRetry={() => void suites.refetch()} /> : suites.data?.length ? (
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px] stagger">
           <div className="space-y-4">
             {paginatedSuites.map((suite) => {
@@ -181,7 +181,7 @@ export default function EvaluationsPage() {
                           setSelectedSuiteId(suite.id);
                         }}
                       >
-                        <Plus className="h-3.5 w-3.5" /> {tx("Case", "Case")}</Button>
+                        <Plus className="h-3.5 w-3.5" /> {tx("Ca kiểm thử", "Case")}</Button>
                       <Button
                         size="sm"
                         variant="outline"
@@ -217,7 +217,7 @@ export default function EvaluationsPage() {
                     ))}
                     {!suite.cases.length && (
                       <p className="px-4 py-4 text-xs text-muted-foreground text-center">
-                        {tx("No test cases.", "No test cases.")}</p>
+                        {tx("Không có ca kiểm thử.", "No test cases.")}</p>
                     )}
                   </div>
                 </Card>
@@ -235,7 +235,7 @@ export default function EvaluationsPage() {
 
           <aside className="rounded-xl border border-border/80 bg-card/45 p-5 space-y-4 backdrop-blur-xl shadow-3d-card">
             <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground/80">
-              {tx("Recent runs", "Recent runs")}</h2>
+              {tx("Lượt chạy gần đây", "Recent runs")}</h2>
             <div className="space-y-3">
               {runs.data?.map((run) => (
                 <div
@@ -256,12 +256,12 @@ export default function EvaluationsPage() {
                     <Badge variant="outline" className="font-mono text-[10px]">{run.execution_mode}</Badge>
                   </div>
                   <p className="text-[11px] font-mono text-muted-foreground">
-                    {run.passed_cases}/{run.total_cases} {tx("cases ·", "cases ·")}{run.average_latency_ms.toFixed(0)}{tx("ms · $", "ms · $")}{run.total_cost_usd.toFixed(4)}
+                    {run.passed_cases}/{run.total_cases} {tx("ca ·", "cases ·")}{run.average_latency_ms.toFixed(0)}{tx("ms · $", "ms · $")}{run.total_cost_usd.toFixed(4)}
                   </p>
                 </div>
               ))}
               {!runs.data?.length && (
-                <p className="text-xs text-muted-foreground/80 py-4 text-center">{tx("No runs recorded.", "No runs recorded.")}</p>
+                <p className="text-xs text-muted-foreground/80 py-4 text-center">{tx("Chưa ghi nhận lượt chạy nào.", "No runs recorded.")}</p>
               )}
             </div>
           </aside>
@@ -269,11 +269,11 @@ export default function EvaluationsPage() {
       ) : (
         <EmptyState
           icon={FlaskConical}
-          title={tx("No evaluation suites", "No evaluation suites")}
-          description={tx("Create a repeatable quality gate for an agent release.", "Create a repeatable quality gate for an agent release.")}
+          title={tx("Chưa có evaluation suite", "No evaluation suites")}
+          description={tx("Tạo cổng chất lượng có thể lặp lại cho bản phát hành agent.", "Create a repeatable quality gate for an agent release.")}
           action={
             <Button className="gap-2 active-tactile transition-transform" onClick={() => setSuiteDialog(true)}>
-              <Plus className="h-4 w-4" /> {tx("New Suite", "New Suite")}</Button>
+              <Plus className="h-4 w-4" /> {tx("Suite mới", "New Suite")}</Button>
           }
         />
       )}
@@ -281,7 +281,7 @@ export default function EvaluationsPage() {
       <Dialog open={suiteDialog} onOpenChange={setSuiteDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{tx("New evaluation suite", "New evaluation suite")}</DialogTitle>
+            <DialogTitle>{tx("Evaluation suite mới", "New evaluation suite")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-1">
             <div className="space-y-1.5">
@@ -317,14 +317,14 @@ export default function EvaluationsPage() {
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
-                <Label>{tx("First input", "First input")}</Label>
+                <Label>{tx("Đầu vào đầu tiên", "First input")}</Label>
                 <Textarea
                   value={form.input}
                   onChange={(event) => setForm({ ...form, input: event.target.value })}
                 />
               </div>
               <div className="space-y-1.5">
-                <Label>{tx("Expected output", "Expected output")}</Label>
+                <Label>{tx("Kết quả mong đợi", "Expected output")}</Label>
                 <Textarea
                   value={form.expected_output}
                   onChange={(event) =>
@@ -347,11 +347,11 @@ export default function EvaluationsPage() {
       <Dialog open={!!caseSuite} onOpenChange={(value) => !value && setCaseSuite(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{tx("Add case to", "Add case to")}{caseSuite?.name}</DialogTitle>
+            <DialogTitle>{tx("Thêm ca vào", "Add case to")}{caseSuite?.name}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-1">
             <div className="space-y-1.5">
-              <Label>{tx("Input", "Input")}</Label>
+              <Label>{tx("Đầu vào", "Input")}</Label>
               <Textarea
                 value={caseForm.input}
                 onChange={(event) =>
@@ -360,7 +360,7 @@ export default function EvaluationsPage() {
               />
             </div>
             <div className="space-y-1.5">
-              <Label>{tx("Expected output", "Expected output")}</Label>
+              <Label>{tx("Kết quả mong đợi", "Expected output")}</Label>
               <Textarea
                 value={caseForm.expected_output}
                 onChange={(event) =>

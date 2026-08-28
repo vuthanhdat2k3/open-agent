@@ -156,13 +156,13 @@ export function OperatorSurface({
             </div>
             <div>
               <h3 className="text-sm font-semibold tracking-tight text-foreground">{resolvedCompanionName}</h3>
-              <p className="text-[11px] text-muted-foreground">{tx("Personal Executive Chief of Staff", "Personal Executive Chief of Staff")}</p>
+              <p className="text-[11px] text-muted-foreground">{tx("Chánh văn phòng điều hành cá nhân", "Personal Executive Chief of Staff")}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 font-mono text-[10px] text-emerald-400">
               <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-emerald-400" />
-              {activeRoutinesCount} {tx("Routines Active", "Routines Active")}</Badge>
+              {activeRoutinesCount} {tx("Thường lệ đang chạy", "Routines Active")}</Badge>
             <div className="flex items-center gap-1">
               <kbd className="hidden sm:inline-block rounded border border-border/80 bg-muted/60 px-1.5 py-0.5 font-mono text-[9px] text-muted-foreground">
                 {tx("Esc", "Esc")}</kbd>
@@ -190,7 +190,7 @@ export function OperatorSurface({
                 : "text-muted-foreground hover:bg-muted/80 hover:text-foreground"
             }`}
           >
-            <span>{tx("⚡ Approvals", "⚡ Approvals")}</span>
+            <span>{tx("⚡ Phê duyệt", "⚡ Approvals")}</span>
             <span
               className={`rounded px-1.5 py-0.5 font-mono text-[9.5px] font-semibold ${
                 approvals.length > 0
@@ -211,7 +211,7 @@ export function OperatorSurface({
                 : "text-muted-foreground hover:bg-muted/80 hover:text-foreground"
             }`}
           >
-            <span>{tx("✉ Email Triage", "✉ Email Triage")}</span>
+            <span>{tx("✉ Phân loại email", "✉ Email Triage")}</span>
             <span
               className={`rounded px-1.5 py-0.5 font-mono text-[9.5px] font-semibold ${
                 notifications.length > 0
@@ -232,7 +232,7 @@ export function OperatorSurface({
                 : "text-muted-foreground hover:bg-muted/80 hover:text-foreground"
             }`}
           >
-            <span>{tx("📋 Briefings", "📋 Briefings")}</span>
+            <span>{tx("📋 Thông báo", "📋 Briefings")}</span>
             <span className="rounded border border-emerald-500/40 bg-emerald-500/15 px-1.5 py-0.5 font-mono text-[9.5px] font-semibold text-emerald-400">
               {cases.length || 4}
             </span>
@@ -265,12 +265,12 @@ export function OperatorSurface({
           <Input
             value={directionPrompt}
             onChange={(e) => setDirectionPrompt(e.target.value)}
-            placeholder={tx("Direct operator: 'Approve all', 'Brief me on Acme', 'Prep tomorrow meeting'...", "Direct operator: 'Approve all', 'Brief me on Acme', 'Prep tomorrow meeting'...")}
+            placeholder={tx("Lệnh operator trực tiếp: 'Duyệt tất cả', 'Tóm tắt Acme', 'Chuẩn bị họp ngày mai'...", "Direct operator: 'Approve all', 'Brief me on Acme', 'Prep tomorrow meeting'...")}
             className="h-8 border-0 bg-transparent px-0 text-xs text-foreground placeholder:text-muted-foreground focus-visible:ring-0"
           />
           <Button type="submit" size="sm" className="h-7 px-3 text-xs font-semibold gap-1.5">
             <Send className="h-3 w-3" />
-            {tx("Direct", "Direct")}</Button>
+            {tx("Trực tiếp", "Direct")}</Button>
         </div>
 
         {/* Quick Suggestion Chips */}
@@ -283,7 +283,7 @@ export function OperatorSurface({
               onClick={() => onBatchDecideAllApprovals()}
               className="h-6 rounded-md border-amber-500/40 bg-amber-500/10 px-2 py-0 text-[11px] font-medium text-amber-400 hover:bg-amber-500/20"
             >
-              <Sparkles className="mr-1 h-3 w-3 text-amber-400" /> {tx("Approve All (", "Approve All (")}{approvals.length})
+              <Sparkles className="mr-1 h-3 w-3 text-amber-400" /> {tx("Duyệt tất cả (", "Approve All (")}{approvals.length})
             </Button>
           )}
           <Button
@@ -293,7 +293,7 @@ export function OperatorSurface({
             onClick={() => setActiveTab("inbox")}
             className="h-6 rounded-md border-border/80 bg-secondary/60 px-2 py-0 text-[11px] text-muted-foreground hover:bg-secondary hover:text-foreground"
           >
-            {tx("✉ View Emails", "✉ View Emails")}</Button>
+            {tx("✉ Xem email", "✉ View Emails")}</Button>
           <Button
             type="button"
             variant="outline"
@@ -301,13 +301,13 @@ export function OperatorSurface({
             onClick={() => setActiveTab("reports")}
             className="h-6 rounded-md border-border/80 bg-secondary/60 px-2 py-0 text-[11px] text-muted-foreground hover:bg-secondary hover:text-foreground"
           >
-            {tx("📋 View Briefings", "📋 View Briefings")}</Button>
+            {tx("📋 Xem thông báo", "📋 View Briefings")}</Button>
           <Link
             href="/chat"
             className="ml-auto flex items-center gap-0.5 text-[11px] font-semibold text-primary transition-colors hover:underline"
             onClick={onClose}
           >
-            {tx("Chat Workspace", "Chat Workspace")}<ChevronRight className="h-3 w-3" />
+            {tx("Không gian chat", "Chat Workspace")}<ChevronRight className="h-3 w-3" />
           </Link>
         </div>
       </form>

@@ -96,6 +96,7 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 |---|---|---|---|
 | `dev` | `G:\open-agent` | Nhánh tích hợp chính — không code trực tiếp ở đây | — |
 | `feat/i18n-hardcode-sweep-3` | `G:\open-agent\.worktrees\i18n-hardcode-sweep-3` | Quét + sửa toàn bộ hardcode UI text frontend sang i18n (tx()) | DeepSeek agent |
+| `feat/i18n-enen-tx-sweep` | `G:\open-agent\.worktrees\i18n-enen-tx-sweep` | Sửa các cặp tx(EN,EN) trùng lặp (dịch vi đúng) — stack trên sweep-3 | DeepSeek agent |
 
 > 2026-08-27: Đã dọn dẹp toàn bộ worktree và các nhánh đã merge vào `dev` trên cả Local và Remote:
 > - `feat/workflow-node-config-fix` (PR #167, Deploy PR #168)

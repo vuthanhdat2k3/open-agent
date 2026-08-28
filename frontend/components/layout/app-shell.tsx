@@ -25,7 +25,7 @@ export function AppShell({ children, queryClient }: { children: React.ReactNode;
 
   return (
     <SidebarProvider>
-      <a href="#main-content" className="sr-only z-[100] rounded-md bg-background px-4 py-2 text-sm font-semibold text-foreground focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:ring-2 focus:ring-ring">{tx("Skip to main content", "Skip to main content")}</a>
+      <a href="#main-content" className="sr-only z-[100] rounded-md bg-background px-4 py-2 text-sm font-semibold text-foreground focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:ring-2 focus:ring-ring">{tx("Bỏ qua để đến nội dung chính", "Skip to main content")}</a>
       <AppSidebar queryClient={queryClient} />
       <SidebarInset
         id="main-content"

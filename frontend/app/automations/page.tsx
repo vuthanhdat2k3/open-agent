@@ -120,7 +120,7 @@ function TemplateCard({
           {item.recommendation.recommended && (
             <Badge variant="info">
               <Sparkles className="h-3 w-3" aria-hidden="true" />
-              {tx("Recommended", "Recommended")}</Badge>
+              {tx("Đề xuất", "Recommended")}</Badge>
           )}
         </div>
         <div>
@@ -183,7 +183,7 @@ function TemplateCard({
           >
             {item.capabilities.can_install ? (
               <>
-                {tx("Set up", "Set up")}<ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+                {tx("Thiết lập", "Set up")}<ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
               </>
             ) : (
               tx("Chỉ xem trước", "Preview only")
@@ -257,9 +257,9 @@ function SetupDialog({
       {item && (
         <DialogContent className="max-w-xl">
           <DialogHeader>
-            <DialogTitle>{tx("Set up", "Set up")}{item.name}</DialogTitle>
+            <DialogTitle>{tx("Thiết lập", "Set up")}{item.name}</DialogTitle>
             <DialogDescription>
-              {tx("Choose a safe schedule. You can change it later.", "Choose a safe schedule. You can change it later.")}</DialogDescription>
+              {tx("Chọn lịch an toàn. Bạn có thể thay đổi sau.", "Choose a safe schedule. You can change it later.")}</DialogDescription>
           </DialogHeader>
           <div
             className="flex items-center gap-2 border-b border-border/70 pb-4 text-xs font-medium text-muted-foreground"
@@ -292,7 +292,7 @@ function SetupDialog({
           {step === 1 && (
             <div className="space-y-4">
               <div className="rounded-lg border border-primary/20 bg-primary/[0.04] p-4 text-sm">
-                <p className="font-semibold">{tx("What will happen", "What will happen")}</p>
+                <p className="font-semibold">{tx("Điều gì sẽ xảy ra", "What will happen")}</p>
                 <p className="mt-1 leading-6 text-muted-foreground">
                   {item.outcome}
                 </p>
@@ -302,7 +302,7 @@ function SetupDialog({
                   htmlFor="automation-name"
                   className="text-sm font-medium"
                 >
-                  {tx("Automation name", "Automation name")}</label>
+                  {tx("Tên automation", "Automation name")}</label>
                 <Input
                   id="automation-name"
                   value={name}
@@ -316,7 +316,7 @@ function SetupDialog({
                     htmlFor="automation-frequency"
                     className="text-sm font-medium"
                   >
-                    {tx("Run frequency", "Run frequency")}</label>
+                    {tx("Tần suất chạy", "Run frequency")}</label>
                   <select
                     id="automation-frequency"
                     value={scheduleKind}
@@ -328,11 +328,11 @@ function SetupDialog({
                     }
                     className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
-                    <option value="hourly">{tx("Every hour", "Every hour")}</option>
-                    <option value="daily">{tx("Every day", "Every day")}</option>
-                    <option value="weekdays">{tx("Weekdays", "Weekdays")}</option>
-                    <option value="weekly">{tx("Weekly", "Weekly")}</option>
-                    <option value="event">{tx("When a relevant event arrives", "When a relevant event arrives")}</option>
+                    <option value="hourly">{tx("Mỗi giờ", "Every hour")}</option>
+                    <option value="daily">{tx("Mỗi ngày", "Every day")}</option>
+                    <option value="weekdays">{tx("Ngày trong tuần", "Weekdays")}</option>
+                    <option value="weekly">{tx("Hàng tuần", "Weekly")}</option>
+                    <option value="event">{tx("Khi có sự kiện liên quan", "When a relevant event arrives")}</option>
                   </select>
                 </div>
                 <div className="space-y-2">
@@ -340,7 +340,7 @@ function SetupDialog({
                     htmlFor="automation-time"
                     className="text-sm font-medium"
                   >
-                    {tx("Time · Vietnam", "Time · Vietnam")}</label>
+                    {tx("Giờ · Việt Nam", "Time · Vietnam")}</label>
                   <Input
                     id="automation-time"
                     type="time"
@@ -353,24 +353,24 @@ function SetupDialog({
                 </div>
               </div>
               <p className="text-xs text-muted-foreground">
-                {tx("Timezone: Asia/Ho_Chi_Minh. The server calculates the next run.", "Timezone: Asia/Ho_Chi_Minh. The server calculates the next run.")}</p>
+                {tx("Múi giờ: Asia/Ho_Chi_Minh. Máy chủ tính toán lượt chạy tiếp theo.", "Timezone: Asia/Ho_Chi_Minh. The server calculates the next run.")}</p>
             </div>
           )}
           {step === 2 && (
             <div className="space-y-4 text-sm">
               <div className="rounded-lg border border-border/70 p-4">
-                <p className="font-semibold">{tx("Data and safety", "Data and safety")}</p>
+                <p className="font-semibold">{tx("Dữ liệu và an toàn", "Data and safety")}</p>
                 <ul className="mt-3 space-y-3 text-muted-foreground">
                   <li className="flex gap-2">
                     <Plug
                       className="mt-0.5 h-4 w-4 shrink-0 text-primary"
                       aria-hidden="true"
                     />
-                    {tx("Uses", "Uses")}{" "}
+                    {tx("Sử dụng", "Uses")}{" "}
                     {item.required_integrations
                       .map(integrationLabel)
                       .join(" and ")}{" "}
-                    {tx("when connected.", "when connected.")}</li>
+                    {tx("khi đã kết nối.", "when connected.")}</li>
                   <li className="flex gap-2">
                     <ShieldCheck
                       className="mt-0.5 h-4 w-4 shrink-0 text-primary"
@@ -386,13 +386,13 @@ function SetupDialog({
                 </ul>
               </div>
               <p className="text-xs text-muted-foreground">
-                {tx("Connection binding and permission checks are enforced by the server before a run is dispatched.", "Connection binding and permission checks are enforced by the server before a run is dispatched.")}</p>
+                {tx("Liên kết kết nối và kiểm tra quyền được máy chủ thực thi trước khi điều phối lượt chạy.", "Connection binding and permission checks are enforced by the server before a run is dispatched.")}</p>
             </div>
           )}
           {step === 3 && (
             <div className="space-y-4 text-sm">
               <div className="rounded-lg border border-border/70 p-4">
-                <p className="font-semibold">{tx("Ready to enable", "Ready to enable")}</p>
+                <p className="font-semibold">{tx("Sẵn sàng kích hoạt", "Ready to enable")}</p>
                 <dl className="mt-3 grid gap-3 sm:grid-cols-2">
                   <div>
                     <dt className="text-xs text-muted-foreground">
@@ -400,7 +400,7 @@ function SetupDialog({
                     <dd className="mt-1 font-medium">{name || item.name}</dd>
                   </div>
                   <div>
-                    <dt className="text-xs text-muted-foreground">{tx("Schedule", "Schedule")}</dt>
+                    <dt className="text-xs text-muted-foreground">{tx("Lịch chạy", "Schedule")}</dt>
                     <dd className="mt-1 font-medium">
                       {scheduleKind === "hourly"
                         ? tx("Mỗi giờ một lần", "Every hour")
@@ -410,11 +410,11 @@ function SetupDialog({
                     </dd>
                   </div>
                   <div>
-                    <dt className="text-xs text-muted-foreground">{tx("Timezone", "Timezone")}</dt>
+                    <dt className="text-xs text-muted-foreground">{tx("Múi giờ", "Timezone")}</dt>
                     <dd className="mt-1 font-medium">{tx("Asia/Ho_Chi_Minh", "Asia/Ho_Chi_Minh")}</dd>
                   </div>
                   <div>
-                    <dt className="text-xs text-muted-foreground">{tx("Safety", "Safety")}</dt>
+                    <dt className="text-xs text-muted-foreground">{tx("An toàn", "Safety")}</dt>
                     <dd className="mt-1 font-medium">
                       {approvalLabel(item.side_effect_policy, locale)}
                     </dd>
@@ -423,7 +423,7 @@ function SetupDialog({
               </div>
               {install.isError && (
                 <p className="text-sm text-destructive" role="alert">
-                  {tx("Could not enable this automation. It may already be installed or a connection may need attention.", "Could not enable this automation. It may already be installed or a connection may need attention.")}</p>
+                  {tx("Không thể kích hoạt automation này. Có thể nó đã được cài hoặc một kết nối cần được chú ý.", "Could not enable this automation. It may already be installed or a connection may need attention.")}</p>
               )}
             </div>
           )}
@@ -443,14 +443,14 @@ function SetupDialog({
                 onClick={() => setStep((value) => value + 1)}
                 disabled={!name.trim()}
               >
-                {tx("Continue", "Continue")}</Button>
+                {tx("Tiếp tục", "Continue")}</Button>
             ) : (
               <Button
                 type="button"
                 loading={install.isPending}
                 onClick={() => install.mutate()}
               >
-                {tx("Enable automation", "Enable automation")}</Button>
+                {tx("Kích hoạt automation", "Enable automation")}</Button>
             )}
           </DialogFooter>
         </DialogContent>
@@ -487,57 +487,57 @@ function TemplateDetails({
           <div className="space-y-5 text-sm">
             <section className="rounded-lg border border-primary/20 bg-primary/[0.04] p-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-primary">
-                {tx("What you receive", "What you receive")}</p>
+                {tx("Những gì bạn nhận được", "What you receive")}</p>
               <p className="mt-2 leading-6 text-foreground">{item.outcome}</p>
             </section>
             <section className="space-y-3">
-              <h3 className="font-semibold">{tx("How it works", "How it works")}</h3>
+              <h3 className="font-semibold">{tx("Cách hoạt động", "How it works")}</h3>
               <ol className="space-y-3 text-muted-foreground">
                 <li className="flex gap-3">
                   <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-muted font-mono text-xs text-foreground">
                     1
                   </span>
                   <span>
-                    {tx("Read only the connected data needed for this workflow.", "Read only the connected data needed for this workflow.")}</span>
+                    {tx("Chỉ đọc dữ liệu đã kết nối cần thiết cho quy trình này.", "Read only the connected data needed for this workflow.")}</span>
                 </li>
                 <li className="flex gap-3">
                   <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-muted font-mono text-xs text-foreground">
                     2
                   </span>
                   <span>
-                    {tx("Analyze and organize useful information with bounded cost and latency.", "Analyze and organize useful information with bounded cost and latency.")}</span>
+                    {tx("Phân tích và tổ chức thông tin hữu ích với chi phí và độ trễ giới hạn.", "Analyze and organize useful information with bounded cost and latency.")}</span>
                 </li>
                 <li className="flex gap-3">
                   <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-muted font-mono text-xs text-foreground">
                     3
                   </span>
                   <span>
-                    {tx("Send a private result to your Automation Hub and notification bell.", "Send a private result to your Automation Hub and notification bell.")}</span>
+                    {tx("Gửi kết quả riêng tư đến Automation Hub và chuông thông báo của bạn.", "Send a private result to your Automation Hub and notification bell.")}</span>
                 </li>
               </ol>
             </section>
             <section className="grid gap-3 sm:grid-cols-2">
               <div className="rounded-lg border border-border/70 p-3">
-                <p className="text-xs text-muted-foreground">{tx("Required", "Required")}</p>
+                <p className="text-xs text-muted-foreground">{tx("Bắt buộc", "Required")}</p>
                 <p className="mt-1 font-medium">
                   {item.required_integrations.map(integrationLabel).join(" · ")}
                 </p>
               </div>
               <div className="rounded-lg border border-border/70 p-3">
-                <p className="text-xs text-muted-foreground">{tx("Schedule", "Schedule")}</p>
+                <p className="text-xs text-muted-foreground">{tx("Lịch chạy", "Schedule")}</p>
                 <p className="mt-1 font-medium">
                   {item.default_schedule_label}
                 </p>
               </div>
               <div className="rounded-lg border border-border/70 p-3">
                 <p className="text-xs text-muted-foreground">
-                  {tx("External actions", "External actions")}</p>
+                  {tx("Hành động bên ngoài", "External actions")}</p>
                 <p className="mt-1 font-medium">
                   {approvalLabel(item.side_effect_policy, locale)}
                 </p>
               </div>
               <div className="rounded-lg border border-border/70 p-3">
-                <p className="text-xs text-muted-foreground">{tx("Estimated cost", "Estimated cost")}</p>
+                <p className="text-xs text-muted-foreground">{tx("Chi phí ước tính", "Estimated cost")}</p>
                 <p className="mt-1 font-medium">
                   {costLabel(item.cost_tier, locale)} {tx("· tối đa $", "· up to $")}{item.estimated_cost_usd.per_run_max ?? "—"}{tx("/lần chạy", "/run")}</p>
               </div>
