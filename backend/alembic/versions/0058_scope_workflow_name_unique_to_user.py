@@ -1,7 +1,7 @@
 """Scope workflow name uniqueness to (org_id, created_by_user_id, name)."""
 
 from collections.abc import Sequence
-import sqlalchemy as sa
+
 from alembic import op
 
 revision: str = "0058_scope_workflow_name_unique_to_user"

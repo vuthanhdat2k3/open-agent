@@ -1,7 +1,9 @@
 """Cleanup unowned legacy workflows so workflows only exist per user."""
 
 from collections.abc import Sequence
+
 import sqlalchemy as sa
+
 from alembic import op
 
 revision: str = "0057_cleanup_unowned_workflows"
