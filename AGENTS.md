@@ -164,3 +164,34 @@ Hệ thống giao diện của OpenAgent hỗ trợ đa ngôn ngữ đầy đủ
    - `frontend/lib/i18n/types.ts` (Type definition tương ứng)
 4. **Kiểm tra trước khi hoàn thành**: Luôn chạy `npm run typecheck && npm run build` trong `frontend/` để bảo đảm không thiếu translation key và toàn bộ các trang biên dịch thành công.
 
+## 10. Quy tắc bắt buộc: Chạy Full Test & Lint Local trước khi Push (Thay thế CI)
+
+> **LƯU Ý QUAN TRỌNG:** Repo này **đã tắt CI tự động trên GitHub Actions** để tối ưu tốc độ và không làm nghẽn runner. Hệ thống **CHỈ chạy CD deployment** khi merge vào nhánh `deploy/dev`.
+> 
+> Vì không còn CI server kiểm tra tự động, **mọi AI Agent bắt buộc phải tự chạy kiểm tra full test, typecheck, lint ở môi trường local trước khi commit và push lên git**. Tuyệt đối không push code chưa qua kiểm thử local.
+
+### Danh mục lệnh kiểm tra bắt buộc:
+
+#### 1. Đối với Frontend (`frontend/`):
+```bash
+cd frontend
+npm run lint         # Kiểm tra ESLint
+npm run typecheck    # Kiểm tra TypeScript type safety
+npm run test         # Chạy unit tests (Vitest)
+npm run build        # Đảm bảo Next.js build bundle thành công không lỗi
+```
+
+#### 2. Đối với Backend (`backend/`):
+```bash
+cd backend
+ruff check .         # Kiểm tra linter Python
+pytest -q            # Chạy toàn bộ unit tests / integration tests
+```
+
+#### 3. Quy trình trước khi mở PR / Push:
+1. Chạy pass 100% các lệnh kiểm tra trên cho phần code có thay đổi (FE / BE hoặc cả hai).
+2. Nếu có lỗi lint, type error hoặc test fail, phải sửa triệt để trước khi stage và commit.
+3. Push branch và tạo PR vào `dev`.
+4. Khi merge PR vào `deploy/dev`, hệ thống sẽ tự động kích hoạt CD deploy stack.
+
+
