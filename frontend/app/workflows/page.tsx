@@ -486,27 +486,40 @@ export default function WorkflowEditor() {
     toast.success(`Loaded workflow: ${wf.name}`);
   };
 
-  const save = async () => {
+  const save = async (): Promise<string | null> => {
+    const trimmedName = wfName.trim();
+    if (!trimmedName) {
+      toast.error(tx("Vui lòng nhập tên workflow trước khi lưu", "Please enter a workflow name before saving"));
+      return null;
+    }
+    if (nodes.length === 0) {
+      toast.error(tx("Canvas chưa có node nào. Hãy thêm ít nhất 1 node.", "Canvas is empty. Add at least 1 node."));
+      return null;
+    }
     try {
       if (editId) {
         await update.mutateAsync({
           id: editId,
           data: {
-            name: wfName || "workflow",
+            name: trimmedName,
             graph: { nodes, edges },
           },
         });
+        toast.success(tx("Đã lưu workflow", "Workflow saved"));
+        return editId;
       } else {
         const created = await create.mutateAsync({
-          name: wfName || "workflow",
+          name: trimmedName,
           description: "",
           graph: { nodes, edges },
         });
         setEditId(created.id);
+        toast.success(tx("Đã lưu workflow", "Workflow saved"));
+        return created.id;
       }
-      toast.success(tx("Đã lưu workflow", "Workflow saved"));
     } catch (e: any) {
-      toast.error(e.message);
+      toast.error(e.message || tx("Không thể lưu workflow", "Failed to save workflow"));
+      return null;
     }
   };
 
@@ -646,9 +659,20 @@ export default function WorkflowEditor() {
   };
 
   const run = async () => {
-    if (!editId) {
-      toast.error(tx("Lưu workflow trước khi chạy", "Save the workflow first to run it"));
+    if (nodes.length === 0) {
+      toast.error(tx("Canvas chưa có node nào. Hãy thêm node trước khi chạy.", "Canvas has no nodes. Add nodes before running."));
       return;
+    }
+    let targetId = editId;
+    if (!targetId) {
+      if (!wfName.trim()) {
+        toast.error(tx("Vui lòng đặt tên và Lưu workflow trước khi chạy", "Please enter a workflow name and Save before running"));
+        return;
+      }
+      targetId = await save();
+      if (!targetId) return;
+    } else {
+      await save();
     }
     setRunning(true);
     setOutput("");
@@ -657,7 +681,7 @@ export default function WorkflowEditor() {
     setLogs([]);
     try {
       await streamSSE(
-        `/api/workflows/${editId}/run`,
+        `/api/workflows/${targetId}/run`,
         { input, stream: true, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone },
         (ev) => {
           const d = ev.data;

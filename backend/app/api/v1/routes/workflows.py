@@ -1,6 +1,7 @@
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.sse import format_sse
@@ -167,6 +168,12 @@ async def create_workflow(
         raise HTTPException(400, detail={"errors": e.errors}) from e
     except ValueError as e:
         raise HTTPException(400, str(e))
+    except IntegrityError as e:
+        await db.rollback()
+        error_msg = str(e.orig) if hasattr(e, "orig") else str(e)
+        if "uq_workflows_org_user_name" in error_msg or "uq_workflows_org_name" in error_msg:
+            raise HTTPException(409, f'Tên workflow "{body.name}" đã tồn tại. Vui lòng chọn một tên khác.') from e
+        raise HTTPException(409, "Không thể lưu workflow do xung đột dữ liệu.") from e
 
 
 @router.post(
@@ -219,6 +226,12 @@ async def update_workflow(
         raise HTTPException(400, detail={"errors": e.errors}) from e
     except ValueError as e:
         raise HTTPException(404, str(e))
+    except IntegrityError as e:
+        await db.rollback()
+        error_msg = str(e.orig) if hasattr(e, "orig") else str(e)
+        if "uq_workflows_org_user_name" in error_msg or "uq_workflows_org_name" in error_msg:
+            raise HTTPException(409, f'Tên workflow "{body.name}" đã tồn tại. Vui lòng chọn một tên khác.') from e
+        raise HTTPException(409, "Không thể cập nhật workflow do xung đột dữ liệu.") from e
     # If this workflow belongs to a template installation and the user edited
     # its DAG, mark the installation so the worker runs the generic engine
     # instead of the catalog executor (the user now owns the graph).
