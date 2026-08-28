@@ -74,7 +74,7 @@ export function WorkflowConsole({
   onSelectNode,
   className,
 }: WorkflowConsoleProps) {
-  const { t, locale } = useTranslation();
+  const { t, locale, tx } = useTranslation();
   const [activeTab, setActiveTab] = React.useState<"logs" | "trace" | "output">("logs");
   const [isMaximized, setIsMaximized] = React.useState(false);
   const [searchFilter, setSearchFilter] = React.useState("");
@@ -672,7 +672,7 @@ export function WorkflowConsole({
                     {t("pages.workflows.finalReportModalTitle", "Final Workflow Report")}
                   </DialogTitle>
                   <DialogDescription className="text-xs text-muted-foreground">
-                    {run?.id ? `Run ID: ${run.id}` : "Rendered workflow final execution synthesis"}
+                    {run?.id ? `Run ID: ${run.id}` : tx("Tổng hợp thực thi cuối của workflow", "Rendered workflow final execution synthesis")}
                   </DialogDescription>
                 </div>
               </div>

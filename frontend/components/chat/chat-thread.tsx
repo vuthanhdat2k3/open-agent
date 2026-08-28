@@ -137,8 +137,8 @@ export function ChatThread({
             aria-pressed={debug}
             title={
               debug
-                ? "Debug mode is ON (expanded tool cards, exact token counts & timings). Click to switch to Clean mode."
-                : "Debug mode is OFF (compact tool chips & clean text). Click to enable Debug mode."
+                ? tx("Chế độ Debug đang BẬT (mở rộng thẻ tool, đếm token & timing chính xác). Bấm để chuyển sang chế độ Clean.", "Debug mode is ON (expanded tool cards, exact token counts & timings). Click to switch to Clean mode.")
+                : tx("Chế độ Debug đang TẮT (chip tool gọn & văn bản sạch). Bấm để bật chế độ Debug.", "Debug mode is OFF (compact tool chips & clean text). Click to enable Debug mode.")
             }
           >
             <Bug className={`h-3.5 w-3.5 ${debug ? "text-primary" : ""}`} aria-hidden="true" />
@@ -152,8 +152,8 @@ export function ChatThread({
               size="icon"
               className="h-8 w-8 text-muted-foreground hover:text-destructive"
               onClick={onClearMessages}
-              aria-label="Clear conversation"
-              title={tx("Clear conversation", "Clear conversation")}
+              aria-label={tx("Xóa hội thoại", "Clear conversation")}
+              title={tx("Xóa hội thoại", "Clear conversation")}
             >
               <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
             </Button>

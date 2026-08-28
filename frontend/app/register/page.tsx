@@ -22,12 +22,12 @@ export default function RegisterPage() {
     setLoading(true);
     try {
       const response = await fetch("/api/auth/register", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password, org_name: orgName || undefined }) });
-      if (!response.ok) throw new Error("Registration failed");
+      if (!response.ok) throw new Error(tx("Đăng ký thất bại", "Registration failed"));
       const data = (await response.json()) as { access_token: string };
       setAccessToken(data.access_token);
       window.location.href = "/";
     } catch (error: unknown) {
-      toast.error(error instanceof Error ? error.message : "Unable to create account");
+      toast.error(error instanceof Error ? error.message : tx("Không thể tạo tài khoản", "Unable to create account"));
     } finally { setLoading(false); }
   }
 

@@ -215,11 +215,11 @@ export function Companion3D({
       });
       toast.success(
         decision === "approved"
-          ? "Action approved and dispatched successfully!"
-          : "Action rejected safely.",
+          ? tx("Đã phê duyệt và điều phối hành động thành công!", "Action approved and dispatched successfully!")
+          : tx("Đã từ chối hành động an toàn.", "Action rejected safely."),
       );
     } catch (err: any) {
-      toast.error(err.message || "Failed to process approval.");
+      toast.error(err.message || tx("Không thể xử lý phê duyệt.", "Failed to process approval."));
     }
   };
 
@@ -236,9 +236,9 @@ export function Companion3D({
           }),
         ),
       );
-      toast.success(`Successfully approved and dispatched all ${approvals.length} actions!`);
+      toast.success(tx(`Đã phê duyệt và điều phối tất cả ${approvals.length} hành động!`, `Successfully approved and dispatched all ${approvals.length} actions!`));
     } catch (err: any) {
-      toast.error(err.message || "Failed to process batch approval.");
+      toast.error(err.message || tx("Không thể xử lý phê duyệt hàng loạt.", "Failed to process batch approval."));
     }
   };
 
@@ -261,10 +261,10 @@ export function Companion3D({
       {isDragging && (
         <div className="pointer-events-none fixed inset-0 z-30 transition-opacity duration-300">
           {[
-            { id: 0, label: "Bottom Right", x: window.innerWidth - 110, y: window.innerHeight - 110 },
-            { id: 1, label: "Top Right", x: window.innerWidth - 110, y: 120 },
-            { id: 2, label: "Middle Right", x: window.innerWidth - 110, y: window.innerHeight * 0.5 },
-            { id: 3, label: "Bottom Left", x: 290, y: window.innerHeight - 110 },
+            { id: 0, label: tx("Dưới phải", "Bottom Right"), x: window.innerWidth - 110, y: window.innerHeight - 110 },
+            { id: 1, label: tx("Trên phải", "Top Right"), x: window.innerWidth - 110, y: 120 },
+            { id: 2, label: tx("Giữa phải", "Middle Right"), x: window.innerWidth - 110, y: window.innerHeight * 0.5 },
+            { id: 3, label: tx("Dưới trái", "Bottom Left"), x: 290, y: window.innerHeight - 110 },
           ].map((dock) => {
             const isTarget = activeDock === dock.id;
             return (
@@ -418,7 +418,7 @@ export function Companion3D({
             <model-viewer
               ref={modelViewerRef}
               src={config.modelUrl || "/agent-service-robot.glb"}
-              alt="OpenAgent 3D Companion"
+              alt={tx("Trợ lý 3D OpenAgent", "OpenAgent 3D Companion")}
               camera-orbit="0deg 75deg 2.2m"
               field-of-view="24deg"
               disable-zoom

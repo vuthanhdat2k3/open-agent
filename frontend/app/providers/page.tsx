@@ -117,7 +117,7 @@ export default function ProvidersPage() {
         api_key: templateApiKey,
         ...(templateBaseUrl.trim() ? { base_url: templateBaseUrl.trim() } : {}),
       });
-      toast.success(`${selectedTemplate.display_name} connected and models discovered`);
+      toast.success(tx(`${selectedTemplate.display_name} đã kết nối và phát hiện mô hình`, `${selectedTemplate.display_name} connected and models discovered`));
       resetTemplate();
       setProviderModalOpen(false);
     } catch (error: any) {
@@ -130,17 +130,17 @@ export default function ProvidersPage() {
     try {
       const res = await testModel.mutateAsync(model.id);
       if (res.ok) {
-        toast.success(`${model.display_name} is active & chat ready!`, {
-          description: `Response: "${res.sample_response || "OK"}" (${res.latency_ms}ms)`,
+        toast.success(tx(`${model.display_name} đã kích hoạt & sẵn sàng chat!`, `${model.display_name} is active & chat ready!`), {
+          description: tx(`Phản hồi: "${res.sample_response || "OK"}" (${res.latency_ms}ms)`, `Response: "${res.sample_response || "OK"}" (${res.latency_ms}ms)`),
         });
       } else {
-        toast.error(`Test failed for ${model.display_name}`, {
-          description: res.message || "No response received",
+        toast.error(tx(`Kiểm thử thất bại với ${model.display_name}`, `Test failed for ${model.display_name}`), {
+          description: res.message || tx("Không nhận được phản hồi", "No response received"),
         });
       }
     } catch (err: any) {
-      toast.error(`Failed to test ${model.display_name}`, {
-        description: err.message || "Connection error",
+      toast.error(tx(`Không thể kiểm thử ${model.display_name}`, `Failed to test ${model.display_name}`), {
+        description: err.message || tx("Lỗi kết nối", "Connection error"),
       });
     } finally {
       setTestingModelId(null);
@@ -253,7 +253,7 @@ export default function ProvidersPage() {
                           autoComplete="off"
                           value={templateApiKey}
                           onChange={(event) => setTemplateApiKey(event.target.value)}
-                          placeholder={selectedTemplate.api_key_required ? "Paste API key" : "Leave empty for local Ollama"}
+                          placeholder={selectedTemplate.api_key_required ? tx("Dán API key", "Paste API key") : tx("Bỏ trống cho Ollama cục bộ", "Leave empty for local Ollama")}
                           required={selectedTemplate.api_key_required}
                         />
                       </div>
@@ -303,8 +303,8 @@ export default function ProvidersPage() {
                           onClick={() =>
                             setSelectedTemplate({
                               key: "custom",
-                              display_name: "Custom provider",
-                              description: "OpenAI-compatible custom endpoint",
+                              display_name: tx("Provider tùy chỉnh", "Custom provider"),
+                              description: tx("Endpoint tùy chỉnh tương thích OpenAI", "OpenAI-compatible custom endpoint"),
                               driver: "openai_compatible",
                               default_base_url: "",
                               api_key_required: false,
@@ -509,7 +509,7 @@ export default function ProvidersPage() {
                         size="icon"
                         variant="ghost"
                         className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                        aria-label={`Edit ${provider.name}`}
+                        aria-label={tx(`Sửa ${provider.name}`, `Edit ${provider.name}`)}
                         onClick={() => {
                           setEditProviderTarget(provider);
                           setEditProviderOpen(true);
@@ -526,7 +526,7 @@ export default function ProvidersPage() {
                           onClick={async () => {
                             try {
                               const result = await testProvider.mutateAsync(provider.id);
-                              toast[result.ok ? "success" : "error"](`${result.message} · ${result.model_count} models`);
+                              toast[result.ok ? "success" : "error"](tx(`${result.message} · ${result.model_count} mô hình`, `${result.message} · ${result.model_count} models`));
                             } catch (error: any) {
                               toast.error(error.message);
                             }
@@ -539,7 +539,7 @@ export default function ProvidersPage() {
                               <Trash2 className="h-3.5 w-3.5" />
                             </Button>
                           }
-                          title={`Delete ${provider.name}?`}
+                          title={tx(`Xóa ${provider.name}?`, `Delete ${provider.name}?`)}
                           description={tx("Tất cả models liên kết với provider này cũng sẽ bị xóa.", "All models associated with this provider will also be removed.")}
                           confirmLabel={tx("Xóa", "Delete")}
                           destructive
@@ -607,7 +607,7 @@ export default function ProvidersPage() {
                 onChange={(event) => setModelQuery(event.target.value)}
                 placeholder={tx("Tìm kiếm tên model hoặc provider...", "Search model name or provider...")}
                 className="pl-9 text-xs"
-                aria-label="Search models"
+                aria-label={tx("Tìm kiếm mô hình", "Search models")}
               />
             </div>
 
@@ -616,7 +616,7 @@ export default function ProvidersPage() {
                 value={modelStatusFilter}
                 onChange={(e) => setModelStatusFilter(e.target.value)}
                 className="flex h-9 cursor-pointer rounded-lg border border-border bg-background px-3 py-1 text-xs text-foreground shadow-sm hover:border-primary/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                aria-label="Filter by active status"
+                aria-label={tx("Lọc theo trạng thái hoạt động", "Filter by active status")}
               >
                 <option value="all">{tx("Tất cả Trạng thái", "All Status")}</option>
                 <option value="active">{tx("Chỉ Hoạt động", "Active Only")}</option>
@@ -627,7 +627,7 @@ export default function ProvidersPage() {
                 value={modelProviderFilter}
                 onChange={(e) => setModelProviderFilter(e.target.value)}
                 className="flex h-9 cursor-pointer rounded-lg border border-border bg-background px-3 py-1 text-xs text-foreground shadow-sm hover:border-primary/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                aria-label="Filter by provider"
+                aria-label={tx("Lọc theo provider", "Filter by provider")}
               >
                 <option value="all">{tx("Tất cả Providers", "All Providers")}</option>
                 {(providers.data ?? []).map((p) => (
@@ -689,7 +689,7 @@ export default function ProvidersPage() {
                           size="icon"
                           variant="ghost"
                           className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                          aria-label={`Edit ${model.display_name}`}
+                          aria-label={tx(`Sửa ${model.display_name}`, `Edit ${model.display_name}`)}
                           onClick={() => {
                             setEditModelTarget(model);
                             setEditModelOpen(true);
@@ -722,7 +722,7 @@ export default function ProvidersPage() {
                               <Trash2 className="h-3.5 w-3.5" />
                             </Button>
                           }
-                          title={`Delete ${model.display_name}?`}
+                          title={tx(`Xóa ${model.display_name}?`, `Delete ${model.display_name}?`)}
                           description={tx("Model này sẽ bị xóa khỏi danh mục của bạn.", "This model will be removed from your catalog.")}
                           confirmLabel={tx("Xóa", "Delete")}
                           destructive

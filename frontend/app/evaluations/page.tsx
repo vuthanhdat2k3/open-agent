@@ -82,7 +82,7 @@ export default function EvaluationsPage() {
       setSuiteDialog(false);
       setSelectedSuiteId(created.id);
       setForm({ ...EMPTY_SUITE, agent_id: form.agent_id });
-      toast.success("Evaluation suite created");
+      toast.success(tx("Đã tạo bộ đánh giá", "Evaluation suite created"));
     } catch (error: any) {
       toast.error(error.message);
     }
@@ -98,7 +98,7 @@ export default function EvaluationsPage() {
       });
       setCaseSuite(null);
       setCaseForm({ input: "", expected_output: "" });
-      toast.success("Test case added");
+      toast.success(tx("Đã thêm test case", "Test case added"));
     } catch (error: any) {
       toast.error(error.message);
     }
@@ -107,7 +107,7 @@ export default function EvaluationsPage() {
   const runSuite = async (suite: EvaluationSuite, mode: "live" | "recorded") => {
     const agent = agents.data?.find((item) => item.id === suite.agent_id);
     if (!agent?.active_release_id) {
-      toast.error("Agent has no active release");
+      toast.error(tx("Agent chưa có bản phát hành hoạt động", "Agent has no active release"));
       return;
     }
     try {
@@ -131,7 +131,7 @@ export default function EvaluationsPage() {
       });
       setSelectedSuiteId(suite.id);
       toast.success(
-        `Evaluation complete: ${(run.pass_rate * 100).toFixed(0)}% passed`
+        tx(`Đánh giá hoàn tất: ${(run.pass_rate * 100).toFixed(0)}% đạt`, `Evaluation complete: ${(run.pass_rate * 100).toFixed(0)}% passed`)
       );
     } catch (error: any) {
       toast.error(error.message);
@@ -168,7 +168,7 @@ export default function EvaluationsPage() {
                         <Badge variant="outline" className="font-mono text-[10px]">v{suite.dataset_version}</Badge>
                       </div>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        {suite.description || "No description"} · <span className="font-medium text-foreground">{agent?.name ?? "Unknown agent"}</span>
+                        {suite.description || tx("Chưa có mô tả", "No description")} · <span className="font-medium text-foreground">{agent?.name ?? tx("Agent không xác định", "Unknown agent")}</span>
                       </p>
                     </div>
                     <div className="flex gap-2">
@@ -338,7 +338,7 @@ export default function EvaluationsPage() {
               onClick={submitSuite}
               disabled={createSuite.isPending || !form.name || !form.agent_id}
             >
-              {createSuite.isPending ? "Creating..." : "Create suite"}
+              {createSuite.isPending ? tx("Đang tạo...", "Creating...") : tx("Tạo bộ đánh giá", "Create suite")}
             </Button>
           </div>
         </DialogContent>
@@ -373,7 +373,7 @@ export default function EvaluationsPage() {
               onClick={submitCase}
               disabled={addCase.isPending || !caseForm.input}
             >
-              {addCase.isPending ? "Adding..." : "Add case"}
+              {addCase.isPending ? tx("Đang thêm...", "Adding...") : tx("Thêm test case", "Add case")}
             </Button>
           </div>
         </DialogContent>

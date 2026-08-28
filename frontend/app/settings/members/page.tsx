@@ -81,11 +81,11 @@ export default function MembersAndAccessPage() {
         role,
         initial_password: password.trim() ? password.trim() : undefined,
       });
-      toast.success("Member added & provisioned successfully");
+      toast.success(tx("Đã thêm thành viên & cấp phát thành công", "Member added & provisioned successfully"));
       setEmail("");
       setPassword("");
     } catch (error: any) {
-      toast.error(error.message || "Unable to add member");
+      toast.error(error.message || tx("Không thể thêm thành viên", "Unable to add member"));
     }
   }
 
@@ -96,9 +96,9 @@ export default function MembersAndAccessPage() {
       const created = await createKey.mutateAsync({ name: keyName.trim() });
       setSecret(created.secret_key);
       setKeyName("");
-      toast.success("API key created successfully");
+      toast.success(tx("Đã tạo API key thành công", "API key created successfully"));
     } catch (error: any) {
-      toast.error(error.message || "Failed to create API key");
+      toast.error(error.message || tx("Không thể tạo API key", "Failed to create API key"));
     }
   }
 
@@ -269,7 +269,7 @@ export default function MembersAndAccessPage() {
                         </div>
                         <div className="min-w-0">
                           <div className="truncate text-sm font-semibold text-foreground">{member.email}</div>
-                          <div className="truncate text-xs text-muted-foreground">{member.display_name || "Active Teammate"}</div>
+                          <div className="truncate text-xs text-muted-foreground">{member.display_name || tx("Đồng đội hoạt động", "Active Teammate")}</div>
                         </div>
                       </div>
 
@@ -284,14 +284,14 @@ export default function MembersAndAccessPage() {
                                 <Trash2 className="h-4 w-4" />
                               </Button>
                             }
-                            title={`Remove ${member.email}?`}
-                            description={tx("This member will lose access to the organization immediately.", "This member will lose access to the organization immediately.")}
-                            confirmLabel="Remove member"
+                            title={tx(`Xóa ${member.email}?`, `Remove ${member.email}?`)}
+                            description={tx("Thành viên này sẽ mất quyền truy cập tổ chức ngay lập tức.", "This member will lose access to the organization immediately.")}
+                            confirmLabel={tx("Xóa thành viên", "Remove member")}
                             destructive
                             onConfirm={() => remove.mutateAsync(member.user_id).then(() => undefined)}
                           />
                         ) : (
-                          <Lock className="h-4 w-4 text-muted-foreground/40" aria-label="Protected member" />
+                          <Lock className="h-4 w-4 text-muted-foreground/40" aria-label={tx("Thành viên được bảo vệ", "Protected member")} />
                         )}
                       </div>
                     </div>
@@ -359,7 +359,7 @@ export default function MembersAndAccessPage() {
                   className="gap-2 shrink-0 border-amber-500/40 bg-amber-500/20 text-xs font-semibold hover:bg-amber-500 hover:text-white"
                   onClick={() => {
                     void navigator.clipboard.writeText(secret);
-                    toast.success("API key copied to clipboard");
+                    toast.success(tx("Đã sao chép API key vào clipboard", "API key copied to clipboard"));
                   }}
                 >
                   <Copy className="h-4 w-4" /> {tx("Copy Secret", "Copy Secret")}</Button>
@@ -401,9 +401,9 @@ export default function MembersAndAccessPage() {
                               <Trash2 className="h-4 w-4" />
                             </Button>
                           }
-                          title={`Revoke API Key ${key.name}?`}
-                          description={tx("Any integration using this key will be revoked immediately.", "Any integration using this key will be revoked immediately.")}
-                          confirmLabel="Revoke Key"
+                          title={tx(`Thu hồi API Key ${key.name}?`, `Revoke API Key ${key.name}?`)}
+                          description={tx("Mọi tích hợp đang dùng key này sẽ bị thu hồi ngay lập tức.", "Any integration using this key will be revoked immediately.")}
+                          confirmLabel={tx("Thu hồi Key", "Revoke Key")}
                           destructive
                           onConfirm={() => revokeKey.mutateAsync(key.id).then(() => undefined)}
                         />

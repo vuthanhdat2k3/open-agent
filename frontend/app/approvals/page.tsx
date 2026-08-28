@@ -259,7 +259,7 @@ export default function ApprovalsPage() {
             />
           ) : items.length ? (
             <div className="space-y-4">
-              <div className="space-y-3" aria-label="Pending approvals">
+              <div className="space-y-3" aria-label={tx("Phê duyệt đang chờ", "Pending approvals")}>
                 {paginatedItems.map((approval) => (
                   <ApprovalCard
                     key={approval.id}
@@ -377,13 +377,13 @@ export default function ApprovalsPage() {
                       <div>
                         <span className="text-muted-foreground">{tx("Khi nào", "When")}</span>
                         <p className="font-medium text-foreground">
-                          {details.start ? `${formatVietnamDateTime(details.start)} · ${t("pages.approvals.vietnamTime", "Giờ Việt Nam")}` : "Not specified"}
+                          {details.start ? `${formatVietnamDateTime(details.start)} · ${t("pages.approvals.vietnamTime", "Giờ Việt Nam")}` : tx("Không xác định", "Not specified")}
                         </p>
                       </div>
                       <div>
                         <span className="text-muted-foreground">{tx("Người tham dự", "Attendees")}</span>
                         <p className="break-words font-medium text-foreground">
-                          {details.attendees.length ? details.attendees.join(", ") : "Not specified"}
+                          {details.attendees.length ? details.attendees.join(", ") : tx("Không xác định", "Not specified")}
                         </p>
                       </div>
                     </div>

@@ -79,7 +79,7 @@ export function EmailTriageAccordion({
       <div className="flex flex-col gap-1.5">
         {currentPageItems.map((n) => {
           const isExpanded = expandedId === n.id;
-          const subject = n.subject || n.title || "(No subject)";
+          const subject = n.subject || n.title || tx("(Không có tiêu đề)", "(No subject)");
           const category = (n.classification || n.type || "GENERAL").toUpperCase();
           const isContract = category.includes("CONTRACT") || category.includes("URGENT");
           const isMeeting = category.includes("CALENDAR") || category.includes("MEETING");
@@ -111,7 +111,7 @@ export function EmailTriageAccordion({
                       {subject}
                     </p>
                     <p className="truncate text-[10.5px] text-muted-foreground">
-                      {n.sender_email || "Client Email"} · {formatVietnamDateTime(n.created_at)}
+                      {n.sender_email || tx("Email khách hàng", "Client Email")} · {formatVietnamDateTime(n.created_at)}
                     </p>
                   </div>
                 </div>
@@ -131,7 +131,7 @@ export function EmailTriageAccordion({
               {isExpanded && (
                 <div className="border-t border-border/60 bg-muted/40 p-3.5 text-xs">
                   <p className="line-clamp-4 leading-relaxed text-muted-foreground font-sans">
-                    {n.body || "Email content scanned and classified by OpenAgent."}
+                    {n.body || tx("Nội dung email đã được OpenAgent quét và phân loại.", "Email content scanned and classified by OpenAgent.")}
                   </p>
                   <div className="mt-3 flex items-center justify-between border-t border-border/50 pt-2.5 text-[11px]">
                     <span className="font-mono text-muted-foreground">
@@ -242,7 +242,7 @@ export function BriefingsAccordion({
               </div>
               <div className="min-w-0">
                 <p className="truncate text-xs font-semibold text-foreground">
-                  {c.company_name || c.company_domain || "Organization Dossier"}
+                  {c.company_name || c.company_domain || tx("Hồ sơ tổ chức", "Organization Dossier")}
                 </p>
                 <p className="truncate font-mono text-[10px] text-muted-foreground">
                   {c.company_domain ? `${c.company_domain} · ` : ""}

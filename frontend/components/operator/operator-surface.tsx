@@ -33,7 +33,7 @@ export function OperatorSurface({
   isOpen,
   onClose,
   anchorRect,
-  companionName = "OpenAgent Operator",
+  companionName,
   approvals,
   notifications,
   cases,
@@ -45,6 +45,7 @@ export function OperatorSurface({
   onSendDirection,
 }: OperatorSurfaceProps) {
     const { locale, tx } = useTranslation();
+    const resolvedCompanionName = companionName ?? tx("OpenAgent Operator", "OpenAgent Operator");
   const [activeTab, setActiveTab] = React.useState<OperatorTab>("approvals");
   const [directionPrompt, setDirectionPrompt] = React.useState("");
   const surfaceRef = React.useRef<HTMLDivElement>(null);
@@ -154,7 +155,7 @@ export function OperatorSurface({
               <Bot className="h-4 w-4" aria-hidden="true" />
             </div>
             <div>
-              <h3 className="text-sm font-semibold tracking-tight text-foreground">{companionName}</h3>
+              <h3 className="text-sm font-semibold tracking-tight text-foreground">{resolvedCompanionName}</h3>
               <p className="text-[11px] text-muted-foreground">{tx("Personal Executive Chief of Staff", "Personal Executive Chief of Staff")}</p>
             </div>
           </div>
@@ -170,7 +171,7 @@ export function OperatorSurface({
                 size="icon"
                 className="h-7 w-7 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
                 onClick={onClose}
-                aria-label="Close"
+                aria-label={tx("Đóng", "Close")}
               >
                 <X className="h-4 w-4" />
               </Button>

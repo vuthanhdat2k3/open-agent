@@ -19,7 +19,7 @@ export function LanguageToggle() {
       onClick={toggle}
       className="h-9 gap-1.5 px-2 text-xs font-semibold hover:bg-accent/60 active-tactile transition-transform"
       title={tx("Chuyển sang Tiếng Anh (English)", "Chuyển sang Tiếng Việt")}
-      aria-label="Toggle Language"
+      aria-label={tx("Chuyển ngôn ngữ", "Toggle Language")}
     >
       <Globe className="h-4 w-4 text-muted-foreground" />
       <span className="font-mono uppercase tracking-wider text-[11px]">
