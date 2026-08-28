@@ -291,25 +291,46 @@ export default function WorkflowEditor() {
 
   const handleInstallTemplate = async (template: WorkflowCatalogItem) => {
     if (template.installed) {
-      toast.info(tx(`"${template.name}" đã được cài đặt rồi`, `"${template.name}" is already installed`));
+      handleOpenInstalledTemplate(template);
       return;
     }
     setIsInstalling(template.key);
     try {
-      await installWorkflowTemplate({
+      const res = await installWorkflowTemplate({
         template_key: template.key,
         name: template.name,
         timezone: "Asia/Ho_Chi_Minh",
         schedule: { kind: "daily", time: "08:00" },
       });
-      toast.success(tx(`Đã cài đặt "${template.name}" thành công! Vào tab Quy trình của tôi để xem.`, `Successfully installed "${template.name}"! Check My Workflows tab.`));
-      // Invalidate catalog so template.installed updates to true immediately
+      toast.success(tx(`Đã cài đặt "${template.name}" thành công!`, `Successfully installed "${template.name}"!`));
       void queryClient.invalidateQueries({ queryKey: ["workflow-catalog"] });
-      void workflows.refetch();
+      void queryClient.invalidateQueries({ queryKey: ["workflow-installations"] });
+      const refetched = await workflows.refetch();
+      const newWf = refetched.data?.find((w) => w.id === res.workflow_id || w.name === template.name);
+      if (newWf) {
+        loadWorkflow(newWf);
+      } else if (res.workflow_id) {
+        setEditId(res.workflow_id);
+        setWfName(res.name || template.name);
+      }
+      setActiveTab("editor");
     } catch (e: any) {
       toast.error(e.message || tx("Không thể cài đặt quy trình", "Failed to install workflow"));
     } finally {
       setIsInstalling(null);
+    }
+  };
+
+  const handleOpenInstalledTemplate = (template: WorkflowCatalogItem) => {
+    const installations = installationsQuery.data ?? [];
+    const inst = installations.find((i) => i.template_key === template.key);
+    const targetWf = data?.find((w) => (inst ? w.id === inst.workflow_id : w.name === template.name));
+    if (targetWf) {
+      loadWorkflow(targetWf);
+      setActiveTab("editor");
+      toast.success(tx(`Đã mở quy trình "${template.name}"`, `Opened "${template.name}"`));
+    } else {
+      setActiveTab("editor");
     }
   };
 
@@ -533,6 +554,19 @@ export default function WorkflowEditor() {
     if (activeRunId !== run.id) {
       setActiveRun(run.id, run.status);
     }
+    // Auto-bind parent workflow when viewing run if not already bound
+    if (!editId && (run as any).workflow_id && data?.length) {
+      const parentWf = data.find((w) => w.id === (run as any).workflow_id);
+      if (parentWf) {
+        setWfName(parentWf.name);
+        setEditId(parentWf.id);
+        const loadedNodes: GraphNode[] = Array.isArray(parentWf.graph?.nodes) ? parentWf.graph.nodes : [];
+        const loadedEdges: GraphEdge[] = Array.isArray(parentWf.graph?.edges) ? parentWf.graph.edges : [];
+        if (nodes.length === 0) {
+          setGraph(loadedNodes, loadedEdges);
+        }
+      }
+    }
     const statuses: Record<string, string> = {};
     const restoredLogs: WorkflowLogItem[] = [];
     for (const node of run.nodes || []) {
@@ -550,7 +584,7 @@ export default function WorkflowEditor() {
     if (run.output?.text) setOutput(String(run.output.text));
     setRunning(!["succeeded", "failed", "diverged", "cancelled", "waiting_approval"].includes(run.status));
     setLogs((previous) => (previous.length === 0 ? restoredLogs : previous));
-  }, [workflowRun.data, setActiveRun, activeRunId]);
+  }, [workflowRun.data, setActiveRun, activeRunId, editId, data, nodes.length, setGraph]);
 
   const runReplay = async (runId: string) => {
     try {
@@ -1325,11 +1359,11 @@ export default function WorkflowEditor() {
                               <Button
                                 size="sm"
                                 variant="outline"
-                                className="w-full gap-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400 border-emerald-500/40 cursor-default"
-                                disabled
+                                className="w-full gap-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400 border-emerald-500/40 hover:bg-emerald-500/10 active-tactile"
+                                onClick={() => handleOpenInstalledTemplate(template)}
                               >
                                 <CheckCircle className="h-3.5 w-3.5" />
-                                {tx("Đã cài đặt", "Installed")}
+                                {tx("Mở quy trình", "Open Workflow")} <ArrowRight className="h-3.5 w-3.5" />
                               </Button>
                             ) : (
                               <Button
