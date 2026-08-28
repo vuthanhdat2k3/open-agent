@@ -177,9 +177,7 @@ async def install_template(
 
     # Materialize the real template DAG so the user owns an editable workflow,
     # not an opaque "catalog_template" placeholder.
-    template_graph = TEMPLATE_DAGS.get(body.template_key)
-    if template_graph is None:
-        raise HTTPException(404, f"template {body.template_key} has no DAG graph")
+    import copy
     default_agent = await db.scalar(
         select(Agent)
         .where(Agent.org_id == org_id, Agent.model_id.is_not(None))
@@ -192,14 +190,38 @@ async def install_template(
         .order_by(Model.created_at.asc())
         .limit(1)
     )
-    template_graph = materialize_template_graph(
-        body.template_key,
-        timezone=body.timezone,
-        schedule=schedule,
-        settings=settings,
-        default_agent_id=default_agent.id if default_agent else None,
-        default_model_id=default_model_id,
-    )
+
+    if body.template_key in TEMPLATE_DAGS:
+        template_graph = materialize_template_graph(
+            body.template_key,
+            timezone=body.timezone,
+            schedule=schedule,
+            settings=settings,
+            default_agent_id=default_agent.id if default_agent else None,
+            default_model_id=default_model_id,
+        )
+    else:
+        # Fallback 1: lookup source workflow in organization by name
+        source_wf = await db.scalar(
+            select(Workflow)
+            .where(Workflow.org_id == org_id, Workflow.name == version.name)
+            .order_by(Workflow.created_at.desc())
+            .limit(1)
+        )
+        if source_wf and source_wf.graph:
+            template_graph = copy.deepcopy(source_wf.graph)
+        else:
+            # Fallback 2: lookup by ID prefix if template key starts with market-
+            short_id = body.template_key.replace("market-", "")
+            source_wf2 = await db.scalar(
+                select(Workflow)
+                .where(Workflow.org_id == org_id, Workflow.id.startswith(short_id))
+                .limit(1)
+            )
+            if source_wf2 and source_wf2.graph:
+                template_graph = copy.deepcopy(source_wf2.graph)
+            else:
+                template_graph = {"nodes": [], "edges": []}
     workflow = Workflow(
         id=gen_id(),
         org_id=org_id,
