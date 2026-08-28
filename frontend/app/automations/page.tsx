@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import * as React from "react";
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
@@ -56,12 +56,12 @@ import {
 import { workflowIcon } from "@/lib/automations/icons";
 
 const categories = [
-  { value: "", label: "All workflows" },
-  { value: "daily_planning", label: "Daily planning" },
-  { value: "meetings", label: "Meetings" },
-  { value: "follow_up", label: "Follow-up" },
-  { value: "customer_intelligence", label: "Customer intelligence" },
-  { value: "reporting", label: "Reporting" },
+  { value: "", labelVi: "Tất cả quy trình", label: "All workflows" },
+  { value: "daily_planning", labelVi: "Lập kế hoạch hàng ngày", label: "Daily planning" },
+  { value: "meetings", labelVi: "Họp & Lịch trình", label: "Meetings" },
+  { value: "follow_up", labelVi: "Theo dõi", label: "Follow-up" },
+  { value: "customer_intelligence", labelVi: "Thông tin khách hàng", label: "Customer intelligence" },
+  { value: "reporting", labelVi: "Báo cáo", label: "Reporting" },
 ];
 
 function integrationLabel(value: string) {
@@ -76,7 +76,8 @@ function integrationLabel(value: string) {
   );
 }
 
-function costLabel(value: string) {
+function costLabel(value: string, locale: string) {
+  if (locale === "vi") return value === "low" ? "Chi phí thấp" : value === "medium" ? "Chi phí trung bình" : "Chi phí cao";
   return value === "low"
     ? "Low cost"
     : value === "medium"
@@ -84,7 +85,12 @@ function costLabel(value: string) {
       : "High cost";
 }
 
-function approvalLabel(value: string) {
+function approvalLabel(value: string, locale: string) {
+  if (locale === "vi") {
+    if (value === "none") return "Không có hành động bên ngoài";
+    if (value === "trusted_rule_eligible") return "Đủ điều kiện quy tắc đáng tin cậy";
+    return "Cần phê duyệt";
+  }
   if (value === "none") return "No external actions";
   if (value === "trusted_rule_eligible") return "Trusted rule eligible";
   return "Approval required";
@@ -146,11 +152,11 @@ function TemplateCard({
             </span>
             <span className="flex items-center gap-1.5">
               <Gauge className="h-3.5 w-3.5" aria-hidden="true" />
-              {costLabel(item.cost_tier)}
+              {costLabel(item.cost_tier, locale)}
             </span>
             <span className="flex items-center gap-1.5 sm:col-span-2">
               <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
-              {approvalLabel(item.side_effect_policy)}
+              {approvalLabel(item.side_effect_policy, locale)}
             </span>
           </div>
         </div>
@@ -171,8 +177,8 @@ function TemplateCard({
             onClick={() => onSetup(item)}
             aria-label={
               item.capabilities.can_install
-                ? `Set up ${item.name}`
-                : `${item.name} preview only`
+                ? tx(`Thiết lập ${item.name}`, `Set up ${item.name}`)
+                : tx(`${item.name} chỉ xem trước`, `${item.name} preview only`)
             }
           >
             {item.capabilities.can_install ? (
@@ -180,7 +186,7 @@ function TemplateCard({
                 {tx("Set up", "Set up")}<ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
               </>
             ) : (
-              "Preview only"
+              tx("Chỉ xem trước", "Preview only")
             )}
           </Button>
         </div>
@@ -257,9 +263,9 @@ function SetupDialog({
           </DialogHeader>
           <div
             className="flex items-center gap-2 border-b border-border/70 pb-4 text-xs font-medium text-muted-foreground"
-            aria-label="Setup progress"
+            aria-label={tx("Tiến trình thiết lập", "Setup progress")}
           >
-            {["Schedule", "Review", "Enable"].map((label, index) => {
+            {([tx("Lên lịch", "Schedule"), tx("Xem lại", "Review"), tx("Bật", "Enable")]).map((label, index) => {
               const current = index + 1 === step;
               const done = index + 1 < step;
               return (
@@ -370,13 +376,13 @@ function SetupDialog({
                       className="mt-0.5 h-4 w-4 shrink-0 text-primary"
                       aria-hidden="true"
                     />
-                    {approvalLabel(item.side_effect_policy)}{tx(". Hành động bên ngoài không bao giờ được thực thi một cách âm thầm.", ". External actions are never silently executed.")}</li>
+                    {approvalLabel(item.side_effect_policy, locale)}{tx(". Hành động bên ngoài không bao giờ được thực thi một cách âm thầm.", ". External actions are never silently executed.")}</li>
                   <li className="flex gap-2">
                     <Gauge
                       className="mt-0.5 h-4 w-4 shrink-0 text-primary"
                       aria-hidden="true"
                     />
-                    {tx("Estimated cost:", "Estimated cost:")}{costLabel(item.cost_tier)} {tx("· up to $", "· up to $")}{item.estimated_cost_usd.per_run_max ?? "—"}{tx("/run.", "/run.")}</li>
+                    {tx("Chi phí ước tính:", "Estimated cost:")}{costLabel(item.cost_tier, locale)} {tx("· tối đa $", "· up to $")}{item.estimated_cost_usd.per_run_max ?? "—"}{tx("/lần chạy.", "/run.")}</li>
                 </ul>
               </div>
               <p className="text-xs text-muted-foreground">
@@ -397,10 +403,10 @@ function SetupDialog({
                     <dt className="text-xs text-muted-foreground">{tx("Schedule", "Schedule")}</dt>
                     <dd className="mt-1 font-medium">
                       {scheduleKind === "hourly"
-                        ? "Every hour"
+                        ? tx("Mỗi giờ một lần", "Every hour")
                         : scheduleKind === "event"
-                          ? "When a relevant event arrives"
-                          : `${scheduleKind === "weekdays" ? "Weekdays" : scheduleKind === "weekly" ? "Weekly" : "Daily"} at ${time}`}
+                          ? tx("Khi có sự kiện liên quan", "When a relevant event arrives")
+                          : tx(`${scheduleKind === "weekdays" ? "Ngày trong tuần" : scheduleKind === "weekly" ? "Hàng tuần" : "Hàng ngày"} lúc ${time}`, `${scheduleKind === "weekdays" ? "Weekdays" : scheduleKind === "weekly" ? "Weekly" : "Daily"} at ${time}`)}
                     </dd>
                   </div>
                   <div>
@@ -410,7 +416,7 @@ function SetupDialog({
                   <div>
                     <dt className="text-xs text-muted-foreground">{tx("Safety", "Safety")}</dt>
                     <dd className="mt-1 font-medium">
-                      {approvalLabel(item.side_effect_policy)}
+                      {approvalLabel(item.side_effect_policy, locale)}
                     </dd>
                   </div>
                 </dl>
@@ -527,13 +533,13 @@ function TemplateDetails({
                 <p className="text-xs text-muted-foreground">
                   {tx("External actions", "External actions")}</p>
                 <p className="mt-1 font-medium">
-                  {approvalLabel(item.side_effect_policy)}
+                  {approvalLabel(item.side_effect_policy, locale)}
                 </p>
               </div>
               <div className="rounded-lg border border-border/70 p-3">
                 <p className="text-xs text-muted-foreground">{tx("Estimated cost", "Estimated cost")}</p>
                 <p className="mt-1 font-medium">
-                  {costLabel(item.cost_tier)} {tx("· up to $", "· up to $")}{item.estimated_cost_usd.per_run_max ?? "—"}{tx("/run", "/run")}</p>
+                  {costLabel(item.cost_tier, locale)} {tx("· tối đa $", "· up to $")}{item.estimated_cost_usd.per_run_max ?? "—"}{tx("/lần chạy", "/run")}</p>
               </div>
             </section>
           </div>
@@ -659,7 +665,7 @@ export default function AutomationsPage() {
           <div
             className="flex items-center gap-1 rounded-lg bg-muted/60 p-1"
             role="tablist"
-            aria-label="Automation views"
+            aria-label={tx("Khung xem tự động hóa", "Automation views")}
           >
             <button
               type="button"
@@ -699,7 +705,7 @@ export default function AutomationsPage() {
                 aria-hidden="true"
               />
               <Input
-                aria-label="Search workflows"
+                aria-label={tx("Tìm kiếm quy trình", "Search workflows")}
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder={tx("Tìm kiếm quy trình...", "Search workflows")}
@@ -707,14 +713,14 @@ export default function AutomationsPage() {
               />
             </div>
             <select
-              aria-label="Filter workflows by category"
+              aria-label={tx("Lọc quy trình theo danh mục", "Filter workflows by category")}
               value={category}
               onChange={(event) => setCategory(event.target.value)}
               className="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground shadow-inner-edge focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               {categories.map((option) => (
                 <option key={option.value} value={option.value}>
-                  {option.label}
+                  {locale === "vi" ? option.labelVi : option.label}
                 </option>
               ))}
             </select>
