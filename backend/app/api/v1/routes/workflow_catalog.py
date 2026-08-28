@@ -1,12 +1,17 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.base import utc_now
+from app.core.authz.policy import PrincipalContext
+from app.core.workflow.template_dags import TEMPLATE_DAGS
+from app.db.base import gen_id, utc_now
 from app.dependencies import get_current_org_id, get_current_user, get_db, require_permission
+from app.models.role import Role
 from app.models.user import User
+from app.models.workflow import Workflow
 from app.models.workflow_installation import WorkflowInstallation
 from app.models.workflow_template import WorkflowTemplate, WorkflowTemplateVersion
 from app.schemas.workflow_catalog import (
@@ -112,13 +117,6 @@ async def list_workflow_templates(
         data=items,
         meta=WorkflowCatalogMeta(server_time=utc_now()),
     )
-
-from pydantic import BaseModel, Field
-from app.core.workflow.template_dags import TEMPLATE_DAGS
-from app.models.workflow import Workflow
-from app.models.role import Role
-from app.db.base import gen_id
-from fastapi import HTTPException
 
 
 class WorkflowPublishRequest(BaseModel):
