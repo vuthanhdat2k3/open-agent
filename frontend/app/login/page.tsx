@@ -100,12 +100,12 @@ export default function LoginPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
-      if (!response.ok) throw new Error("Invalid email or password");
+      if (!response.ok) throw new Error(tx("Email hoặc mật khẩu không đúng", "Invalid email or password"));
       const data = (await response.json()) as { access_token: string };
       setAccessToken(data.access_token);
       window.location.replace("/");
     } catch (error: unknown) {
-      toast.error(error instanceof Error ? error.message : "Unable to sign in");
+      toast.error(error instanceof Error ? error.message : tx("Không thể đăng nhập", "Unable to sign in"));
     } finally {
       setLoading(false);
     }

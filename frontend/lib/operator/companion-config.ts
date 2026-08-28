@@ -24,25 +24,11 @@ export const DEFAULT_COMPANION_CONFIG: CompanionConfig = {
   enableDirectPrompt: true,
 };
 
+// Display labels for these presets live in the consuming component (locale-aware via tx()).
 export const AVATAR_3D_PRESETS = [
-  {
-    id: "service-robot",
-    name: "Autonomous Service Robot",
-    description: "Classic titanium executive droid with floating telemetric HUD ring",
-    url: "/agent-service-robot.glb",
-  },
-  {
-    id: "cyber-orb",
-    name: "Quantum Hologram Sphere",
-    description: "Holographic neural orb suitable for high-density analytics",
-    url: "https://modelviewer.dev/shared-assets/models/Astronaut.glb",
-  },
-  {
-    id: "custom",
-    name: "Custom 3D Model (.glb / .gltf)",
-    description: "Connect your enterprise brand 3D asset URL",
-    url: "",
-  },
+  { id: "service-robot", url: "/agent-service-robot.glb" },
+  { id: "cyber-orb", url: "https://modelviewer.dev/shared-assets/models/Astronaut.glb" },
+  { id: "custom", url: "" },
 ];
 
 const STORAGE_KEY = "openagent_companion_config";

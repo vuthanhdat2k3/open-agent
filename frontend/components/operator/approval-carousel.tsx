@@ -209,7 +209,7 @@ export function ApprovalCarousel({
             onClick={handleBatchApprove}
             disabled={isBatchDeciding}
           >
-            {isBatchDeciding ? t("common.processing", "Processing...") : `Saves ~${approvals.length * 15}m →`}
+            {isBatchDeciding ? t("common.processing", "Processing...") : tx(`Tiết kiệm ~${approvals.length * 15} phút →`, `Saves ~${approvals.length * 15}m →`)}
           </Button>
         </div>
       )}

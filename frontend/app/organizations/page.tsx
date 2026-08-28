@@ -40,9 +40,9 @@ function OrgMembersDialog({ organization, open, onOpenChange }: OrgMembersDialog
       });
       setEmail("");
       setPassword("");
-      toast.success(`Org Admin appointed for ${organization.name}`);
+      toast.success(tx(`Đã bổ nhiệm Quản trị viên cho ${organization.name}`, `Org Admin appointed for ${organization.name}`));
     } catch (err: any) {
-      toast.error(err.message || "Failed to appoint Org Admin");
+      toast.error(err.message || tx("Không thể bổ nhiệm Quản trị viên", "Failed to appoint Org Admin"));
     }
   }
 
@@ -129,15 +129,15 @@ function OrgMembersDialog({ organization, open, onOpenChange }: OrgMembersDialog
                           </Button>
                         }
                         title={tx("Xóa Quản trị viên", "Remove Admin")}
-                        description={`Remove ${m.email} from ${organization.name}?`}
+                        description={tx(`Xóa ${m.email} khỏi ${organization.name}?`, `Remove ${m.email} from ${organization.name}?`)}
                         confirmLabel={tx("Xóa", "Remove")}
                         destructive
                         onConfirm={async () => {
                           try {
                             await remove.mutateAsync(m.user_id);
-                            toast.success(`Removed ${m.email}`);
+                            toast.success(tx(`Đã xóa ${m.email}`, `Removed ${m.email}`));
                           } catch (err: any) {
-                            toast.error(err.message || "Failed to remove member");
+                            toast.error(err.message || tx("Không thể xóa thành viên", "Failed to remove member"));
                           }
                         }}
                       />
@@ -197,7 +197,7 @@ export default function OrganizationsPage() {
       setPassword("");
       toast.success(tx("Đã tạo tổ chức", "Organization created"));
     } catch (error: any) {
-      toast.error(error.message || "Unable to create organization");
+      toast.error(error.message || tx("Không thể tạo tổ chức", "Unable to create organization"));
     }
   }
 
@@ -209,7 +209,7 @@ export default function OrganizationsPage() {
       setRenameOrg(null);
       toast.success(dict.pages.organizations.renamed);
     } catch (error: any) {
-      toast.error(error.message || "Unable to rename organization");
+      toast.error(error.message || tx("Không thể đổi tên tổ chức", "Unable to rename organization"));
     }
   }
 
@@ -268,7 +268,7 @@ export default function OrganizationsPage() {
                         confirmLabel={dict.pages.organizations.delete}
                         destructive
                         loading={remove.isPending}
-                        onConfirm={async () => { try { await remove.mutateAsync(organization.id); toast.success(dict.pages.organizations.deleted); } catch (error: any) { toast.error(error.message || "Unable to delete organization"); } }}
+                        onConfirm={async () => { try { await remove.mutateAsync(organization.id); toast.success(dict.pages.organizations.deleted); } catch (error: any) { toast.error(error.message || tx("Không thể xóa tổ chức", "Unable to delete organization")); } }}
                       />
                     </>}
                     <Badge variant="outline">{tx("hoạt động", "active")}</Badge>

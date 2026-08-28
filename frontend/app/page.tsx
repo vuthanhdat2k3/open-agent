@@ -116,10 +116,10 @@ export default function Dashboard() {
       )}
 
       {approvals.data?.length ? (
-        <section className="space-y-3" aria-label="Approvals that need attention">
+        <section className="space-y-3" aria-label={tx("Phê duyệt cần được chú ý", "Approvals that need attention")}>
           <SectionHeader
             title={dict.pages.approvals.pendingDecisions}
-            description={`${approvals.data.length} approval${approvals.data.length === 1 ? "" : "s"} need review`}
+            description={tx(`${approvals.data.length} phê duyệt cần xem lại`, `${approvals.data.length} approval${approvals.data.length === 1 ? "" : "s"} need review`)}
             actions={
               <Button asChild variant="ghost" size="sm" className="gap-1">
                 <Link href="/approvals">
@@ -143,7 +143,7 @@ export default function Dashboard() {
                 </div>
                 <p className="mt-3 font-semibold text-foreground">{approvalTitle(approval, locale, tx)}</p>
                 <p className="mt-1 truncate text-sm text-muted-foreground">
-                  {String(approval.args_snapshot?.summary || approval.args_snapshot?.title || "Review before execution")}
+                  {String(approval.args_snapshot?.summary || approval.args_snapshot?.title || tx("Xem lại trước khi thực thi", "Review before execution"))}
                 </p>
                 <span className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-primary">
                   {dict.pages.approvals.btnApprove} <ArrowRight className="h-3 w-3" aria-hidden="true" />

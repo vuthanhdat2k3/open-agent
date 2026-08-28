@@ -158,7 +158,7 @@ export function ChatHeaderControls({
               <button
                 type="button"
                 data-delete-trigger
-                aria-label={`Delete session ${s.title}`}
+                aria-label={tx(`Xóa phiên ${s.title}`, `Delete session ${s.title}`)}
                 className="shrink-0 rounded p-1 text-muted-foreground/60 opacity-0 transition-opacity hover:bg-destructive/15 hover:text-destructive focus:opacity-100 focus:outline-none focus:ring-1 focus:ring-destructive/50 group-hover:opacity-100"
                 onClick={(event) => {
                   event.preventDefault();

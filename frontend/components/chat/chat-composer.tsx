@@ -81,7 +81,7 @@ export function ChatComposer({
                 type="button"
                 onClick={() => onAttachmentsChange(attachments.filter((f) => f.id !== file.id))}
                 className="rounded-full p-0.5 hover:bg-destructive/15 hover:text-destructive"
-                aria-label={`Remove ${file.original_name}`}
+                aria-label={tx(`Xóa ${file.original_name}`, `Remove ${file.original_name}`)}
               >
                 <X className="h-3 w-3" aria-hidden="true" />
               </button>
@@ -119,8 +119,8 @@ export function ChatComposer({
           className="h-8 w-8 text-muted-foreground hover:text-foreground"
           onClick={() => fileInputRef.current?.click()}
           disabled={upload.isPending}
-          aria-label="Attach file"
-          title={tx("Attach file", "Attach file")}
+          aria-label={tx("Đính kèm tệp", "Attach file")}
+          title={tx("Đính kèm tệp", "Attach file")}
         >
           {upload.isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Paperclip className="h-4 w-4" aria-hidden="true" />}
         </Button>
@@ -132,8 +132,8 @@ export function ChatComposer({
           disabled={streaming ? false : disabled}
           variant={streaming ? "outline" : "default"}
           className="h-8 w-8 rounded-lg"
-          aria-label={streaming ? "Stop streaming" : "Send message"}
-          title={streaming ? "Stop streaming" : "Send message"}
+          aria-label={streaming ? tx("Dừng phản hồi", "Stop streaming") : tx("Gửi tin nhắn", "Send message")}
+          title={streaming ? tx("Dừng phản hồi", "Stop streaming") : tx("Gửi tin nhắn", "Send message")}
         >
           {streaming ? <Square className="h-3.5 w-3.5" aria-hidden="true" /> : <ArrowUp className="h-4 w-4" aria-hidden="true" />}
         </Button>

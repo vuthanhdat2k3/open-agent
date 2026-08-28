@@ -20,6 +20,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "@/lib/i18n";
 import type { GraphNode } from "@/types";
 
 export type NodeStatus = "idle" | "running" | "done" | "error";
@@ -37,6 +38,7 @@ const KIND_META: Record<
   {
     icon: LucideIcon;
     description: string;
+    descriptionVi: string;
     badgeClass: string;
     chipClass: string;
   }
@@ -44,60 +46,70 @@ const KIND_META: Record<
   input: {
     icon: Box,
     description: "Input Trigger",
+    descriptionVi: "Kích hoạt đầu vào",
     badgeClass: "bg-emerald-500/15 border-emerald-500/30 text-emerald-600 dark:text-emerald-400",
     chipClass: "border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
   },
   scheduler: {
     icon: Clock,
     description: "Scheduled Trigger",
+    descriptionVi: "Kích hoạt theo lịch",
     badgeClass: "bg-amber-500/15 border-amber-500/30 text-amber-600 dark:text-amber-400",
     chipClass: "border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300",
   },
   integration: {
     icon: Cable,
     description: "Integration Connector",
+    descriptionVi: "Đầu nối tích hợp",
     badgeClass: "bg-sky-500/15 border-sky-500/30 text-sky-600 dark:text-sky-400",
     chipClass: "border-sky-500/20 bg-sky-500/10 text-sky-700 dark:text-sky-300",
   },
   triager: {
     icon: GitFork,
     description: "Triage & Router",
+    descriptionVi: "Phân loại & định tuyến",
     badgeClass: "bg-purple-500/15 border-purple-500/30 text-purple-600 dark:text-purple-400",
     chipClass: "border-purple-500/20 bg-purple-500/10 text-purple-700 dark:text-purple-300",
   },
   agent: {
     icon: Bot,
     description: "AI Agent",
+    descriptionVi: "AI Agent",
     badgeClass: "bg-indigo-500/15 border-indigo-500/30 text-indigo-600 dark:text-indigo-400",
     chipClass: "border-indigo-500/20 bg-indigo-500/10 text-indigo-700 dark:text-indigo-300",
   },
   tool: {
     icon: Wrench,
     description: "Tool Executor",
+    descriptionVi: "Bộ thực thi tool",
     badgeClass: "bg-blue-500/15 border-blue-500/30 text-blue-600 dark:text-blue-400",
     chipClass: "border-blue-500/20 bg-blue-500/10 text-blue-700 dark:text-blue-300",
   },
   approval: {
     icon: ShieldAlert,
     description: "Human Approval",
+    descriptionVi: "Phê duyệt bởi con người",
     badgeClass: "bg-amber-500/20 border-amber-500/40 text-amber-600 dark:text-amber-400",
     chipClass: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
   },
   merge: {
     icon: GitMerge,
     description: "Branch Join",
+    descriptionVi: "Gộp nhánh",
     badgeClass: "bg-orange-500/15 border-orange-500/30 text-orange-600 dark:text-orange-400",
     chipClass: "border-orange-500/20 bg-orange-500/10 text-orange-700 dark:text-orange-300",
   },
   sub_workflow: {
     icon: WorkflowIcon,
     description: "Sub-Workflow",
+    descriptionVi: "Quy trình con",
     badgeClass: "bg-violet-500/15 border-violet-500/30 text-violet-600 dark:text-violet-400",
     chipClass: "border-violet-500/20 bg-violet-500/10 text-violet-700 dark:text-violet-300",
   },
   output: {
     icon: LogOut,
     description: "Output Collector",
+    descriptionVi: "Thu kết quả đầu ra",
     badgeClass: "bg-rose-500/15 border-rose-500/30 text-rose-600 dark:text-rose-400",
     chipClass: "border-rose-500/20 bg-rose-500/10 text-rose-700 dark:text-rose-300",
   },
@@ -111,13 +123,16 @@ const statusBorderClass: Record<NodeStatus, string> = {
 };
 
 function BaseWorkflowNode({ id, data, selected }: NodeProps & { data: WorkflowNodeData }) {
+  const { locale, tx } = useTranslation();
   const meta = KIND_META[data.kind] || {
     icon: Box,
     description: data.kind,
+    descriptionVi: data.kind,
     badgeClass: "bg-muted/50 border-border/60 text-foreground/80",
     chipClass: "border-border/30 bg-muted/30 text-muted-foreground/80",
   };
   const Icon = meta.icon;
+  const description = locale === "vi" ? meta.descriptionVi : meta.description;
 
   return (
     <div
@@ -136,8 +151,8 @@ function BaseWorkflowNode({ id, data, selected }: NodeProps & { data: WorkflowNo
       {data.onDelete && (
         <button
           type="button"
-          title="Delete node"
-          aria-label="Delete node"
+          title={tx("Xóa node", "Delete node")}
+          aria-label={tx("Xóa node", "Delete node")}
           onClick={(e) => {
             e.stopPropagation();
             data.onDelete?.(id);
@@ -177,10 +192,10 @@ function BaseWorkflowNode({ id, data, selected }: NodeProps & { data: WorkflowNo
         </div>
         <div className="flex min-w-0 flex-1 flex-col">
           <span className="truncate text-[11px] font-bold leading-tight text-foreground">
-            {data.label || meta.description}
+            {data.label || description}
           </span>
           <span className="truncate text-[10px] font-medium leading-tight text-muted-foreground/80">
-            {meta.description}
+            {description}
           </span>
         </div>
         {data.status === "running" && (

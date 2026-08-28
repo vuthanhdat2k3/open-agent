@@ -15,12 +15,6 @@ interface ChatEmptyStateProps {
   onAttachmentsChange: (files: UploadedFile[]) => void;
 }
 
-const QUICK_ACTIONS = [
-  { icon: FolderSearch, label: "List recent files", prompt: "List the 5 most recently modified files I have access to." },
-  { icon: ListTodo, label: "Summarize my day", prompt: "Summarize what needs my attention today." },
-  { icon: Sparkles, label: "What can you do?", prompt: "What can you help me with?" },
-];
-
 // Adapted from RuixenMoonChat (21st.dev / ruixen.ui): a moon-glow backdrop, a
 // heading block that floats in the upper area (flex-1), and a composer +
 // quick-action pills grouped together near the bottom (not pinned to the

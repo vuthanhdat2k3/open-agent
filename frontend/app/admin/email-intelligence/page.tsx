@@ -131,7 +131,7 @@ export default function EmailOperationsPage() {
       </div>
 
       {/* Segmented Navigation Tabs */}
-      <div className="flex flex-wrap gap-2 border-b border-border/70 pb-2" role="tablist" aria-label="Admin operations sections">
+      <div className="flex flex-wrap gap-2 border-b border-border/70 pb-2" role="tablist" aria-label={tx("Các khu vực vận hành quản trị", "Admin operations sections")}>
         {["overview", "queue", "schedulers", "reviews", "traces"].map((value) => (
           <Button
             key={value}

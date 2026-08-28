@@ -59,7 +59,7 @@ export function AgentCard({
             variant="ghost"
             className="h-7 w-7 text-muted-foreground hover:text-foreground active-tactile transition-transform"
             onClick={() => onReleases(agent)}
-            aria-label={`Release history for ${agent.name}`}
+            aria-label={tx(`Lịch sử phát hành của ${agent.name}`, `Release history for ${agent.name}`)}
           >
             <History className="h-3.5 w-3.5" />
           </Button>
@@ -68,12 +68,12 @@ export function AgentCard({
             variant="ghost"
             className="h-7 w-7 text-muted-foreground hover:text-foreground active-tactile transition-transform"
             onClick={() => onEdit(agent)}
-            aria-label={`Edit ${agent.name}`}
+            aria-label={tx(`Sửa ${agent.name}`, `Edit ${agent.name}`)}
           >
             <Pencil className="h-3.5 w-3.5" />
           </Button>
           <ConfirmDialog
-            trigger={<Button size="icon" variant="ghost" className="h-10 w-10 text-muted-foreground hover:text-destructive" aria-label={`Delete ${agent.name}`}><Trash2 className="h-3.5 w-3.5" /></Button>}
+            trigger={<Button size="icon" variant="ghost" className="h-10 w-10 text-muted-foreground hover:text-destructive" aria-label={tx(`Xóa ${agent.name}`, `Delete ${agent.name}`)}><Trash2 className="h-3.5 w-3.5" /></Button>}
             title={tx(`Xóa agent ${agent.name}?`, `Delete ${agent.name}?`)}
             description={tx("Agent này và toàn bộ cấu hình liên quan sẽ bị xóa vĩnh viễn.", "This agent and its configuration will be permanently removed.")}
             confirmLabel={tx("Xóa agent", "Delete agent")}

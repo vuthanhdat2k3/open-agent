@@ -15,7 +15,7 @@ export function UserNav({ collapsed }: { collapsed?: boolean }) {
   const profile = useProfile();
   const { t, dict, locale, setLocale, tx } = useTranslation();
   const user = profile.data;
-  const displayName = user?.display_name || user?.email?.split("@")[0] || "User";
+  const displayName = user?.display_name || user?.email?.split("@")[0] || tx("Người dùng", "User");
   const email = user?.email || "";
   const initial = displayName.charAt(0).toUpperCase();
   const canManageOrg = useCan("orgs:manage");
@@ -33,7 +33,7 @@ export function UserNav({ collapsed }: { collapsed?: boolean }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" className={cn("group h-auto min-h-11 w-full justify-start gap-3 rounded-lg p-2 text-left", collapsed && "justify-center px-0")} title={collapsed ? displayName : undefined} aria-label={`Open account menu for ${displayName}`}>
+        <Button variant="ghost" className={cn("group h-auto min-h-11 w-full justify-start gap-3 rounded-lg p-2 text-left", collapsed && "justify-center px-0")} title={collapsed ? displayName : undefined} aria-label={tx(`Mở menu tài khoản của ${displayName}`, `Open account menu for ${displayName}`)}>
           <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary text-sm font-bold text-primary-foreground shadow-sm ring-1 ring-primary/30" aria-hidden="true">{initial}</span>
           {!collapsed && <><span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold leading-tight text-foreground">{displayName}</span><span className="block truncate text-xs text-muted-foreground">{email}</span></span><ChevronUp className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" aria-hidden="true" /></>}
         </Button>

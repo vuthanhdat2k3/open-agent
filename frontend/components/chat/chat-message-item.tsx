@@ -61,12 +61,12 @@ function ChatMessageItemBase({ message: m, debug, onApprovalDecision }: ChatMess
       <div
         tabIndex={0}
         role="region"
-        aria-label={`Approval request: ${m.toolName ?? "tool"}`}
+        aria-label={tx(`Yêu cầu phê duyệt: ${m.toolName ?? "tool"}`, `Approval request: ${m.toolName ?? "tool"}`)}
         className="animate-scale-in self-start w-full max-w-[92%] rounded-xl border border-warning/40 bg-warning/[0.06] p-4 text-sm shadow-card my-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <div className="flex items-center gap-2 font-semibold text-foreground">
           <ShieldAlert className="h-4 w-4 text-warning" />
-          <span>{tx("Approval required", "Approval required")}</span>
+          <span>{tx("Yêu cầu phê duyệt", "Approval required")}</span>
           <Badge
             variant={m.status === "approved" ? "success" : m.status === "rejected" ? "destructive" : "warning"}
             className="ml-auto text-[10px]"
@@ -112,12 +112,12 @@ function ChatMessageItemBase({ message: m, debug, onApprovalDecision }: ChatMess
       <div
         tabIndex={0}
         role="alert"
-        aria-label="Model error"
+        aria-label={tx("Lỗi mô hình", "Model error")}
         className="animate-scale-in self-start w-full max-w-[92%] rounded-xl border border-destructive/40 bg-destructive/[0.06] p-3 text-sm text-destructive shadow-card my-1"
       >
         <div className="flex items-center gap-2 font-semibold">
           <XCircle className="h-4 w-4" />
-          <span>{tx("Model error", "Model error")}</span>
+          <span>{tx("Lỗi mô hình", "Model error")}</span>
         </div>
         <p className="mt-2 whitespace-pre-wrap break-words text-foreground">{m.content}</p>
       </div>
@@ -195,11 +195,11 @@ function ChatMessageItemBase({ message: m, debug, onApprovalDecision }: ChatMess
               type="button"
               onClick={() => void copyText(fullTextContent)}
               className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none group-hover:opacity-100"
-              aria-label={copied ? "Message copied" : "Copy message"}
-              title={copied ? "Copied" : "Copy message"}
+              aria-label={copied ? tx("Đã sao chép tin nhắn", "Message copied") : tx("Sao chép tin nhắn", "Copy message")}
+              title={copied ? tx("Đã sao chép", "Copied") : tx("Sao chép tin nhắn", "Copy message")}
             >
               {copied ? <Check className="h-3 w-3" aria-hidden="true" /> : <Copy className="h-3 w-3" aria-hidden="true" />}
-              {copied ? "Copied" : "Copy"}
+              {copied ? tx("Đã sao chép", "Copied") : tx("Sao chép", "Copy")}
             </button>
           </div>
         )}
