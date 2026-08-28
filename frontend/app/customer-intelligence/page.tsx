@@ -486,7 +486,7 @@ function SchedulesTabContent() {
                       <Clock3 className="h-4 w-4 text-primary" />
                       <span className="font-semibold text-sm text-foreground">{tx("Hàng ngày lúc", "Daily at")}{schedule.run_time}</span>
                       <Badge variant={schedule.enabled ? "default" : "outline"} className="text-[9.5px]">
-                        {schedule.enabled ? "Active" : "Paused"}
+                        {schedule.enabled ? tx("Hoạt động", "Active") : tx("Tạm dừng", "Paused")}
                       </Badge>
                     </div>
                     <p className="mt-1 truncate text-xs text-muted-foreground">
@@ -503,7 +503,7 @@ function SchedulesTabContent() {
                   </div>
                 </div>
                 <div className="mt-3 flex items-center justify-between border-t border-border/50 pt-2 text-[11px] text-muted-foreground">
-                  <span>{tx("Chạy lần cuối:", "Last run:")}{schedule.last_run_at ? formatVietnamDateTime(schedule.last_run_at) : "Not run yet"}</span>
+                  <span>{tx("Chạy lần cuối:", "Last run:")}{schedule.last_run_at ? formatVietnamDateTime(schedule.last_run_at) : tx("chưa chạy lần nào", "Not run yet")}</span>
                   <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => void runSchedule(schedule.id)} loading={runNow.isPending}>
                     <Play className="mr-1 h-3 w-3" /> {tx("Chạy ngay", "Run Now")}</Button>
                 </div>
