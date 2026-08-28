@@ -6,7 +6,7 @@ from app.db.base import Base, gen_id, utc_now
 
 class Workflow(Base):
     __tablename__ = "workflows"
-    __table_args__ = (UniqueConstraint("org_id", "name", name="uq_workflows_org_name"),)
+    __table_args__ = (UniqueConstraint("org_id", "created_by_user_id", "name", name="uq_workflows_org_user_name"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=gen_id)
     org_id: Mapped[str] = mapped_column(
