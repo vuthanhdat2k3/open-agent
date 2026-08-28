@@ -10,6 +10,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.config import get_settings
+from app.core.quota.dependencies import _redis_client
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
@@ -37,7 +38,12 @@ def client(async_session_factory):
         async with async_session_factory() as session:
             yield session
 
+    async def _override_redis():
+        return None
+
     app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[_redis_client] = _override_redis
+
     c = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
     yield c
     app.dependency_overrides.clear()
