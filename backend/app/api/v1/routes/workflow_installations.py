@@ -229,7 +229,7 @@ async def install_template(
     except IntegrityError as exc:
         await db.rollback()
         error_text = str(exc.orig)
-        if "uq_workflows_org_name" in error_text:
+        if "uq_workflows_org_user_name" in error_text or "uq_workflows_org_name" in error_text:
             raise HTTPException(409, "workflow name is already in use") from exc
         if "uq_active_workflow_installation_owner_template" in error_text or "uq_workflow_installation_owner_template" in error_text:
             raise HTTPException(409, "workflow template is already installed") from exc
