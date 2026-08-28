@@ -268,14 +268,15 @@ export default function WorkflowEditor() {
   };
 
   const handlePublishToMarketplace = async () => {
-    if (!editId) {
-      toast.error(tx("Vui lòng lưu workflow trước khi đẩy lên Marketplace", "Please save the workflow before publishing to Marketplace"));
+    const targetWfId = publishWfId || editId;
+    if (!targetWfId) {
+      toast.error(tx("Vui lòng chọn workflow trước khi đẩy lên Marketplace", "Please select a workflow before publishing to Marketplace"));
       return;
     }
     setIsPublishing(true);
     try {
       await publishWorkflowToCatalog({
-        workflow_id: editId,
+        workflow_id: targetWfId,
         category: publishCategory,
         description: publishDescription || undefined,
         outcome: publishDescription || undefined,
@@ -283,6 +284,8 @@ export default function WorkflowEditor() {
       });
       toast.success(tx("Đã đẩy quy trình lên Marketplace thành công!", "Successfully published workflow to Marketplace!"));
       setPublishDialogOpen(false);
+      await queryClient.invalidateQueries({ queryKey: ["workflow-catalog"] });
+      await catalogQuery.refetch();
     } catch (e: any) {
       toast.error(e.message || tx("Không thể xuất bản lên Marketplace", "Failed to publish to Marketplace"));
     } finally {
