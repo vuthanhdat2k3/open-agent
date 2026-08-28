@@ -222,8 +222,15 @@ async def unpublish_workflow_from_catalog(
         select(WorkflowTemplate).where(WorkflowTemplate.key == key)
     )
     if template is None:
-        raise HTTPException(404, "template not found")
-    template.status = "archived"
+        from app.models.workflow_template import gen_id
+        template = WorkflowTemplate(
+            id=gen_id(),
+            key=key,
+            status="archived",
+        )
+        db.add(template)
+    else:
+        template.status = "archived"
     TEMPLATE_DAGS.pop(key, None)
     await db.commit()
     return {"ok": True}

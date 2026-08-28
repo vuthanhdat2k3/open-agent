@@ -35,6 +35,7 @@ import {
   Plug,
   ArrowRight,
   Trash2,
+  Edit,
   Plus,
   ChevronRight,
   Info,
@@ -209,6 +210,38 @@ export default function WorkflowEditor() {
       void queryClient.invalidateQueries({ queryKey: ["workflow-catalog"] });
     } catch (e: any) {
       toast.error(e.message || tx("Không thể gỡ bỏ template", "Failed to unpublish template"));
+    }
+  };
+
+  const handleOperatorEditTemplate = async (template: WorkflowCatalogItem) => {
+    // 1. Check if Operator already has this workflow in their workflows list
+    const existingWf = data?.find((w) => w.name === template.name);
+    if (existingWf) {
+      loadWorkflow(existingWf);
+      setActiveTab("editor");
+      toast.success(tx(`Đã mở quy trình "${template.name}" để chỉnh sửa`, `Opened "${template.name}" for editing`));
+      return;
+    }
+
+    // 2. Otherwise, load/install a copy into Operator workspace to tune
+    setIsInstalling(template.key);
+    try {
+      const res = await installWorkflowTemplate({
+        template_key: template.key,
+        name: template.name,
+        timezone: "Asia/Ho_Chi_Minh",
+        schedule: { kind: "daily", time: "08:00" },
+      });
+      toast.success(tx(`Đã nạp quy trình "${template.name}" vào Canvas để chỉnh sửa`, `Loaded "${template.name}" into Canvas for editing`));
+      await workflows.refetch();
+      if (res.workflow_id) {
+        router.push(`/workflows?edit=${res.workflow_id}`);
+      }
+      setActiveTab("editor");
+    } catch (e: any) {
+      toast.error(e.message || tx("Không thể tải quy trình để chỉnh sửa", "Failed to load workflow for editing"));
+    } finally {
+      setIsInstalling(null);
     }
   };
 
@@ -1171,35 +1204,46 @@ export default function WorkflowEditor() {
                       </div>
 
                       <div className="flex items-center justify-between gap-2 pt-2 border-t border-border/40">
-                        {/* Operator Unpublish Action */}
-                        {isOperator && isCustomOrgTemplate && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 px-2 text-destructive hover:bg-destructive/10"
-                            onClick={() => handleUnpublish(template.key)}
-                            title={tx("Gỡ bỏ khỏi Marketplace", "Unpublish from Marketplace")}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
+                        {/* Operator Actions: Edit & Remove */}
+                        {isOperator ? (
+                          <div className="flex items-center justify-between gap-2 w-full">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="gap-1.5 text-xs font-semibold flex-1 border-primary/30 hover:bg-primary/10"
+                              onClick={() => handleOperatorEditTemplate(template)}
+                            >
+                              <Edit className="h-3.5 w-3.5 text-primary" /> {tx("Chỉnh sửa", "Edit")}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 px-2.5 text-destructive hover:bg-destructive/10 text-xs font-semibold gap-1"
+                              onClick={() => handleUnpublish(template.key)}
+                              title={tx("Gỡ bỏ khỏi Marketplace", "Remove from Marketplace")}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" /> {tx("Gỡ bỏ", "Remove")}
+                            </Button>
+                          </div>
+                        ) : (
+                          /* User Action: Install to Personal Workflows */
+                          <div className="flex items-center justify-end gap-2 ml-auto w-full">
+                            <Button
+                              size="sm"
+                              className="w-full gap-1.5 text-xs font-semibold active-tactile"
+                              disabled={isInstalling === template.key}
+                              onClick={() => handleInstallTemplate(template)}
+                            >
+                              {isInstalling === template.key ? (
+                                tx("Đang cài đặt...", "Installing...")
+                              ) : (
+                                <>
+                                  {tx("Cài đặt", "Install")} <ArrowRight className="h-3.5 w-3.5" />
+                                </>
+                              )}
+                            </Button>
+                          </div>
                         )}
-
-                        <div className="flex items-center justify-end gap-2 ml-auto w-full">
-                          <Button
-                            size="sm"
-                            className="w-full gap-1.5 text-xs font-semibold active-tactile"
-                            disabled={isInstalling === template.key}
-                            onClick={() => handleInstallTemplate(template)}
-                          >
-                            {isInstalling === template.key ? (
-                              tx("Đang cài đặt...", "Installing...")
-                            ) : (
-                              <>
-                                {tx("Cài đặt", "Install")} <ArrowRight className="h-3.5 w-3.5" />
-                              </>
-                            )}
-                          </Button>
-                        </div>
                       </div>
                     </CardContent>
                   </Card>
