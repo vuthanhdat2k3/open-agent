@@ -17,7 +17,9 @@ import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getWorkflowCatalog,
+  getWorkflowInstallations,
   installWorkflowTemplate,
+  deleteWorkflowInstallation,
   publishWorkflowToCatalog,
   unpublishWorkflowFromCatalog,
   type WorkflowCatalogItem,
@@ -37,7 +39,7 @@ import {
   Plus,
 } from "lucide-react";
 import { api, streamSSE } from "@/lib/api";
-import { useWorkflows, useCreateWorkflow, useUpdateWorkflow, useAgents, useModels, useGenerateWorkflow, useWorkflowRun } from "@/hooks";
+import { useWorkflows, useCreateWorkflow, useUpdateWorkflow, useDeleteWorkflow, useAgents, useModels, useGenerateWorkflow, useWorkflowRun } from "@/hooks";
 import { useWorkflowStore } from "@/stores";
 import { Button } from "@/components/ui/button";
 import { Input, Label, Textarea } from "@/components/ui/input";
@@ -142,6 +144,7 @@ export default function WorkflowEditor() {
   const workflows = useWorkflows();
   const create = useCreateWorkflow();
   const update = useUpdateWorkflow();
+  const deleteWf = useDeleteWorkflow();
   const generate = useGenerateWorkflow();
   const agents = useAgents();
   const models = useModels(true);
@@ -171,6 +174,13 @@ export default function WorkflowEditor() {
 
   // Operator Publish Dialog State
   const [publishWfId, setPublishWfId] = React.useState("");
+
+  // Fetch user's installations to detect which workflows came from marketplace
+  const installationsQuery = useQuery({
+    queryKey: ["workflow-installations"],
+    queryFn: getWorkflowInstallations,
+    enabled: !isOperator,
+  });
 
   // Fetch Marketplace Templates
   const catalogQuery = useQuery({
@@ -206,6 +216,31 @@ export default function WorkflowEditor() {
       void queryClient.invalidateQueries({ queryKey: ["workflow-catalog"] });
     } catch (e: any) {
       toast.error(e.message || tx("Không thể gỡ bỏ template", "Failed to unpublish template"));
+    }
+  };
+
+  const handleDeleteWorkflow = async (wfId: string, wfName: string, closeDialog?: () => void) => {
+    if (!confirm(tx(`Bạn có chắc muốn xóa workflow "${wfName}"? Hành động này không thể hoàn tác.`, `Delete workflow "${wfName}"? This cannot be undone.`))) {
+      return;
+    }
+    try {
+      // Check if this workflow is installed from marketplace → also archive the installation
+      const installations = installationsQuery.data ?? [];
+      const installation = installations.find((i) => i.workflow_id === wfId);
+      if (installation) {
+        await deleteWorkflowInstallation(installation.id);
+        void queryClient.invalidateQueries({ queryKey: ["workflow-catalog"] });
+        void queryClient.invalidateQueries({ queryKey: ["workflow-installations"] });
+      }
+      await deleteWf.mutateAsync(wfId);
+      // Clear canvas if the deleted workflow was currently loaded
+      if (editId === wfId) {
+        newWorkflow();
+      }
+      toast.success(tx(`Đã xóa workflow "${wfName}"`, `Deleted workflow "${wfName}"`) );
+      closeDialog?.();
+    } catch (e: any) {
+      toast.error(e.message || tx("Không thể xóa workflow", "Failed to delete workflow"));
     }
   };
 
@@ -826,15 +861,26 @@ export default function WorkflowEditor() {
                       />
                     ) : (
                       data.map((wf) => (
-                        <DialogClose asChild key={wf.id}>
+                        <div key={wf.id} className="flex items-center gap-1">
+                          <DialogClose asChild>
+                            <Button
+                              variant="outline"
+                              className="flex-1 justify-start text-xs font-medium"
+                              onClick={() => loadWorkflow(wf)}
+                            >
+                              {wf.name}
+                            </Button>
+                          </DialogClose>
                           <Button
-                            variant="outline"
-                            className="w-full justify-start text-xs font-medium"
-                            onClick={() => loadWorkflow(wf)}
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0 text-destructive hover:bg-destructive/10 shrink-0"
+                            title={tx("Xóa workflow này", "Delete this workflow")}
+                            onClick={() => handleDeleteWorkflow(wf.id, wf.name)}
                           >
-                            {wf.name}
+                            <Trash2 className="h-3.5 w-3.5" />
                           </Button>
-                        </DialogClose>
+                        </div>
                       ))
                     )}
                   </div>
@@ -976,6 +1022,16 @@ export default function WorkflowEditor() {
               <Button size="sm" onClick={save} className="gap-1.5 active-tactile font-semibold">
                 <Save className="h-4 w-4" /> {tx("Lưu", "Save")}
               </Button>
+              {editId && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="gap-1.5 text-xs font-medium text-destructive hover:bg-destructive/10"
+                  onClick={() => handleDeleteWorkflow(editId, wfName)}
+                >
+                  <Trash2 className="h-3.5 w-3.5" /> {tx("Xóa", "Delete")}
+                </Button>
+              )}
             </div>
           </div>
 
