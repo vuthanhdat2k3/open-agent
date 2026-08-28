@@ -335,7 +335,7 @@ export default function EmailIntelligencePage() {
                             </Badge>
                           )}
                           {!n.read_at && (
-                            <span className="inline-flex h-2 w-2 rounded-full bg-primary" aria-label="Unread" />
+                            <span className="inline-flex h-2 w-2 rounded-full bg-primary" aria-label={tx("Chưa đọc", "Unread")} />
                           )}
                         </div>
                         <p className="font-medium text-xs text-foreground/90">{n.subject}</p>

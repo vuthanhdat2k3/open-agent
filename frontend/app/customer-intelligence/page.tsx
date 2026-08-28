@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useState, useEffect, useDeferredValue } from "react";
 import ReactMarkdown from "react-markdown";
@@ -81,16 +81,17 @@ async function downloadCiReport(caseId: string, format: "html" | "pdf" | "docx")
   URL.revokeObjectURL(url);
 }
 
-function statusBadgeInfo(status: string) {
+function statusBadgeInfo(status: string, locale: string) {
   const s = (status || "").toUpperCase();
+  const vi = locale === "vi";
   if (["COMPLETED", "REPORT_READY"].includes(s)) {
-    return { label: "Briefing Ready", variant: "default" as const, color: "text-emerald-500 border-emerald-500/30 bg-emerald-500/10" };
+    return { label: vi ? "Bản tóm tắt sẵn sàng" : "Briefing Ready", variant: "default" as const, color: "text-emerald-500 border-emerald-500/30 bg-emerald-500/10" };
   }
   if (["RESEARCHING", "EXECUTING", "INGESTED"].includes(s)) {
-    return { label: "Researching", variant: "outline" as const, color: "text-sky-500 border-sky-500/30 bg-sky-500/10" };
+    return { label: vi ? "Đang nghiên cứu" : "Researching", variant: "outline" as const, color: "text-sky-500 border-sky-500/30 bg-sky-500/10" };
   }
   if (["NEEDS_REVIEW", "RETRYING", "DEAD_LETTER", "REJECTED"].includes(s)) {
-    return { label: "Action Needed", variant: "destructive" as const, color: "text-amber-500 border-amber-500/30 bg-amber-500/10" };
+    return { label: vi ? "Cần hành động" : "Action Needed", variant: "destructive" as const, color: "text-amber-500 border-amber-500/30 bg-amber-500/10" };
   }
   return { label: status, variant: "outline" as const, color: "text-muted-foreground border-border bg-muted/40" };
 }
@@ -147,12 +148,12 @@ function DetailedDossierView({
         <section className="space-y-3">
           <div className="flex items-center gap-2">
             <Calendar className="h-4 w-4 text-primary" />
-            <h3 className="text-sm font-semibold text-foreground">{tx("Upcoming Meeting Schedule", "Upcoming Meeting Schedule")}</h3>
+            <h3 className="text-sm font-semibold text-foreground">{tx("Lịch họp sắp tới", "Upcoming Meeting Schedule")}</h3>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             {reportMeetings.map((m: any, idx: number) => (
               <Card key={idx} className="p-4 border-border/80 bg-card/60 shadow-sm">
-                <p className="font-semibold text-sm text-foreground">{m.title || "Client Strategy Discussion"}</p>
+                <p className="font-semibold text-sm text-foreground">{m.title || tx("Thảo luận chiến lược khách hàng", "Client Strategy Discussion")}</p>
                 <div className="mt-2 space-y-1 text-xs text-muted-foreground font-mono">
                   {m.start_time && (
                     <p className="flex items-center gap-1.5 text-primary">
@@ -192,7 +193,7 @@ function DetailedDossierView({
           <div className="grid gap-3 sm:grid-cols-2">
             {companies.map((c, idx) => (
               <Card key={idx} className="p-4 border-border/80 bg-card/60 shadow-sm">
-                <p className="font-semibold text-sm text-foreground">{c.name || companyName || "Organization Profile"}</p>
+                <p className="font-semibold text-sm text-foreground">{c.name || companyName || tx("Hồ sơ tổ chức", "Organization Profile")}</p>
                 <p className="mt-1 text-xs text-muted-foreground leading-relaxed font-sans">{c.summary}</p>
                 {c.industry && (
                   <Badge variant="outline" className="mt-2.5 text-[10px] font-mono">
@@ -223,7 +224,7 @@ function DetailedDossierView({
                       rel="noopener noreferrer"
                       className="text-xs font-semibold text-foreground hover:text-primary transition-colors flex items-center gap-1.5"
                     >
-                      {item.headline || item.title || "Market Intelligence Update"}
+                      {item.headline || item.title || tx("Cập nhật thông tin thị trường", "Market Intelligence Update")}
                       {item.url && <ExternalLink className="h-3 w-3 text-muted-foreground shrink-0" />}
                     </a>
                     {item.summary && (
@@ -414,7 +415,7 @@ function SchedulesTabContent() {
         <Card className="shadow-card">
           <CardHeader>
             <CardTitle className="text-base font-semibold text-foreground">
-              {editing ? "Edit Schedule" : "New Daily Sync Routine"}
+              {editing ? tx("Sửa lịch đồng bộ", "Edit Schedule") : tx("Thiết lập đồng bộ hàng ngày mới", "New Daily Sync Routine")}
             </CardTitle>
             <CardDescription className="text-xs">
               {tx("Configure daily automatic background scan of calendar invites and emails.", "Configure daily automatic background scan of calendar invites and emails.")}</CardDescription>
@@ -456,7 +457,7 @@ function SchedulesTabContent() {
                 {tx("Enabled", "Enabled")}</label>
               <Button type="submit" loading={saving} disabled={!editing && !connected.length} className="w-full sm:w-auto font-semibold">
                 <Plus className="mr-1 h-4 w-4" />
-                {editing ? "Save Changes" : "Create Schedule"}
+                {editing ? tx("Lưu thay đổi", "Save Changes") : tx("Tạo lịch đồng bộ", "Create Schedule")}
               </Button>
             </form>
           </CardContent>
@@ -644,8 +645,8 @@ export default function CustomerIntelligencePage() {
 
   const renderCaseItem = (item: CustomerIntelligenceCase) => {
     const isSelected = selected === item.id;
-    const badge = statusBadgeInfo(item.status);
-    const title = item.company_name || item.company_domain || "Client Briefing";
+    const badge = statusBadgeInfo(item.status, locale);
+    const title = item.company_name || item.company_domain || tx("Bản tóm tắt khách hàng", "Client Briefing");
 
     if (viewMode === "compact") {
       return (
@@ -993,11 +994,11 @@ export default function CustomerIntelligencePage() {
                 <div>
                   <div className="flex items-center gap-2">
                     <CardTitle className="text-lg font-bold tracking-tight text-foreground">
-                      {detail.data?.company_name || "Client Dossier Details"}
+                      {detail.data?.company_name || tx("Chi tiết hồ sơ khách hàng", "Client Dossier Details")}
                     </CardTitle>
                     {detail.data && (
-                      <Badge variant="outline" className={`text-xs ${statusBadgeInfo(detail.data.status).color}`}>
-                        {statusBadgeInfo(detail.data.status).label}
+                      <Badge variant="outline" className={`text-xs ${statusBadgeInfo(detail.data.status, locale).color}`}>
+                        {statusBadgeInfo(detail.data.status, locale).label}
                       </Badge>
                     )}
                   </div>
