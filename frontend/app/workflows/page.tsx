@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import * as React from "react";
 import { toast } from "sonner";
@@ -29,6 +29,7 @@ import { EmptyState } from "@/components/shared";
 import {
   Search,
   CheckCircle2,
+  CheckCircle,
   Clock3,
   Gauge,
   ShieldCheck,
@@ -246,20 +247,22 @@ export default function WorkflowEditor() {
   };
 
   const handleInstallTemplate = async (template: WorkflowCatalogItem) => {
+    if (template.installed) {
+      toast.info(tx(`"${template.name}" đã được cài đặt rồi`, `"${template.name}" is already installed`));
+      return;
+    }
     setIsInstalling(template.key);
     try {
-      const res = await installWorkflowTemplate({
+      await installWorkflowTemplate({
         template_key: template.key,
         name: template.name,
         timezone: "Asia/Ho_Chi_Minh",
         schedule: { kind: "daily", time: "08:00" },
       });
-      toast.success(tx(`Đã cài đặt "${template.name}" thành công!`, `Successfully installed "${template.name}"!`));
+      toast.success(tx(`Đã cài đặt "${template.name}" thành công! Vào tab Quy trình của tôi để xem.`, `Successfully installed "${template.name}"! Check My Workflows tab.`));
+      // Invalidate catalog so template.installed updates to true immediately
+      void queryClient.invalidateQueries({ queryKey: ["workflow-catalog"] });
       void workflows.refetch();
-      if (res.workflow_id) {
-        router.push(`/workflows?edit=${res.workflow_id}`);
-      }
-      setActiveTab("editor");
     } catch (e: any) {
       toast.error(e.message || tx("Không thể cài đặt quy trình", "Failed to install workflow"));
     } finally {
@@ -1231,20 +1234,32 @@ export default function WorkflowEditor() {
                         ) : (
                           /* User Action: Install to Personal Workflows */
                           <div className="flex items-center justify-end gap-2 ml-auto w-full">
-                            <Button
-                              size="sm"
-                              className="w-full gap-1.5 text-xs font-semibold active-tactile"
-                              disabled={isInstalling === template.key}
-                              onClick={() => handleInstallTemplate(template)}
-                            >
-                              {isInstalling === template.key ? (
-                                tx("Đang cài đặt...", "Installing...")
-                              ) : (
-                                <>
-                                  {tx("Cài đặt", "Install")} <ArrowRight className="h-3.5 w-3.5" />
-                                </>
-                              )}
-                            </Button>
+                            {template.installed ? (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="w-full gap-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400 border-emerald-500/40 cursor-default"
+                                disabled
+                              >
+                                <CheckCircle className="h-3.5 w-3.5" />
+                                {tx("Đã cài đặt", "Installed")}
+                              </Button>
+                            ) : (
+                              <Button
+                                size="sm"
+                                className="w-full gap-1.5 text-xs font-semibold active-tactile"
+                                disabled={isInstalling === template.key}
+                                onClick={() => handleInstallTemplate(template)}
+                              >
+                                {isInstalling === template.key ? (
+                                  tx("Đang cài đặt...", "Installing...")
+                                ) : (
+                                  <>
+                                    {tx("Cài đặt", "Install")} <ArrowRight className="h-3.5 w-3.5" />
+                                  </>
+                                )}
+                              </Button>
+                            )}
                           </div>
                         )}
                       </div>
