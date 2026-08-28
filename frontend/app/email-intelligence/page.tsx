@@ -324,7 +324,7 @@ export default function EmailIntelligencePage() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-start gap-3 min-w-0">
                       <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-border bg-muted/40 font-semibold text-primary text-xs">
-                        {initials(n.sender_email || "Client")}
+                        {initials(n.sender_email || tx("Khách hàng", "Client"))}
                       </div>
                       <div className="min-w-0 space-y-1">
                         <div className="flex items-center gap-2 flex-wrap">

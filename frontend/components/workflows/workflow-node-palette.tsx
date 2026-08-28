@@ -61,7 +61,7 @@ export function WorkflowNodePalette({ className, onAddNode }: WorkflowNodePalett
       <div className="flex items-center justify-between">
         {!collapsed && (
           <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">
-            {tx("Node palette", "Node palette")}</span>
+            {tx("Bảng node", "Node palette")}</span>
         )}
         <button
           type="button"

@@ -61,7 +61,7 @@ function OrgMembersDialog({ organization, open, onOpenChange }: OrgMembersDialog
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Users className="h-5 w-5 text-primary" />
-            {tx("Org Admins of", "Org Admins of")}{organization.name}
+            {tx("Quản trị viên của", "Org Admins of")}{organization.name}
           </DialogTitle>
           <DialogDescription>{tx("Bổ nhiệm hoặc quản lý Org Admins cho tenant này. Org Admins sẽ tự quản lý operator và người dùng của họ.", "Appoint or manage Org Admins for this tenant. Org Admins will manage their own operators and users.")}</DialogDescription>
         </DialogHeader>
@@ -96,7 +96,7 @@ function OrgMembersDialog({ organization, open, onOpenChange }: OrgMembersDialog
         {/* Members List */}
         <div className="space-y-2 pt-3 border-t border-border">
           <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-            {tx("Current Admins (", "Current Admins (")}{members.data?.length ?? 0})
+            {tx("Quản trị hiện tại (", "Current Admins (")}{members.data?.length ?? 0})
           </Label>
           {members.isLoading ? (
             <LoadingSkeleton variant="table" />
