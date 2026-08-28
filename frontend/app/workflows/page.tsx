@@ -28,18 +28,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { EmptyState } from "@/components/shared";
 import {
   Search,
-  CheckCircle2,
   CheckCircle,
-  Clock3,
-  Gauge,
   ShieldCheck,
   Plug,
   ArrowRight,
   Trash2,
   Edit,
   Plus,
-  ChevronRight,
-  Info,
 } from "lucide-react";
 import { api, streamSSE } from "@/lib/api";
 import { useWorkflows, useCreateWorkflow, useUpdateWorkflow, useAgents, useModels, useGenerateWorkflow, useWorkflowRun } from "@/hooks";
@@ -215,8 +210,11 @@ export default function WorkflowEditor() {
   };
 
   const handleOperatorEditTemplate = async (template: WorkflowCatalogItem) => {
-    // 1. Check if Operator already has this workflow in their workflows list
-    const existingWf = data?.find((w) => w.name === template.name);
+    // 1. Try to find the source workflow by ID (template key is "market-{id[:12]}")
+    const shortId = template.key.startsWith("market-") ? template.key.replace("market-", "") : null;
+    const existingWf = data?.find((w) =>
+      shortId ? w.id.startsWith(shortId) : w.name === template.name
+    );
     if (existingWf) {
       loadWorkflow(existingWf);
       setActiveTab("editor");
@@ -240,6 +238,16 @@ export default function WorkflowEditor() {
       }
       setActiveTab("editor");
     } catch (e: any) {
+      // If already installed, find by name fallback and open it
+      if (e.message?.includes("already installed") || e.message?.includes("already in use")) {
+        const fallbackWf = data?.find((w) => w.name === template.name);
+        if (fallbackWf) {
+          loadWorkflow(fallbackWf);
+          setActiveTab("editor");
+          toast.success(tx(`Đã mở quy trình "${template.name}" để chỉnh sửa`, `Opened "${template.name}" for editing`));
+          return;
+        }
+      }
       toast.error(e.message || tx("Không thể tải quy trình để chỉnh sửa", "Failed to load workflow for editing"));
     } finally {
       setIsInstalling(null);
@@ -1161,7 +1169,6 @@ export default function WorkflowEditor() {
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {catalogItems.map((template) => {
                 const Icon = workflowIcon(template.icon);
-                const isCustomOrgTemplate = template.key.startsWith("market-") || template.key.startsWith("org_");
 
                 return (
                   <Card
