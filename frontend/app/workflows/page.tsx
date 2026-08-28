@@ -150,13 +150,17 @@ export default function WorkflowEditor() {
   const models = useModels(true);
   const data = workflows.data;
   const {
+    activeWorkflowId,
+    activeWorkflowName,
     nodes,
     edges,
     selectedNodeId,
     activeRunId,
     setGraph,
+    setActiveWorkflow,
     setSelectedNode,
     setActiveRun,
+    reset,
   } = useWorkflowStore();
   const workflowRun = useWorkflowRun(activeRunId);
   const router = useRouter();
@@ -234,7 +238,7 @@ export default function WorkflowEditor() {
       }
       await deleteWf.mutateAsync(wfId);
       // Clear canvas if the deleted workflow was currently loaded
-      if (editId === wfId) {
+      if (editId === wfId || activeWorkflowId === wfId) {
         newWorkflow();
       }
       toast.success(tx(`Đã xóa workflow "${wfName}"`, `Deleted workflow "${wfName}"`) );
@@ -371,17 +375,31 @@ export default function WorkflowEditor() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Load a workflow directly when opened with ?edit=<id> (e.g. from Automations)
+  // Load a workflow directly when opened with ?edit=<id> or sync with activeWorkflowId from store
   const didLoadEditRef = React.useRef(false);
   React.useEffect(() => {
-    if (didLoadEditRef.current || typeof window === "undefined") return;
+    if (typeof window === "undefined" || !data) return;
     const url = new URL(window.location.href);
     const editIdParam = url.searchParams.get("edit");
-    if (!editIdParam) return;
-    const wf = data?.find((w) => w.id === editIdParam);
-    if (wf) {
+    if (editIdParam) {
+      const wf = data.find((w) => w.id === editIdParam);
+      if (wf) {
+        didLoadEditRef.current = true;
+        loadWorkflow(wf);
+      } else {
+        didLoadEditRef.current = true;
+        newWorkflow();
+      }
+    } else if (!didLoadEditRef.current) {
       didLoadEditRef.current = true;
-      loadWorkflow(wf);
+      if (activeWorkflowId) {
+        const wf = data.find((w) => w.id === activeWorkflowId);
+        if (wf) {
+          loadWorkflow(wf);
+        } else {
+          newWorkflow();
+        }
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
@@ -483,6 +501,7 @@ export default function WorkflowEditor() {
   };
 
   const newWorkflow = () => {
+    reset();
     setWfName("");
     setEditId(null);
     setInput("");
@@ -490,20 +509,32 @@ export default function WorkflowEditor() {
     setLogs([]);
     setNodeStatus({});
     setActiveRun(null);
-    setGraph([], []);
     setSelectedNode(null);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("edit");
+      url.searchParams.delete("run");
+      window.history.replaceState(null, "", url.toString());
+    }
     toast.success(tx("Workflow mới — đã xóa canvas", "New workflow — canvas cleared"));
   };
 
   const loadWorkflow = (wf: any) => {
+    if (!wf) return;
     setWfName(wf.name);
     setEditId(wf.id);
+    setActiveWorkflow(wf.id, wf.name);
     const loadedNodes: GraphNode[] = Array.isArray(wf.graph?.nodes) ? wf.graph.nodes : [];
     const loadedEdges: GraphEdge[] = Array.isArray(wf.graph?.edges) ? wf.graph.edges : [];
     setGraph(loadedNodes, loadedEdges);
     setSelectedNode(null);
     setLogs([]);
     setOutput("");
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("edit", wf.id);
+      window.history.replaceState(null, "", url.toString());
+    }
     toast.success(`Loaded workflow: ${wf.name}`);
   };
 

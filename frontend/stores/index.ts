@@ -13,12 +13,15 @@ export const useAgentStore = create<AgentState>((set) => ({
 }));
 
 interface WorkflowState {
+  activeWorkflowId: string | null;
+  activeWorkflowName: string;
   nodes: GraphNode[];
   edges: GraphEdge[];
   selectedNodeId: string | null;
   activeRunId: string | null;
   activeRunStatus: string | null;
   setGraph: (nodes: GraphNode[], edges: GraphEdge[]) => void;
+  setActiveWorkflow: (id: string | null, name: string) => void;
   setSelectedNode: (id: string | null) => void;
   setActiveRun: (id: string | null, status?: string | null) => void;
   reset: () => void;
@@ -27,15 +30,27 @@ interface WorkflowState {
 export const useWorkflowStore = create<WorkflowState>()(
   persist(
     (set) => ({
+      activeWorkflowId: null,
+      activeWorkflowName: "",
       nodes: [],
       edges: [],
       selectedNodeId: null,
       activeRunId: null,
       activeRunStatus: null,
       setGraph: (nodes, edges) => set({ nodes, edges }),
+      setActiveWorkflow: (id, name) => set({ activeWorkflowId: id, activeWorkflowName: name }),
       setSelectedNode: (id) => set({ selectedNodeId: id }),
       setActiveRun: (id, status = null) => set({ activeRunId: id, activeRunStatus: status }),
-      reset: () => set({ nodes: [], edges: [], selectedNodeId: null, activeRunId: null, activeRunStatus: null }),
+      reset: () =>
+        set({
+          activeWorkflowId: null,
+          activeWorkflowName: "",
+          nodes: [],
+          edges: [],
+          selectedNodeId: null,
+          activeRunId: null,
+          activeRunStatus: null,
+        }),
     }),
     { name: "openagent-workflow-editor" },
   ),
