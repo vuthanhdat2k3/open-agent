@@ -30,7 +30,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     if (ready && !publicRoute && !isAuthenticated()) window.location.replace("/login");
   }, [ready, publicRoute, pathname]);
 
-  if (!ready && !publicRoute) return <div className="p-6 text-sm text-muted-foreground">{tx("Preparing session...", "Preparing session...")}</div>;
+  if (!ready && !publicRoute) return <div className="p-6 text-sm text-muted-foreground">{tx("Đang chuẩn bị phiên...", "Preparing session...")}</div>;
   return <>{children}</>;
 }
 

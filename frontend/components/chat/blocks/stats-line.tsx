@@ -34,7 +34,7 @@ export function StatsLine({ block, debug }: StatsLineProps) {
     return (
       <div className="flex items-center gap-1.5 text-xs text-destructive mt-1 font-mono">
         <AlertCircle className="h-3.5 w-3.5" />
-        <span>{tx("No answer was generated. Please try again.", "No answer was generated. Please try again.")}</span>
+        <span>{tx("Không có câu trả lời được tạo. Vui lòng thử lại.", "No answer was generated. Please try again.")}</span>
       </div>
     );
   }
