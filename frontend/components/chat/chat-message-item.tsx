@@ -75,7 +75,7 @@ function ChatMessageItemBase({ message: m, debug, onApprovalDecision }: ChatMess
           </Badge>
         </div>
         <p className="mt-2 text-xs text-muted-foreground">
-          {tx("The agent wants to run", "The agent wants to run")}<code className="font-mono text-foreground">{m.toolName ?? "a tool"}</code>.
+          {tx("Agent muốn chạy", "The agent wants to run")}<code className="font-mono text-foreground">{m.toolName ?? "a tool"}</code>.
         </p>
         {m.argsSnapshot != null && (
           <pre className="mt-2 max-h-40 overflow-auto rounded-lg bg-background/80 p-2 text-[11px] font-mono text-muted-foreground">
@@ -91,7 +91,7 @@ function ChatMessageItemBase({ message: m, debug, onApprovalDecision }: ChatMess
               onClick={() => onApprovalDecision(m.approvalId, "approved")}
             >
               <ShieldCheck className="h-3.5 w-3.5" />
-              {tx("Approve", "Approve")}</Button>
+              {tx("Phê duyệt", "Approve")}</Button>
             <Button
               size="sm"
               variant="destructive"
@@ -99,7 +99,7 @@ function ChatMessageItemBase({ message: m, debug, onApprovalDecision }: ChatMess
               onClick={() => onApprovalDecision(m.approvalId, "rejected")}
             >
               <ShieldX className="h-3.5 w-3.5" />
-              {tx("Reject", "Reject")}</Button>
+              {tx("Từ chối", "Reject")}</Button>
           </div>
         )}
       </div>

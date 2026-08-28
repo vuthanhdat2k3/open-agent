@@ -337,7 +337,7 @@ export function Companion3D({
               <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500 shadow-[0_0_8px_#f59e0b]" />
             </span>
             <span>
-              ⚡ {approvals.length} {tx("action", "action")}{approvals.length > 1 ? "s" : ""} {tx("need", "need")}{approvals.length === 1 ? "s" : ""} {tx("review →", "review →")}</span>
+              <span>{tx(`⚡ ${approvals.length} hành động cần xem lại →`, `⚡ ${approvals.length} action${approvals.length > 1 ? "s" : ""} need${approvals.length === 1 ? "s" : ""} review →`)}</span>
           </div>
         )}
 
@@ -406,7 +406,7 @@ export function Companion3D({
 
           {/* Cognition Metric Badge */}
           <div className="pointer-events-none absolute right-[8%] top-[8%] rounded-md border border-border/80 bg-card/90 px-1.5 py-0.5 font-mono text-[9px] font-medium text-primary shadow-sm backdrop-blur-md">
-            {tx("COGNITION //", "COGNITION //")}{activeRoutinesCount}
+            {tx("SUY NGHĨ //", "COGNITION //")}{activeRoutinesCount}
           </div>
 
           {/* Holographic Pedestal Glow */}
