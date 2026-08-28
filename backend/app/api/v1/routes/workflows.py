@@ -251,6 +251,18 @@ async def delete_workflow(
         if existing is None:
             raise HTTPException(404, "workflow not found")
         raise HTTPException(403, "you can only delete workflows you created")
+
+    # Clean up associated marketplace installation if one exists
+    inst = await db.scalar(
+        select(WorkflowInstallation).where(
+            WorkflowInstallation.org_id == org_id,
+            WorkflowInstallation.workflow_id == id,
+        )
+    )
+    if inst:
+        await db.delete(inst)
+        await db.flush()
+
     if not await WorkflowService(db).delete(org_id, id):
         raise HTTPException(404, "workflow not found")
     return {"ok": True}
