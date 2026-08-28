@@ -102,7 +102,7 @@ export function ToolCallCard({ block, compact = false }: ToolCallCardProps) {
             <Wrench className="h-3.5 w-3.5 shrink-0 text-warning" />
           )}
           <span className="uppercase tracking-wider font-bold shrink-0">
-            {isSubagent ? "Subagent Call" : isCodeTool ? "Code Execution" : "Tool Call"}
+            {isSubagent ? tx("Gọi subagent", "Subagent Call") : isCodeTool ? tx("Thực thi mã", "Code Execution") : tx("Gọi tool", "Tool Call")}
           </span>
           <Badge variant="outline" className="font-mono text-[9px] bg-muted text-foreground border-border shrink-0">
             {subagent?.agentName ? `${subagent.agentName}` : block.name}
@@ -198,7 +198,7 @@ export function ToolCallCard({ block, compact = false }: ToolCallCardProps) {
         </CollapsibleTrigger>
         <CollapsibleContent>
           <pre className="block w-full min-h-[30px] max-h-60 overflow-y-auto overflow-x-auto p-3 font-mono text-[10.5px] text-foreground leading-relaxed scrollbar-thin whitespace-pre-wrap break-all bg-muted/40 border-b border-border/40">
-            {codeStr || "No arguments"}
+            {codeStr || tx("Không có đối số", "No arguments")}
           </pre>
         </CollapsibleContent>
       </Collapsible>

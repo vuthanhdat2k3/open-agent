@@ -149,12 +149,12 @@ function CodeBlockWithAction({ className, children, ...props }: any) {
             const code = ev.data?.code ?? 0;
             setExitCode(code);
           } else if (ev.event === "error") {
-            setErrorMessage(ev.data?.message || "Execution error");
+            setErrorMessage(ev.data?.message || tx("Lỗi thực thi", "Execution error"));
           }
         },
       );
     } catch (e: any) {
-      setErrorMessage(e.message || "Execution error");
+      setErrorMessage(e.message || tx("Lỗi thực thi", "Execution error"));
     } finally {
       setIsRunning(false);
     }
@@ -171,7 +171,7 @@ function CodeBlockWithAction({ className, children, ...props }: any) {
               type="button"
               className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-primary/10 text-primary hover:bg-primary/20 transition-colors cursor-pointer"
             >
-              {showPreview ? "▶ Hide Preview" : "▶ Preview"}
+              {showPreview ? tx("▶ Ẩn xem trước", "▶ Hide Preview") : tx("▶ Xem trước", "▶ Preview")}
             </button>
             <button
               onClick={handleOpenNewTab}
@@ -194,7 +194,7 @@ function CodeBlockWithAction({ className, children, ...props }: any) {
                 <span className="h-1.5 w-1.5 rounded-full bg-success animate-ping" />
                 {tx("Running...", "Running...")}</>
             ) : (
-              "▶ Run"
+              tx("▶ Chạy", "▶ Run")
             )}
           </button>
         )}

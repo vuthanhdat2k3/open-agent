@@ -105,7 +105,7 @@ export default function WorkspacePage() {
     setPreviewLoading(true);
     try {
       const res = await fetch(`/api/workspace/artifacts/${artifact.id}/content`);
-      if (!res.ok) throw new Error("Failed to load content");
+      if (!res.ok) throw new Error(tx("Không thể tải nội dung tệp tin.", "Failed to load content"));
       const text = await res.text();
       setPreviewContent(text);
     } catch {
@@ -117,7 +117,7 @@ export default function WorkspacePage() {
 
   async function downloadArtifact(artifact: WorkspaceArtifact) {
     const res = await fetch(`/api/workspace/artifacts/${artifact.id}/content`);
-    if (!res.ok) throw new Error("Download failed");
+    if (!res.ok) throw new Error(tx("Tải xuống thất bại", "Download failed"));
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -250,7 +250,7 @@ export default function WorkspacePage() {
                                 variant="ghost"
                                 className="h-8 w-8"
                                 disabled={!artifact.exists || runArtifact.isPending}
-                                aria-label={`Run ${artifact.path}`}
+                                aria-label={tx(`Chạy ${artifact.path}`, `Run ${artifact.path}`)}
                                 onClick={() => runWorkspaceArtifact(artifact)}
                               >
                                 <Play className="h-3.5 w-3.5" />
@@ -265,7 +265,7 @@ export default function WorkspacePage() {
                                   variant="ghost"
                                   className="h-8 w-8"
                                   disabled={!artifact.exists || !canPreview}
-                                  aria-label={`Preview ${artifact.path}`}
+                                  aria-label={tx(`Xem trước ${artifact.path}`, `Preview ${artifact.path}`)}
                                   onClick={() => openArtifact(artifact)}
                                 >
                                   <Eye className="h-3.5 w-3.5" />
@@ -277,7 +277,7 @@ export default function WorkspacePage() {
                               variant="ghost"
                               className="h-8 w-8"
                               disabled={!artifact.exists}
-                              aria-label={`Download ${artifact.path}`}
+                              aria-label={tx(`Tải xuống ${artifact.path}`, `Download ${artifact.path}`)}
                               onClick={async () => {
                                 try {
                                   await downloadArtifact(artifact);
@@ -290,7 +290,7 @@ export default function WorkspacePage() {
                             </Button>
                             {isAdmin && (
                               <ConfirmDialog
-                                trigger={<Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-destructive" aria-label={`Delete ${artifact.path}`}><Trash2 className="h-3.5 w-3.5" /></Button>}
+                                trigger={<Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-destructive" aria-label={tx(`Xóa ${artifact.path}`, `Delete ${artifact.path}`)}><Trash2 className="h-3.5 w-3.5" /></Button>}
                                 title={tx(`Xóa ${artifact.path}?`, `Delete ${artifact.path}?`)}
                                 description={tx("Tệp workspace này sẽ bị xóa vĩnh viễn khỏi sandbox.", "This workspace artifact will be permanently removed.")}
                                 confirmLabel={tx("Xóa tệp", "Delete artifact")}
@@ -383,13 +383,13 @@ export default function WorkspacePage() {
                               variant="ghost"
                               className="h-8 w-8"
                               onClick={() => openExecution(execution)}
-                              aria-label={`View execution ${execution.id}`}
+                              aria-label={tx(`Xem thực thi ${execution.id}`, `View execution ${execution.id}`)}
                             >
                               <Eye className="h-3.5 w-3.5" />
                             </Button>
                             {isAdmin && (
                               <ConfirmDialog
-                                trigger={<Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-destructive" aria-label={`Delete execution ${execution.id}`}><Trash2 className="h-3.5 w-3.5" /></Button>}
+                                trigger={<Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-destructive" aria-label={tx(`Xóa thực thi ${execution.id}`, `Delete execution ${execution.id}`)}><Trash2 className="h-3.5 w-3.5" /></Button>}
                                 title={tx("Xóa bản ghi thực thi này?", "Delete this execution?")}
                                 description={tx("Bản ghi thực thi và kết quả output sẽ bị xóa vĩnh viễn.", "The execution record and its output preview will be removed.")}
                                 confirmLabel={tx("Xóa bản ghi", "Delete execution")}

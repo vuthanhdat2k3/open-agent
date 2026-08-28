@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import * as React from "react";
 import { toast } from "sonner";
@@ -84,15 +84,16 @@ const DEFAULT_FORM: AgentForm = {
   allowed_risk_tiers: ["safe", "read"],
 };
 
-const TOOL_GROUPS: Record<string, string> = {
-  customer: "Customer intelligence",
-  memory: "Memory",
-  workspace: "Workspace & files",
-  execution: "Execution",
-  research: "Web & research",
-  agents: "Agents & delegation",
-  knowledge: "Knowledge & MCP",
-  other: "Other tools",
+// Each value is a [vi, en] pair; resolve with tx() at render time.
+const TOOL_GROUPS: Record<string, [string, string]> = {
+  customer: ["Thông tin khách hàng", "Customer intelligence"],
+  memory: ["Bộ nhớ", "Memory"],
+  workspace: ["Không gian làm việc & tệp", "Workspace & files"],
+  execution: ["Thực thi", "Execution"],
+  research: ["Web & nghiên cứu", "Web & research"],
+  agents: ["Agent & ủy quyền", "Agents & delegation"],
+  knowledge: ["Kiến thức & MCP", "Knowledge & MCP"],
+  other: ["Tool khác", "Other tools"],
 };
 
 function toolGroup(name: string): string {
@@ -107,16 +108,20 @@ function toolGroup(name: string): string {
 }
 
 const RISK_TIERS = [
-  { key: "safe", label: "Safe", description: "No side effects" },
-  { key: "read", label: "Read", description: "Read data and files" },
-  { key: "write", label: "Write", description: "Create or change data" },
-  { key: "network", label: "Network", description: "Outbound network calls" },
-  { key: "execute", label: "Execute", description: "Run sandboxed code" },
-  { key: "dangerous", label: "Dangerous", description: "High-impact operations" },
+  { key: "safe", label: ["An toàn", "Safe"], description: ["Không có tác dụng phụ", "No side effects"] },
+  { key: "read", label: ["Đọc", "Read"], description: ["Đọc dữ liệu và tệp", "Read data and files"] },
+  { key: "write", label: ["Ghi", "Write"], description: ["Tạo hoặc thay đổi dữ liệu", "Create or change data"] },
+  { key: "network", label: ["Mạng", "Network"], description: ["Cuộc gọi mạng đi ra ngoài", "Outbound network calls"] },
+  { key: "execute", label: ["Thực thi", "Execute"], description: ["Chạy mã trong sandbox", "Run sandboxed code"] },
+  { key: "dangerous", label: ["Nguy hiểm", "Dangerous"], description: ["Thao tác tác động cao", "High-impact operations"] },
 ] as const;
 
 export default function AgentsPage() {
   const { t, dict, locale, tx } = useTranslation();
+  const toolGroupLabel = (group: string) => {
+    const pair = TOOL_GROUPS[group];
+    return pair ? tx(pair[0], pair[1]) : group;
+  };
   const [tabParam, setTabParam] = useUrlSearchParam("tab");
   const activeTab = (tabParam as "catalog" | "companion") || "catalog";
 
@@ -440,8 +445,8 @@ export default function AgentsPage() {
                                 active ? "border-primary bg-primary/10" : "border-border bg-background/50 hover:border-primary/40"
                               }`}
                             >
-                              <p className="font-semibold text-foreground">{tier.label}</p>
-                              <p className="text-[10px] text-muted-foreground">{tier.description}</p>
+                              <p className="font-semibold text-foreground">{tx(tier.label[0], tier.label[1])}</p>
+                              <p className="text-[10px] text-muted-foreground">{tx(tier.description[0], tier.description[1])}</p>
                             </button>
                           );
                         })}
@@ -468,7 +473,7 @@ export default function AgentsPage() {
                         {Object.entries(groupedTools).map(([group, items]) => (
                           <section key={group} className="space-y-2">
                             <div className="flex items-center gap-2 border-b border-border/40 pb-1.5">
-                              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{TOOL_GROUPS[group] ?? group}</span>
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{toolGroupLabel(group)}</span>
                               <span className="text-[10px] text-muted-foreground/60">{items.length}</span>
                             </div>
                             <div className="grid gap-2 sm:grid-cols-2">
@@ -791,7 +796,7 @@ export default function AgentsPage() {
                     <model-viewer
                       ref={previewViewerRef}
                       src={companionConfig.modelUrl || "/agent-service-robot.glb"}
-                      alt="3D Companion Preview"
+                      alt={tx("Xem trước Companion 3D", "3D Companion Preview")}
                       camera-orbit="0deg 75deg 2.2m"
                       field-of-view="24deg"
                       auto-rotate
@@ -869,7 +874,7 @@ export default function AgentsPage() {
                     <option value="">{tx("Default Organization Orchestrator", "Default Organization Orchestrator")}</option>
                     {data?.map((a) => (
                       <option key={a.id} value={a.id}>
-                        {a.name} — {a.description || "Active Agent Persona"}
+                        {a.name} — {a.description || tx("Persona Agent đang hoạt động", "Active Agent Persona")}
                       </option>
                     ))}
                   </Select>
@@ -885,6 +890,21 @@ export default function AgentsPage() {
 
                 <div className="grid gap-3 sm:grid-cols-3">
                   {AVATAR_3D_PRESETS.map((preset) => {
+                    const presetText: Record<string, { name: string; description: string }> = {
+                      "service-robot": {
+                        name: tx("Robot dịch vụ tự chủ", "Autonomous Service Robot"),
+                        description: tx("Robot droid titan điều hành kinh điển với vòng HUD telemetry lơ lửng", "Classic titanium executive droid with floating telemetric HUD ring"),
+                      },
+                      "cyber-orb": {
+                        name: tx("Cầu hologram lượng tử", "Quantum Hologram Sphere"),
+                        description: tx("Quả cầu neural toàn ảnh phù hợp cho phân tích dữ liệu cường độ cao", "Holographic neural orb suitable for high-density analytics"),
+                      },
+                      custom: {
+                        name: tx("Mô hình 3D tùy chỉnh (.glb / .gltf)", "Custom 3D Model (.glb / .gltf)"),
+                        description: tx("Kết nối URL tài sản 3D thương hiệu doanh nghiệp của bạn", "Connect your enterprise brand 3D asset URL"),
+                      },
+                    };
+                    const text = presetText[preset.id] ?? { name: preset.id, description: "" };
                     const isSelected =
                       preset.id === "custom"
                         ? companionConfig.modelUrl !== "/agent-service-robot.glb" &&
@@ -905,9 +925,9 @@ export default function AgentsPage() {
                             : "border-border/80 bg-card hover:border-border hover:bg-muted/30"
                         }`}
                       >
-                        <p className="text-xs font-semibold text-foreground">{preset.name}</p>
+                        <p className="text-xs font-semibold text-foreground">{text.name}</p>
                         <p className="mt-1 text-[10.5px] text-muted-foreground leading-relaxed">
-                          {preset.description}
+                          {text.description}
                         </p>
                       </button>
                     );
@@ -931,10 +951,10 @@ export default function AgentsPage() {
                   {tx("3. Default Screen Placement & Docking", "3. Default Screen Placement & Docking")}</h3>
                 <div className="grid gap-3 sm:grid-cols-4">
                   {[
-                    { id: "bottom-right", label: "Bottom-Right (Default)" },
-                    { id: "middle-right", label: "Middle-Right" },
-                    { id: "top-right", label: "Top-Right" },
-                    { id: "bottom-left", label: "Bottom-Left" },
+                    { id: "bottom-right", label: tx("Dưới-phải (Mặc định)", "Bottom-Right (Default)") },
+                    { id: "middle-right", label: tx("Giữa-phải", "Middle-Right") },
+                    { id: "top-right", label: tx("Trên-phải", "Top-Right") },
+                    { id: "bottom-left", label: tx("Dưới-trái", "Bottom-Left") },
                   ].map((pos) => {
                     const isSelected = companionConfig.defaultPosition === pos.id;
                     return (

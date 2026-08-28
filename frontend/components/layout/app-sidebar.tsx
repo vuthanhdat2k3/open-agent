@@ -100,7 +100,7 @@ export function AppSidebar({ queryClient }: { queryClient: QueryClient }) {
                       </Link>
                     </SidebarMenuButton>
                     {item.href === "/approvals" && pending > 0 && (
-                      <SidebarMenuBadge aria-label={`${pending} pending approvals${urgent ? `, ${urgent} urgent` : ""}`}>
+                      <SidebarMenuBadge aria-label={tx(`${pending} phê duyệt đang chờ${urgent ? `, ${urgent} khẩn cấp` : ""}`, `${pending} pending approvals${urgent ? `, ${urgent} urgent` : ""}`)}>
                         <span>{pending}</span>{urgent > 0 && <span className="ml-1 text-[9px] text-destructive">· {urgent} {tx("urgent", "urgent")}</span>}
                       </SidebarMenuBadge>
                     )}

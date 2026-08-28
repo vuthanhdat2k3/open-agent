@@ -535,7 +535,7 @@ export default function WorkflowEditor() {
       url.searchParams.set("edit", wf.id);
       window.history.replaceState(null, "", url.toString());
     }
-    toast.success(`Loaded workflow: ${wf.name}`);
+    toast.success(tx(`Đã tải workflow: ${wf.name}`, `Loaded workflow: ${wf.name}`));
   };
 
   const save = async (): Promise<string | null> => {
@@ -764,7 +764,7 @@ export default function WorkflowEditor() {
                 ts,
                 event: "node_start",
                 node_id: d.node_id,
-                message: `Node "${d.node_id}" started (${d.kind || "execution"})`,
+                message: tx(`Node "${d.node_id}" đã bắt đầu (${d.kind || "execution"})`, `Node "${d.node_id}" started (${d.kind || "execution"})`),
               },
             ]);
           } else if (ev.event === "node_done") {
@@ -777,7 +777,7 @@ export default function WorkflowEditor() {
                 ts,
                 event: "node_done",
                 node_id: d.node_id,
-                message: `Node "${d.node_id}" completed${outSnippet}`,
+                message: tx(`Node "${d.node_id}" đã hoàn thành${outSnippet}`, `Node "${d.node_id}" completed${outSnippet}`),
                 output: typeof d.output === "string" ? d.output : JSON.stringify(d.output, null, 2),
               },
             ]);
@@ -790,7 +790,7 @@ export default function WorkflowEditor() {
                 ts,
                 event: "node_error",
                 node_id: d.node_id,
-                message: d.message || `Node "${d.node_id}" failed`,
+                message: d.message || tx(`Node "${d.node_id}" đã thất bại`, `Node "${d.node_id}" failed`),
               },
             ]);
           } else if (ev.event === "edge") {
@@ -800,7 +800,7 @@ export default function WorkflowEditor() {
                 id: logId,
                 ts,
                 event: "edge",
-                message: `Edge ${d.from} → ${d.to} taken`,
+                message: tx(`Edge ${d.from} → ${d.to} được kích hoạt`, `Edge ${d.from} → ${d.to} taken`),
               },
             ]);
           } else if (ev.event === "approval_required") {
@@ -811,7 +811,7 @@ export default function WorkflowEditor() {
                 ts,
                 event: "approval_required",
                 node_id: d.node_id,
-                message: `Node "${d.node_id}" waiting for approval (approval_id: ${d.approval_id})`,
+                message: tx(`Node "${d.node_id}" đang chờ phê duyệt (approval_id: ${d.approval_id})`, `Node "${d.node_id}" waiting for approval (approval_id: ${d.approval_id})`),
               },
             ]);
           } else if (ev.event === "error") {
@@ -821,7 +821,7 @@ export default function WorkflowEditor() {
                 id: logId,
                 ts,
                 event: "error",
-                message: d.message || "Workflow execution error",
+                message: d.message || tx("Lỗi thực thi workflow", "Workflow execution error"),
               },
             ]);
           } else if (ev.event === "done") {
@@ -832,7 +832,7 @@ export default function WorkflowEditor() {
                 id: logId,
                 ts,
                 event: "done",
-                message: "Workflow finished successfully",
+                message: tx("Workflow hoàn tất thành công", "Workflow finished successfully"),
                 output: typeof d.output === "string" ? d.output : JSON.stringify(d.output, null, 2),
               },
             ]);
@@ -847,7 +847,7 @@ export default function WorkflowEditor() {
           id: Math.random().toString(36).slice(2, 9),
           ts: Date.now(),
           event: "error",
-          message: e.message || "Execution error occurred",
+          message: e.message || tx("Đã xảy ra lỗi thực thi", "Execution error occurred"),
         },
       ]);
     } finally {
@@ -1140,7 +1140,7 @@ export default function WorkflowEditor() {
               />
             </div>
             <Button className="gap-2 active-tactile transition-transform self-end text-xs" disabled={running} onClick={run}>
-              <Play className="h-3.5 w-3.5" /> {running ? "Running…" : "Run Workflow"}
+              <Play className="h-3.5 w-3.5" /> {running ? tx("Đang chạy…", "Running…") : tx("Chạy Workflow", "Run Workflow")}
             </Button>
           </div>
 
@@ -1198,7 +1198,7 @@ export default function WorkflowEditor() {
                   <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
                     {tx("Khu vực Quản trị Marketplace (Operator)", "Marketplace Management Console (Operator)")}
                     <Badge variant="outline" className="text-[10px] border-emerald-500/40 text-emerald-600 dark:text-emerald-400">
-                      Operator Access
+                      {tx("Truy cập Operator", "Operator Access")}
                     </Badge>
                   </h3>
                   <p className="text-xs text-muted-foreground">

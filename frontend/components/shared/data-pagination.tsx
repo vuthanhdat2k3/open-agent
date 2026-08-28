@@ -69,7 +69,7 @@ export function DataPagination({
             className="h-6 w-6 p-0"
             onClick={() => onPageChange(currentPage - 1)}
             disabled={currentPage === 1}
-            aria-label="Previous"
+            aria-label={tx("Trước", "Previous")}
           >
             <ChevronLeft className="h-3 w-3" />
           </Button>
@@ -79,7 +79,7 @@ export function DataPagination({
             className="h-6 w-6 p-0"
             onClick={() => onPageChange(currentPage + 1)}
             disabled={currentPage === totalPages}
-            aria-label="Next"
+            aria-label={tx("Sau", "Next")}
           >
             <ChevronRight className="h-3 w-3" />
           </Button>
@@ -131,7 +131,7 @@ export function DataPagination({
           className="h-7 w-7 p-0"
           onClick={() => onPageChange(1)}
           disabled={currentPage === 1}
-          aria-label="First page"
+          aria-label={tx("Trang đầu", "First page")}
         >
           <ChevronsLeft className="h-3.5 w-3.5" />
         </Button>
@@ -141,7 +141,7 @@ export function DataPagination({
           className="h-7 w-7 p-0"
           onClick={() => onPageChange(currentPage - 1)}
           disabled={currentPage === 1}
-          aria-label="Previous page"
+          aria-label={tx("Trang trước", "Previous page")}
         >
           <ChevronLeft className="h-3.5 w-3.5" />
         </Button>
@@ -176,7 +176,7 @@ export function DataPagination({
           className="h-7 w-7 p-0"
           onClick={() => onPageChange(currentPage + 1)}
           disabled={currentPage === totalPages || totalItems === 0}
-          aria-label="Next page"
+          aria-label={tx("Trang sau", "Next page")}
         >
           <ChevronRight className="h-3.5 w-3.5" />
         </Button>
@@ -186,7 +186,7 @@ export function DataPagination({
           className="h-7 w-7 p-0"
           onClick={() => onPageChange(totalPages)}
           disabled={currentPage === totalPages || totalItems === 0}
-          aria-label="Last page"
+          aria-label={tx("Trang cuối", "Last page")}
         >
           <ChevronsRight className="h-3.5 w-3.5" />
         </Button>
