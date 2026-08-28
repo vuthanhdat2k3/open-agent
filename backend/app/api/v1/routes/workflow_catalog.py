@@ -5,7 +5,9 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import utc_now
-from app.dependencies import get_current_org_id, get_db, require_permission
+from app.dependencies import get_current_org_id, get_current_user, get_db, require_permission
+from app.models.user import User
+from app.models.workflow_installation import WorkflowInstallation
 from app.models.workflow_template import WorkflowTemplate, WorkflowTemplateVersion
 from app.schemas.workflow_catalog import (
     WorkflowCatalogCapabilities,
@@ -30,12 +32,9 @@ async def list_workflow_templates(
     query: str | None = Query(default=None, max_length=120),
     category: str | None = Query(default=None, max_length=48),
     org_id: str = Depends(get_current_org_id),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> WorkflowCatalogResponse:
-    # The catalog is system-owned. org_id is intentionally resolved and kept in
-    # the route contract so future installation/capability checks cannot forget
-    # tenant context.
-    del org_id
     latest_version = (
         select(
             WorkflowTemplateVersion.template_id,
@@ -69,6 +68,18 @@ async def list_workflow_templates(
         .order_by(WorkflowTemplateVersion.category, WorkflowTemplateVersion.name)
     )
     rows = result.all()
+
+    # Determine which template keys this user has already installed (non-archived)
+    installed_result = await db.execute(
+        select(WorkflowInstallation.template_key)
+        .where(
+            WorkflowInstallation.org_id == org_id,
+            WorkflowInstallation.owner_user_id == current_user.id,
+            WorkflowInstallation.status != "archived",
+        )
+    )
+    installed_keys: set[str] = set(installed_result.scalars().all())
+
     items = [
         WorkflowCatalogItem(
             key=template.key,
@@ -88,7 +99,11 @@ async def list_workflow_templates(
                 recommended=version.recommendation_reason_code is not None,
                 reason_code=version.recommendation_reason_code,
             ),
-            capabilities=WorkflowCatalogCapabilities(can_view=True, can_install=True),
+            installed=template.key in installed_keys,
+            capabilities=WorkflowCatalogCapabilities(
+                can_view=True,
+                can_install=template.key not in installed_keys,
+            ),
             blocked_reasons={},
         )
         for template, version in rows
@@ -100,10 +115,8 @@ async def list_workflow_templates(
 
 from pydantic import BaseModel, Field
 from app.core.workflow.template_dags import TEMPLATE_DAGS
-from app.models.user import User
 from app.models.workflow import Workflow
 from app.models.role import Role
-from app.dependencies import get_current_user
 from app.db.base import gen_id
 from fastapi import HTTPException
 
