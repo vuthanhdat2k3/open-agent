@@ -51,6 +51,9 @@ class AgentOut(AgentBase):
     a2a_exposed: bool = False
     active_release_id: str | None = None
     latest_release_number: int = 0
+    template_key: str | None = None
+    is_customized: bool = True
+    is_pinned: bool = False
     created_at: datetime
     updated_at: datetime
 

@@ -84,6 +84,9 @@ export interface Agent {
   kind: "worker" | "orchestrator";
   active_release_id: string | null;
   latest_release_number: number;
+  template_key?: string | null;
+  is_customized?: boolean;
+  is_pinned?: boolean;
   created_at: string;
   updated_at: string;
 }
