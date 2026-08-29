@@ -278,7 +278,7 @@ def test_run_while_active_409(client, workspace_env, monkeypatch) -> None:
 
 def test_run_requires_files_read(client, workspace_env) -> None:
     env = workspace_env
-    viewer_token = _add_member(client, env.token, env.org_id, "wr_viewer@test.com", "viewer")
+    viewer_token = _add_member(client, env.token, env.org_id, "wr_viewer@test.com", "user")
 
     resp = client.post(
         _run_url(env, "main.py"),

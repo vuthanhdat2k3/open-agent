@@ -255,7 +255,7 @@ def test_viewer_cannot_publish_release(client: TestClient) -> None:
     add = client.post(
         f"/api/orgs/{org_id}/members",
         headers=_headers(owner_token, org_id),
-        json={"email": "release-rbac-viewer@example.com", "role": "viewer"},
+        json={"email": "release-rbac-viewer@example.com", "role": "user"},
     )
     assert add.status_code == 201, add.text
 

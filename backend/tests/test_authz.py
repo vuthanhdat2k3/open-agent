@@ -21,16 +21,24 @@ from app.models.user import User
 
 
 class TestPermissionMatrix:
-    def test_admin_has_everything(self) -> None:
-        assert has_permission(Role.admin, "anything:at:all")
-        assert has_permission(Role.admin, "")
-        assert has_permission(Role.admin, "*")
-        assert has_permission(Role.admin, "orgs:manage")
-        assert has_permission(Role.admin, "models:manage")
-        assert has_permission(Role.admin, "mcp:manage")
-        assert has_permission(Role.admin, "providers:manage")
-        assert has_permission(Role.admin, "agents:create")
-        assert has_permission(Role.admin, "workflows:delete")
+    def test_org_admin_has_everything(self) -> None:
+        assert has_permission(Role.org_admin, "anything:at:all")
+        assert has_permission(Role.org_admin, "")
+        assert has_permission(Role.org_admin, "*")
+        assert has_permission(Role.org_admin, "orgs:manage")
+        assert has_permission(Role.org_admin, "models:manage")
+        assert has_permission(Role.org_admin, "mcp:manage")
+        assert has_permission(Role.org_admin, "providers:manage")
+        assert has_permission(Role.org_admin, "agents:create")
+        assert has_permission(Role.org_admin, "workflows:delete")
+
+    def test_legacy_admin_alias_dropped(self) -> None:
+        # The ``admin`` spelling was removed from the enum and from the
+        # check-time normalizer: unknown role strings must fail closed.
+        assert not has_permission("admin", "orgs:manage")
+        assert not has_permission("admin", "")
+        assert not has_permission("admin", "*")
+        assert not hasattr(Role, "admin")
 
     def test_user_has_explicit_permissions(self) -> None:
         assert has_permission(Role.user, "agents:read")
@@ -337,7 +345,7 @@ class TestRouteRBAC:
         org_id = _get_org_id(client, owner_token)
 
         admin_email = "ao_admin@test.com"
-        admin_home_token = _add_member(client, owner_token, org_id, admin_email, "admin")
+        admin_home_token = _add_member(client, owner_token, org_id, admin_email, "org_admin")
 
         # Admin can read org members
         resp = client.get(
