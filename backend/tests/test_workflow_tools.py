@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.core.tools.registry import BUILTIN_TOOLS
 from app.core.tools.types import ToolContext
-from app.db.base import Base, gen_id
+from app.db.base import Base, gen_id, utc_now
 from app.models.organization import Organization
 from app.models.user import User
 from app.models.workflow import Workflow
@@ -30,7 +30,7 @@ async def async_session_factory():
 @pytest.fixture
 async def test_env(async_session_factory):
     async with async_session_factory() as db:
-        org = Organization(id=gen_id(), name="Test Org")
+        org = Organization(id=gen_id(), name="Test Org", slug="test-org")
         user = User(id=gen_id(), email="user@test.com", hashed_password="pw", is_active=True)
         db.add(org)
         db.add(user)
@@ -57,7 +57,6 @@ async def test_env(async_session_factory):
         tpl = WorkflowTemplate(
             id=gen_id(),
             key="news-digest",
-            org_id=org.id,
             status="published",
         )
         db.add(tpl)
@@ -69,8 +68,7 @@ async def test_env(async_session_factory):
             category="custom",
             description="Marketplace template for news",
             outcome="Daily news report",
-            graph={"nodes": [{"id": "in", "kind": "input"}], "edges": []},
-            published_at=tpl.created_at,
+            published_at=utc_now(),
         )
         db.add(version)
         await db.commit()
