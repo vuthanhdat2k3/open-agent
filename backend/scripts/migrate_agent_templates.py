@@ -20,7 +20,7 @@ from app.core.agents.templates import (
     SystemAgentBlueprint,
     _template_match_hash,
 )
-from app.db.session import async_session_maker
+from app.db.session import SessionLocal
 from app.models.agent import Agent
 from app.models.agent_release import AgentRelease
 from app.models.org_agent_settings import OrgAgentSettings
@@ -75,7 +75,7 @@ async def run_migration(apply: bool = False, csv_path: str = "agent_migration_re
     print(f"🚀 SYSTEM AGENT TEMPLATES MIGRATION — MODE: {'[APPLY]' if apply else '[DRY-RUN]'}")
     print("=" * 80)
 
-    async with async_session_maker() as db:
+    async with SessionLocal() as db:
         # Load all agents
         res = await db.execute(select(Agent).order_by(Agent.org_id, Agent.created_at))
         agents = res.scalars().all()
