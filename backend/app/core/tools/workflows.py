@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from app.core.workflow.validation import WorkflowValidationError
 from sqlalchemy import and_, func, select
 from sqlalchemy.exc import IntegrityError
 
@@ -16,6 +15,7 @@ from app.db.base import gen_id
 from app.models.workflow import Workflow
 from app.models.workflow_installation import WorkflowInstallation
 from app.models.workflow_template import WorkflowTemplate, WorkflowTemplateVersion
+from app.schemas.workflow import WorkflowValidationError
 from app.services.workflow_service import WorkflowService
 
 
