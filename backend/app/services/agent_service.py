@@ -361,6 +361,8 @@ class AgentService:
             enable_thinking=blueprint.enable_thinking,
             a2a_exposed=blueprint.a2a_exposed,
             auto_rollback_enabled=blueprint.auto_rollback_enabled,
+            active_release_id=None,
+            latest_release_number=0,
             template_key=blueprint.key,
             is_customized=False,
             created_at=now,
