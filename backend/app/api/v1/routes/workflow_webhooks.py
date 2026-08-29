@@ -12,23 +12,26 @@ import copy
 import hashlib
 import hmac
 import json
+from datetime import timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.db.base import gen_id
+from app.db.base import gen_id, utc_now
 from app.db.session import get_db
 from app.models.outbox import OutboxEvent
 from app.models.workflow import Workflow
+from app.models.workflow_installation import WorkflowInstallation
 from app.models.workflow_run import WorkflowRun
 
 router = APIRouter(prefix="/api/webhooks/workflow", tags=["webhooks"])
 
 _MAX_BODY_BYTES = 1 * 1024 * 1024  # 1MB
+_MAX_RUNS_PER_MINUTE = 60
 
 
 def _verify_token(request: Request) -> None:
@@ -54,6 +57,26 @@ async def workflow_webhook(
     workflow = await db.scalar(select(Workflow).where(Workflow.id == workflow_id))
     if workflow is None:
         raise HTTPException(404, "workflow not found")
+
+    # A paused/archived marketplace installation must not fire, mirroring the
+    # scheduler gate. Hand-built workflows (no installation) are unaffected.
+    installation_status = await db.scalar(
+        select(WorkflowInstallation.status).where(WorkflowInstallation.workflow_id == workflow.id)
+    )
+    if installation_status is not None and installation_status != "enabled":
+        raise HTTPException(409, "workflow is paused")
+
+    # Cheap DoS guard: this endpoint is unauthenticated (token-gated) and each
+    # accepted call spends LLM budget, so cap accepted runs per workflow per
+    # minute. Idempotency (below) also lets a caller safely retry.
+    recent = await db.scalar(
+        select(func.count(WorkflowRun.id)).where(
+            WorkflowRun.workflow_id == workflow.id,
+            WorkflowRun.started_at >= utc_now() - timedelta(minutes=1),
+        )
+    )
+    if (recent or 0) >= _MAX_RUNS_PER_MINUTE:
+        raise HTTPException(429, "webhook rate limit exceeded for this workflow")
 
     webhook_paths = {
         str((node.get("parameters") or node.get("config") or {}).get("webhook_path")).strip("/")
@@ -98,6 +121,18 @@ async def workflow_webhook(
     except json.JSONDecodeError:
         parsed_payload = payload
 
+    # Idempotency: a caller that retries (network flake, at-least-once
+    # delivery) can pass X-Idempotency-Key; the unique trigger_occurrence_key
+    # then collapses duplicates to the first accepted run.
+    idem_key = request.headers.get("x-idempotency-key", "").strip()
+    occurrence_key = f"webhook:{workflow.id}:{path.strip('/')}:{idem_key}" if idem_key else None
+    if occurrence_key:
+        existing_run_id = await db.scalar(
+            select(WorkflowRun.id).where(WorkflowRun.trigger_occurrence_key == occurrence_key)
+        )
+        if existing_run_id is not None:
+            return {"workflow_run_id": existing_run_id, "status": "queued", "accepted": True, "deduplicated": True}
+
     occurrence_id = gen_id()
     run_id = gen_id()
     db.add(
@@ -118,6 +153,7 @@ async def workflow_webhook(
             graph_hash=graph_hash,
             trigger_node_id=trigger_node["id"],
             trigger_type="integration",
+            trigger_occurrence_key=occurrence_key,
         )
     )
     await db.flush()
@@ -137,5 +173,11 @@ async def workflow_webhook(
         await db.commit()
     except IntegrityError as exc:
         await db.rollback()
+        if occurrence_key:
+            raced_run_id = await db.scalar(
+                select(WorkflowRun.id).where(WorkflowRun.trigger_occurrence_key == occurrence_key)
+            )
+            if raced_run_id is not None:
+                return {"workflow_run_id": raced_run_id, "status": "queued", "accepted": True, "deduplicated": True}
         raise HTTPException(409, "webhook run could not be queued") from exc
     return {"workflow_run_id": run_id, "status": "queued", "accepted": True}

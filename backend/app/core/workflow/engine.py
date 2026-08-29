@@ -11,7 +11,7 @@ from typing import Any
 
 import structlog
 from simpleeval import simple_eval
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import get_settings
@@ -28,12 +28,19 @@ from app.core.workflow.replay import ReplayCursor, record_tool_call
 from app.db.base import utc_now
 from app.mcp.client import build_mcp_tool_spec
 from app.models.agent import Agent
+from app.models.approval_request import ApprovalRequest
 from app.models.workflow import Workflow
 from app.models.workflow_node_run import WorkflowNodeRun
 from app.models.workflow_run import WorkflowRun
 from app.schemas.workflow import NodeOutput
 
 logger = structlog.get_logger(__name__)
+
+# Sub-workflow nodes recurse through the engine in-process. Graph validation
+# only rejects a direct self-reference, so two workflows that reference each
+# other (A->B->A) would otherwise recurse until the stack/memory gives out,
+# each level spawning runs and LLM calls. Cap the nesting depth.
+MAX_SUBWORKFLOW_DEPTH = 3
 
 
 def _eval_condition(cond: str, output: Any) -> bool:
@@ -291,6 +298,7 @@ async def _run_triager(
     mode = cfg.get("mode")
     categories = str(cfg.get("categories") or "high_priority, action_required, routine")
     category_list = [c.strip() for c in re.split(r"[,;\n]", categories) if c.strip()]
+    output_format = cfg.get("output_format", "category_with_reason")
 
     if mode is None:
         # Legacy placeholder node (no mode): keep the old passthrough text so
@@ -317,7 +325,9 @@ async def _run_triager(
                 continue
             try:
                 if re.search(str(pattern), upstream_text, re.IGNORECASE):
-                    return NodeOutput(text=category, data={"category": category, "reason": f"rule match: {pattern}"})
+                    reason = f"rule match: {pattern}"
+                    text = category if output_format == "category_only" else f"{category} — {reason}".strip(" —")
+                    return NodeOutput(text=text, data={"category": category, "reason": reason})
             except re.error:
                 continue
         return NodeOutput(text="", data={"category": "", "reason": "no rule matched"})
@@ -326,7 +336,6 @@ async def _run_triager(
     model_id = cfg.get("model_id")
     org_id = node.get("_org_id", "")
     instruction = str(cfg.get("instruction") or "")
-    output_format = cfg.get("output_format", "category_with_reason")
     result, _usage, _calls = await _llm_classify(
         db, org_id, model_id, upstream_text, category_list, instruction
     )
@@ -340,7 +349,7 @@ async def _run_triager(
     if not category:
         category = category_list[0] if category_list else "unclassified"
     text = category if output_format == "category_only" else f"{category} — {reason}".strip(" —")
-    return NodeOutput(text=category, data={"category": category, "reason": reason})
+    return NodeOutput(text=text, data={"category": category, "reason": reason})
 
 
 async def _llm_classify(
@@ -725,6 +734,7 @@ async def _run_workflow_events(
     timezone_name: str | None = None,
     trigger_node_id: str | None = None,
     trigger_type: str | None = None,
+    subworkflow_depth: int = 0,
 ) -> AsyncIterator[dict[str, Any]]:
     settings = get_settings()
     workflow_run = await create_workflow_run(
@@ -767,9 +777,12 @@ async def _run_workflow_events(
         from app.core.workflow.queue import enqueue_workflow_run
 
         if workflow_run.status not in {"queued", "running"} or workflow_run_id is None:
-            await enqueue_workflow_run(workflow_run.id)
+            # Persist the queued status BEFORE handing the job to the worker:
+            # a worker that claims the job immediately must never observe the
+            # pre-commit "running" status and treat this as a live run.
             workflow_run.status = "queued"
             await db.commit()
+            await enqueue_workflow_run(workflow_run.id)
             yield {"event": "workflow_queued", "data": {"workflow_run_id": workflow_run.id}}
         else:
             yield {"event": "workflow_attached", "data": {"workflow_run_id": workflow_run.id}}
@@ -777,7 +790,7 @@ async def _run_workflow_events(
 
     # An inline reconnect may race with the original request or a worker.
     # Claiming the DB lease prevents two executors from running side effects.
-    if workflow_run_id and workflow_run.status in {"succeeded", "failed", "diverged"}:
+    if workflow_run_id and workflow_run.status in {"succeeded", "failed", "diverged", "cancelled"}:
         yield {
             "event": "workflow_finished",
             "data": {"workflow_run_id": workflow_run.id, "status": workflow_run.status},
@@ -1060,6 +1073,34 @@ async def _run_workflow_events(
             )
             return NodeOutput(text=str(result), data={"result": result})
         if kind == "approval":
+            # On resume after a decision, this run re-enters the approval node.
+            # Consult the existing request instead of creating a duplicated one:
+            #   - pending  -> keep waiting on the SAME request
+            #   - approved -> pass the node and continue downstream
+            #   - rejected -> the node fails (honours the onError policy)
+            existing = (
+                await db.execute(
+                    select(ApprovalRequest)
+                    .where(
+                        ApprovalRequest.org_id == workflow.org_id,
+                        ApprovalRequest.run_type == "workflow",
+                        ApprovalRequest.run_id == workflow_run.id,
+                        ApprovalRequest.node_id == node["id"],
+                    )
+                    .order_by(ApprovalRequest.created_at.desc())
+                )
+            ).scalars().first()
+            if existing is not None:
+                if existing.status == "approved":
+                    return NodeOutput(
+                        text="approved",
+                        data={"approved": True, "approval_id": existing.id, "reason": existing.reason},
+                    )
+                if existing.status == "rejected":
+                    raise RuntimeError(
+                        f"approval rejected: {existing.reason or 'no reason given'}"
+                    )
+                raise WorkflowWaitingApproval(existing.id)
             approval = await request_approval(
                 db,
                 org_id=workflow.org_id,
@@ -1075,6 +1116,11 @@ async def _run_workflow_events(
             child_workflow_id = cfg.get("workflow_id")
             if not child_workflow_id:
                 raise RuntimeError("sub_workflow node missing workflow_id")
+            if subworkflow_depth >= MAX_SUBWORKFLOW_DEPTH:
+                raise RuntimeError(
+                    f"sub_workflow nesting exceeds the maximum depth of {MAX_SUBWORKFLOW_DEPTH} "
+                    "(a cycle between workflows is likely)"
+                )
             res = await db.execute(
                 select(Workflow).where(
                     Workflow.id == child_workflow_id,
@@ -1093,6 +1139,7 @@ async def _run_workflow_events(
                 force_inline=True,
                 user_id=actor_user_id,
                 timezone_name=timezone_name,
+                subworkflow_depth=subworkflow_depth + 1,
             )
             return NodeOutput(text=str(child_output), data={"output": child_output})
         if kind == "agent":
@@ -1106,7 +1153,7 @@ async def _run_workflow_events(
             retry_cfg = {}
         max_attempts = max(1, int(retry_cfg.get("max_attempts", 1) or 1))
         backoff_s = max(0.0, float(retry_cfg.get("backoff_s", 0.0) or 0.0))
-        timeout_s = node.get("timeout_s") or cfg.get("timeout_s")
+        timeout_s = node.get("timeout_s") or cfg.get("timeout_s") or settings.workflow_node_default_timeout_s
 
         # Resume: a node that already succeeded in an earlier attempt of this
         # run is not executed again — its recorded output is replayed. This
@@ -1121,7 +1168,18 @@ async def _run_workflow_events(
         last_error: Exception | None = None
         incoming = [e for e in edges_to[node["id"]] if e["_idx"] in active_edges]
         node_input = {"inputs": {e["from_"]: outputs[e["from_"]].text for e in incoming if e["from_"] in outputs}}
-        for attempt in range(1, max_attempts + 1):
+        # A resumed run re-enters nodes that did not succeed (an approval gate
+        # that was waiting, or a node mid-flight when the worker died). Those
+        # already have node_run rows, so continue the attempt counter past them
+        # instead of colliding with the (run_id, node_id, attempt) unique key.
+        prior_attempts = await db.scalar(
+            select(func.max(WorkflowNodeRun.attempt)).where(
+                WorkflowNodeRun.workflow_run_id == workflow_run.id,
+                WorkflowNodeRun.node_id == node["id"],
+            )
+        )
+        attempt_base = int(prior_attempts or 0)
+        for attempt in range(attempt_base + 1, attempt_base + max_attempts + 1):
             node_run = await _start_node_run(db, workflow_run.id, node["id"], attempt, node_input)
             try:
                 with genai.workflow_node_span(
@@ -1199,7 +1257,25 @@ async def _run_workflow_events(
             return await run_node(node, db)
 
     error_flag = False
+    first_error: str | None = None
     while True:
+        # Cooperative cancellation: the run row is the shared signal between
+        # the cancel endpoint and whichever executor holds the lease. Re-read
+        # the persisted status (not the stale identity-map object) each round
+        # so a cancel issued while a node was running stops the next round.
+        persisted_status = await db.scalar(
+            select(WorkflowRun.status).where(WorkflowRun.id == workflow_run.id)
+        )
+        if persisted_status == "cancelled":
+            workflow_run.status = "cancelled"
+            workflow_run.finished_at = utc_now()
+            await db.commit()
+            yield {
+                "event": "workflow_cancelled",
+                "data": {"workflow_run_id": workflow_run.id},
+            }
+            await resume.release_lease(db, workflow_run.id)
+            return
         ready = [n for n in nodes if is_ready(n)]
         if not ready:
             pending = [n for n in nodes if status[n["id"]] == "pending"]
@@ -1289,6 +1365,7 @@ async def _run_workflow_events(
                 else:  # stop (default)
                     status[nid] = "error"
                     error_flag = True
+                    first_error = first_error or str(res)
                     yield {
                         "event": "node_error",
                         "data": {"node_id": nid, "message": str(res)},
@@ -1325,6 +1402,7 @@ async def _run_workflow_events(
         "data": {"output": final_output, "error": error_flag},
     }
     workflow_run.status = "failed" if error_flag else "succeeded"
+    workflow_run.error = first_error
     workflow_run.output = {"text": final_output, "data": final_data}
     workflow_run.finished_at = utc_now()
     await db.commit()
@@ -1343,6 +1421,7 @@ async def run_workflow_events(
     timezone_name: str | None = None,
     trigger_node_id: str | None = None,
     trigger_type: str | None = None,
+    subworkflow_depth: int = 0,
 ) -> AsyncIterator[dict[str, Any]]:
     """Stream workflow events and release any executor lease on close."""
     run_id = workflow_run_id
@@ -1358,6 +1437,7 @@ async def run_workflow_events(
             timezone_name=timezone_name,
             trigger_node_id=trigger_node_id,
             trigger_type=trigger_type,
+            subworkflow_depth=subworkflow_depth,
         ):
             if event.get("event") == "workflow_start":
                 run_id = event.get("data", {}).get("workflow_run_id") or run_id
@@ -1381,6 +1461,7 @@ async def run_workflow(
     timezone_name: str | None = None,
     trigger_node_id: str | None = None,
     trigger_type: str | None = None,
+    subworkflow_depth: int = 0,
 ) -> Any:
     """If stream=True, returns the async generator of events.
     Otherwise awaits and returns (final_output, event_log)."""
@@ -1396,6 +1477,7 @@ async def run_workflow(
             timezone_name=timezone_name,
             trigger_node_id=trigger_node_id,
             trigger_type=trigger_type,
+            subworkflow_depth=subworkflow_depth,
         )
     final = ""
     log: list[dict[str, Any]] = []
@@ -1411,6 +1493,7 @@ async def run_workflow(
         timezone_name=timezone_name,
         trigger_node_id=trigger_node_id,
         trigger_type=trigger_type,
+        subworkflow_depth=subworkflow_depth,
     ):
         log.append(ev)
         if ev["event"] == "workflow_start":
