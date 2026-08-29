@@ -97,6 +97,31 @@ class ZitadelProvisioningService:
             logger.warning("Error updating Zitadel password for %s: %s", user_id, exc)
             return False
 
+    async def verify_user_password(self, login_name: str, password: str) -> bool:
+        """Verifies a user's credentials against ZITADEL session API."""
+        pat = self.get_pat()
+        if not pat:
+            return False
+        base_url = self.get_api_base_url()
+        headers = {
+            "Authorization": f"Bearer {pat}",
+            "Content-Type": "application/json",
+            "Host": self.get_host_header(),
+        }
+        payload = {
+            "checks": {
+                "user": {"loginName": login_name.strip().lower()},
+                "password": {"password": password},
+            }
+        }
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                res = await client.post(f"{base_url}/v2/sessions", json=payload, headers=headers)
+                return res.status_code == 201
+        except Exception as exc:
+            logger.warning("Error verifying Zitadel credentials for %s: %s", login_name, exc)
+            return False
+
     async def provision_user(
         self,
         email: str,
