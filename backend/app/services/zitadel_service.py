@@ -45,15 +45,10 @@ class ZitadelProvisioningService:
             "Content-Type": "application/json",
             "Host": self.get_host_header(),
         }
+        target_email = email.strip().lower()
         search_payload = {
             "query": {
-                "queries": [
-                    {
-                        "emailQuery": {
-                            "emailAddress": email.strip().lower()
-                        }
-                    }
-                ]
+                "limit": 100,
             }
         }
         try:
@@ -62,8 +57,11 @@ class ZitadelProvisioningService:
                 if res.status_code == 200:
                     data = res.json()
                     results = data.get("result") or []
-                    if results:
-                        return results[0].get("userId")
+                    for r in results:
+                        user_email = (r.get("human", {}).get("email", {}).get("email") or "").lower()
+                        user_name = (r.get("username") or "").lower()
+                        if target_email in (user_email, user_name):
+                            return r.get("userId")
         except Exception as exc:
             logger.warning("Error looking up Zitadel user by email %s: %s", email, exc)
         return None
