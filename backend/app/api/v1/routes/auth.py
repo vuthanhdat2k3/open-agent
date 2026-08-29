@@ -49,6 +49,7 @@ from app.schemas.auth import (
     UserMembershipOut,
 )
 from app.services.quota_service import default_organization_quota
+from app.services.zitadel_service import ZitadelProvisioningService
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 settings = get_settings()
@@ -588,15 +589,27 @@ async def update_me(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    _require_local_auth()
     if body.display_name is not None:
         current_user.display_name = body.display_name.strip()
 
     if body.new_password:
         if not body.old_password:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Old password is required to set a new password")
-        if not verify_password(body.old_password, current_user.hashed_password or ""):
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Incorrect old password")
+        if current_user.hashed_password:
+            if not verify_password(body.old_password, current_user.hashed_password):
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "Incorrect old password")
+
+        if get_settings().auth_provider == "zitadel":
+            zitadel = ZitadelProvisioningService()
+            user_id = await zitadel.get_user_id_by_email(current_user.email)
+            if user_id:
+                success = await zitadel.set_user_password(user_id, body.new_password)
+                if not success:
+                    raise HTTPException(
+                        status.HTTP_400_BAD_REQUEST,
+                        "Failed to update password on ZITADEL. Ensure it meets complexity rules (8+ chars, uppercase, lowercase, number, symbol)."
+                    )
+
         current_user.hashed_password = hash_password(body.new_password)
         # The admin-chosen initial password has been replaced by a self-chosen
         # one: clear the forced-change flag so the UI unlocks.
