@@ -11,6 +11,7 @@ from app.models.model import Model
 from app.models.org_agent_settings import OrgAgentSettings
 from app.models.organization import Organization
 from app.models.user import User
+from app.schemas.agent import AgentOut
 from app.services.agent_service import AgentService
 
 
@@ -101,6 +102,13 @@ async def test_zero_row_org_lists_all_13_blueprints(test_env):
     general_agent = next(a for a in agents if a.template_key == "general")
     assert getattr(general_agent, "is_pinned", False) is True
     assert general_agent.model_id == test_env["model_fast_id"]
+
+    # Verify FastAPI Response serialization (AgentOut) succeeds for all virtual agents
+    serialized = [AgentOut.model_validate(a) for a in agents]
+    assert len(serialized) == 13
+    for s in serialized:
+        assert s.latest_release_number == 0
+        assert s.is_customized is False
 
 
 @pytest.mark.asyncio
