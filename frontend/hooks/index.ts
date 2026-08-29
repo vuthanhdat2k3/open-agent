@@ -547,6 +547,13 @@ export function useDeleteWorkflow() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["workflows"] }),
   });
 }
+export function useResetWorkflowTemplate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.post<Workflow>(`/api/workflows/${id}/reset-template`, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["workflows"] }),
+  });
+}
 
 export function useSessions() {
   return useQuery({ queryKey: ["sessions"], queryFn: () => api.get<Session[]>("/api/sessions") });

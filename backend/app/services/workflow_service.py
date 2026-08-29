@@ -10,7 +10,8 @@ from app.config import get_settings
 from app.core.observability.llm_trace import ObservabilityContext, build_trace_context
 from app.core.providers.factory import build_driver
 from app.core.workflow.node_definitions import get_node_definition
-from app.db.base import gen_id
+from app.core.workflow.templates import SYSTEM_WORKFLOW_BLUEPRINTS, SystemWorkflowBlueprint
+from app.db.base import gen_id, utc_now
 from app.models.model import Model
 from app.models.provider import Provider
 from app.models.workflow import Workflow
@@ -54,6 +55,25 @@ class WorkflowService:
     def __init__(self, db):
         self.repo = WorkflowRepository(db)
 
+    def _build_virtual_workflow(
+        self,
+        org_id: str,
+        blueprint: SystemWorkflowBlueprint,
+    ) -> Workflow:
+        now = utc_now()
+        return Workflow(
+            id=blueprint.id,
+            org_id=org_id,
+            created_by_user_id=None,
+            name=blueprint.name,
+            description=blueprint.description,
+            graph=dict(blueprint.graph),
+            template_key=blueprint.key,
+            is_customized=False,
+            created_at=now,
+            updated_at=now,
+        )
+
     async def create(self, org_id: str, data: dict, user_id: str | None = None) -> Workflow:
         self.validate_graph(data.get("graph", {}))
         await self._validate_agent_ownership(data.get("graph", {}), org_id=org_id)
@@ -62,10 +82,50 @@ class WorkflowService:
             data["created_by_user_id"] = user_id
         return await self.repo.create(Workflow(**data))
 
-    async def update(self, org_id: str, id: str, data: dict) -> Workflow:
-        wf = await self.repo.get(org_id, id)
+    async def update(
+        self, org_id: str, id: str, data: dict, user_id: str | None = None
+    ) -> Workflow:
+        wf = await self.repo.db.scalar(
+            select(Workflow).where(Workflow.id == id, Workflow.org_id == org_id).with_for_update()
+        )
         if wf is None:
-            raise ValueError("workflow not found")
+            # Check if this is a System Blueprint being forked on write
+            matched_blueprint = None
+            for bp in SYSTEM_WORKFLOW_BLUEPRINTS.values():
+                if (
+                    bp.id == id
+                    or bp.key == id
+                    or bp.name.lower() == id.lower()
+                    or bp.key == id.replace("sys-wf-", "")
+                ):
+                    matched_blueprint = bp
+                    break
+            if matched_blueprint is not None:
+                # Check if an existing override exists by template_key
+                existing_override = await self.repo.db.scalar(
+                    select(Workflow).where(
+                        Workflow.org_id == org_id,
+                        Workflow.template_key == matched_blueprint.key,
+                    ).with_for_update()
+                )
+                if existing_override is not None:
+                    wf = existing_override
+                else:
+                    graph_data = data.get("graph") or dict(matched_blueprint.graph)
+                    if "graph" in data:
+                        self.validate_graph(graph_data)
+                        await self._validate_agent_ownership(graph_data, org_id=org_id)
+                    base_data = {
+                        "name": data.get("name") or matched_blueprint.name,
+                        "description": data.get("description") if "description" in data else matched_blueprint.description,
+                        "graph": graph_data,
+                        "template_key": matched_blueprint.key,
+                        "is_customized": True,
+                    }
+                    return await self.create(org_id, base_data, user_id)
+            else:
+                raise ValueError("workflow not found")
+
         if "graph" in data:
             self.validate_graph(data["graph"])
             await self._validate_agent_ownership(data["graph"], org_id=org_id)
@@ -74,11 +134,100 @@ class WorkflowService:
     async def delete(self, org_id: str, id: str) -> bool:
         return await self.repo.delete(org_id, id)
 
+    async def reset_to_template(self, org_id: str, id: str) -> Workflow:
+        """Reset a workflow override back to the system blueprint default, deleting the custom DB record."""
+        # Find matched blueprint
+        matched_blueprint = None
+        for bp in SYSTEM_WORKFLOW_BLUEPRINTS.values():
+            if (
+                bp.id == id
+                or bp.key == id
+                or bp.name.lower() == id.lower()
+                or bp.key == id.replace("sys-wf-", "")
+            ):
+                matched_blueprint = bp
+                break
+
+        # Check DB row by id or template_key
+        db_wf = await self.repo.get(org_id, id)
+        if db_wf is None and matched_blueprint is not None:
+            db_wf = await self.repo.db.scalar(
+                select(Workflow).where(
+                    Workflow.org_id == org_id,
+                    Workflow.template_key == matched_blueprint.key,
+                )
+            )
+
+        if db_wf is not None:
+            if not matched_blueprint and db_wf.template_key:
+                matched_blueprint = SYSTEM_WORKFLOW_BLUEPRINTS.get(db_wf.template_key)
+            if not matched_blueprint:
+                raise ValueError("Workflow is a custom workflow and cannot be reset to a system template")
+
+            # Delete the workflow DB record
+            await self.repo.db.delete(db_wf)
+            await self.repo.db.commit()
+
+        if matched_blueprint is None:
+            raise ValueError("Template blueprint not found")
+
+        return self._build_virtual_workflow(org_id, matched_blueprint)
+
     async def list(self, org_id: str, created_by_user_id: str | None = None) -> list[Workflow]:
-        return await self.repo.list(org_id, created_by_user_id=created_by_user_id)
+        db_workflows = await self.repo.list(org_id, created_by_user_id=created_by_user_id)
+
+        covered_keys = {w.template_key for w in db_workflows if getattr(w, "template_key", None)}
+        covered_names = {w.name.strip().lower().replace(" ", "-") for w in db_workflows}
+
+        result: list[Workflow] = list(db_workflows)
+
+        for blueprint in SYSTEM_WORKFLOW_BLUEPRINTS.values():
+            norm_name = blueprint.name.strip().lower().replace(" ", "-")
+            if blueprint.key in covered_keys or norm_name in covered_names or blueprint.key in covered_names:
+                continue
+            v_wf = self._build_virtual_workflow(org_id, blueprint)
+            result.append(v_wf)
+
+        return result
 
     async def get(self, org_id: str, id: str) -> Workflow | None:
-        return await self.repo.get(org_id, id)
+        # 1. Try DB lookup by exact ID
+        wf = await self.repo.get(org_id, id)
+        if wf is not None:
+            return wf
+
+        # 2. Check if ID matches a System Blueprint (by exact ID, key, name, or sys-wf-*)
+        matched_blueprint = None
+        for bp in SYSTEM_WORKFLOW_BLUEPRINTS.values():
+            if (
+                bp.id == id
+                or bp.key == id
+                or bp.name.lower() == id.lower()
+                or bp.key == id.replace("sys-wf-", "")
+            ):
+                matched_blueprint = bp
+                break
+
+        if matched_blueprint is not None:
+            # Look-through: Check if org has an override in DB for this template_key
+            override = await self.repo.db.scalar(
+                select(Workflow).where(
+                    Workflow.org_id == org_id,
+                    Workflow.template_key == matched_blueprint.key,
+                )
+            )
+            if override is not None:
+                return override
+            return self._build_virtual_workflow(org_id, matched_blueprint)
+
+        # 3. Try DB lookup by exact name
+        by_name = await self.repo.db.scalar(
+            select(Workflow).where(Workflow.org_id == org_id, Workflow.name == id)
+        )
+        if by_name is not None:
+            return by_name
+
+        return None
 
     async def generate_graph(self, org_id: str, prompt: str, model_id: str) -> dict:
         agents = await AgentRepository(self.repo.db).list(org_id)
