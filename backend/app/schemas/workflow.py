@@ -67,6 +67,8 @@ class WorkflowOut(WorkflowBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: str
+    template_key: str | None = None
+    is_customized: bool = True
     created_at: datetime
     updated_at: datetime
 

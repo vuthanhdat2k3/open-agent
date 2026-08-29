@@ -38,9 +38,10 @@ import {
   Trash2,
   Edit,
   Plus,
+  RotateCcw,
 } from "lucide-react";
 import { api, streamSSE } from "@/lib/api";
-import { useWorkflows, useCreateWorkflow, useUpdateWorkflow, useDeleteWorkflow, useAgents, useModels, useGenerateWorkflow, useWorkflowRun } from "@/hooks";
+import { useWorkflows, useCreateWorkflow, useUpdateWorkflow, useDeleteWorkflow, useResetWorkflowTemplate, useAgents, useModels, useGenerateWorkflow, useWorkflowRun } from "@/hooks";
 import { useWorkflowStore } from "@/stores";
 import { Button } from "@/components/ui/button";
 import { Input, Label, Textarea } from "@/components/ui/input";
@@ -147,6 +148,7 @@ export default function WorkflowEditor() {
   const create = useCreateWorkflow();
   const update = useUpdateWorkflow();
   const deleteWf = useDeleteWorkflow();
+  const resetTemplate = useResetWorkflowTemplate();
   const generate = useGenerateWorkflow();
   const agents = useAgents();
   const models = useModels(true);
@@ -1008,16 +1010,45 @@ export default function WorkflowEditor() {
                       />
                     ) : (
                       data.map((wf) => (
-                        <div key={wf.id} className="flex items-center gap-1">
+                        <div key={wf.id} className="flex items-center gap-1.5 p-1 rounded-lg border border-border/40 hover:bg-accent/40 transition-colors">
                           <DialogClose asChild>
                             <Button
-                              variant="outline"
-                              className="flex-1 justify-start text-xs font-medium"
+                              variant="ghost"
+                              className="flex-1 justify-start text-xs font-medium h-auto py-1.5 px-2"
                               onClick={() => loadWorkflow(wf)}
                             >
-                              {wf.name}
+                              <div className="flex flex-col items-start gap-0.5 text-left truncate">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="font-semibold text-foreground">{wf.name}</span>
+                                  {wf.template_key ? (
+                                    <Badge variant={wf.is_customized ? "outline" : "secondary"} className="text-[10px] px-1.5 py-0">
+                                      {wf.is_customized ? tx("Đã tùy chỉnh", "Customized") : tx("Mẫu hệ thống", "System Template")}
+                                    </Badge>
+                                  ) : null}
+                                </div>
+                                {wf.description && (
+                                  <span className="text-[11px] text-muted-foreground line-clamp-1">{wf.description}</span>
+                                )}
+                              </div>
                             </Button>
                           </DialogClose>
+                          {wf.template_key && wf.is_customized && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 px-2 text-xs text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 shrink-0 gap-1"
+                              title={tx("Khôi phục về mẫu gốc", "Reset to original system template")}
+                              onClick={async () => {
+                                if (confirm(tx("Khôi phục workflow này về cấu hình mẫu gốc của hệ thống?", "Reset this workflow back to system template default?"))) {
+                                  await resetTemplate.mutateAsync(wf.id);
+                                  toast.success(tx("Đã khôi phục về mẫu hệ thống", "Reset to system template"));
+                                }
+                              }}
+                            >
+                              <RotateCcw className="h-3 w-3" />
+                              <span className="text-[10px] hidden sm:inline">{tx("Khôi phục", "Reset")}</span>
+                            </Button>
+                          )}
                           <Button
                             variant="ghost"
                             size="sm"

@@ -308,6 +308,8 @@ export interface Workflow {
   name: string;
   description: string;
   graph: { nodes: GraphNode[]; edges: GraphEdge[] };
+  template_key?: string;
+  is_customized?: boolean;
   created_at: string;
   updated_at: string;
 }
