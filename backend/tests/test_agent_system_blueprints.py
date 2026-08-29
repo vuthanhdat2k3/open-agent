@@ -267,3 +267,86 @@ async def test_multi_org_independent_fork_and_id_resolution(test_env):
     assert org2_final.id == forked_org2.id
     assert org1_final.system_prompt == "Prompt customized specifically for Org 1"
     assert org2_final.system_prompt == "Prompt customized specifically for Org 2"
+
+
+@pytest.mark.asyncio
+async def test_repeated_update_on_already_forked_agent_does_not_create_duplicate_row(test_env):
+    db = test_env["db"]
+    service = AgentService(db)
+    org1_id = test_env["org1_id"]
+
+    # 1. Initial Fork: update prompt using sys-agent-coder
+    forked_1 = await service.update(
+        org1_id,
+        "sys-agent-coder",
+        {"system_prompt": "Step 1 custom prompt"},
+        test_env["user_id"],
+    )
+    first_id = forked_1.id
+
+    # 2. Second update using sys-agent-coder identifier again: should update IN PLACE, no duplicate
+    forked_2 = await service.update(
+        org1_id,
+        "sys-agent-coder",
+        {"description": "Updated description in step 2", "max_iterations": 20},
+        test_env["user_id"],
+    )
+    assert forked_2.id == first_id
+    assert forked_2.system_prompt == "Step 1 custom prompt"
+    assert forked_2.description == "Updated description in step 2"
+    assert forked_2.max_iterations == 20
+
+    # 3. Third update using exact UUID
+    forked_3 = await service.update(
+        org1_id,
+        first_id,
+        {"temperature": 0.2},
+        test_env["user_id"],
+    )
+    assert forked_3.id == first_id
+    assert forked_3.temperature == 0.2
+
+    # Verify list() only has 13 agents and coder has 1 row
+    agents = await service.list(org1_id)
+    assert len(agents) == 13
+    coder_agents = [a for a in agents if a.template_key == "coder"]
+    assert len(coder_agents) == 1
+    assert coder_agents[0].id == first_id
+
+
+@pytest.mark.asyncio
+async def test_reset_to_template_deletes_override_row(test_env):
+    db = test_env["db"]
+    service = AgentService(db)
+    org1_id = test_env["org1_id"]
+
+    # 1. Fork 'coder' with custom settings
+    forked = await service.update(
+        org1_id,
+        "sys-agent-coder",
+        {"system_prompt": "Specialized prompt to be reset later"},
+        test_env["user_id"],
+    )
+    assert forked.is_customized is True
+    forked_id = forked.id
+
+    # Verify DB has custom override row
+    agents_before = await service.list(org1_id)
+    coder_before = next(a for a in agents_before if a.template_key == "coder")
+    assert coder_before.id == forked_id
+    assert coder_before.is_customized is True
+
+    # 2. Call reset_to_template
+    reset_agent = await service.reset_to_template(org1_id, forked_id)
+    assert reset_agent.id == "sys-agent-coder"
+    assert reset_agent.is_customized is False
+    assert reset_agent.template_key == "coder"
+
+    # 3. Verify DB row is gone and list() now returns virtual un-forked blueprint
+    agents_after = await service.list(org1_id)
+    assert len(agents_after) == 13
+    coder_after = next(a for a in agents_after if a.template_key == "coder")
+    assert coder_after.id == "sys-agent-coder"
+    assert coder_after.is_customized is False
+    assert coder_after.system_prompt != "Specialized prompt to be reset later"
+
