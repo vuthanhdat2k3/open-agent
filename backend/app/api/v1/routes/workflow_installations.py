@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import copy
+import hashlib
+import json
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -292,7 +296,26 @@ async def run_installation_now(
     now = utc_now()
     occurrence_id = gen_id()
     run_id = gen_id()
-    db.add(WorkflowRun(id=run_id, org_id=org_id, workflow_id=item.workflow_id, status="queued", input={"text": "", "timezone": item.timezone, "trigger": "manual", "installation_id": item.id, "template_key": item.template_key, "template_version": item.template_version, "occurrence_id": occurrence_id}, triggered_by_user_id=current_user.id))
+    # Snapshot the graph + trigger identity like every other run path, so a
+    # manual run executes the graph as it was at click time (not the live
+    # graph if the workflow is edited before the worker claims it) and the
+    # engine starts from the right entry node instead of defaulting.
+    wf = await db.scalar(
+        select(Workflow).where(Workflow.id == item.workflow_id, Workflow.org_id == org_id)
+    )
+    graph_snapshot = copy.deepcopy((wf.graph if wf else None) or {})
+    graph_hash = hashlib.sha256(
+        json.dumps(graph_snapshot, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    trigger_node_id = next(
+        (
+            str(node["id"])
+            for node in graph_snapshot.get("nodes", [])
+            if isinstance(node, dict) and node.get("kind") == "scheduler" and node.get("id")
+        ),
+        None,
+    )
+    db.add(WorkflowRun(id=run_id, org_id=org_id, workflow_id=item.workflow_id, status="queued", input={"text": "", "timezone": item.timezone, "trigger": "manual", "installation_id": item.id, "template_key": item.template_key, "template_version": item.template_version, "occurrence_id": occurrence_id}, triggered_by_user_id=current_user.id, graph_snapshot=graph_snapshot, graph_hash=graph_hash, trigger_node_id=trigger_node_id, trigger_type="manual"))
     await db.flush()
     db.add(WorkflowOccurrence(id=occurrence_id, installation_id=item.id, workflow_run_id=run_id, occurrence_key=f"manual:{occurrence_id}", scheduled_for=now, status="queued", payload={"template_key": item.template_key, "trigger": "manual"}))
     db.add(OutboxEvent(event_type="workflow.run.requested", aggregate_type="workflow_occurrence", aggregate_id=occurrence_id, org_id=org_id, user_id=current_user.id, correlation_id=occurrence_id, payload={"run_id": run_id, "installation_id": item.id}, dedupe_key=f"manual:{occurrence_id}"))

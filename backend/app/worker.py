@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import os
 import socket
@@ -396,6 +396,7 @@ class WorkerSettings:
     on_shutdown = _shutdown
     cron_jobs = [
         cron(_auto_rollback_sweep, minute=set(range(0, 60, 5))),
+        cron(_resume_orphaned_runs, minute=set(range(2, 60, 5)), run_at_startup=False),
         cron(_fail_orphaned_chat_runs, minute=set(range(0, 60, 2)), run_at_startup=False),
         cron(_ci_scheduler_tick, minute=set(range(0, 60, 5)), run_at_startup=False),
         cron(_workflow_scheduler_tick, minute=set(range(0, 60, 1)), run_at_startup=False),

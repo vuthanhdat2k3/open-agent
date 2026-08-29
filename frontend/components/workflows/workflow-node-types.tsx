@@ -23,7 +23,7 @@ import { cn } from "@/lib/utils";
 import { useTranslation } from "@/lib/i18n";
 import type { GraphNode } from "@/types";
 
-export type NodeStatus = "idle" | "running" | "done" | "error";
+export type NodeStatus = "idle" | "running" | "done" | "error" | "waiting";
 
 export type WorkflowNodeData = {
   label: string;
@@ -120,6 +120,7 @@ const statusBorderClass: Record<NodeStatus, string> = {
   running: "border-info shadow-[0_0_25px_hsl(var(--info)/0.45)] ring-2 ring-info/60 animate-pulse",
   done: "border-emerald-500/80 shadow-[0_0_15px_rgba(16,185,129,0.25)] ring-1 ring-emerald-500/40",
   error: "border-destructive/80 shadow-[0_0_18px_rgba(239,68,68,0.3)] ring-1 ring-destructive/40",
+  waiting: "border-amber-500/70 shadow-[0_0_16px_rgba(245,158,11,0.25)] ring-1 ring-amber-500/40",
 };
 
 function BaseWorkflowNode({ id, data, selected }: NodeProps & { data: WorkflowNodeData }) {
@@ -206,6 +207,9 @@ function BaseWorkflowNode({ id, data, selected }: NodeProps & { data: WorkflowNo
         )}
         {data.status === "error" && (
           <AlertCircle className="ml-auto h-4 w-4 shrink-0 text-destructive animate-pulse" />
+        )}
+        {data.status === "waiting" && (
+          <Clock className="ml-auto h-4 w-4 shrink-0 text-amber-500" />
         )}
       </div>
 

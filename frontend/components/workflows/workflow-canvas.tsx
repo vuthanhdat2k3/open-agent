@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import * as React from "react";
 import {
@@ -58,6 +58,7 @@ function toFlowStatus(status: string | undefined): NodeStatus {
   if (status === "running") return "running";
   if (status === "done") return "done";
   if (status === "error") return "error";
+  if (status === "waiting_approval") return "waiting";
   return "idle";
 }
 
