@@ -5,7 +5,7 @@ import json
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from app.core.agents.templates import SYSTEM_AGENT_BLUEPRINTS, SystemAgentBlueprint
 from app.db.base import utc_now
@@ -462,6 +462,61 @@ class AgentService:
 
     async def delete(self, org_id: str, id: str) -> bool:
         return await self.repo.delete(org_id, id)
+
+    async def reset_to_template(self, org_id: str, id: str) -> Agent:
+        """Reset an agent override back to the system blueprint default, deleting the custom DB record."""
+        # Find matched blueprint
+        matched_blueprint = None
+        for bp in SYSTEM_AGENT_BLUEPRINTS.values():
+            if bp.id == id or bp.key == id or bp.name.lower() == id.lower():
+                matched_blueprint = bp
+                break
+
+        # Check DB row by id or template_key
+        db_agent = await self.repo.get(org_id, id)
+        if db_agent is None and matched_blueprint is not None:
+            db_agent = await self.repo.db.scalar(
+                select(Agent).where(
+                    Agent.org_id == org_id,
+                    Agent.template_key == matched_blueprint.key,
+                )
+            )
+
+        if db_agent is not None:
+            if not matched_blueprint and db_agent.template_key:
+                matched_blueprint = SYSTEM_AGENT_BLUEPRINTS.get(db_agent.template_key)
+            if not matched_blueprint:
+                raise ValueError("Agent is a custom agent and cannot be reset to a system template")
+
+            # Delete releases
+            await self.repo.db.execute(
+                delete(AgentRelease).where(
+                    AgentRelease.org_id == org_id,
+                    AgentRelease.agent_id == db_agent.id,
+                )
+            )
+            # Delete cheap settings if any
+            await self.repo.db.execute(
+                delete(OrgAgentSettings).where(
+                    OrgAgentSettings.org_id == org_id,
+                    OrgAgentSettings.template_key == matched_blueprint.key,
+                )
+            )
+            # Delete the agent DB record
+            await self.repo.db.delete(db_agent)
+            await self.repo.db.commit()
+
+        if matched_blueprint is None:
+            raise ValueError("Template blueprint not found")
+
+        # Return the clean virtual blueprint agent
+        model_id = await self._resolve_model_for_tier(org_id, matched_blueprint.recommended_tier)
+        return self._build_virtual_agent(
+            org_id=org_id,
+            blueprint=matched_blueprint,
+            model_id=model_id,
+            is_pinned=matched_blueprint.is_pinned_by_default,
+        )
 
     async def list(self, org_id: str) -> list[Agent]:
         # 1. Fetch DB agents (custom agents & heavy overrides)
