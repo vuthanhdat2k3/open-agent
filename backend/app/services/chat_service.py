@@ -68,13 +68,14 @@ class ChatService:
                     await self.db.refresh(session)
                 return session
         agent = selected_agent or await self._load_agent(org_id, request.agent_id)
+        agent = await AgentService(self.db).materialize_system_agent(org_id, agent)
         raw = " ".join(request.message.split())
         title = (raw[:72] + "…") if len(raw) > 72 else raw
         title = title[:1].upper() + title[1:] if title else "New session"
         session = Session(
             org_id=org_id,
             created_by_user_id=user_id,
-            agent_id=request.agent_id,
+            agent_id=agent.id,
             agent_release_id=getattr(agent, "active_release_id", None),
             title=title,
         )

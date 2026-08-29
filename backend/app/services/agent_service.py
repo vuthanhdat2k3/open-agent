@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 
 from app.core.agents.templates import SYSTEM_AGENT_BLUEPRINTS, SystemAgentBlueprint
 from app.db.base import utc_now
@@ -115,6 +116,75 @@ class AgentService:
         await self.repo.db.commit()
         await self.repo.db.refresh(agent)
         return agent
+
+    async def materialize_system_agent(self, org_id: str, agent: Agent) -> Agent:
+        """Persist a virtual system blueprint before it is referenced by a run.
+
+        System blueprints are intentionally zero-row read models, but sessions
+        and tasks keep a foreign key to ``agents``. Materializing only when a
+        chat actually starts preserves the zero-row blueprint behavior while
+        keeping those durable records referentially valid.
+        """
+        blueprint = SYSTEM_AGENT_BLUEPRINTS.get(getattr(agent, "template_key", ""))
+        if (
+            blueprint is None
+            or agent.id != blueprint.id
+            or agent.active_release_id is not None
+            or getattr(agent, "is_customized", True)
+        ):
+            return agent
+
+        existing = await self.repo.get(org_id, agent.id)
+        if existing is not None:
+            return existing
+
+        persisted = Agent(
+            id=agent.id,
+            org_id=org_id,
+            created_by_user_id=None,
+            name=agent.name,
+            description=agent.description,
+            system_prompt=agent.system_prompt,
+            model_id=agent.model_id,
+            tools=list(agent.tools or []),
+            allowed_risk_tiers=list(agent.allowed_risk_tiers or []),
+            kind=agent.kind,
+            max_iterations=agent.max_iterations,
+            temperature=agent.temperature,
+            enable_thinking=agent.enable_thinking,
+            a2a_exposed=agent.a2a_exposed,
+            auto_rollback_enabled=agent.auto_rollback_enabled,
+            template_key=blueprint.key,
+            is_customized=False,
+        )
+        try:
+            async with self.repo.db.begin_nested():
+                self.repo.db.add(persisted)
+                await self.repo.db.flush()
+                release_config = _snapshot(persisted)
+                release = AgentRelease(
+                    org_id=org_id,
+                    agent_id=persisted.id,
+                    version=1,
+                    status="published",
+                    **release_config,
+                    change_note="Materialized system blueprint",
+                    config_hash=_config_hash(release_config),
+                    published_at=utc_now(),
+                )
+                self.repo.db.add(release)
+                await self.repo.db.flush()
+                persisted.active_release_id = release.id
+                persisted.latest_release_number = 1
+        except IntegrityError:
+            existing = await self.repo.get(org_id, agent.id)
+            if existing is None:
+                raise
+            return existing
+
+        await self.repo.db.commit()
+        await self.repo.db.refresh(persisted)
+        return persisted
 
     async def update(
         self, org_id: str, id: str, data: dict, user_id: str | None = None
