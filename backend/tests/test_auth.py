@@ -79,7 +79,7 @@ def test_register_login_me(client: TestClient) -> None:
     assert me_data["display_name"] == "Alice"
     assert len(me_data["memberships"]) == 1
     assert me_data["memberships"][0]["org_name"] == "Alice Inc"
-    assert me_data["memberships"][0]["role"] == "admin"
+    assert me_data["memberships"][0]["role"] == "org_admin"
 
 
 def test_switch_org(client: TestClient) -> None:

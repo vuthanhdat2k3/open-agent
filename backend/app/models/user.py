@@ -23,6 +23,9 @@ class User(Base):
     hashed_password: Mapped[str | None] = mapped_column(String(255), nullable=True)
     display_name: Mapped[str] = mapped_column(String(128), nullable=False, default="")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # True when the password was chosen by an admin (invite default reset):
+    # the account must set its own password before the UI unlocks.
+    must_change_password: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     lifecycle_status: Mapped[str] = mapped_column(String(24), nullable=False, default="active")
     created_at: Mapped[utc_now] = mapped_column(DateTime, default=utc_now)
 

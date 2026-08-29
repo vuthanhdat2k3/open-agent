@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import {
   Workflow as WorkflowIcon,
   Play,
+  Square,
   Save,
   FolderOpen,
   FilePlus,
@@ -61,6 +62,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
+  DialogFooter,
   DialogTrigger,
 } from "@/components/ui/dialog";
 
@@ -443,6 +445,11 @@ export default function WorkflowEditor() {
   // streaming — restoring a past completed run's status (see the
   // workflowRun.data effect below) should stay visible, not fade away.
   const fadedNodeIdsRef = React.useRef<Set<string>>(new Set());
+  // Live SSE stream handling: an AbortController lets run() be cancelled when
+  // the user navigates away / starts another run, and sseActiveRef tells the
+  // polling effect not to clobber live node status with stale snapshot rows.
+  const sseAbortRef = React.useRef<AbortController | null>(null);
+  const sseActiveRef = React.useRef(false);
   React.useEffect(() => {
     if (!running) return;
     const timers: number[] = [];
@@ -570,7 +577,12 @@ export default function WorkflowEditor() {
         return created.id;
       }
     } catch (e: any) {
-      toast.error(e.message || tx("Không thể lưu workflow", "Failed to save workflow"));
+      const msg = e.message || "";
+      toast.error(
+        msg.includes("already exists")
+          ? tx("Tên workflow đã tồn tại. Vui lòng chọn tên khác.", "Workflow name already exists. Please choose another name.")
+          : msg || tx("Không thể lưu workflow", "Failed to save workflow"),
+      );
       return null;
     }
   };
@@ -611,7 +623,15 @@ export default function WorkflowEditor() {
         output: typeof node.output?.text === "string" ? node.output.text : undefined,
       });
     }
-    setNodeStatus(statuses);
+    // While a live SSE run is streaming, the poll snapshot is already stale —
+    // overwriting node status here would reset a node mid-run back to "idle".
+    // Merge only the nodes the stream has not marked yet instead.
+    setNodeStatus((current) => {
+      if (sseActiveRef.current) {
+        return { ...statuses, ...current };
+      }
+      return statuses;
+    });
     if (run.output?.text) setOutput(String(run.output.text));
     setRunning(!["succeeded", "failed", "diverged", "cancelled", "waiting_approval"].includes(run.status));
     setLogs((previous) => (previous.length === 0 ? restoredLogs : previous));
@@ -693,23 +713,28 @@ export default function WorkflowEditor() {
     toast.success(tx("Đã xóa Node", "Node deleted"));
   };
 
+  const [edgeConditionTarget, setEdgeConditionTarget] = React.useState<string | null>(null);
+  const [edgeConditionDraft, setEdgeConditionDraft] = React.useState("");
+
   const handleEditEdgeCondition = (edgeId: string) => {
     const [fromId, rest] = edgeId.split("->");
     const toId = rest?.split("#")[0] ?? "";
     const edge = edges.find((e) => e.from_ === fromId && e.to === toId);
-    const current = edge?.condition ?? "";
-    const input = window.prompt(
-      t(
-        "pages.workflows.edgeConditionPrompt",
-        "Edge condition (leave empty to clear).\n\nExamples:\n  output.category == 'sales'\n  'urgent' in output.text\n  true",
-      ),
-      current,
-    );
-    if (input === null) return;
+    setEdgeConditionDraft(edge?.condition ?? "");
+    setEdgeConditionTarget(edgeId);
+  };
+
+  const applyEdgeCondition = () => {
+    if (!edgeConditionTarget) return;
+    const [fromId, rest] = edgeConditionTarget.split("->");
+    const toId = rest?.split("#")[0] ?? "";
     const nextEdges = edges.map((e) =>
-      e.from_ === fromId && e.to === toId ? { ...e, condition: input.trim() || undefined } : e,
+      e.from_ === fromId && e.to === toId
+        ? { ...e, condition: edgeConditionDraft.trim() || undefined }
+        : e,
     );
     setGraph(nodes, nextEdges);
+    setEdgeConditionTarget(null);
   };
 
   const formatJsonInput = () => {
@@ -744,6 +769,10 @@ export default function WorkflowEditor() {
     setNodeStatus({});
     fadedNodeIdsRef.current.clear();
     setLogs([]);
+    sseAbortRef.current?.abort();
+    const abortController = new AbortController();
+    sseAbortRef.current = abortController;
+    sseActiveRef.current = true;
     try {
       await streamSSE(
         `/api/workflows/${targetId}/run`,
@@ -824,6 +853,16 @@ export default function WorkflowEditor() {
                 message: d.message || tx("Lỗi thực thi workflow", "Workflow execution error"),
               },
             ]);
+          } else if (ev.event === "workflow_cancelled") {
+            setLogs((prev) => [
+              ...prev,
+              {
+                id: logId,
+                ts,
+                event: "done",
+                message: tx("Workflow đã được hủy", "Workflow cancelled"),
+              },
+            ]);
           } else if (ev.event === "done") {
             setOutput(d.output || "");
             setLogs((prev) => [
@@ -838,6 +877,7 @@ export default function WorkflowEditor() {
             ]);
           }
         },
+        abortController.signal,
       );
     } catch (e: any) {
       toast.error(e.message);
@@ -852,6 +892,24 @@ export default function WorkflowEditor() {
       ]);
     } finally {
       // The durable run owns the lifecycle; polling will update the UI.
+      sseActiveRef.current = false;
+      if (sseAbortRef.current === abortController) {
+        sseAbortRef.current = null;
+      }
+    }
+  };
+
+  const cancelRun = async () => {
+    if (!activeRunId) return;
+    // Stop the client-side stream immediately; the backend flips the run to
+    // cancelled (cooperatively at the next node boundary) and the poll takes
+    // over the UI.
+    sseAbortRef.current?.abort();
+    try {
+      await api.post(`/api/workflows/runs/${activeRunId}/cancel`);
+      toast.success(tx("Đã yêu cầu hủy workflow", "Workflow cancel requested"));
+    } catch (e: any) {
+      toast.error(e.message || tx("Không thể hủy workflow", "Failed to cancel workflow"));
     }
   };
 
@@ -1142,6 +1200,11 @@ export default function WorkflowEditor() {
             <Button className="gap-2 active-tactile transition-transform self-end text-xs" disabled={running} onClick={run}>
               <Play className="h-3.5 w-3.5" /> {running ? tx("Đang chạy…", "Running…") : tx("Chạy Workflow", "Run Workflow")}
             </Button>
+            {activeRunId && !["succeeded", "failed", "diverged", "cancelled", "waiting_approval"].includes(workflowRun.data?.status ?? "") && (
+              <Button variant="outline" className="gap-2 self-end text-xs" onClick={cancelRun}>
+                <Square className="h-3.5 w-3.5" /> {tx("Hủy", "Cancel")}
+              </Button>
+            )}
           </div>
 
           {activeRunId && <RunKpiStrip run={workflowRun.data} />}
@@ -1423,6 +1486,32 @@ export default function WorkflowEditor() {
           )}
         </div>
       )}
+
+      <Dialog open={edgeConditionTarget !== null} onOpenChange={(open) => !open && setEdgeConditionTarget(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{tx("Điều kiện cạnh (Edge Condition)", "Edge Condition")}</DialogTitle>
+            <DialogDescription>
+              {tx(
+                "Nhập điều kiện JS (bỏ trống để xóa).\nVí dụ:\n  output.category == 'sales'\n  'urgent' in output.text\n  true",
+                "Enter a JS condition (leave empty to clear).\nExamples:\n  output.category == 'sales'\n  'urgent' in output.text\n  true",
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            className="text-xs font-mono min-h-[120px]"
+            value={edgeConditionDraft}
+            onChange={(e) => setEdgeConditionDraft(e.target.value)}
+            placeholder={tx("output.category == 'sales'", "output.category == 'sales'")}
+          />
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline">{tx("Hủy", "Cancel")}</Button>
+            </DialogClose>
+            <Button onClick={applyEdgeCondition}>{tx("Áp dụng", "Apply")}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

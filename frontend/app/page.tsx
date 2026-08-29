@@ -11,11 +11,12 @@ import { approvalTitle, expiry } from "@/components/layout/approval-bell";
 import { Badge } from "@/components/ui/badge";
 
 import { useTranslation } from "@/lib/i18n";
+import { isAdminRole, isOperator, isOrgAdmin, isPlatformAdmin, isEndUser } from "@/lib/roles";
 
 export default function Dashboard() {
   const { t, dict, locale, tx } = useTranslation();
   const role = useCurrentRole();
-  const isAdmin = role === "admin" || role === "platform_admin" || role === "operator";
+  const isAdmin = isAdminRole(role) || isOperator(role);
   const me = useMe();
   const usage = useUsageSummary(isAdmin);
   const providers = useProviders(isAdmin);
@@ -49,24 +50,24 @@ export default function Dashboard() {
     await Promise.all(resourceQueries.map((query) => query.refetch()));
   }
 
-  const isPlatformAdmin = role === "platform_admin";
-  const isOrgAdmin = role === "admin";
-  const isOperator = role === "operator";
-  const isEndUser = role === "user";
+  const isPlatformAdminFlag = isPlatformAdmin(role);
+  const isOrgAdminFlag = isOrgAdmin(role);
+  const isOperatorFlag = isOperator(role);
+  const isEndUserFlag = isEndUser(role);
 
-  const heroHeading = isPlatformAdmin
+  const heroHeading = isPlatformAdminFlag
     ? (tx("Quản trị Nền tảng & Phân bổ Tenant", "Platform Administration & Tenant Management"))
-    : isOrgAdmin
+    : isOrgAdminFlag
       ? dict.pages.dashboard.titleAdmin
-      : isOperator
+      : isOperatorFlag
         ? (tx("Trung tâm Thiết kế & Giám sát Agentic DAG", "AI Studio, Workflow & Evaluator"))
         : dict.pages.dashboard.titleUser;
 
-  const heroSubtitle = isPlatformAdmin
+  const heroSubtitle = isPlatformAdminFlag
     ? (tx("Quản lý danh sách các Tổ chức (Tenants), bổ nhiệm Org Admin và kiểm soát trạng thái hoạt động toàn platform.", "Manage multi-tenant organizations, assign Org Admins, and govern global platform health."))
-    : isOrgAdmin
+    : isOrgAdminFlag
       ? dict.pages.dashboard.descAdmin
-      : isOperator
+      : isOperatorFlag
         ? (tx(`${agents.data?.length ?? 0} agent · ${workflows.data?.length ?? 0} workflow đã cấu hình. Thiết kế prompt, xây dựng workflow hoặc chạy evaluation benchmark.`, `${agents.data?.length ?? 0} agents · ${workflows.data?.length ?? 0} workflows configured. Design prompts, build workflows, or run benchmarks.`))
         : dict.pages.dashboard.descUser;
 
@@ -79,25 +80,25 @@ export default function Dashboard() {
           <p className="max-w-xl text-sm leading-relaxed text-muted-foreground">{heroSubtitle}</p>
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
-          {isPlatformAdmin && (
+          {isPlatformAdminFlag && (
             <>
               <Button asChild className="gap-2"><Link href="/organizations">{dict.pages.dashboard.btnManageOrgs}</Link></Button>
             </>
           )}
-          {isOrgAdmin && !isPlatformAdmin && (
+          {isOrgAdminFlag && !isPlatformAdminFlag && (
             <>
               <Button asChild className="gap-2"><Link href="/settings/members">{dict.pages.dashboard.btnManageMembers}</Link></Button>
               <Button asChild variant="outline" className="gap-2"><Link href="/providers">{dict.nav.providers}</Link></Button>
               <Button asChild variant="ghost" className="gap-2"><Link href="/settings/quotas">{dict.nav.quotas}</Link></Button>
             </>
           )}
-          {isOperator && (
+          {isOperatorFlag && (
             <>
               <Button asChild className="gap-2"><Link href="/agents"><Bot className="h-4 w-4" aria-hidden="true" />{dict.nav.agents}</Link></Button>
               <Button asChild variant="outline" className="gap-2"><Link href="/workflows"><Workflow className="h-4 w-4" aria-hidden="true" />{dict.nav.workflows}</Link></Button>
             </>
           )}
-          {isEndUser && (
+          {isEndUserFlag && (
             <>
               <Button asChild className="gap-2"><Link href="/chat"><MessageSquare className="h-4 w-4" aria-hidden="true" />{dict.pages.dashboard.btnStartChat}</Link></Button>
               <Button asChild variant="outline" className="gap-2"><Link href="/workflows"><Workflow className="h-4 w-4" aria-hidden="true" />{dict.pages.dashboard.btnRunWorkflow}</Link></Button>

@@ -594,6 +594,11 @@ export const en: TranslationDictionary = {
       tableJoined: 'Joined Date',
       tableKeyName: 'Key Name',
       tableExpires: 'Expires',
+      hasExpiry: 'Has Expiry',
+      noExpiry: 'No Expiry',
+      roleChanged: 'Role updated',
+      roleChangeFailed: 'Unable to update role',
+      memberRole: 'Member role',
     },
     evaluations: {
       title: 'Evaluations',
@@ -646,5 +651,11 @@ export const en: TranslationDictionary = {
       ssoDesc: 'Centralized enterprise identity via Single Sign-On.',
       useOrgProviderDesc: 'Please use your organization identity provider to sign in.',
     },
+  },
+  forceChange: {
+    bannerTitle: 'Your account is using a temporary password',
+    bannerBody: 'Please change your password to keep using OpenAgent. Other pages will unlock after you set a new one.',
+    noAccess: 'No access',
+    noAccessDesc: 'Only organization administrators can view this page.',
   },
 };

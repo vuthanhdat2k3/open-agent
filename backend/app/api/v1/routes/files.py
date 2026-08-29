@@ -34,7 +34,10 @@ async def upload_file(
     ):
         raise HTTPException(429, "storage quota reached")
     try:
-        visibility = "organization" if authz.role.value in {"org_admin", "operator"} else "personal"
+        # Plain ``user`` members are self-scoped (owner_user_id is set only
+        # for that role): their uploads stay personal, staff uploads are
+        # organization-visible.
+        visibility = "personal" if authz.owner_user_id else "organization"
         return await FileService(db).save_upload(org_id, file, current_user.id, visibility)
     except ValueError as e:
         raise HTTPException(400, str(e))
@@ -47,7 +50,7 @@ async def list_files(
     authz: PrincipalContext = Depends(require_permission("files:read")),
     db: AsyncSession = Depends(get_db),
 ):
-    owner = current_user.id if authz.role.value == "user" else None
+    owner = authz.owner_user_id
     return await FileService(db).list(org_id, owner_user_id=owner)
 
 
@@ -59,7 +62,7 @@ async def delete_file(
     authz: PrincipalContext = Depends(require_permission("files:write")),
     db: AsyncSession = Depends(get_db),
 ):
-    owner = current_user.id if authz.role.value == "user" else None
+    owner = authz.owner_user_id
     if not await FileService(db).delete(org_id, id, owner_user_id=owner):
         raise HTTPException(404, "file not found")
     return {"ok": True}

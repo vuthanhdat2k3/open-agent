@@ -108,14 +108,10 @@ def has_permission(role: Role | str, permission: str) -> bool:
       - ``"tools:use:*"`` matches any ``tools:use:`` action.
     """
     if isinstance(role, str):
-        # Accept only the pre-cutover spelling at the local compatibility
-        # boundary; persisted production memberships use ``org_admin``.
         try:
-            role = Role.org_admin if role == "admin" else Role(role)
+            role = Role(role)
         except ValueError:
             return False
-    elif role == Role.admin:
-        role = Role.org_admin
     allowed = PERMISSIONS.get(role)
     if allowed is None:
         return False

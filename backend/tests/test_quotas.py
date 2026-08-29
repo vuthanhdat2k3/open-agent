@@ -143,7 +143,7 @@ def test_quota_api_rbac_headers_and_observe_mode(client: TestClient) -> None:
     invited = client.post(
         f"/api/orgs/{org_id}/members",
         headers=owner_headers,
-        json={"email": "quota-viewer@example.com", "role": "viewer"},
+        json={"email": "quota-viewer@example.com", "role": "user"},
     )
     assert invited.status_code == 201
     assert (

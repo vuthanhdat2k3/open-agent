@@ -700,14 +700,14 @@ export function useMe(enabled: boolean = true) {
 // Fails closed: an unresolved role (loading, no membership found for the
 // active org) is treated as "user" rather than "admin" so admin-only UI
 // never flashes open before the real role is known.
-export function useCurrentRole(): "platform_admin" | "admin" | "operator" | "user" {
+import type { Role } from "@/lib/roles";
+import { normalizeRole } from "@/lib/roles";
+
+export function useCurrentRole(): Role {
   const me = useMe();
   const orgId = me.data?.active_org_id || getActiveOrgId();
   const membership = me.data?.memberships?.find((m) => m.org_id === orgId) ?? me.data?.memberships?.[0];
-  if (membership?.role === "platform_admin") return "platform_admin";
-  if (membership?.role === "admin" || membership?.role === "org_admin") return "admin";
-  if (membership?.role === "operator") return "operator";
-  return "user";
+  return normalizeRole(membership?.role);
 }
 
 export function useCurrentPermissions(): string[] {
@@ -965,6 +965,17 @@ export function useUpdateProfile() {
   return useMutation({
     mutationFn: (body: { display_name?: string; old_password?: string; new_password?: string }) =>
       api.patch<UserProfile>("/api/auth/me", body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["profile"] }),
+    // useMe and useProfile both share the "auth-me" key; invalidating the
+    // previous ("profile") key kept the sidebar / nav stale for up to gcTime.
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["auth-me"] }),
+  });
+}
+
+export function useUpdateMemberRole(orgId?: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, role }: { userId: string; role: "org_admin" | "operator" | "user" }) =>
+      api.patch<OrgMember>(`/api/orgs/${orgId}/members/${userId}`, { role }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["members", orgId] }),
   });
 }

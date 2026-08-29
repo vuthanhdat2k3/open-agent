@@ -15,7 +15,17 @@ from app.services.chat_service import ChatService
 
 
 async def run_workflow(ctx, workflow_run_id: str) -> None:  # noqa: ARG001
-    """Execute every queued workflow through its persisted graph.
+    """ARQ entry: execute a queued/resumed workflow run.
+
+    Delegates to :func:`run_workflow_detached` so a resumed run can also be
+    driven in-process (e.g. from an approval decision in inline mode) through
+    the exact same code path.
+    """
+    await run_workflow_detached(workflow_run_id)
+
+
+async def run_workflow_detached(workflow_run_id: str) -> None:
+    """Execute a workflow run through its persisted graph.
 
     Catalog metadata may remain attached to a run for audit/backward
     compatibility, but it never selects an executor. The graph snapshot and
@@ -24,7 +34,12 @@ async def run_workflow(ctx, workflow_run_id: str) -> None:  # noqa: ARG001
     async with SessionLocal() as session:
         res = await session.execute(select(WorkflowRun).where(WorkflowRun.id == workflow_run_id))
         workflow_run = res.scalar_one_or_none()
-        if workflow_run is None or workflow_run.status == "succeeded":
+        if workflow_run is None or workflow_run.status in {
+            "succeeded",
+            "failed",
+            "diverged",
+            "cancelled",
+        }:
             return
         workflow = await session.scalar(
             select(Workflow).where(
@@ -54,10 +69,8 @@ async def run_workflow(ctx, workflow_run_id: str) -> None:  # noqa: ARG001
             )
             if occurrence_id:
                 occurrence = await session.get(WorkflowOccurrence, occurrence_id)
-                if occurrence is not None:
-                    occurrence.status = (
-                        "succeeded" if workflow_run.status == "succeeded" else workflow_run.status
-                    )
+                if occurrence is not None and workflow_run.status != "running":
+                    occurrence.status = workflow_run.status
             await session.commit()
         except Exception as exc:  # noqa: BLE001
             workflow_run.status = "failed"

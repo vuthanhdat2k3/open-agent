@@ -19,6 +19,7 @@ import {
   useMe,
   useMembers,
   useRemoveMember,
+  useUpdateMemberRole,
   useApiKeys,
   useCreateApiKey,
   useRevokeApiKey,
@@ -33,6 +34,7 @@ import { Input, Label } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { getActiveOrgId } from "@/lib/auth";
+import { ASSIGNABLE_ROLES, isOrgAdmin, normalizeRole } from "@/lib/roles";
 
 export default function MembersAndAccessPage() {
   const { t, dict, locale, tx } = useTranslation();
@@ -44,6 +46,7 @@ export default function MembersAndAccessPage() {
   const members = useMembers(orgId);
   const invite = useInviteMember(orgId);
   const remove = useRemoveMember(orgId);
+  const updateRole = useUpdateMemberRole(orgId);
   const canManage = useCan("orgs:manage");
 
   // API Keys state
@@ -102,7 +105,7 @@ export default function MembersAndAccessPage() {
     }
   }
 
-  const adminCount = members.data?.filter((m) => m.role === "org_admin" || m.role === "admin").length ?? 0;
+  const adminCount = members.data?.filter((m) => isOrgAdmin(m.role)).length ?? 0;
   const operatorCount = members.data?.filter((m) => m.role === "operator").length ?? 0;
   const userCount = members.data?.filter((m) => m.role === "user").length ?? 0;
   const totalMembers = members.data?.length ?? 0;
@@ -111,9 +114,29 @@ export default function MembersAndAccessPage() {
   function canRemoveMember(member: { role: string; user_id: string }): boolean {
     if (member.role === "platform_admin") return false;
     if (me.data?.id === member.user_id) return false;
-    const isAdminRole = member.role === "org_admin" || member.role === "admin";
-    if (isAdminRole && adminCount <= 1) return false;
+    if (isOrgAdmin(member.role) && adminCount <= 1) return false;
     return true;
+  }
+
+  function canChangeRole(member: { role: string; user_id: string }): boolean {
+    if (!canManage) return false;
+    if (member.role === "platform_admin") return false;
+    if (me.data?.id === member.user_id) return false;
+    // Demoting the last org_admin is rejected by the API; mirror that here.
+    if (isOrgAdmin(member.role) && adminCount <= 1) return false;
+    return true;
+  }
+
+  async function submitRoleChange(
+    member: { user_id: string; role: string },
+    newRole: "org_admin" | "operator" | "user",
+  ) {
+    try {
+      await updateRole.mutateAsync({ userId: member.user_id, role: newRole });
+      toast.success(tx("Đã cập nhật vai trò", "Role updated"));
+    } catch (error: any) {
+      toast.error(error.message || tx("Không thể cập nhật vai trò", "Unable to update role"));
+    }
   }
 
   return (
@@ -274,7 +297,20 @@ export default function MembersAndAccessPage() {
                       </div>
 
                       <div className="flex items-center gap-2.5">
-                        <Badge variant={member.role === "org_admin" || member.role === "admin" ? "default" : "outline"} className="font-mono text-[10px] uppercase">
+                        <Select
+                          aria-label={tx("Vai trò thành viên", "Member role")}
+                          value={normalizeRole(member.role)}
+                          disabled={!canChangeRole(member) || updateRole.isPending}
+                          onChange={(event) => submitRoleChange(member, event.target.value as "org_admin" | "operator" | "user")}
+                          className="h-8 min-w-[140px] text-xs"
+                        >
+                          {ASSIGNABLE_ROLES.map((roleOption) => (
+                            <option key={roleOption} value={roleOption}>
+                              {roleLabel(roleOption, t)}
+                            </option>
+                          ))}
+                        </Select>
+                        <Badge variant={isOrgAdmin(member.role) ? "default" : "outline"} className="font-mono text-[10px] uppercase">
                           {roleLabel(member.role, t)}
                         </Badge>
                         {canRemoveMember(member) ? (
@@ -393,7 +429,7 @@ export default function MembersAndAccessPage() {
 
                       <div className="flex items-center gap-2.5">
                         <Badge variant="outline" className="font-mono text-[10px]">
-                          {key.expires_at ? "Has Expiry" : "No Expiry"}
+                          {key.expires_at ? tx("Có hạn dùng", "Has Expiry") : tx("Không hạn dùng", "No Expiry")}
                         </Badge>
                         <ConfirmDialog
                           trigger={

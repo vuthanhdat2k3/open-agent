@@ -43,6 +43,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useTranslation } from "@/lib/i18n";
+import { isAdminRole } from "@/lib/roles";
 import type { WorkspaceArtifact, SandboxExecution } from "@/types";
 
 function formatBytes(bytes: number): string {
@@ -77,7 +78,7 @@ export default function WorkspacePage() {
   const deleteArtifact = useDeleteWorkspaceArtifact();
   const deleteExecution = useDeleteSandboxExecution();
   const role = useCurrentRole();
-  const isAdmin = role === "admin" || role === "platform_admin";
+  const isAdmin = isAdminRole(role);
 
   const [previewArtifact, setPreviewArtifact] = React.useState<WorkspaceArtifact | null>(null);
   const [previewContent, setPreviewContent] = React.useState<string | null>(null);

@@ -55,12 +55,6 @@ settings = get_settings()
 logger = logging.getLogger(__name__)
 
 
-def _public_role(role: Role) -> str:
-    if get_settings().auth_provider == "local" and role == Role.org_admin:
-        return "admin"
-    return role.value
-
-
 def _require_local_auth() -> None:
     if get_settings().auth_provider == "zitadel":
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Legacy authentication surface is disabled")
@@ -559,7 +553,7 @@ async def me(
             org_id=org.id,
             org_name=org.name,
             org_slug=org.slug,
-            role=_public_role(mem.role),
+            role=mem.role.value,
         )
         for mem, org in rows
     ]
@@ -573,6 +567,7 @@ async def me(
         email=current_user.email,
         display_name=current_user.display_name,
         is_active=current_user.is_active,
+        must_change_password=bool(current_user.must_change_password),
         created_at=current_user.created_at,
         memberships=memberships_out,
         permissions_by_org=permissions_by_org,
@@ -603,6 +598,9 @@ async def update_me(
         if not verify_password(body.old_password, current_user.hashed_password or ""):
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Incorrect old password")
         current_user.hashed_password = hash_password(body.new_password)
+        # The admin-chosen initial password has been replaced by a self-chosen
+        # one: clear the forced-change flag so the UI unlocks.
+        current_user.must_change_password = False
 
     await db.commit()
     await db.refresh(current_user)
@@ -752,7 +750,7 @@ async def oauth_callback(
             await db.flush()
             db.add(default_organization_quota(org.id))
 
-            membership = Membership(org_id=org.id, user_id=user.id, role=Role.admin)
+            membership = Membership(org_id=org.id, user_id=user.id, role=Role.org_admin)
             db.add(membership)
 
         # Create OAuthAccount link

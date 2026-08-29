@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.sse import format_sse
 from app.config import get_settings
+from app.core.authz.policy import PrincipalContext
 from app.core.authz.scope import scope_to_owner
 from app.core.quota.dependencies import agent_run_admission, enforce_resource_quota
 from app.core.tools.registry import BUILTIN_TOOLS
@@ -54,6 +55,7 @@ async def list_node_options(
     type: str = "models",
     org_id: str = Depends(get_current_org_id),
     current_user: User = Depends(get_current_user),
+    authz: PrincipalContext = Depends(require_permission("workflows:read")),
     db: AsyncSession = Depends(get_db),
 ):
     """Dynamic dropdown sources for ``load_options_from`` fields."""
@@ -86,6 +88,10 @@ async def list_node_options(
                 out.append({"name": f"{label} ({getattr(c, 'status', '')})", "value": c.id})
         return out
     if type == "users":
+        # Member emails are PII: plain ``user`` members (self-scoped) must not
+        # enumerate the organization roster; staff roles may configure nodes.
+        if authz.owner_user_id is not None:
+            raise HTTPException(403, "User role cannot enumerate organization members")
         rows = await db.execute(
             select(User).join(User.memberships).where(User.memberships.any(org_id=org_id))
         )
@@ -172,8 +178,8 @@ async def create_workflow(
         await db.rollback()
         error_msg = str(e.orig) if hasattr(e, "orig") else str(e)
         if "uq_workflows_org_user_name" in error_msg or "uq_workflows_org_name" in error_msg:
-            raise HTTPException(409, f'Tên workflow "{body.name}" đã tồn tại. Vui lòng chọn một tên khác.') from e
-        raise HTTPException(409, "Không thể lưu workflow do xung đột dữ liệu.") from e
+            raise HTTPException(409, f'Workflow name "{body.name}" already exists.') from e
+        raise HTTPException(409, "Workflow could not be saved due to a data conflict.") from e
 
 
 @router.post(
@@ -230,8 +236,8 @@ async def update_workflow(
         await db.rollback()
         error_msg = str(e.orig) if hasattr(e, "orig") else str(e)
         if "uq_workflows_org_user_name" in error_msg or "uq_workflows_org_name" in error_msg:
-            raise HTTPException(409, f'Tên workflow "{body.name}" đã tồn tại. Vui lòng chọn một tên khác.') from e
-        raise HTTPException(409, "Không thể cập nhật workflow do xung đột dữ liệu.") from e
+            raise HTTPException(409, f'Workflow name "{body.name}" already exists.') from e
+        raise HTTPException(409, "Workflow could not be updated due to a data conflict.") from e
     # If this workflow belongs to a template installation and the user edited
     # its DAG, mark the installation so the worker runs the generic engine
     # instead of the catalog executor (the user now owns the graph).
@@ -403,6 +409,39 @@ async def replay_workflow_run(
         "diverged": diverged["data"] if diverged else None,
         "events": log,
     }
+
+
+@router.post(
+    "/runs/{run_id}/cancel",
+    dependencies=[Depends(require_permission("workflows:run"))],
+)
+async def cancel_workflow_run(
+    run_id: str,
+    org_id: str = Depends(get_current_org_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Request cancellation of a live workflow run.
+
+    Cooperative: the run row is the shared signal between this API and
+    whichever worker owns the lease. The engine re-reads the status before
+    each scheduling round and halts at the next node boundary; a node already
+    executing finishes first. Queued and waiting-approval runs stop
+    immediately because no executor is mid-flight.
+    """
+    res = await db.execute(
+        select(WorkflowRun).where(WorkflowRun.id == run_id, WorkflowRun.org_id == org_id)
+    )
+    run = res.scalar_one_or_none()
+    if run is None:
+        raise HTTPException(404, "workflow run not found")
+    if run.status in {"succeeded", "failed", "diverged", "cancelled"}:
+        return {"ok": True, "status": run.status}
+    run.status = "cancelled"
+    run.finished_at = utc_now()
+    run.lease_owner = None
+    run.lease_expires_at = None
+    await db.commit()
+    return {"ok": True, "status": "cancelled"}
 
 
 @router.get("/runs/{run_id}", dependencies=[Depends(require_permission("workflows:read"))])
