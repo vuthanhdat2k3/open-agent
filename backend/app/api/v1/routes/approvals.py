@@ -13,11 +13,13 @@ from app.config import get_settings
 from app.core.authz.policy import PrincipalContext
 from app.core.guardrails.approval import get_pending, resolve_approval
 from app.core.observability.audit import log_action
-from app.core.workflow.queue import enqueue_chat_run
+from app.core.workflow.jobs import run_workflow_detached
+from app.core.workflow.queue import enqueue_chat_run, enqueue_workflow_run
 from app.dependencies import get_current_org_id, get_current_user, get_db, require_permission
 from app.models.approval_request import ApprovalRequest
 from app.models.task import Task
 from app.models.user import User
+from app.models.workflow_run import WorkflowRun
 
 router = APIRouter(prefix="/api/approvals", tags=["approvals"])
 
@@ -226,4 +228,26 @@ async def decide_approval(
                 await enqueue_chat_run(payload)
             else:
                 background_tasks.add_task(run_chat_detached, payload)
+    if approval.run_type == "workflow" and approval.run_id:
+        # A workflow approval node paused the run at `waiting_approval`.
+        # Without this branch the decision is recorded but nothing ever drives
+        # the run again — it stays waiting forever. Flip it back to a live
+        # status and hand it to the executor; the engine consults the decided
+        # approval request when it re-enters the gate node (continue on
+        # approved, fail the node on rejected).
+        run_res = await db.execute(
+            select(WorkflowRun).where(
+                WorkflowRun.id == approval.run_id,
+                WorkflowRun.org_id == org_id,
+            )
+        )
+        workflow_run = run_res.scalar_one_or_none()
+        if workflow_run is not None and workflow_run.status in {"waiting_approval", "queued"}:
+            workflow_run.status = "running"
+            workflow_run.error = None
+            await db.commit()
+            if get_settings().workflow_execution_mode == "queued":
+                await enqueue_workflow_run(workflow_run.id)
+            else:
+                background_tasks.add_task(run_workflow_detached, workflow_run.id)
     return approval

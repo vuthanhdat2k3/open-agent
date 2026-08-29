@@ -303,3 +303,19 @@ async def delete_agent(
     except ValueError as e:
         raise HTTPException(400, str(e))
     return {"ok": True}
+
+
+@router.post(
+    "/{id}/reset-template",
+    response_model=AgentOut,
+    dependencies=[Depends(require_permission("agents:update"))],
+)
+async def reset_agent_to_template(
+    id: str,
+    org_id: str = Depends(get_current_org_id),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        return await AgentService(db).reset_to_template(org_id, id)
+    except ValueError as e:
+        raise HTTPException(400, str(e))

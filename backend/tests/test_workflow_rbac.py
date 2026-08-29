@@ -42,7 +42,11 @@ def test_user_still_lacks_admin_scoped_perms() -> None:
 
 
 def test_all_catalog_templates_have_dag_graphs() -> None:
-    assert len(TEMPLATE_DAGS) == 7
+    # Floor, not an exact count: new templates are added to the catalog over
+    # time, and a hardcoded equality silently broke (flaky) when the 8th
+    # template landed. The real invariant is that EVERY catalog entry is a
+    # well-formed DAG template.
+    assert len(TEMPLATE_DAGS) >= 7
     for key, graph in TEMPLATE_DAGS.items():
         assert graph.get("kind") == "catalog_template", key
         assert "nodes" in graph and graph["nodes"], key

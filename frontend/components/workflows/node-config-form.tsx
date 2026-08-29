@@ -18,6 +18,72 @@ interface NodeConfigFormProps {
   onUpdate: (patch: Partial<GraphNode>) => void;
 }
 
+/**
+ * JsonEditor — a textarea that edits a JSON value with a local draft buffer.
+ *
+ * The naive implementation `value={JSON.stringify(value)}` + "parse on change,
+ * reject invalid" makes the textarea uncontrollable: every keystroke that
+ * yields invalid JSON is dropped and the field snaps back to the last valid
+ * serialization, so the user literally cannot type. Here the draft is kept
+ * locally and only re-synced from the prop when the prop truly changes (node
+ * switch/load), never from the editor's own emission.
+ */
+function JsonEditor({
+  value = {},
+  onChange,
+  placeholder,
+}: {
+  value: unknown;
+  onChange: (v: unknown) => void;
+  placeholder?: string;
+}) {
+  const lastEmittedRef = React.useRef<string>(
+    JSON.stringify(value ?? {}, null, 2),
+  );
+  const [draft, setDraft] = React.useState<string>(lastEmittedRef.current);
+  const [invalid, setInvalid] = React.useState(false);
+
+  React.useEffect(() => {
+    const serialized = JSON.stringify(value ?? {}, null, 2);
+    if (serialized !== lastEmittedRef.current) {
+      setDraft(serialized);
+      lastEmittedRef.current = serialized;
+      setInvalid(false);
+    }
+    // Re-sync only when the prop actually differs from what this editor last
+    // emitted; the guard above prevents an update loop, so a dependency array
+    // would actually break the "don't fight the user's typing" behaviour.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  });
+
+  return (
+    <div className="space-y-1">
+      <Textarea
+        className="text-xs font-mono min-h-[100px]"
+        value={draft}
+        onChange={(e) => {
+          const text = e.target.value;
+          setDraft(text);
+          try {
+            const parsed = JSON.parse(text);
+            setInvalid(false);
+            lastEmittedRef.current = text;
+            onChange(parsed);
+          } catch {
+            setInvalid(true);
+          }
+        }}
+        placeholder={placeholder || "{}"}
+      />
+      {invalid && (
+        <p className="text-[10px] text-destructive">
+          JSON invalid
+        </p>
+      )}
+    </div>
+  );
+}
+
 /** True when a field's display rules match the current parameters or fallback defaults. */
 function isFieldVisible(
   field: NodeField,
@@ -163,16 +229,9 @@ function FieldInput({
     }
     case "json":
       return (
-        <Textarea
-          className="text-xs font-mono min-h-[100px]"
-          value={JSON.stringify(value ?? field.default ?? {}, null, 2)}
-          onChange={(e) => {
-            try {
-              onValue(JSON.parse(e.target.value));
-            } catch {
-              // keep last valid value; typing in progress
-            }
-          }}
+        <JsonEditor
+          value={(value ?? field.default ?? {}) as object}
+          onChange={(parsed) => onValue(parsed)}
           placeholder={field.placeholder || "{}"}
         />
       );

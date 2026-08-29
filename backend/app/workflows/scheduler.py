@@ -14,6 +14,7 @@ from app.core.workflow.schedule import to_schedule_dict
 from app.db.base import gen_id, utc_now
 from app.models.outbox import OutboxEvent
 from app.models.workflow import Workflow
+from app.models.workflow_installation import WorkflowInstallation
 from app.models.workflow_run import WorkflowRun
 from app.models.workflow_trigger_state import WorkflowTriggerState
 
@@ -49,23 +50,38 @@ def _field_matches(value: int, field: str, *, sunday: bool = False) -> bool:
     return False
 
 
+def _start_of_next_month(dt: datetime) -> datetime:
+    year = dt.year + (1 if dt.month == 12 else 0)
+    month = 1 if dt.month == 12 else dt.month + 1
+    return dt.replace(year=year, month=month, day=1, hour=0, minute=0)
+
+
 def _next_custom_cron(cron: str, local: datetime) -> datetime:
     fields = cron.split()
     if len(fields) != 5:
         raise ValueError("custom cron must be a 5-field expression")
+    minute_f, hour_f, day_f, month_f, dow_f = fields
     candidate = local.replace(second=0, microsecond=0) + timedelta(minutes=1)
-    for _ in range(366 * 24 * 60):
-        if (
-            _field_matches(candidate.minute, fields[0])
-            and _field_matches(candidate.hour, fields[1])
-            and _field_matches(candidate.day, fields[2])
-            and _field_matches(candidate.month, fields[3])
-            # Cron uses Sunday=0/7 and Monday=1, while datetime.weekday uses
-            # Monday=0. Convert before matching the user-facing cron value.
-            and _field_matches((candidate.weekday() + 1) % 7, fields[4], sunday=True)
-        ):
-            return candidate
-        candidate += timedelta(minutes=1)
+    # Bound the search to one year, but skip whole months/days/hours that
+    # provably cannot match so a rare pattern (e.g. "0 2 29 2 *") resolves in
+    # a handful of iterations instead of scanning ~527k minutes. Matching
+    # semantics are unchanged: every field must still match (AND).
+    deadline = candidate + timedelta(days=366)
+    while candidate < deadline:
+        if not _field_matches(candidate.month, month_f):
+            candidate = _start_of_next_month(candidate)
+            continue
+        dow = (candidate.weekday() + 1) % 7
+        if not (_field_matches(candidate.day, day_f) and _field_matches(dow, dow_f, sunday=True)):
+            candidate = (candidate + timedelta(days=1)).replace(hour=0, minute=0)
+            continue
+        if not _field_matches(candidate.hour, hour_f):
+            candidate = (candidate + timedelta(hours=1)).replace(minute=0)
+            continue
+        if not _field_matches(candidate.minute, minute_f):
+            candidate += timedelta(minutes=1)
+            continue
+        return candidate
     raise ValueError("custom cron has no occurrence within one year")
 
 
@@ -138,15 +154,28 @@ async def reconcile_trigger_states(db: AsyncSession, *, now: datetime | None = N
     current = now or utc_now()
     workflows = list((await db.scalars(select(Workflow))).all())
     states = list((await db.scalars(select(WorkflowTriggerState))).all())
+    # A marketplace installation owns the workflow it materialized. When the
+    # user pauses or archives the installation, the graph still carries an
+    # enabled scheduler node — without this gate the workflow keeps firing
+    # (and burning tokens) behind the user's back. A workflow with no
+    # installation is hand-built and unaffected.
+    blocked_workflow_ids: set[str] = set()
+    installation_rows = await db.execute(
+        select(WorkflowInstallation.workflow_id, WorkflowInstallation.status)
+    )
+    for workflow_id, status in installation_rows.all():
+        if status != "enabled":
+            blocked_workflow_ids.add(workflow_id)
     by_key = {(state.workflow_id, state.node_id): state for state in states}
     desired: set[tuple[str, str]] = set()
     changed = 0
     for workflow in workflows:
+        installation_blocked = workflow.id in blocked_workflow_ids
         for node_id, node in _scheduler_nodes(workflow).items():
             desired.add((workflow.id, node_id))
             parameters = dict(node.get("parameters") or node.get("config") or {})
             timezone_name = str(parameters.get("timezone") or "UTC")
-            enabled = parameters.get("enabled", True) is not False
+            enabled = parameters.get("enabled", True) is not False and not installation_blocked
             try:
                 schedule = to_schedule_dict(parameters)
                 first_run_at = next_run_at(schedule, timezone_name, now=current) if enabled else None

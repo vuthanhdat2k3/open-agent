@@ -178,8 +178,8 @@ async def create_workflow(
         await db.rollback()
         error_msg = str(e.orig) if hasattr(e, "orig") else str(e)
         if "uq_workflows_org_user_name" in error_msg or "uq_workflows_org_name" in error_msg:
-            raise HTTPException(409, f'Tên workflow "{body.name}" đã tồn tại. Vui lòng chọn một tên khác.') from e
-        raise HTTPException(409, "Không thể lưu workflow do xung đột dữ liệu.") from e
+            raise HTTPException(409, f'Workflow name "{body.name}" already exists.') from e
+        raise HTTPException(409, "Workflow could not be saved due to a data conflict.") from e
 
 
 @router.post(
@@ -236,8 +236,8 @@ async def update_workflow(
         await db.rollback()
         error_msg = str(e.orig) if hasattr(e, "orig") else str(e)
         if "uq_workflows_org_user_name" in error_msg or "uq_workflows_org_name" in error_msg:
-            raise HTTPException(409, f'Tên workflow "{body.name}" đã tồn tại. Vui lòng chọn một tên khác.') from e
-        raise HTTPException(409, "Không thể cập nhật workflow do xung đột dữ liệu.") from e
+            raise HTTPException(409, f'Workflow name "{body.name}" already exists.') from e
+        raise HTTPException(409, "Workflow could not be updated due to a data conflict.") from e
     # If this workflow belongs to a template installation and the user edited
     # its DAG, mark the installation so the worker runs the generic engine
     # instead of the catalog executor (the user now owns the graph).
@@ -409,6 +409,39 @@ async def replay_workflow_run(
         "diverged": diverged["data"] if diverged else None,
         "events": log,
     }
+
+
+@router.post(
+    "/runs/{run_id}/cancel",
+    dependencies=[Depends(require_permission("workflows:run"))],
+)
+async def cancel_workflow_run(
+    run_id: str,
+    org_id: str = Depends(get_current_org_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Request cancellation of a live workflow run.
+
+    Cooperative: the run row is the shared signal between this API and
+    whichever worker owns the lease. The engine re-reads the status before
+    each scheduling round and halts at the next node boundary; a node already
+    executing finishes first. Queued and waiting-approval runs stop
+    immediately because no executor is mid-flight.
+    """
+    res = await db.execute(
+        select(WorkflowRun).where(WorkflowRun.id == run_id, WorkflowRun.org_id == org_id)
+    )
+    run = res.scalar_one_or_none()
+    if run is None:
+        raise HTTPException(404, "workflow run not found")
+    if run.status in {"succeeded", "failed", "diverged", "cancelled"}:
+        return {"ok": True, "status": run.status}
+    run.status = "cancelled"
+    run.finished_at = utc_now()
+    run.lease_owner = None
+    run.lease_expires_at = None
+    await db.commit()
+    return {"ok": True, "status": "cancelled"}
 
 
 @router.get("/runs/{run_id}", dependencies=[Depends(require_permission("workflows:read"))])

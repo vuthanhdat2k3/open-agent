@@ -71,6 +71,20 @@ def test_cycle_detected() -> None:
     assert any("cycle" in e["message"] for e in _err(graph))
 
 
+def test_duplicate_parallel_edge_rejected() -> None:
+    # Two edges sharing a (from_, to) pair would serialize to the same
+    # "{from_}->{to}#{index}" id space, making select/delete ambiguous in
+    # the canvas. Validation rejects them at save/import time instead.
+    graph = _graph(
+        [
+            {"id": "in", "kind": "input"},
+            {"id": "out", "kind": "output"},
+        ],
+        [{"from_": "in", "to": "out"}, {"from_": "in", "to": "out"}],
+    )
+    assert any("duplicate edge" in e["message"] for e in _err(graph))
+
+
 def test_custom_agent_requires_model() -> None:
     graph = _graph(
         [

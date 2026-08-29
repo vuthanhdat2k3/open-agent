@@ -69,6 +69,10 @@ class Settings(BaseSettings):
     max_iterations: int = 12
     workflow_execution_mode: Literal["inline", "queued"] = "inline"
     workflow_max_concurrency: int = 8
+    # Safety net so a hung provider call cannot pin a run forever: a node with
+    # no explicit timeout_s is bounded by this. Generous enough for long agent
+    # runs, short enough that a wedged worker is reclaimed by the orphan sweep.
+    workflow_node_default_timeout_s: int = 900
     workflow_webhook_shared_token: str = ""
     redis_url: str = "redis://127.0.0.1:6379/0"
     quota_requests_per_minute: int = 600

@@ -12,8 +12,8 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision: str = "0059_profile_role_hardening"
-down_revision: str | None = "0058_scope_workflow_name_unique_to_user"
+revision: str = "0060_profile_role_hardening"
+down_revision: str | None = "0059_org_agent_settings_and_template_key"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -28,10 +28,12 @@ def upgrade() -> None:
             server_default=sa.false(),
         ),
     )
-    op.execute("UPDATE memberships SET role = 'org_admin' WHERE role = 'admin'")
+    # Normalize existing "admin" membership roles to the canonical "org_admin"
+    # value now that Role.admin is dropped from the Python enum.
+    op.execute(
+        sa.text("UPDATE memberships SET role = 'org_admin' WHERE role = 'admin'")
+    )
 
 
 def downgrade() -> None:
-    # The admin->org_admin normalization is intentionally not reversible:
-    # the Role enum no longer accepts the legacy spelling.
     op.drop_column("users", "must_change_password")
