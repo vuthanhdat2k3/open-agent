@@ -199,6 +199,7 @@ class WorkflowService:
                     "message": "graph needs at least one agent or output node",
                 }
             )
+        seen_edges: set[tuple[str, str]] = set()
         for e in edges:
             if e.get("from_") not in ids or e.get("to") not in ids:
                 errors.append(
@@ -208,6 +209,23 @@ class WorkflowService:
                         "message": f"edge references unknown node: {e}",
                     }
                 )
+            # Reject parallel edges between the same two nodes. The edge id
+            # serialized to the frontend is "{from_}->{to}#{index}", so two
+            # edges sharing a (from_, to) pair would be indistinguishable on
+            # select/delete (M13). The canvas onConnect already de-dupes on
+            # drag-connect; blocking it at validation keeps imported/template
+            # graphs consistent too.
+            pair = (e.get("from_"), e.get("to"))
+            if pair in seen_edges:
+                errors.append(
+                    {
+                        "node_id": e.get("from_", ""),
+                        "field": "edge",
+                        "message": f"duplicate edge between the same nodes: {e.get('from_')} -> {e.get('to')}",
+                    }
+                )
+            else:
+                seen_edges.add(pair)
             cond = e.get("condition")
             if cond:
                 try:
