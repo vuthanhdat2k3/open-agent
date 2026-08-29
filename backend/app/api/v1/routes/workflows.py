@@ -215,23 +215,35 @@ async def update_workflow(
     id: str,
     body: WorkflowUpdate,
     org_id: str = Depends(get_current_org_id),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    # Ownership-scoped: role `user` may only update their own workflows.
-    res = await db.execute(
-        scope_to_owner(select(Workflow).where(Workflow.id == id, Workflow.org_id == org_id), db, Workflow.created_by_user_id)
-    )
-    if res.scalar_one_or_none() is None:
-        existing = await db.scalar(select(Workflow.id).where(Workflow.id == id, Workflow.org_id == org_id))
-        if existing is None:
+    # Check if this is a System Blueprint or existing DB workflow
+    existing = await db.scalar(select(Workflow).where(Workflow.id == id, Workflow.org_id == org_id))
+    if existing is not None:
+        # Ownership-scoped: role `user` may only update their own workflows.
+        res = await db.execute(
+            scope_to_owner(select(Workflow).where(Workflow.id == id, Workflow.org_id == org_id), db, Workflow.created_by_user_id)
+        )
+        if res.scalar_one_or_none() is None:
+            raise HTTPException(403, "you can only edit workflows you created")
+    else:
+        # Check if virtual blueprint
+        from app.core.workflow.templates import SYSTEM_WORKFLOW_BLUEPRINTS
+
+        matched_bp = any(
+            bp.id == id or bp.key == id or bp.name.lower() == id.lower() or bp.key == id.replace("sys-wf-", "")
+            for bp in SYSTEM_WORKFLOW_BLUEPRINTS.values()
+        )
+        if not matched_bp:
             raise HTTPException(404, "workflow not found")
-        raise HTTPException(403, "you can only edit workflows you created")
+
     try:
-        result = await WorkflowService(db).update(org_id, id, body.model_dump(exclude_unset=True))
+        result = await WorkflowService(db).update(org_id, id, body.model_dump(exclude_unset=True), user_id=current_user.id)
     except WorkflowValidationError as e:
         raise HTTPException(400, detail={"errors": e.errors}) from e
     except ValueError as e:
-        raise HTTPException(404, str(e))
+        raise HTTPException(400, str(e))
     except IntegrityError as e:
         await db.rollback()
         error_msg = str(e.orig) if hasattr(e, "orig") else str(e)
@@ -253,6 +265,22 @@ async def update_workflow(
             installation.settings = settings
             await db.commit()
     return result
+
+
+@router.post(
+    "/{id}/reset-template",
+    response_model=WorkflowOut,
+    dependencies=[Depends(require_permission("workflows:update"))],
+)
+async def reset_workflow_to_template(
+    id: str,
+    org_id: str = Depends(get_current_org_id),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        return await WorkflowService(db).reset_to_template(org_id, id)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
 
 @router.delete("/{id}", dependencies=[Depends(require_permission("workflows:delete"))])
