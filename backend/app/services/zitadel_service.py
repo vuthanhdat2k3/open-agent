@@ -35,13 +35,75 @@ class ZitadelProvisioningService:
         issuer = self.settings.zitadel_issuer_url or "http://127.0.0.1.sslip.io"
         return issuer.removeprefix("http://").removeprefix("https://").split("/", 1)[0].split(":", 1)[0]
 
+    async def get_user_id_by_email(self, email: str) -> str | None:
+        pat = self.get_pat()
+        if not pat:
+            return None
+        base_url = self.get_api_base_url()
+        headers = {
+            "Authorization": f"Bearer {pat}",
+            "Content-Type": "application/json",
+            "Host": self.get_host_header(),
+        }
+        search_payload = {
+            "query": {
+                "queries": [
+                    {
+                        "emailQuery": {
+                            "emailAddress": email.strip().lower()
+                        }
+                    }
+                ]
+            }
+        }
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                res = await client.post(f"{base_url}/v2/users", json=search_payload, headers=headers)
+                if res.status_code == 200:
+                    data = res.json()
+                    results = data.get("result") or []
+                    if results:
+                        return results[0].get("userId")
+        except Exception as exc:
+            logger.warning("Error looking up Zitadel user by email %s: %s", email, exc)
+        return None
+
+    async def set_user_password(self, user_id: str, new_password: str) -> bool:
+        pat = self.get_pat()
+        if not pat:
+            return False
+        base_url = self.get_api_base_url()
+        headers = {
+            "Authorization": f"Bearer {pat}",
+            "Content-Type": "application/json",
+            "Host": self.get_host_header(),
+        }
+        payload = {
+            "newPassword": {
+                "password": new_password,
+                "changeRequired": False,
+            }
+        }
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                res = await client.post(f"{base_url}/v2/users/{user_id}/password", json=payload, headers=headers)
+                if res.status_code == 200:
+                    logger.info("Successfully updated Zitadel password for userId %s", user_id)
+                    return True
+                else:
+                    logger.warning("Failed to update Zitadel password for %s (status %s): %s", user_id, res.status_code, res.text)
+                    return False
+        except Exception as exc:
+            logger.warning("Error updating Zitadel password for %s: %s", user_id, exc)
+            return False
+
     async def provision_user(
         self,
         email: str,
         display_name: str | None = None,
         initial_password: str = "OpenAgent@2026",
     ) -> dict[str, Any] | None:
-        """Automatically creates a human user on ZITADEL if not already existing."""
+        """Automatically creates a human user on ZITADEL if not already existing, or syncs password if existing."""
         if self.settings.auth_provider != "zitadel":
             return None
 
@@ -86,8 +148,11 @@ class ZitadelProvisioningService:
                     logger.info("Successfully auto-provisioned user %s on ZITADEL (id: %s)", email_clean, data.get("userId"))
                     return data
                 elif res.status_code == 409 or (res.status_code == 400 and "already exists" in res.text.lower()):
-                    logger.info("ZITADEL user %s already exists: %s", email_clean, res.text)
-                    return None
+                    logger.info("ZITADEL user %s already exists; syncing password if provided", email_clean)
+                    user_id = await self.get_user_id_by_email(email_clean)
+                    if user_id and initial_password:
+                        await self.set_user_password(user_id, initial_password)
+                    return {"userId": user_id}
                 elif res.status_code == 400:
                     error_data = {}
                     try:

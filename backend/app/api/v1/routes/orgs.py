@@ -137,9 +137,10 @@ async def create_org(
             )
             db.add(target_user)
             await db.flush()
-        elif not target_user.hashed_password:
-            target_user.hashed_password = hash_password(initial_pass)
-            target_user.must_change_password = True
+        else:
+            if body.initial_password or not target_user.hashed_password:
+                target_user.hashed_password = hash_password(initial_pass)
+                target_user.must_change_password = True
             await db.flush()
         invited_membership = Membership(
             org_id=org.id,
