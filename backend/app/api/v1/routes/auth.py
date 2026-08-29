@@ -595,9 +595,16 @@ async def update_me(
     if body.new_password:
         if not body.old_password:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Old password is required to set a new password")
+
+        is_old_valid = False
         if current_user.hashed_password:
-            if not verify_password(body.old_password, current_user.hashed_password):
-                raise HTTPException(status.HTTP_400_BAD_REQUEST, "Incorrect old password")
+            is_old_valid = verify_password(body.old_password, current_user.hashed_password)
+
+        if not is_old_valid and get_settings().auth_provider == "zitadel":
+            is_old_valid = await ZitadelProvisioningService().verify_user_password(current_user.email, body.old_password)
+
+        if not is_old_valid:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Incorrect old password")
 
         if get_settings().auth_provider == "zitadel":
             zitadel = ZitadelProvisioningService()
@@ -611,8 +618,6 @@ async def update_me(
                     )
 
         current_user.hashed_password = hash_password(body.new_password)
-        # The admin-chosen initial password has been replaced by a self-chosen
-        # one: clear the forced-change flag so the UI unlocks.
         current_user.must_change_password = False
 
     await db.commit()
