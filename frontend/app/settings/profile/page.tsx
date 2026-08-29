@@ -12,7 +12,8 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/page-header";
 import { useTranslation, roleLabel } from "@/lib/i18n";
-import { ErrorState } from "@/components/shared";
+import { ErrorState, PasswordComplexityIndicator } from "@/components/shared";
+import { validateZitadelPassword } from "@/lib/password";
 
 export default function ProfilePage() {
   const { t, dict, locale, tx } = useTranslation();
@@ -50,8 +51,14 @@ export default function ProfilePage() {
       toast.error(tx("Mật khẩu mới không khớp", "New passwords do not match"));
       return;
     }
-    if (newPassword.length < 6) {
-      toast.error(tx("Mật khẩu mới phải có ít nhất 6 ký tự", "New password must be at least 6 characters"));
+    const validation = validateZitadelPassword(newPassword);
+    if (!validation.isValid) {
+      toast.error(
+        tx(
+          "Mật khẩu mới cần tối thiểu 8 ký tự, gồm chữ hoa, chữ thường, số và ký tự đặc biệt.",
+          "New password requires min 8 chars with uppercase, lowercase, number, and symbol."
+        )
+      );
       return;
     }
     try {
@@ -172,6 +179,7 @@ export default function ProfilePage() {
                   placeholder="••••••••"
                   required
                 />
+                <PasswordComplexityIndicator password={newPassword} showDefaultNote={false} />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="profile-confirm-password">{tx("Xác nhận mật khẩu mới", "Confirm New Password")}</Label>
