@@ -28,28 +28,43 @@ async def async_session_factory():
 @pytest.fixture
 async def test_env(async_session_factory):
     async with async_session_factory() as db:
-        org1 = Organization(id=gen_id(), name="Org 1")
-        org2 = Organization(id=gen_id(), name="Org 2")
+        org1 = Organization(id=gen_id(), name="Org 1", slug="org-1")
+        org2 = Organization(id=gen_id(), name="Org 2", slug="org-2")
         user = User(id=gen_id(), email="admin@org1.com", hashed_password="pw", is_active=True)
         db.add(org1)
         db.add(org2)
         db.add(user)
         await db.flush()
 
+        # Seed Provider
+        from app.models.provider import Provider
+
+        prov1 = Provider(
+            id=gen_id(),
+            org_id=org1.id,
+            key="openai",
+            name="OpenAI Provider",
+            base_url="https://api.openai.com/v1",
+        )
+        db.add(prov1)
+        await db.flush()
+
         # Seed an active model for org1
         model_fast = Model(
             id=gen_id(),
             org_id=org1.id,
+            provider_id=prov1.id,
             name="gpt-4o-mini",
-            provider="openai",
+            display_name="GPT-4o Mini",
             tier="fast",
             active=True,
         )
         model_reasoning = Model(
             id=gen_id(),
             org_id=org1.id,
+            provider_id=prov1.id,
             name="claude-3-5-sonnet",
-            provider="anthropic",
+            display_name="Claude 3.5 Sonnet",
             tier="reasoning",
             active=True,
         )
@@ -164,3 +179,91 @@ async def test_org_agent_settings_cheap_override_no_fork(test_env):
     assert deep_res.model_id == test_env["model_reasoning_id"]
     assert deep_res.temperature == 0.5
     assert deep_res.is_customized is False
+
+
+@pytest.mark.asyncio
+async def test_multi_org_independent_fork_and_id_resolution(test_env):
+    db = test_env["db"]
+    service = AgentService(db)
+    org1_id = test_env["org1_id"]
+    org2_id = test_env["org2_id"]
+
+    # 1. Both Org 1 and Org 2 start with un-forked sys-agent-general
+    a1_initial = await service.get(org1_id, "sys-agent-general")
+    a2_initial = await service.get(org2_id, "sys-agent-general")
+    assert a1_initial.id == "sys-agent-general"
+    assert a2_initial.id == "sys-agent-general"
+    assert a1_initial.is_customized is False
+    assert a2_initial.is_customized is False
+
+    # 2. Org 1 forks 'general' by updating system_prompt
+    forked_org1 = await service.update(
+        org1_id,
+        "sys-agent-general",
+        {"system_prompt": "Prompt customized specifically for Org 1"},
+        test_env["user_id"],
+    )
+    # Forked row gets a unique UUID primary key (never collides with 'sys-agent-general' or other orgs)
+    assert forked_org1.id != "sys-agent-general"
+    assert len(forked_org1.id) >= 32
+    assert forked_org1.is_customized is True
+    assert forked_org1.system_prompt == "Prompt customized specifically for Org 1"
+
+    # 3. Calling service.get(org1_id, "sys-agent-general") looks through and resolves Org 1's forked DB row
+    resolved_org1 = await service.get(org1_id, "sys-agent-general")
+    assert resolved_org1 is not None
+    assert resolved_org1.id == forked_org1.id
+    assert resolved_org1.is_customized is True
+    assert resolved_org1.system_prompt == "Prompt customized specifically for Org 1"
+
+    # 4. Calling service.get(org2_id, "sys-agent-general") still returns the pristine un-forked blueprint
+    resolved_org2 = await service.get(org2_id, "sys-agent-general")
+    assert resolved_org2 is not None
+    assert resolved_org2.id == "sys-agent-general"
+    assert resolved_org2.is_customized is False
+
+    # 5. Org 2 now ALSO forks 'general' with a different prompt
+    # Seed active model for org2
+    from app.models.provider import Provider
+
+    prov2 = Provider(
+        id=gen_id(),
+        org_id=org2_id,
+        key="openai",
+        name="OpenAI Provider Org 2",
+        base_url="https://api.openai.com/v1",
+    )
+    db.add(prov2)
+    await db.flush()
+
+    model_org2 = Model(
+        id=gen_id(),
+        org_id=org2_id,
+        provider_id=prov2.id,
+        name="gpt-4o",
+        display_name="GPT-4o",
+        tier="fast",
+        active=True,
+    )
+    db.add(model_org2)
+    await db.commit()
+
+    forked_org2 = await service.update(
+        org2_id,
+        "sys-agent-general",
+        {"system_prompt": "Prompt customized specifically for Org 2"},
+        test_env["user_id"],
+    )
+    # Org 2 gets its own unique UUID primary key distinct from Org 1 (NO PK collision)
+    assert forked_org2.id != "sys-agent-general"
+    assert forked_org2.id != forked_org1.id
+    assert forked_org2.is_customized is True
+    assert forked_org2.system_prompt == "Prompt customized specifically for Org 2"
+
+    # 6. Verify each org resolves its own distinct forked agent via "sys-agent-general"
+    org1_final = await service.get(org1_id, "sys-agent-general")
+    org2_final = await service.get(org2_id, "sys-agent-general")
+    assert org1_final.id == forked_org1.id
+    assert org2_final.id == forked_org2.id
+    assert org1_final.system_prompt == "Prompt customized specifically for Org 1"
+    assert org2_final.system_prompt == "Prompt customized specifically for Org 2"

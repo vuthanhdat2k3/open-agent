@@ -26,7 +26,6 @@ from app.core.tools.types import ToolContext
 from app.core.workflow import resume
 from app.core.workflow.replay import ReplayCursor, record_tool_call
 from app.db.base import utc_now
-from app.mcp.client import build_mcp_tool_spec
 from app.models.agent import Agent
 from app.models.workflow import Workflow
 from app.models.workflow_node_run import WorkflowNodeRun
@@ -990,6 +989,8 @@ async def _run_workflow_events(
                     args[key] = value
             spec = BUILTIN_TOOLS.get(tool_name)
             if spec is None:
+                from app.mcp.client import build_mcp_tool_spec
+
                 spec = await build_mcp_tool_spec(tool_name, db, org_id=workflow.org_id)
             if spec is None:
                 raise RuntimeError(f"tool '{tool_name}' not found")
