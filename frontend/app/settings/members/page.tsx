@@ -27,7 +27,8 @@ import {
 } from "@/hooks";
 import { PageHeader } from "@/components/page-header";
 import { useTranslation, roleLabel } from "@/lib/i18n";
-import { ConfirmDialog, EmptyState, ErrorState, LoadingSkeleton, DataPagination } from "@/components/shared";
+import { ConfirmDialog, EmptyState, ErrorState, LoadingSkeleton, DataPagination, PasswordComplexityIndicator } from "@/components/shared";
+import { validateZitadelPassword } from "@/lib/password";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
@@ -78,11 +79,21 @@ export default function MembersAndAccessPage() {
 
   async function submitMember(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const trimmedPass = password.trim();
+    if (trimmedPass && !validateZitadelPassword(trimmedPass).isValid) {
+      toast.error(
+        tx(
+          "Mật khẩu cần tối thiểu 8 ký tự, bao gồm chữ hoa, chữ thường, số và ký tự đặc biệt.",
+          "Password requires min 8 chars with uppercase, lowercase, number, and symbol."
+        )
+      );
+      return;
+    }
     try {
       await invite.mutateAsync({
         email,
         role,
-        initial_password: password.trim() ? password.trim() : undefined,
+        initial_password: trimmedPass ? trimmedPass : undefined,
       });
       toast.success(tx("Đã thêm thành viên & cấp phát thành công", "Member added & provisioned successfully"));
       setEmail("");
@@ -232,42 +243,45 @@ export default function MembersAndAccessPage() {
                 {tx("Thêm thành viên sẽ tự động cấp tài khoản trên ZITADEL với mật khẩu ban đầu để họ đăng nhập ngay.", "Adding a member automatically provisions their account on ZITADEL with the initial password so they can log in immediately.")}</CardDescription>
             </CardHeader>
             <CardContent>
-              <form onSubmit={submitMember} className="grid gap-4 md:grid-cols-[minmax(0,1.2fr)_160px_160px_auto] md:items-end">
-                <div className="space-y-2">
-                  <Label htmlFor="member-email" className="text-xs font-medium">{tx("Địa chỉ email", "Email Address")}</Label>
-                  <Input
-                    id="member-email"
-                    name="email"
-                    type="email"
-                    value={email}
-                    onChange={(event) => setEmail(event.target.value)}
-                    placeholder={tx("teammate@example.com", "teammate@example.com")}
-                    required
-                    className="text-xs"
-                  />
+              <form onSubmit={submitMember} className="space-y-4">
+                <div className="grid gap-4 md:grid-cols-[minmax(0,1.2fr)_160px_160px_auto] md:items-end">
+                  <div className="space-y-2">
+                    <Label htmlFor="member-email" className="text-xs font-medium">{tx("Địa chỉ email", "Email Address")}</Label>
+                    <Input
+                      id="member-email"
+                      name="email"
+                      type="email"
+                      value={email}
+                      onChange={(event) => setEmail(event.target.value)}
+                      placeholder={tx("teammate@example.com", "teammate@example.com")}
+                      required
+                      className="text-xs"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="member-role" className="text-xs font-medium">{tx("Phân quyền vai trò", "Role Assignment")}</Label>
+                    <Select id="member-role" value={role} onChange={(event) => setRole(event.target.value)} className="text-xs">
+                      <option value="user">{tx("Người dùng (Consumer)", "User (Consumer)")}</option>
+                      <option value="operator">{tx("Operator (Builder)", "Operator (Builder)")}</option>
+                      <option value="org_admin">{tx("Quản trị tổ chức", "Org Admin")}</option>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="member-password" className="text-xs font-medium">{tx("Mật khẩu ban đầu", "Initial Password")}</Label>
+                    <Input
+                      id="member-password"
+                      name="password"
+                      type="text"
+                      value={password}
+                      onChange={(event) => setPassword(event.target.value)}
+                      placeholder={tx("Mặc định: OpenAgent@2026", "Default: OpenAgent@2026")}
+                      className="text-xs font-mono"
+                    />
+                  </div>
+                  <Button type="submit" className="gap-1.5 font-semibold text-xs h-9" loading={invite.isPending} disabled={!email}>
+                    <UserPlus className="h-4 w-4" /> {tx("Thêm thành viên", "Add Member")}</Button>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="member-role" className="text-xs font-medium">{tx("Phân quyền vai trò", "Role Assignment")}</Label>
-                  <Select id="member-role" value={role} onChange={(event) => setRole(event.target.value)} className="text-xs">
-                    <option value="user">{tx("Người dùng (Consumer)", "User (Consumer)")}</option>
-                    <option value="operator">{tx("Operator (Builder)", "Operator (Builder)")}</option>
-                    <option value="org_admin">{tx("Quản trị tổ chức", "Org Admin")}</option>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="member-password" className="text-xs font-medium">{tx("Mật khẩu ban đầu", "Initial Password")}</Label>
-                  <Input
-                    id="member-password"
-                    name="password"
-                    type="text"
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                    placeholder={tx("Mặc định: OpenAgent@2026", "Default: OpenAgent@2026")}
-                    className="text-xs font-mono"
-                  />
-                </div>
-                <Button type="submit" className="gap-1.5 font-semibold text-xs h-9" loading={invite.isPending} disabled={!email}>
-                  <UserPlus className="h-4 w-4" /> {tx("Thêm thành viên", "Add Member")}</Button>
+                <PasswordComplexityIndicator password={password} />
               </form>
             </CardContent>
           </Card>
