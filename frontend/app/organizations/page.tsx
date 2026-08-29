@@ -11,7 +11,8 @@ import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { ConfirmDialog, ErrorState, LoadingSkeleton, DataPagination } from "@/components/shared";
+import { ConfirmDialog, ErrorState, LoadingSkeleton, DataPagination, PasswordComplexityIndicator } from "@/components/shared";
+import { validateZitadelPassword } from "@/lib/password";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import type { Organization } from "@/types";
 import { isOrgAdmin } from "@/lib/roles";
@@ -33,11 +34,21 @@ function OrgMembersDialog({ organization, open, onOpenChange }: OrgMembersDialog
   async function handleAddMember(e: React.FormEvent) {
     e.preventDefault();
     if (!email.trim()) return;
+    const trimmedPass = password.trim();
+    if (trimmedPass && !validateZitadelPassword(trimmedPass).isValid) {
+      toast.error(
+        tx(
+          "Mật khẩu cần tối thiểu 8 ký tự, bao gồm chữ hoa, chữ thường, số và ký tự đặc biệt.",
+          "Password requires min 8 chars with uppercase, lowercase, number, and symbol."
+        )
+      );
+      return;
+    }
     try {
       await invite.mutateAsync({
         email: email.trim(),
         role: "org_admin",
-        initial_password: password.trim() ? password.trim() : undefined,
+        initial_password: trimmedPass ? trimmedPass : undefined,
       });
       setEmail("");
       setPassword("");
@@ -67,30 +78,33 @@ function OrgMembersDialog({ organization, open, onOpenChange }: OrgMembersDialog
         </DialogHeader>
 
         {/* Add Member Form - Fixed to org_admin */}
-        <form onSubmit={handleAddMember} className="grid gap-3 pt-2 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
-          <div className="space-y-1.5">
-            <Label htmlFor="new-member-email" className="text-xs">{tx("Email Quản trị", "Admin Email")}</Label>
-            <Input
-              id="new-member-email"
-              type="email"
-              placeholder={tx("admin@example.com", "admin@example.com")}
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
+        <form onSubmit={handleAddMember} className="space-y-3 pt-2">
+          <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+            <div className="space-y-1.5">
+              <Label htmlFor="new-member-email" className="text-xs">{tx("Email Quản trị", "Admin Email")}</Label>
+              <Input
+                id="new-member-email"
+                type="email"
+                placeholder={tx("admin@example.com", "admin@example.com")}
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="new-member-password" className="text-xs">{tx("Mật khẩu ban đầu (tùy chọn)", "Initial Password (optional)")}</Label>
+              <Input
+                id="new-member-password"
+                type="text"
+                placeholder={tx("Mặc định: OpenAgent@2026", "Default: OpenAgent@2026")}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </div>
+            <Button type="submit" size="sm" className="gap-1.5" loading={invite.isPending}>
+              <UserPlus className="h-4 w-4" />{tx("Thêm Quản trị viên", "Add Admin")}</Button>
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="new-member-password" className="text-xs">{tx("Mật khẩu ban đầu (tùy chọn)", "Initial Password (optional)")}</Label>
-            <Input
-              id="new-member-password"
-              type="text"
-              placeholder={tx("Mặc định: OpenAgent@2026", "Default: OpenAgent@2026")}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-          </div>
-          <Button type="submit" size="sm" className="gap-1.5" loading={invite.isPending}>
-            <UserPlus className="h-4 w-4" />{tx("Thêm Quản trị viên", "Add Admin")}</Button>
+          <PasswordComplexityIndicator password={password} />
         </form>
 
         {/* Members List */}
@@ -186,11 +200,21 @@ export default function OrganizationsPage() {
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!name.trim()) return;
+    const trimmedPass = password.trim();
+    if (trimmedPass && !validateZitadelPassword(trimmedPass).isValid) {
+      toast.error(
+        tx(
+          "Mật khẩu cần tối thiểu 8 ký tự, bao gồm chữ hoa, chữ thường, số và ký tự đặc biệt.",
+          "Password requires min 8 chars with uppercase, lowercase, number, and symbol."
+        )
+      );
+      return;
+    }
     try {
       await create.mutateAsync({
         name: name.trim(),
         admin_email: adminEmail.trim() ? adminEmail.trim() : undefined,
-        initial_password: password.trim() ? password.trim() : undefined,
+        initial_password: trimmedPass ? trimmedPass : undefined,
       });
       setName("");
       setAdminEmail("");
@@ -222,20 +246,23 @@ export default function OrganizationsPage() {
       />
       <Card glass>
         <CardContent className="p-5">
-          <form onSubmit={submit} className="grid gap-4 md:grid-cols-[1fr_1fr_1fr_auto] md:items-end">
-            <div className="space-y-2">
-              <Label htmlFor="organization-name">{tx("Tên tổ chức", "Organization name")}</Label>
-              <Input id="organization-name" value={name} onChange={(event) => setName(event.target.value)} placeholder={tx("Acme Corporation", "Acme Corporation")} required />
+          <form onSubmit={submit} className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-[1fr_1fr_1fr_auto] md:items-end">
+              <div className="space-y-2">
+                <Label htmlFor="organization-name">{tx("Tên tổ chức", "Organization name")}</Label>
+                <Input id="organization-name" value={name} onChange={(event) => setName(event.target.value)} placeholder={tx("Acme Corporation", "Acme Corporation")} required />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="admin-email">{tx("Email Org Admin ban đầu (tùy chọn)", "Initial Org Admin Email (optional)")}</Label>
+                <Input id="admin-email" type="email" value={adminEmail} onChange={(event) => setAdminEmail(event.target.value)} placeholder={tx("admin@acme.com", "admin@acme.com")} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="admin-password">{tx("Mật khẩu ban đầu (tùy chọn)", "Initial Password (optional)")}</Label>
+                <Input id="admin-password" type="text" value={password} onChange={(event) => setPassword(event.target.value)} placeholder={tx("Mặc định: OpenAgent@2026", "Default: OpenAgent@2026")} />
+              </div>
+              <Button type="submit" className="gap-2" loading={create.isPending} disabled={!name.trim()}><Plus className="h-4 w-4" />{tx("Tạo tổ chức", "Create organization")}</Button>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="admin-email">{tx("Email Org Admin ban đầu (tùy chọn)", "Initial Org Admin Email (optional)")}</Label>
-              <Input id="admin-email" type="email" value={adminEmail} onChange={(event) => setAdminEmail(event.target.value)} placeholder={tx("admin@acme.com", "admin@acme.com")} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="admin-password">{tx("Mật khẩu ban đầu (tùy chọn)", "Initial Password (optional)")}</Label>
-              <Input id="admin-password" type="text" value={password} onChange={(event) => setPassword(event.target.value)} placeholder={tx("Mặc định: OpenAgent@2026", "Default: OpenAgent@2026")} />
-            </div>
-            <Button type="submit" className="gap-2" loading={create.isPending} disabled={!name.trim()}><Plus className="h-4 w-4" />{tx("Tạo tổ chức", "Create organization")}</Button>
+            <PasswordComplexityIndicator password={password} />
           </form>
         </CardContent>
       </Card>

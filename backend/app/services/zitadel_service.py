@@ -8,6 +8,8 @@ import httpx
 
 from app.config import get_settings
 
+from fastapi import HTTPException
+
 logger = logging.getLogger(__name__)
 
 
@@ -83,12 +85,23 @@ class ZitadelProvisioningService:
                     data = res.json()
                     logger.info("Successfully auto-provisioned user %s on ZITADEL (id: %s)", email_clean, data.get("userId"))
                     return data
-                elif res.status_code in {400, 409}:
-                    logger.info("ZITADEL user %s already exists or returned %s: %s", email_clean, res.status_code, res.text)
+                elif res.status_code == 409 or (res.status_code == 400 and "already exists" in res.text.lower()):
+                    logger.info("ZITADEL user %s already exists: %s", email_clean, res.text)
                     return None
+                elif res.status_code == 400:
+                    error_data = {}
+                    try:
+                        error_data = res.json()
+                    except Exception:
+                        pass
+                    msg = error_data.get("message") or res.text
+                    logger.warning("ZITADEL user provisioning rejected for %s: %s", email_clean, msg)
+                    raise HTTPException(status_code=400, detail=f"ZITADEL: {msg}")
                 else:
                     logger.warning("Failed to auto-provision user on ZITADEL (status %s): %s", res.status_code, res.text)
                     return None
+        except HTTPException:
+            raise
         except Exception as exc:
             logger.warning("Error communicating with ZITADEL API to provision %s: %s", email_clean, exc)
             return None
