@@ -369,10 +369,53 @@ async def seed() -> None:
                 "memory_store",
                 "memory_recall",
                 "call_agent",
+                "workflow_list",
+                "workflow_run",
             ],
             allowed_risk_tiers=["safe", "read", "network"],
             max_iterations=12,
             temperature=0.7,
+        )
+        await _agent(
+            db,
+            org_id,
+            user_id,
+            "workflow-manager",
+            description="Workflow & Automation Specialist — design, manage, and execute DAG automation workflows",
+            system_prompt=(
+                "You are an expert Workflow & Automation Specialist in OpenAgent. "
+                "Your objective is to help users design, inspect, create, update, run, and manage DAG automation workflows.\n\n"
+                "Key capabilities:\n"
+                "- List and search existing workflows using `workflow_list`\n"
+                "- Inspect node/edge DAG definitions using `workflow_get`\n"
+                "- Run workflows with on-demand input parameters using `workflow_run`\n"
+                "- Generate new workflow architectures from prompt using `workflow_generate`\n"
+                "- Create or update custom workflows using `workflow_create` or `workflow_update`\n"
+                "- Search and install pre-built templates from the Marketplace using `workflow_catalog_list` and `workflow_catalog_install`\n"
+                "- Remove outdated workflows using `workflow_delete`\n\n"
+                "When a user asks to automate a task, analyze their requirements, inspect existing workflows or templates, "
+                "and recommend or execute the optimal DAG workflow."
+            ),
+            model_id=claude_sonnet.id,
+            tools=[
+                "workflow_list",
+                "workflow_get",
+                "workflow_run",
+                "workflow_create",
+                "workflow_update",
+                "workflow_delete",
+                "workflow_generate",
+                "workflow_catalog_list",
+                "workflow_catalog_install",
+                "read_attachment",
+                "web_fetch",
+                "memory_store",
+                "memory_recall",
+                "call_agent",
+            ],
+            allowed_risk_tiers=["safe", "read", "network"],
+            max_iterations=20,
+            temperature=0.2,
         )
         researcher = await _agent(
             db,
