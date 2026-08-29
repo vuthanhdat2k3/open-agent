@@ -594,6 +594,11 @@ export interface TranslationDictionary {
       tableJoined: string;
       tableKeyName: string;
       tableExpires: string;
+      hasExpiry: string;
+      noExpiry: string;
+      roleChanged: string;
+      roleChangeFailed: string;
+      memberRole: string;
     };
     evaluations: {
       title: string;
@@ -646,5 +651,11 @@ export interface TranslationDictionary {
       ssoDesc: string;
       useOrgProviderDesc: string;
     };
+  };
+  forceChange: {
+    bannerTitle: string;
+    bannerBody: string;
+    noAccess: string;
+    noAccessDesc: string;
   };
 }

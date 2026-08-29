@@ -36,9 +36,7 @@ export function AppSidebar({ queryClient }: { queryClient: QueryClient }) {
 
   const isRoleAllowed = (allowedRoles?: UserRole[]) => {
     if (!allowedRoles || allowedRoles.length === 0) return true;
-    if (allowedRoles.includes(role as UserRole)) return true;
-    if (role === "admin" && (allowedRoles.includes("org_admin") || allowedRoles.includes("admin"))) return true;
-    return false;
+    return allowedRoles.includes(role as UserRole);
   };
 
   return (

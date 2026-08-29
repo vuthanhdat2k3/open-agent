@@ -402,7 +402,10 @@ export interface OrgMember {
   user_id: string;
   email: string;
   display_name: string;
-  role: "platform_admin" | "org_admin" | "operator" | "user" | "admin";
+  // The backend's `/api/orgs/{id}/members` endpoint never returns `platform_admin`
+  // (the roster filters them out) nor the legacy `admin` alias; canonical
+  // `Role` covers every value the FE may receive.
+  role: "platform_admin" | "org_admin" | "operator" | "user";
   created_at: string;
 }
 
@@ -524,6 +527,9 @@ export interface UserProfile {
   email: string;
   display_name: string | null;
   is_active: boolean;
+  // True when the current password was set by an admin (invite default reset);
+  // the UI redirects to /settings/profile?force=1 until the user sets a new one.
+  must_change_password?: boolean;
   created_at: string;
   memberships: UserMembership[];
   permissions_by_org: Record<string, string[]>;
