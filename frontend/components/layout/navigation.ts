@@ -35,6 +35,7 @@ export const navGroups: NavGroup[] = [
     i18nKey: "nav.groups.platformAdmin",
     roles: ["platform_admin"],
     items: [
+      { href: "/", label: "Overview", i18nKey: "nav.dashboard", icon: LayoutDashboard, roles: ["platform_admin"], platformOnly: true },
       { href: "/organizations", label: "Organizations", i18nKey: "nav.organizations", icon: Users, roles: ["platform_admin"], platformOnly: true },
     ],
   },
@@ -45,6 +46,7 @@ export const navGroups: NavGroup[] = [
     i18nKey: "nav.groups.systemSettings",
     roles: ["org_admin"],
     items: [
+      { href: "/", label: "Overview", i18nKey: "nav.dashboard", icon: LayoutDashboard, roles: ["org_admin"] },
       { href: "/settings/members", label: "Members", i18nKey: "nav.members", icon: Users, roles: ["org_admin"], permission: "orgs:manage" },
       { href: "/settings/quotas", label: "Quotas", i18nKey: "nav.quotas", icon: Gauge, roles: ["org_admin"], permission: "quota:usage" },
       { href: "/admin/email-intelligence", label: "Email Gateway", i18nKey: "nav.emailGateway", icon: SlidersHorizontal, roles: ["org_admin"], permission: "admin:email-intelligence" },
@@ -58,6 +60,7 @@ export const navGroups: NavGroup[] = [
     i18nKey: "nav.groups.agenticWorkflows",
     roles: ["operator"],
     items: [
+      { href: "/", label: "Studio Overview", i18nKey: "nav.studioOverview", icon: LayoutDashboard, roles: ["operator"] },
       { href: "/agents", label: "Agents", i18nKey: "nav.agents", icon: Bot, roles: ["operator"], permission: "agents:read" },
       { href: "/providers", label: "Providers", i18nKey: "nav.providers", icon: Server, roles: ["operator"], permission: "providers:read" },
       { href: "/workflows", label: "Workflows", i18nKey: "nav.workflows", icon: Workflow, roles: ["operator"], permission: "workflows:read" },
