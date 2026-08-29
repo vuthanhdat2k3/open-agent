@@ -1,0 +1,25 @@
+{
+  "aliases": {
+    "assistant": "general",
+    "calendar-intelligence": "calendar-assistant",
+    "drive-researcher": "customer-researcher",
+    "web-search": "deep-researcher",
+    "researcher": "rag-researcher",
+    "coder": "coder",
+    "email-intelligence": "email-intelligence",
+    "summarizer": "summarizer"
+  },
+  "specific_agent_overrides": {
+    "28db8dde-cc3c-4435-ad28-18709699ca4b": "general",
+    "54a606df-d471-45b2-93ec-d90f90186b61": "coder",
+    "4db64b2c-cf6e-4dc0-b005-323fab2e1e67": "calendar-assistant",
+    "ccb2df13-a4c3-41f4-9c62-4c587d1c26c4": "customer-researcher",
+    "dd40e2e5-8da7-485f-8d74-6c57cd4394f5": "email-intelligence",
+    "4b9d8256-5fd5-4b99-807f-731080006718": "deep-researcher",
+    "6b9ac9e7-3e67-4472-b0a1-e686982f1930": "rag-researcher",
+    "4a50a9c9-38f6-4b58-b361-e79567701da2": "coder",
+    "d660d790-7e0d-4ae2-9a8c-a4e61e5e055d": "general",
+    "6f1f1801-87a6-46a1-86d2-703de9b7879e": "rag-researcher",
+    "76b3fc44-8667-4b60-9ea0-99296ba6bbf1": "summarizer"
+  }
+}
