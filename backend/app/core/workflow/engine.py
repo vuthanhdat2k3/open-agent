@@ -484,6 +484,11 @@ async def _integration_gmail(
     provider = bind_email_provider(get_email_provider(conn.provider), creds)
 
     emails: list[dict[str, Any]] = []
+    # Gmail durable checkpoint (history_id) captured on a delta fetch and
+    # persisted into node_run.output.data["cursor"], so the next run for the
+    # same node retrieves only what changed since. ``new_cursor`` from the page
+    # is a transient pagination token and must never be stored as the cursor.
+    durable_cursor: str | None = None
     if operation == "get":
         msg_id = cfg.get("message_id") or cfg.get("query")
         if not msg_id:
@@ -510,15 +515,20 @@ async def _integration_gmail(
             for m in (results or [])
         ]
     else:
-        page = await provider.list_new(cursor=None, max_results=max_results)
+        cursor = cfg.get("_gmail_cursor") or None
+        page = await provider.list_new(cursor=cursor, max_results=max_results)
         emails = _emails_from_page(page)
+        durable_cursor = getattr(page, "history_id", None) or None
 
     lines = [
         f"- From: {e['from']} | Subject: {e['subject']} | {e['snippet'][:80]}"
         for e in emails[:max_results]
     ]
     text = "\n".join(lines) if lines else "No email found."
-    return NodeOutput(text=text, data={"emails": emails[:max_results]})
+    data: dict[str, Any] = {"emails": emails[:max_results]}
+    if durable_cursor:
+        data["cursor"] = durable_cursor
+    return NodeOutput(text=text, data=data)
 
 
 def _emails_from_page(page: Any) -> list[dict[str, Any]]:
@@ -533,6 +543,35 @@ def _emails_from_page(page: Any) -> list[dict[str, Any]]:
             }
         )
     return out
+
+
+async def _load_prior_gmail_cursor(db: AsyncSession, current_run_id: str, node_id: str) -> str | None:
+    """Return the durable Gmail cursor from the most recent SUCCEEDED execution
+    of ``node_id`` in an EARLIER workflow run.
+
+    Each successful delta fetch persists ``data.cursor`` (Gmail ``history_id``)
+    on its node_run row; reading the latest one lets the next run continue
+    incrementally instead of re-reading the mailbox from the beginning. Runs in
+    the same workflow run are excluded so a node never consumes its own output.
+    """
+    row = (
+        await db.execute(
+            select(WorkflowNodeRun.output)
+            .where(
+                WorkflowNodeRun.node_id == node_id,
+                WorkflowNodeRun.status == "succeeded",
+                WorkflowNodeRun.workflow_run_id != current_run_id,
+            )
+            .order_by(WorkflowNodeRun.finished_at.desc(), WorkflowNodeRun.attempt.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if not row or not isinstance(row, dict):
+        return None
+    data = row.get("data") or {}
+    if isinstance(data, dict) and data.get("cursor"):
+        return str(data["cursor"])
+    return None
 
 
 async def _integration_calendar(
@@ -961,6 +1000,12 @@ async def _run_workflow_events(
         if kind == "triager":
             return await _run_triager(node, cfg, upstream_text, db)
         if kind == "integration":
+            src = str(cfg.get("source") or "").lower()
+            if src in {"gmail", "gmail_and_calendar", "gmail_calendar"}:
+                cfg = {
+                    **cfg,
+                    "_gmail_cursor": await _load_prior_gmail_cursor(db, workflow_run.id, node["id"]),
+                }
             return await _run_integration(node, cfg, upstream_text, db)
         if kind == "merge":
             vals = [outputs[e["from_"]].text for e in incoming if e["from_"] in outputs]

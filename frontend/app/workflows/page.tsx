@@ -62,6 +62,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
+  DialogFooter,
   DialogTrigger,
 } from "@/components/ui/dialog";
 
@@ -712,23 +713,28 @@ export default function WorkflowEditor() {
     toast.success(tx("Đã xóa Node", "Node deleted"));
   };
 
+  const [edgeConditionTarget, setEdgeConditionTarget] = React.useState<string | null>(null);
+  const [edgeConditionDraft, setEdgeConditionDraft] = React.useState("");
+
   const handleEditEdgeCondition = (edgeId: string) => {
     const [fromId, rest] = edgeId.split("->");
     const toId = rest?.split("#")[0] ?? "";
     const edge = edges.find((e) => e.from_ === fromId && e.to === toId);
-    const current = edge?.condition ?? "";
-    const input = window.prompt(
-      t(
-        "pages.workflows.edgeConditionPrompt",
-        "Edge condition (leave empty to clear).\n\nExamples:\n  output.category == 'sales'\n  'urgent' in output.text\n  true",
-      ),
-      current,
-    );
-    if (input === null) return;
+    setEdgeConditionDraft(edge?.condition ?? "");
+    setEdgeConditionTarget(edgeId);
+  };
+
+  const applyEdgeCondition = () => {
+    if (!edgeConditionTarget) return;
+    const [fromId, rest] = edgeConditionTarget.split("->");
+    const toId = rest?.split("#")[0] ?? "";
     const nextEdges = edges.map((e) =>
-      e.from_ === fromId && e.to === toId ? { ...e, condition: input.trim() || undefined } : e,
+      e.from_ === fromId && e.to === toId
+        ? { ...e, condition: edgeConditionDraft.trim() || undefined }
+        : e,
     );
     setGraph(nodes, nextEdges);
+    setEdgeConditionTarget(null);
   };
 
   const formatJsonInput = () => {
@@ -1480,6 +1486,32 @@ export default function WorkflowEditor() {
           )}
         </div>
       )}
+
+      <Dialog open={edgeConditionTarget !== null} onOpenChange={(open) => !open && setEdgeConditionTarget(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{tx("Điều kiện cạnh (Edge Condition)", "Edge Condition")}</DialogTitle>
+            <DialogDescription>
+              {tx(
+                "Nhập điều kiện JS (bỏ trống để xóa).\nVí dụ:\n  output.category == 'sales'\n  'urgent' in output.text\n  true",
+                "Enter a JS condition (leave empty to clear).\nExamples:\n  output.category == 'sales'\n  'urgent' in output.text\n  true",
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            className="text-xs font-mono min-h-[120px]"
+            value={edgeConditionDraft}
+            onChange={(e) => setEdgeConditionDraft(e.target.value)}
+            placeholder={tx("output.category == 'sales'", "output.category == 'sales'")}
+          />
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline">{tx("Hủy", "Cancel")}</Button>
+            </DialogClose>
+            <Button onClick={applyEdgeCondition}>{tx("Áp dụng", "Apply")}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
