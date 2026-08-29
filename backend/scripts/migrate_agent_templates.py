@@ -1,9 +1,9 @@
 """Live data migration script for System Agent Templates and Org Agent Settings.
 
 Usage:
-    python -m scripts.migrate_agent_templates --dry-run
+    python -m scripts.migrate_agent_templates
     python -m scripts.migrate_agent_templates --apply
-    python -m scripts.migrate_agent_templates --apply --csv-report migration_report.csv
+    python -m scripts.migrate_agent_templates --apply --aliases scripts/manual_aliases.json
 """
 
 from __future__ import annotations
@@ -11,6 +11,8 @@ from __future__ import annotations
 import argparse
 import asyncio
 import csv
+import json
+from pathlib import Path
 from typing import Any
 
 from sqlalchemy import select
@@ -70,10 +72,30 @@ def _extract_agent_config(agent: Agent, release: AgentRelease | None) -> dict[st
     }
 
 
-async def run_migration(apply: bool = False, csv_path: str = "agent_migration_review.csv") -> None:
+def _load_aliases(alias_file: str | None) -> tuple[dict[str, str], dict[str, str]]:
+    if not alias_file or not Path(alias_file).exists():
+        return {}, {}
+    try:
+        with open(alias_file, encoding="utf-8") as f:
+            data = json.load(f)
+            return data.get("aliases", {}), data.get("specific_agent_overrides", {})
+    except Exception as exc:
+        print(f"⚠️  Warning: could not read aliases file {alias_file}: {exc}")
+        return {}, {}
+
+
+async def run_migration(
+    apply: bool = False,
+    alias_file: str | None = "scripts/manual_aliases.json",
+    csv_path: str = "agent_migration_review.csv",
+) -> None:
     print("=" * 80)
     print(f"🚀 SYSTEM AGENT TEMPLATES MIGRATION — MODE: {'[APPLY]' if apply else '[DRY-RUN]'}")
     print("=" * 80)
+
+    name_aliases, id_overrides = _load_aliases(alias_file)
+    if name_aliases or id_overrides:
+        print(f"📖 Loaded {len(id_overrides)} specific ID overrides and {len(name_aliases)} name aliases.")
 
     async with SessionLocal() as db:
         # Load all agents
@@ -101,7 +123,22 @@ async def run_migration(apply: bool = False, csv_path: str = "agent_migration_re
             config = _extract_agent_config(agent, release)
             agent_hash = _template_match_hash(config)
 
-            matched_blueprint: SystemAgentBlueprint | None = SYSTEM_AGENT_BLUEPRINTS.get(norm_name)
+            # Check manual overrides first, then direct name matching
+            matched_key: str | None = None
+            is_manual_alias = False
+
+            if agent.id in id_overrides:
+                matched_key = id_overrides[agent.id]
+                is_manual_alias = True
+            elif norm_name in name_aliases:
+                matched_key = name_aliases[norm_name]
+                is_manual_alias = True
+            elif norm_name in SYSTEM_AGENT_BLUEPRINTS:
+                matched_key = norm_name
+
+            matched_blueprint: SystemAgentBlueprint | None = (
+                SYSTEM_AGENT_BLUEPRINTS.get(matched_key) if matched_key else None
+            )
 
             if matched_blueprint is not None:
                 tool_overlap = _calculate_tool_overlap(agent.tools, matched_blueprint.tools)
@@ -113,6 +150,7 @@ async def run_migration(apply: bool = False, csv_path: str = "agent_migration_re
                     "org_id": agent.org_id,
                     "name": agent.name,
                     "matched_template": matched_blueprint.key,
+                    "is_manual_alias": is_manual_alias,
                     "tool_overlap": round(tool_overlap * 100, 1),
                     "kind_match": kind_match,
                     "is_pristine": is_pristine,
@@ -122,7 +160,7 @@ async def run_migration(apply: bool = False, csv_path: str = "agent_migration_re
                     "blueprint": matched_blueprint,
                 }
 
-                if tool_overlap >= 0.7 and kind_match:
+                if is_manual_alias or (tool_overlap >= 0.7 and kind_match):
                     tier1_high.append(record_info)
                 else:
                     tier2_ambiguous.append(record_info)
@@ -132,6 +170,7 @@ async def run_migration(apply: bool = False, csv_path: str = "agent_migration_re
                     "org_id": agent.org_id,
                     "name": agent.name,
                     "matched_template": None,
+                    "is_manual_alias": False,
                     "tool_overlap": 0.0,
                     "kind_match": False,
                     "is_pristine": False,
@@ -143,13 +182,13 @@ async def run_migration(apply: bool = False, csv_path: str = "agent_migration_re
 
         # Summary Table
         print("\n📈 CLASSIFICATION SUMMARY:")
-        print(f"  • Tier 1 (High Confidence Match):   {len(tier1_high):>4} agents")
+        print(f"  • Tier 1 (Matched to Blueprint):     {len(tier1_high):>4} agents")
         t1_pristine = [r for r in tier1_high if r["is_pristine"]]
         t1_customized = [r for r in tier1_high if not r["is_pristine"]]
-        print(f"      - Pristine (Hash Match):        {len(t1_pristine):>4} -> Safe for zero-row pooled candidate")
-        print(f"      - Modified (Hash Mismatch):     {len(t1_customized):>4} -> Keep as customized in DB")
-        print(f"  • Tier 2 (Ambiguous Match - Review):{len(tier2_ambiguous):>4} agents -> Requires manual review")
-        print(f"  • Tier 3 (Custom Agents):           {len(tier3_custom):>4} agents -> Pure custom, untouched\n")
+        print(f"      - Pristine (Hash Match):         {len(t1_pristine):>4} -> Eligible for zero-row pooled resolution")
+        print(f"      - Customized (Hash Mismatch):    {len(t1_customized):>4} -> Linked to template_key, kept as Heavy Override")
+        print(f"  • Tier 2 (Ambiguous Match - Review): {len(tier2_ambiguous):>4} agents -> Requires manual review")
+        print(f"  • Tier 3 (Genuine Custom Agents):    {len(tier3_custom):>4} agents -> Pure custom (template_key=NULL)\n")
 
         # Export CSV report
         with open(csv_path, mode="w", newline="", encoding="utf-8") as f:
@@ -160,19 +199,25 @@ async def run_migration(apply: bool = False, csv_path: str = "agent_migration_re
                 "Org ID",
                 "Agent Name",
                 "Matched Template",
+                "Manual Alias?",
                 "Tool Overlap %",
                 "Kind Match",
                 "Pristine Baseline Match",
                 "Action in --apply",
             ])
             for r in tier1_high:
-                action = "Set template_key, is_customized=False, extract settings" if r["is_pristine"] else "Set template_key, is_customized=True (keep DB row)"
+                action = (
+                    "Set template_key, is_customized=False, extract settings"
+                    if r["is_pristine"]
+                    else f"Set template_key='{r['matched_template']}', is_customized=True (keep DB row as custom override)"
+                )
                 writer.writerow([
-                    "Tier 1 (High)",
+                    "Tier 1 (High/Alias)",
                     r["agent_id"],
                     r["org_id"],
                     r["name"],
                     r["matched_template"],
+                    r["is_manual_alias"],
                     r["tool_overlap"],
                     r["kind_match"],
                     r["is_pristine"],
@@ -185,6 +230,7 @@ async def run_migration(apply: bool = False, csv_path: str = "agent_migration_re
                     r["org_id"],
                     r["name"],
                     r["matched_template"],
+                    r["is_manual_alias"],
                     r["tool_overlap"],
                     r["kind_match"],
                     r["is_pristine"],
@@ -197,17 +243,18 @@ async def run_migration(apply: bool = False, csv_path: str = "agent_migration_re
                     r["org_id"],
                     r["name"],
                     "None",
+                    False,
                     0.0,
                     False,
                     False,
-                    "NO ACTION (Pure Custom Agent)",
+                    "NO ACTION (Genuine Custom Agent)",
                 ])
 
         print(f"📄 Detailed CSV review report written to: {csv_path}")
 
         # Execute Apply if requested
         if apply:
-            print("\n⚙️  Applying Tier-1 updates to database...")
+            print("\n⚙️  Applying Tier-1 template_key linkages to database...")
             applied_count = 0
             settings_created = 0
 
@@ -221,7 +268,6 @@ async def run_migration(apply: bool = False, csv_path: str = "agent_migration_re
                     agent.is_customized = False
                     # Extract cheap settings to org_agent_settings if model_id exists
                     if agent.model_id:
-                        # Check existing settings
                         existing_settings = await db.scalar(
                             select(OrgAgentSettings).where(
                                 OrgAgentSettings.org_id == agent.org_id,
@@ -240,12 +286,13 @@ async def run_migration(apply: bool = False, csv_path: str = "agent_migration_re
                             db.add(settings)
                             settings_created += 1
                 else:
+                    # Keep as heavy override: model_id stays in agents table, no org_agent_settings
                     agent.is_customized = True
 
                 applied_count += 1
 
             await db.commit()
-            print(f"✅ Successfully updated {applied_count} Tier-1 agents and created {settings_created} org_agent_settings records!")
+            print(f"✅ Successfully linked {applied_count} Tier-1 agents to their template_key (preserving custom prompts & tools)!")
         else:
             print("\n💡 Run with '--apply' to persist Tier-1 classification to database.")
 
@@ -253,10 +300,11 @@ async def run_migration(apply: bool = False, csv_path: str = "agent_migration_re
 def main():
     parser = argparse.ArgumentParser(description="Migrate Agent Templates and classify pristine vs customized agents.")
     parser.add_argument("--apply", action="store_true", help="Apply updates to database (default is dry-run)")
+    parser.add_argument("--aliases", default="scripts/manual_aliases.json", help="Path to manual aliases JSON")
     parser.add_argument("--csv-report", default="agent_migration_review.csv", help="Path to write CSV review report")
     args = parser.parse_args()
 
-    asyncio.run(run_migration(apply=args.apply, csv_path=args.csv_report))
+    asyncio.run(run_migration(apply=args.apply, alias_file=args.aliases, csv_path=args.csv_report))
 
 
 if __name__ == "__main__":
