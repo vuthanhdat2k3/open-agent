@@ -36,6 +36,7 @@ class MeResponse(BaseModel):
     email: str
     display_name: str
     is_active: bool
+    must_change_password: bool = False
     created_at: datetime
     memberships: list[UserMembershipOut]
     permissions_by_org: dict[str, list[str]] = Field(default_factory=dict)
@@ -48,6 +49,10 @@ class InviteMemberRequest(BaseModel):
     email: EmailStr
     role: str = "user"
     initial_password: str | None = None
+
+
+class UpdateMemberRoleRequest(BaseModel):
+    role: str
 
 
 class ApiKeyCreateRequest(BaseModel):

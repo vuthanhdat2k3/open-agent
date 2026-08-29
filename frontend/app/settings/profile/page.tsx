@@ -1,9 +1,10 @@
 "use client";
 
 import * as React from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { User, Shield, Building2, KeyRound } from "lucide-react";
-import { useProfile, useUpdateProfile } from "@/hooks";
+import { useMe, useProfile, useUpdateProfile } from "@/hooks";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
@@ -15,7 +16,11 @@ import { ErrorState } from "@/components/shared";
 
 export default function ProfilePage() {
   const { t, dict, locale, tx } = useTranslation();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const forceChange = searchParams.get("force_change") === "1";
   const profile = useProfile();
+  const me = useMe();
   const updateProfile = useUpdateProfile();
 
   const [displayName, setDisplayName] = React.useState("");
@@ -58,6 +63,13 @@ export default function ProfilePage() {
       setOldPassword("");
       setNewPassword("");
       setConfirmPassword("");
+      // Server cleared ``must_change_password`` — drop the force flag and send
+      // the user to the dashboard so the AppShell guard no longer bounces
+      // them back here.
+      if (forceChange) {
+        await me.refetch();
+        router.replace("/");
+      }
     } catch (err: any) {
       toast.error(err.message || (tx("Đổi mật khẩu thất bại", "Failed to change password")));
     }

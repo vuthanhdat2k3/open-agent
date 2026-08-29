@@ -53,7 +53,7 @@ async def _default_org_and_user(db):
         .first()
     )
     if not membership:
-        membership = Membership(org_id=org.id, user_id=user.id, role=Role.owner)
+        membership = Membership(org_id=org.id, user_id=user.id, role=Role.org_admin)
         db.add(membership)
         await db.commit()
 

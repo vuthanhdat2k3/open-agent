@@ -3,6 +3,7 @@
 import * as React from "react";
 import { Bot, Bug, Trash2 } from "lucide-react";
 import { useCurrentRole } from "@/hooks";
+import { isAdminRole, isOperator } from "@/lib/roles";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { ChatMessageItem } from "@/components/chat/chat-message-item";
@@ -98,7 +99,7 @@ export function ChatThread({
     (streaming || statusPhase === "approval") && !hasPendingApproval && !inMessageStreaming;
 
   const role = useCurrentRole();
-  const canSwitchAgent = role === "admin" || role === "platform_admin" || role === "operator";
+  const canSwitchAgent = isAdminRole(role) || isOperator(role);
   const canSwitchModel = Boolean(models?.some((model) => model.active));
 
   return (

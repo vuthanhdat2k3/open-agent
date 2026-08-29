@@ -14,6 +14,7 @@ import { ErrorState, LoadingSkeleton, DataPagination, EmptyState } from "@/compo
 import { useQuery } from "@tanstack/react-query";
 import { getActiveOrgId } from "@/lib/auth";
 import { emailIntelligenceQueryKeys } from "@/lib/email-intelligence/query-keys";
+import { useCan } from "@/hooks";
 
 type Overview = {
   connections: { total: number; healthy: number; unhealthy: number };
@@ -33,6 +34,24 @@ function useAdminResource<T>(resource: string, enabled: boolean) {
 }
 
 export default function EmailOperationsPage() {
+  const { t, dict, locale, tx } = useTranslation();
+  // Defense in depth: the BE /api/admin/email-intelligence/* endpoints
+  // require ``admin:email-intelligence`` (org_admin+), but the page itself
+  // previously rendered blindly when reached via direct URL. Gate it here
+  // too so non-admins see a "no access" message instead of broken UI.
+  const canAccess = useCan("admin:email-intelligence");
+  if (!canAccess) {
+    return (
+      <ErrorState
+        title={t("forceChange.noAccess", "No access")}
+        description={t("forceChange.noAccessDesc", "Only organization administrators can view this page.")}
+      />
+    );
+  }
+  return <EmailOperationsContent />;
+}
+
+function EmailOperationsContent() {
   const { t, dict, locale, tx } = useTranslation();
   const orgId = getActiveOrgId();
   const overview = useQuery({

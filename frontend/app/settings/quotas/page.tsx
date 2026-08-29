@@ -33,6 +33,7 @@ import { Select } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { getActiveOrgId } from "@/lib/auth";
+import { isAdminRole } from "@/lib/roles";
 
 type FormState = {
   requests_per_minute: string;
@@ -64,7 +65,7 @@ export default function QuotasAndBudgetsPage() {
   const { t, dict, locale, tx } = useTranslation();
   const me = useMe();
   const role = useCurrentRole();
-  const isAdmin = role === "admin" || role === "platform_admin";
+  const isAdmin = isAdminRole(role);
   const activeOrgId = getActiveOrgId();
   const orgId = activeOrgId || me.data?.memberships?.[0]?.org_id;
   const quota = useOrganizationQuota(isAdmin ? orgId : undefined);

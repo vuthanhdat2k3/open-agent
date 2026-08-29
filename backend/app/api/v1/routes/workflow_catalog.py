@@ -9,7 +9,6 @@ from app.core.authz.policy import PrincipalContext
 from app.core.workflow.template_dags import TEMPLATE_DAGS
 from app.db.base import gen_id, utc_now
 from app.dependencies import get_current_org_id, get_current_user, get_db, require_permission
-from app.models.role import Role
 from app.models.user import User
 from app.models.workflow import Workflow
 from app.models.workflow_installation import WorkflowInstallation
@@ -139,7 +138,8 @@ async def publish_workflow_to_catalog(
     principal: PrincipalContext = Depends(require_permission("workflows:update")),
     db: AsyncSession = Depends(get_db),
 ) -> WorkflowCatalogItem:
-    if principal.role != Role.operator:
+    # operators own marketplace publishing; admins grant it via ``*``.
+    if not principal.allows("workflows:manage"):
         raise HTTPException(403, "Only operators can publish to the workflow marketplace")
     """Publish an organization workflow to the Workflow Marketplace (Operator/Admin)."""
     workflow = await db.scalar(
@@ -226,7 +226,8 @@ async def unpublish_workflow_from_catalog(
     principal: PrincipalContext = Depends(require_permission("workflows:delete")),
     db: AsyncSession = Depends(get_db),
 ):
-    if principal.role != Role.operator:
+    # operators own marketplace publishing; admins grant it via ``*``.
+    if not principal.allows("workflows:manage"):
         raise HTTPException(403, "Only operators can unpublish from the workflow marketplace")
     """Remove a published template from the Marketplace (Operator/Admin)."""
     template = await db.scalar(

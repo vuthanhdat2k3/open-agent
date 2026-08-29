@@ -7,7 +7,9 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-export type UserRole = "platform_admin" | "admin" | "org_admin" | "operator" | "user";
+// Kept as a UI-only alias for nav gating: the canonical role set lives in
+// `@/lib/roles` and the wire-level `OrgMember.role` uses the same union.
+export type UserRole = "platform_admin" | "org_admin" | "operator" | "user";
 
 export interface NavItem {
   href: string;
@@ -41,12 +43,12 @@ export const navGroups: NavGroup[] = [
   {
     title: "Administration",
     i18nKey: "nav.groups.systemSettings",
-    roles: ["admin", "org_admin"],
+    roles: ["org_admin"],
     items: [
-      { href: "/settings/members", label: "Members", i18nKey: "nav.members", icon: Users, roles: ["admin", "org_admin"], permission: "orgs:manage" },
-      { href: "/settings/quotas", label: "Quotas", i18nKey: "nav.quotas", icon: Gauge, roles: ["admin", "org_admin"], permission: "quota:usage" },
-      { href: "/admin/email-intelligence", label: "Email Gateway", i18nKey: "nav.emailGateway", icon: SlidersHorizontal, roles: ["admin", "org_admin"], permission: "admin:email-intelligence" },
-      { href: "/debug", label: "Audit Logs", i18nKey: "nav.auditLogs", icon: Bug, roles: ["admin", "org_admin"], permission: "orgs:manage" },
+      { href: "/settings/members", label: "Members", i18nKey: "nav.members", icon: Users, roles: ["org_admin"], permission: "orgs:manage" },
+      { href: "/settings/quotas", label: "Quotas", i18nKey: "nav.quotas", icon: Gauge, roles: ["org_admin"], permission: "quota:usage" },
+      { href: "/admin/email-intelligence", label: "Email Gateway", i18nKey: "nav.emailGateway", icon: SlidersHorizontal, roles: ["org_admin"], permission: "admin:email-intelligence" },
+      { href: "/debug", label: "Audit Logs", i18nKey: "nav.auditLogs", icon: Bug, roles: ["org_admin"], permission: "orgs:manage" },
     ],
   },
 

@@ -28,6 +28,7 @@ import {
 import { ChatThread } from "@/components/chat/chat-thread";
 import { ChatInput } from "@/components/chat/chat-input";
 import { useTranslation } from "@/lib/i18n";
+import { isAdminRole, isOperator } from "@/lib/roles";
 import type { ConnectionState } from "@/components/chat/chat-connection-banner";
 import type { UploadedFile } from "@/types";
 
@@ -690,7 +691,7 @@ export default function ChatPage() {
 
   const setDefaultModel = async (modelId: string) => {
     if (!agentId) return;
-    if (role !== "admin" && role !== "platform_admin" && role !== "operator") {
+    if (!isAdminRole(role) && !isOperator(role)) {
       setPendingSessionModelId(modelId);
       toast.success((tx("Mô hình đã chọn cho cuộc trò chuyện này", "Model selected for this chat")));
       return;

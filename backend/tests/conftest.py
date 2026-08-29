@@ -2,6 +2,12 @@ from __future__ import annotations
 
 import os
 
+# The project ships a parent ``.env`` that activates the ZITADEL identity
+# provider, which would 404 every legacy /api/auth/* endpoint used by the
+# in-process test client. Pin the local provider for the whole test run so
+# each test gets the expected legacy surface regardless of the developer's
+# shell or parent .env.
+os.environ.setdefault("OPENAGENT_AUTH_PROVIDER", "local")
 os.environ["OPENAGENT_DB_URL"] = "sqlite+aiosqlite:///:memory:"
 os.environ["OPENAGENT_REDIS_URL"] = "redis://127.0.0.1:6379/15"
 os.environ["OPENAGENT_WORKFLOW_EXECUTION_MODE"] = "inline"

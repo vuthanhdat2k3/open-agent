@@ -594,6 +594,11 @@ export const vi: TranslationDictionary = {
       tableJoined: 'Ngày tham gia',
       tableKeyName: 'Tên key',
       tableExpires: 'Hạn dùng',
+      hasExpiry: 'Có hạn dùng',
+      noExpiry: 'Không hạn dùng',
+      roleChanged: 'Đã cập nhật vai trò',
+      roleChangeFailed: 'Không thể cập nhật vai trò',
+      memberRole: 'Vai trò thành viên',
     },
     evaluations: {
       title: 'Đánh giá',
@@ -646,5 +651,11 @@ export const vi: TranslationDictionary = {
       ssoDesc: 'Xác thực danh tính doanh nghiệp tập trung qua Single Sign-On.',
       useOrgProviderDesc: 'Vui lòng sử dụng nhà cung cấp danh tính tổ chức để đăng nhập.',
     },
+  },
+  forceChange: {
+    bannerTitle: 'Tài khoản của bạn đang dùng mật khẩu tạm',
+    bannerBody: 'Vui lòng đổi mật khẩu để tiếp tục sử dụng OpenAgent. Các trang khác sẽ được mở khóa sau khi đổi xong.',
+    noAccess: 'Không có quyền truy cập',
+    noAccessDesc: 'Chỉ quản trị viên tổ chức mới có thể xem trang này.',
   },
 };

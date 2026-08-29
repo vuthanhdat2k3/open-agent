@@ -101,7 +101,6 @@ const ROLE_KEY_MAP: Record<string, string> = {
   platformAdmin: "roles.platformAdmin",
   org_admin: "roles.orgAdmin",
   orgAdmin: "roles.orgAdmin",
-  admin: "roles.admin",
   operator: "roles.operator",
   user: "roles.user",
   assistant: "roles.assistant",

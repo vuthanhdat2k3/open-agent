@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.sse import format_sse
 from app.config import get_settings
+from app.core.authz.policy import PrincipalContext
 from app.core.authz.scope import scope_to_owner
 from app.core.quota.dependencies import agent_run_admission, enforce_resource_quota
 from app.core.tools.registry import BUILTIN_TOOLS
@@ -54,6 +55,7 @@ async def list_node_options(
     type: str = "models",
     org_id: str = Depends(get_current_org_id),
     current_user: User = Depends(get_current_user),
+    authz: PrincipalContext = Depends(require_permission("workflows:read")),
     db: AsyncSession = Depends(get_db),
 ):
     """Dynamic dropdown sources for ``load_options_from`` fields."""
@@ -86,6 +88,10 @@ async def list_node_options(
                 out.append({"name": f"{label} ({getattr(c, 'status', '')})", "value": c.id})
         return out
     if type == "users":
+        # Member emails are PII: plain ``user`` members (self-scoped) must not
+        # enumerate the organization roster; staff roles may configure nodes.
+        if authz.owner_user_id is not None:
+            raise HTTPException(403, "User role cannot enumerate organization members")
         rows = await db.execute(
             select(User).join(User.memberships).where(User.memberships.any(org_id=org_id))
         )

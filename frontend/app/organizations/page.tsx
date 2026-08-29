@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { ConfirmDialog, ErrorState, LoadingSkeleton, DataPagination } from "@/components/shared";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import type { Organization } from "@/types";
+import { isOrgAdmin } from "@/lib/roles";
 
 interface OrgMembersDialogProps {
   organization: Organization;
@@ -46,12 +47,11 @@ function OrgMembersDialog({ organization, open, onOpenChange }: OrgMembersDialog
     }
   }
 
-  const adminCount = members.data?.filter((m) => m.role === "org_admin" || m.role === "admin").length ?? 0;
+  const adminCount = members.data?.filter((m) => isOrgAdmin(m.role)).length ?? 0;
 
   function canRemoveMember(member: { role: string; user_id: string }): boolean {
     if (member.role === "platform_admin") return false;
-    const isAdminRole = member.role === "org_admin" || member.role === "admin";
-    if (isAdminRole && adminCount <= 1) return false;
+    if (isOrgAdmin(member.role) && adminCount <= 1) return false;
     return true;
   }
 
