@@ -100,6 +100,9 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 | `feat/i18n-enen-tx-sweep` | `G:\open-agent\.worktrees\i18n-enen-tx-sweep` | Sửa các cặp tx(EN,EN) trùng lặp (dịch vi đúng) — stack trên sweep-3 | DeepSeek agent |
 | `feat/workflow-audit-fixes` | `G:\open-agent\.worktrees\workflow-audit-fixes` | Fix toàn bộ findings workflow audit: approval resume, pause/archive stop scheduler, sub_workflow depth cap, cancel run, webhook idempotency, default timeout, error codes, FE AbortSignal/JSON editor/cancel UX | DeepSeek agent |
 | `audit/profile-roles-visibility` | `G:\open-agent\.worktrees\audit-profile-roles-visibility` | Audit + sửa profile/role/visibility toàn diện (BE + FE): drop alias `admin`, PATCH đổi role, force-change-password, fix role-string checks, chuẩn hoá role FE | DeepSeek agent |
+| `feat/agent-orchestrator-redesign` | `.worktrees/agent-orchestrator-redesign` | Redesign multi-agent core: 1 orchestrator + N worker agents (blueprint gọn 13→12, merge Coder+Data Analyst, split RAG ingest/query, chuẩn hoá save_memory/call_memory, chặn `user` role chat trực tiếp với worker, auto-bootstrap RAG MCP server khi tạo org mới) | Kiro |
+
+> Lưu ý: một ghi chú dọn dẹp ngày 2026-08-30 ở trên có đề cập `feat/agent-orchestrator-redesign` là "đã merge" — ghi chú đó nói về một lần chạy trước và không áp dụng cho phiên làm việc hiện tại của nhánh này (nhánh được tạo lại từ `dev` với 0 commit và toàn bộ thay đổi ở trên là mới, chưa merge).
 
 > 2026-08-27: Đã dọn dẹp toàn bộ worktree và các nhánh đã merge vào `dev` trên cả Local và Remote:
 > - `feat/workflow-node-config-fix` (PR #167, Deploy PR #168)
