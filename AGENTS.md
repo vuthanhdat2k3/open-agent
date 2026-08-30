@@ -95,14 +95,15 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 | Branch | Worktree path | Phạm vi/task | Agent/người phụ trách |
 |---|---|---|---|
 | `dev` | `G:\open-agent` | Nhánh tích hợp chính — không code trực tiếp ở đây | — |
-| `feat/deploy-readiness` | `G:\open-agent\.worktrees\deploy-readiness` | Deploy readiness: TLS (Caddy), khoá port data-plane về loopback, Redis auth, deployment runbook | Kiro |
-| `feat/i18n-hardcode-sweep-3` | `G:\open-agent\.worktrees\i18n-hardcode-sweep-3` | Quét + sửa toàn bộ hardcode UI text frontend sang i18n (tx()) | DeepSeek agent |
-| `feat/i18n-enen-tx-sweep` | `G:\open-agent\.worktrees\i18n-enen-tx-sweep` | Sửa các cặp tx(EN,EN) trùng lặp (dịch vi đúng) — stack trên sweep-3 | DeepSeek agent |
-| `feat/workflow-audit-fixes` | `G:\open-agent\.worktrees\workflow-audit-fixes` | Fix toàn bộ findings workflow audit: approval resume, pause/archive stop scheduler, sub_workflow depth cap, cancel run, webhook idempotency, default timeout, error codes, FE AbortSignal/JSON editor/cancel UX | DeepSeek agent |
-| `audit/profile-roles-visibility` | `G:\open-agent\.worktrees\audit-profile-roles-visibility` | Audit + sửa profile/role/visibility toàn diện (BE + FE): drop alias `admin`, PATCH đổi role, force-change-password, fix role-string checks, chuẩn hoá role FE | DeepSeek agent |
-| `feat/agent-orchestrator-redesign` | `.worktrees/agent-orchestrator-redesign` | Redesign multi-agent core: 1 orchestrator + N worker agents (blueprint gọn 13→12, merge Coder+Data Analyst, split RAG ingest/query, chuẩn hoá save_memory/call_memory, chặn `user` role chat trực tiếp với worker, auto-bootstrap RAG MCP server khi tạo org mới) | Kiro |
+| `docs/demo-do-deploy-guide` | `G:\open-agent\.worktrees\demo-do-deploy-guide` | Viết docs/demo-digitalocean-deploy.md: hướng dẫn deploy demo full-stack lên DigitalOcean + phân tích chi phí | Kiro |
+| `feat/agent-orchestrator-redesign` | `.worktrees/agent-orchestrator-redesign` | Redesign multi-agent core và session execution policy | Kiro |
 
-> Lưu ý: một ghi chú dọn dẹp ngày 2026-08-30 ở trên có đề cập `feat/agent-orchestrator-redesign` là "đã merge" — ghi chú đó nói về một lần chạy trước và không áp dụng cho phiên làm việc hiện tại của nhánh này (nhánh được tạo lại từ `dev` với 0 commit và toàn bộ thay đổi ở trên là mới, chưa merge).
+> 2026-08-30: Đã dọn dẹp toàn bộ worktree và các nhánh đã merge vào `dev` trên cả Local và Remote:
+> - `feat/deploy-readiness` (PR #229, merge commit 036f5b4)
+> - `feat/agent-orchestrator-redesign`, `fix/chat-500` (đã merge, chỉ có local branch, không có remote) — ghi chú lịch sử; worktree `feat/agent-orchestrator-redesign` hiện tại là phiên làm việc mới và vẫn đang hoạt động.
+> - `feat/i18n-hardcode-sweep-3`, `feat/i18n-enen-tx-sweep`, `feat/workflow-audit-fixes`,
+>   `audit/profile-roles-visibility` (đã merge, remote branch tồn tại nhưng không còn worktree local
+>   tương ứng — đã xóa remote)
 
 > 2026-08-27: Đã dọn dẹp toàn bộ worktree và các nhánh đã merge vào `dev` trên cả Local và Remote:
 > - `feat/workflow-node-config-fix` (PR #167, Deploy PR #168)
