@@ -61,7 +61,37 @@ class SystemAgentBlueprint:
 
 
 # ---------------------------------------------------------------------------
-# 13 System Agent Blueprints Definition
+# Common tools every system agent gets, regardless of its domain.
+#
+# - get_current_time: cheap read-only utility every persona benefits from
+#   (date/time-aware scheduling, briefings, logs).
+# - save_memory / call_memory: the structured, schema-validated memory pair
+#   (see app/core/tools/memory.py). This intentionally replaces the older
+#   free-form memory_store/memory_recall pair: agent_loop.py's MEMORY_DIRECTIVE
+#   is only injected when an agent carries save_memory/call_memory, so giving
+#   every blueprint the older pair silently opted them out of that guidance.
+# ---------------------------------------------------------------------------
+COMMON_TOOLS: tuple[str, ...] = ("get_current_time", "save_memory", "call_memory")
+
+
+def _with_common(*domain_tools: str) -> list[str]:
+    return [*domain_tools, *COMMON_TOOLS]
+
+
+# ---------------------------------------------------------------------------
+# System Agent Blueprints: 1 Orchestrator + 11 Workers.
+#
+# Design (multi-agent core):
+# - Exactly one orchestrator ("general") is the sole entry point for
+#   ordinary `user`-role chat. It never carries domain tools directly; its
+#   only levers are `call_agent` (delegate to a worker) and `workflow_list`
+#   (visibility, not execution). agent_loop.py auto-builds a `delegate_to_*`
+#   tool per worker and injects ORCHESTRATOR_SYSTEM_SUFFIX for it.
+# - Every worker owns exactly one tool domain/provider family. No two
+#   workers share a domain tool, so there is always exactly one place to
+#   look for "who can do X" and exactly one place to extend it.
+# - `call_agent` is intentionally NOT given to any worker: delegation is a
+#   hub-and-spoke via the orchestrator only, never worker-to-worker.
 # ---------------------------------------------------------------------------
 
 SYSTEM_AGENT_BLUEPRINTS: dict[str, SystemAgentBlueprint] = {
@@ -70,57 +100,107 @@ SYSTEM_AGENT_BLUEPRINTS: dict[str, SystemAgentBlueprint] = {
         id="sys-agent-general",
         key="general",
         name="General Assistant",
-        description="General-purpose conversational assistant and multi-agent orchestrator",
+        description="Primary conversational orchestrator that delegates specialized work to worker agents",
         system_prompt=(
-            "You are a helpful AI assistant. Use the provided tools when they "
-            "help accomplish the user's request. You can delegate complex tasks to specialized sub-agents "
-            "or trigger automated workflows when appropriate."
+            "You are the primary assistant for this organization. Understand the "
+            "user's goal, decide whether it needs specialized expertise (email, "
+            "calendar, files, code, research, workflows...), and delegate to the "
+            "right worker agent when it does. Synthesize sub-agent results into "
+            "one clear, concise final answer for the user. Handle simple "
+            "conversational requests yourself without delegating."
         ),
         recommended_tier="fast",
-        tools=[
-            "call_agent",
-            "workflow_list",
-            "workflow_run",
-            "read_attachment",
-            "web_fetch",
-            "memory_store",
-            "memory_recall",
-        ],
-        allowed_risk_tiers=["safe", "read", "network"],
-        kind="worker",
+        tools=_with_common("call_agent", "workflow_list"),
+        allowed_risk_tiers=["safe", "read", "network", "execute"],
+        kind="orchestrator",
         max_iterations=12,
         temperature=0.7,
         is_pinned_by_default=True,
     ),
-    # --- 2. Executive Assistant ---
-    "executive-assistant": SystemAgentBlueprint(
-        id="sys-agent-executive-assistant",
-        key="executive-assistant",
-        name="Executive Assistant",
-        description="Daily briefings, schedule management, meeting preparation, and executive summaries",
+    # --- 2. Email Intelligence ---
+    "email-intelligence": SystemAgentBlueprint(
+        id="sys-agent-email-intelligence",
+        key="email-intelligence",
+        name="Email Intelligence",
+        description="Inbox triage, priority classification, draft generation, and email management",
         system_prompt=(
-            "You are an Executive Assistant. Your mission is to provide concise daily briefings, "
-            "manage and prepare agendas for upcoming meetings, inspect emails for high-priority items, "
-            "and synthesize actionable summaries for busy leaders."
+            "You are an Email Intelligence specialist. Analyze inbound emails, "
+            "categorize priority, draft contextual replies, forward or file "
+            "messages with labels, and summarize email threads. Confirm intent "
+            "before sending or trashing a message on the user's behalf."
         ),
-        recommended_tier="standard",
-        tools=[
-            "calendar_list_events",
-            "calendar_get_event",
+        recommended_tier="fast",
+        tools=_with_common(
             "email_list_new",
+            "email_get",
             "email_search",
-            "drive_list_files",
-            "get_current_time",
-            "memory_recall",
-            "memory_store",
-        ],
-        allowed_risk_tiers=["safe", "read", "network"],
+            "email_create_draft",
+            "email_reply",
+            "email_forward",
+            "email_send",
+            "email_list_labels",
+            "email_apply_label",
+            "email_remove_label",
+            "email_trash",
+            "email_restore",
+        ),
+        allowed_risk_tiers=["safe", "read", "write", "dangerous"],
         kind="worker",
         max_iterations=14,
-        temperature=0.4,
+        temperature=0.3,
         is_pinned_by_default=False,
     ),
-    # --- 3. Automation & Workflow Manager ---
+    # --- 3. Calendar Assistant ---
+    "calendar-assistant": SystemAgentBlueprint(
+        id="sys-agent-calendar-assistant",
+        key="calendar-assistant",
+        name="Calendar Assistant",
+        description="Meeting scheduling, conflict resolution, calendar invites, and availability checking",
+        system_prompt=(
+            "You are a Calendar Management Assistant. Help users check "
+            "availability, schedule meetings, update events, handle scheduling "
+            "conflicts, and send Google Calendar invitations."
+        ),
+        recommended_tier="fast",
+        tools=_with_common(
+            "calendar_list_events",
+            "calendar_get_event",
+            "calendar_create_event",
+            "calendar_update_event",
+            "calendar_delete_event",
+        ),
+        allowed_risk_tiers=["safe", "read", "write", "dangerous"],
+        kind="worker",
+        max_iterations=10,
+        temperature=0.2,
+        is_pinned_by_default=False,
+    ),
+    # --- 4. Drive Manager ---
+    "drive-manager": SystemAgentBlueprint(
+        id="sys-agent-drive-manager",
+        key="drive-manager",
+        name="Drive Manager",
+        description="Google Drive file lookup, retrieval, creation, and lifecycle management",
+        system_prompt=(
+            "You are a Drive Manager. Find, read, create, and update files in "
+            "the connected Google Drive on the user's behalf. Confirm intent "
+            "before deleting a file."
+        ),
+        recommended_tier="fast",
+        tools=_with_common(
+            "drive_list_files",
+            "drive_get_file",
+            "drive_create_file",
+            "drive_update_file",
+            "drive_delete_file",
+        ),
+        allowed_risk_tiers=["safe", "read", "write", "dangerous"],
+        kind="worker",
+        max_iterations=10,
+        temperature=0.2,
+        is_pinned_by_default=False,
+    ),
+    # --- 5. Workflow & Automation Manager ---
     "workflow-manager": SystemAgentBlueprint(
         id="sys-agent-workflow-manager",
         key="workflow-manager",
@@ -128,18 +208,20 @@ SYSTEM_AGENT_BLUEPRINTS: dict[str, SystemAgentBlueprint] = {
         description="Design, test, inspect, generate, and execute DAG automation workflows",
         system_prompt=(
             "You are an expert Workflow & Automation Specialist in OpenAgent. "
-            "Your objective is to help users design, inspect, create, update, run, and manage DAG automation workflows.\n\n"
+            "Your objective is to help users design, inspect, create, update, run, "
+            "and manage DAG automation workflows.\n\n"
             "Key capabilities:\n"
             "- List and search existing workflows using `workflow_list`\n"
             "- Inspect node/edge DAG definitions using `workflow_get`\n"
             "- Run workflows with on-demand input parameters using `workflow_run`\n"
             "- Generate new workflow architectures from prompt using `workflow_generate`\n"
             "- Create or update custom workflows using `workflow_create` or `workflow_update`\n"
-            "- Search and install pre-built templates from the Marketplace using `workflow_catalog_list` and `workflow_catalog_install`\n"
+            "- Search and install pre-built templates from the Marketplace using "
+            "`workflow_catalog_list` and `workflow_catalog_install`\n"
             "- Remove outdated workflows using `workflow_delete`"
         ),
         recommended_tier="reasoning",
-        tools=[
+        tools=_with_common(
             "workflow_list",
             "workflow_get",
             "workflow_run",
@@ -149,213 +231,126 @@ SYSTEM_AGENT_BLUEPRINTS: dict[str, SystemAgentBlueprint] = {
             "workflow_generate",
             "workflow_catalog_list",
             "workflow_catalog_install",
-            "read_attachment",
-            "web_fetch",
-            "memory_store",
-            "memory_recall",
-            "call_agent",
-        ],
-        allowed_risk_tiers=["safe", "read", "network"],
+        ),
+        allowed_risk_tiers=["safe"],
         kind="worker",
         max_iterations=20,
         temperature=0.2,
         is_pinned_by_default=True,
     ),
-    # --- 4. Email Intelligence ---
-    "email-intelligence": SystemAgentBlueprint(
-        id="sys-agent-email-intelligence",
-        key="email-intelligence",
-        name="Email Intelligence",
-        description="Inbox triage, priority classification, draft generation, and email tracking",
+    # --- 6. Software & Data Engineer (merges the former Coder + Data Analyst) ---
+    "coder": SystemAgentBlueprint(
+        id="sys-agent-coder",
+        key="coder",
+        name="Software & Data Engineer",
+        description="Software development, debugging, dataset analysis, and sandboxed script execution",
         system_prompt=(
-            "You are an Email Intelligence specialist. Analyze inbound emails, categorize priority, "
-            "draft contextual replies, suggest labels, and summarize email threads."
+            "You are a Software & Data Engineer. Read the relevant files, plan "
+            "the change, and implement it with clear, minimal diffs. For data "
+            "tasks, inspect CSV/Excel datasets, run Python for descriptive "
+            "statistics and exploratory analysis, and synthesize data-driven "
+            "insights.\n\n"
+            "IMPORTANT: When responding with HTML, CSS, or JavaScript for "
+            "preview/display purposes, return it as a code block (```html, "
+            "```css, ```javascript) in your response. Do NOT use write_file for "
+            "this. Users can then preview it directly in the chat UI using the "
+            "Preview button or 'Mở tab mới' (open in new tab) feature."
         ),
         recommended_tier="fast",
-        tools=[
-            "email_search",
-            "email_get",
-            "email_list_new",
-            "email_create_draft",
-            "email_reply",
-            "email_label",
-            "email_send",
-            "memory_store",
-            "memory_recall",
-        ],
-        allowed_risk_tiers=["safe", "read", "network"],
-        kind="worker",
-        max_iterations=12,
-        temperature=0.3,
-        is_pinned_by_default=False,
-    ),
-    # --- 5. Calendar Assistant ---
-    "calendar-assistant": SystemAgentBlueprint(
-        id="sys-agent-calendar-assistant",
-        key="calendar-assistant",
-        name="Calendar Assistant",
-        description="Meeting scheduling, conflict resolution, calendar invites, and availability checking",
-        system_prompt=(
-            "You are a Calendar Management Assistant. Help users check availability, schedule meetings, "
-            "update events, handle scheduling conflicts, and send Google Calendar invitations."
-        ),
-        recommended_tier="fast",
-        tools=[
-            "calendar_list_events",
-            "calendar_get_event",
-            "calendar_create_event",
-            "calendar_update_event",
-            "calendar_delete_event",
-            "get_current_time",
-            "memory_recall",
-        ],
-        allowed_risk_tiers=["safe", "read", "network"],
-        kind="worker",
-        max_iterations=10,
-        temperature=0.2,
-        is_pinned_by_default=False,
-    ),
-    # --- 6. Customer Researcher ---
-    "customer-researcher": SystemAgentBlueprint(
-        id="sys-agent-customer-researcher",
-        key="customer-researcher",
-        name="Customer & Company Researcher",
-        description="B2B company intelligence, market news enrichment, contract and document retrieval",
-        system_prompt=(
-            "You are a Customer & B2B Intelligence Specialist. Research corporate accounts, analyze industry news, "
-            "retrieve customer documents and contracts from Drive, and synthesize structured company profiles."
-        ),
-        recommended_tier="standard",
-        tools=[
-            "company_search",
-            "company_get",
-            "news_search",
-            "drive_list_files",
-            "drive_get_file",
-            "web_search",
-            "memory_store",
-            "memory_recall",
-        ],
-        allowed_risk_tiers=["safe", "read", "network"],
+        tools=_with_common("run_code", "write_file", "list_dir", "search_files", "read_attachment"),
+        allowed_risk_tiers=["safe", "read", "write", "execute"],
         kind="worker",
         max_iterations=16,
-        temperature=0.3,
-        is_pinned_by_default=False,
-    ),
-    # --- 7. RAG Researcher ---
-    "rag-researcher": SystemAgentBlueprint(
-        id="sys-agent-rag-researcher",
-        key="rag-researcher",
-        name="RAG Knowledge Researcher",
-        description="Enterprise knowledge base retrieval, semantic vector search, and Graph RAG",
-        system_prompt=(
-            "You are a specialized RAG research agent. Your objective is to answer questions "
-            "by querying the knowledge base using RAG tools. Always call `rag_search` before "
-            "answering factual or domain queries. If details are missing, suggest ingesting "
-            "documents or URLs using `rag_ingest_file` or `rag_ingest_url`."
-        ),
-        recommended_tier="standard",
-        tools=[
-            "rag_search",
-            "rag_graph_search",
-            "rag_list_collections",
-            "rag_ingest_file",
-            "rag_ingest_url",
-            "rag_ingest_text",
-            "web_fetch",
-            "memory_store",
-            "memory_recall",
-        ],
-        allowed_risk_tiers=["safe", "read", "network"],
-        kind="worker",
-        max_iterations=20,
         temperature=0.2,
-        is_pinned_by_default=False,
+        is_pinned_by_default=True,
     ),
-    # --- 8. Document Analyst ---
+    # --- 7. Document Analyst & Ingestion ---
     "document-analyst": SystemAgentBlueprint(
         id="sys-agent-document-analyst",
         key="document-analyst",
         name="Document Analyst & Ingestion",
-        description="Complex PDF/DOCX OCR parsing, structured data extraction, and knowledge ingestion",
+        description="Complex PDF/DOCX parsing and ingesting documents into the knowledge base",
         system_prompt=(
-            "You are a Document Analysis Specialist. Parse complex documents (PDFs, spreadsheets, DOCX), "
-            "extract tables and key metadata, and ingest parsed knowledge into structured collections."
+            "You are a Document Analysis & Ingestion Specialist. Parse complex "
+            "documents (PDFs, spreadsheets, DOCX) and web pages, and ingest them "
+            "into the organization's knowledge base collections using "
+            "`rag_ingest_file`, `rag_ingest_url`, or `rag_ingest_text`. You own "
+            "the knowledge base lifecycle end-to-end, including removing stale "
+            "or duplicate documents with `rag_delete_document`. You prepare "
+            "knowledge for retrieval; you do not query it yourself - delegate "
+            "lookups to the RAG Knowledge Researcher."
         ),
         recommended_tier="standard",
-        tools=[
-            "rag_ingest_file",
-            "rag_ingest_url",
-            "rag_ingest_text",
-            "read_attachment",
-            "memory_store",
-            "memory_recall",
-        ],
+        tools=_with_common(
+            "rag_ingest_file", "rag_ingest_url", "rag_ingest_text", "rag_delete_document", "read_attachment"
+        ),
+        allowed_risk_tiers=["safe", "read", "network", "write", "dangerous"],
+        kind="worker",
+        max_iterations=16,
+        temperature=0.2,
+        is_pinned_by_default=False,
+    ),
+    # --- 8. RAG Knowledge Researcher ---
+    "rag-researcher": SystemAgentBlueprint(
+        id="sys-agent-rag-researcher",
+        key="rag-researcher",
+        name="RAG Knowledge Researcher",
+        description="Enterprise knowledge base retrieval and semantic search over ingested documents",
+        system_prompt=(
+            "You are a specialized RAG research agent. Your objective is to "
+            "answer questions by querying the knowledge base using `rag_search`. "
+            "Always call `rag_search` before answering factual or domain "
+            "queries. If the knowledge base is empty or off-topic, say so "
+            "plainly and suggest the user have the Document Analyst ingest the "
+            "relevant sources - you do not ingest documents yourself."
+        ),
+        recommended_tier="standard",
+        tools=_with_common("rag_search", "rag_list_collections"),
+        allowed_risk_tiers=["safe", "read", "network"],
+        kind="worker",
+        max_iterations=20,
+        temperature=0.2,
+        is_pinned_by_default=False,
+    ),
+    # --- 9. Customer & Company Researcher ---
+    "customer-researcher": SystemAgentBlueprint(
+        id="sys-agent-customer-researcher",
+        key="customer-researcher",
+        name="Customer & Company Researcher",
+        description="B2B company intelligence and market news enrichment",
+        system_prompt=(
+            "You are a Customer & B2B Intelligence Specialist. Research "
+            "corporate accounts, analyze industry news, and synthesize "
+            "structured company profiles."
+        ),
+        recommended_tier="standard",
+        tools=_with_common("company_search", "company_get", "news_search"),
         allowed_risk_tiers=["safe", "read", "network"],
         kind="worker",
         max_iterations=16,
-        temperature=0.2,
+        temperature=0.3,
         is_pinned_by_default=False,
     ),
-    # --- 9. Coder ---
-    "coder": SystemAgentBlueprint(
-        id="sys-agent-coder",
-        key="coder",
-        name="Coder & UI Designer",
-        description="Software development, debugging, script execution, and interactive live UI preview",
-        system_prompt=(
-            "You are a coding agent. Read the relevant files, plan the change, "
-            "and implement it with clear, minimal diffs.\n\n"
-            "IMPORTANT: When responding with HTML, CSS, or JavaScript for preview/display purposes, "
-            "return it as a code block (```html, ```css, ```javascript) in your response. "
-            "Do NOT use write_file for this. Users can then preview it directly in the chat UI "
-            "using the Preview button or 'Mở tab mới' (open in new tab) feature."
-        ),
-        recommended_tier="fast",
-        tools=["run_code", "read_attachment", "memory_store", "memory_recall"],
-        allowed_risk_tiers=["safe", "read", "execute"],
-        kind="worker",
-        max_iterations=16,
-        temperature=0.2,
-        is_pinned_by_default=True,
-    ),
-    # --- 10. Data Analyst ---
-    "data-analyst": SystemAgentBlueprint(
-        id="sys-agent-data-analyst",
-        key="data-analyst",
-        name="Data Analyst",
-        description="Quantitative analysis, CSV/Excel processing, statistical insights, and data visualization",
-        system_prompt=(
-            "You are a Data Analyst. Inspect CSV/Excel datasets, run Python scripts for descriptive statistics "
-            "and exploratory data analysis, generate charts, and synthesize data-driven business insights."
-        ),
-        recommended_tier="standard",
-        tools=["run_code", "read_attachment", "web_fetch", "memory_store", "memory_recall"],
-        allowed_risk_tiers=["safe", "read", "execute"],
-        kind="worker",
-        max_iterations=16,
-        temperature=0.2,
-        is_pinned_by_default=False,
-    ),
-    # --- 11. Deep Researcher ---
+    # --- 10. Deep Web Researcher ---
     "deep-researcher": SystemAgentBlueprint(
         id="sys-agent-deep-researcher",
         key="deep-researcher",
         name="Deep Web Researcher",
-        description="Multi-hop query breakdown, SearXNG & YouTube search, and structured academic synthesis",
+        description="Multi-hop query breakdown, general web & YouTube search, and cited synthesis",
         system_prompt=(
             "You are a research agent. Break the question into sub-questions, "
-            "fetch authoritative sources, and synthesize a cited answer."
+            "fetch authoritative sources from the open web, and synthesize a "
+            "cited answer."
         ),
         recommended_tier="reasoning",
-        tools=["web_search", "web_fetch", "youtube_search", "read_attachment", "memory_store", "memory_recall"],
-        allowed_risk_tiers=["safe", "read", "network"],
+        tools=_with_common("web_search", "web_fetch", "youtube_search"),
+        allowed_risk_tiers=["safe", "network"],
         kind="worker",
         max_iterations=20,
         temperature=0.3,
         is_pinned_by_default=False,
     ),
-    # --- 12. Summarizer ---
+    # --- 11. Summarizer ---
     "summarizer": SystemAgentBlueprint(
         id="sys-agent-summarizer",
         key="summarizer",
@@ -366,26 +361,27 @@ SYSTEM_AGENT_BLUEPRINTS: dict[str, SystemAgentBlueprint] = {
             "that preserves the key facts and omits filler."
         ),
         recommended_tier="fast",
-        tools=["read_attachment", "memory_store"],
+        tools=_with_common("read_attachment"),
         allowed_risk_tiers=["safe", "read"],
         kind="worker",
         max_iterations=8,
         temperature=0.4,
         is_pinned_by_default=False,
     ),
-    # --- 13. Content Writer ---
+    # --- 12. Content Writer ---
     "content-writer": SystemAgentBlueprint(
         id="sys-agent-content-writer",
         key="content-writer",
         name="Content Writer & Copywriter",
         description="PR articles, blog posts, marketing copy, newsletters, and tone-of-voice alignment",
         system_prompt=(
-            "You are an expert Content Writer and Copywriter. Create engaging, well-structured, "
-            "and persuasive written content (blog posts, press releases, newsletters, social copy) "
-            "tailored to the target audience and brand tone."
+            "You are an expert Content Writer and Copywriter. Create engaging, "
+            "well-structured, and persuasive written content (blog posts, press "
+            "releases, newsletters, social copy) tailored to the target "
+            "audience and brand tone."
         ),
         recommended_tier="standard",
-        tools=["web_search", "read_attachment", "memory_store", "memory_recall"],
+        tools=_with_common("web_search", "read_attachment"),
         allowed_risk_tiers=["safe", "read", "network"],
         kind="worker",
         max_iterations=14,

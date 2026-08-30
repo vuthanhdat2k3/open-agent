@@ -45,6 +45,15 @@ class ChatService:
             if model is None:
                 raise ValueError("model is not available for this organization")
         selected_agent: Agent | RuntimeAgent | None = None
+        if user_role == "user":
+            # The `user` role only ever consumes the org's orchestrator-kind
+            # agent through chat; specialized worker agents are reachable
+            # only via the orchestrator's call_agent delegation, never
+            # directly. operator/org_admin/platform_admin are unrestricted.
+            target_agent = await self._load_agent(org_id, request.agent_id)
+            if getattr(target_agent, "kind", "worker") != "orchestrator":
+                raise ValueError("this role may only chat with the orchestrator agent")
+            selected_agent = target_agent
         if request.model_id:
             # Admin model changes publish a new agent release. Repin an
             # existing session only for that default-model path; a user model

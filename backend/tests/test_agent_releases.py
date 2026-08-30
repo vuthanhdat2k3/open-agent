@@ -57,7 +57,9 @@ def _headers(token: str, org_id: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}", "X-Org-Id": org_id}
 
 
-def _create_agent(client: TestClient, token: str, org_id: str) -> dict:
+def _create_agent(
+    client: TestClient, token: str, org_id: str, kind: str = "worker"
+) -> dict:
     headers = _headers(token, org_id)
     provider = client.post(
         "/api/providers",
@@ -87,6 +89,7 @@ def _create_agent(client: TestClient, token: str, org_id: str) -> dict:
             "name": "Release Agent",
             "system_prompt": "version one",
             "model_id": model.json()["id"],
+            "kind": kind,
         },
     )
     assert agent.status_code == 201, agent.text
@@ -525,7 +528,9 @@ def test_user_model_selection_is_per_chat_and_validated(
 ) -> None:
     admin_token, org_id = _register(client, "user-model-admin@example.com", "User Model Org")
     admin_headers = _headers(admin_token, org_id)
-    agent = _create_agent(client, admin_token, org_id)
+    # The `user` role may only chat with an orchestrator-kind agent (see
+    # ChatService.ensure_session), so this agent must be created as one.
+    agent = _create_agent(client, admin_token, org_id, kind="orchestrator")
     provider_id = client.get("/api/providers", headers=admin_headers).json()[0]["id"]
     alternate = client.post(
         "/api/models",

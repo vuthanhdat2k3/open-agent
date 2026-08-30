@@ -254,7 +254,11 @@ async def _build_orchestrator_delegate_tools(
         capabilities = {key: list(value) for key, value in cached_capabilities.items()}
         return roster, specs, capabilities, {spec.name: spec for spec in specs}
     result = await db.execute(
-        select(Agent).where(Agent.org_id == org_id, Agent.id != exclude_agent_id)
+        select(Agent).where(
+            Agent.org_id == org_id,
+            Agent.id != exclude_agent_id,
+            Agent.kind == "worker",
+        )
     )
     agents = list(result.scalars().all())
     if not agents:
