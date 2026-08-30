@@ -197,6 +197,7 @@ async def decide_approval(
                 "approval_decision": approval.status,
             }
             await db.commit()
+            principal = task.execution_principal or {}
             payload = {
                 "agent_id": task.agent_id,
                 "message": task.goal,
@@ -218,7 +219,8 @@ async def decide_approval(
                 "root_run_id": approval.run_id,
                 "stream": True,
                 "org_id": org_id,
-                "user_id": current_user.id,
+                "user_id": principal.get("user_id") or task.triggered_by_user_id,
+                "user_role": principal.get("role"),
                 "approval_resume_id": approval.id,
                 "model_id": (task.progress or {}).get("model_id"),
                 "prepared": True,
@@ -228,7 +230,7 @@ async def decide_approval(
                 await enqueue_chat_run(payload)
             else:
                 background_tasks.add_task(run_chat_detached, payload)
-    if approval.run_type == "workflow" and approval.run_id:
+    if approval.run_type in {"workflow", "workflow.tool"} and approval.run_id:
         # A workflow approval node paused the run at `waiting_approval`.
         # Without this branch the decision is recorded but nothing ever drives
         # the run again — it stays waiting forever. Flip it back to a live

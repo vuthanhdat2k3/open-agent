@@ -144,6 +144,12 @@ class ChatService:
             agent_id=agent.id,
             agent_release_id=getattr(agent, "active_release_id", None),
             triggered_by_user_id=user_id,
+            execution_principal={
+                "principal_type": "human" if user_id else "system",
+                "principal_id": user_id or "openagent:internal-runtime",
+                "user_id": user_id,
+                "role": user_role,
+            },
             goal=request.message,
             status="queued",
             progress={

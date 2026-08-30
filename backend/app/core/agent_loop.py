@@ -36,6 +36,12 @@ from app.core.observability.metrics import (
 from app.core.providers.factory import build_driver
 from app.core.runtime_context import build_runtime_context, normalize_timezone
 from app.core.session_surface import derive_messages
+from app.core.tools.authorization import (
+    build_tool_authorization,
+)
+from app.core.tools.authorization import (
+    requires_approval as tool_requires_approval,
+)
 from app.core.tools.registry import BUILTIN_TOOLS, execute_tool_call
 from app.core.tools.risk_tier import RiskTier
 from app.core.tools.types import ToolContext, ToolSpec, tool_to_openai_schema
@@ -827,6 +833,17 @@ async def _agent_stream(
         model_id=selected_model_id,
         actor_agent_identity_id=actor_agent_identity_id,
         delegation_chain=delegation_chain,
+        authorization=build_tool_authorization(
+            org_id=agent.org_id,
+            user_id=user_id or agent.created_by_user_id,
+            user_role=user_role,
+            agent_id=agent.id,
+            allowed_risk_tiers=agent.allowed_risk_tiers,
+            run_id=root_run_id or session_id or current_task_id,
+            principal_type="human" if user_id else "system",
+            principal_id=user_id or agent.created_by_user_id,
+            replay=replay_cursor is not None,
+        ),
         timezone_name=normalize_timezone(timezone_name),
     )
 
@@ -1090,6 +1107,7 @@ async def _agent_stream(
                 current_task_id=next_hop.id,
                 root_run_id=root_run_id,
                 user_id=user_id,
+                user_role=user_role,
                 model_id=model_id or selected_model_id,
                 actor_agent_identity_id=actor_agent_identity_id,
                 delegation_chain=delegation_chain,
@@ -1186,8 +1204,15 @@ async def _agent_stream(
                 await rec.record(call_ev)
                 await rec.flush_progress(phase=f"tool:{name}")
             yield call_ev
+            approved_ctx = copy.copy(ctx)
+            approved_ctx.authorization = ctx.authorization.for_approved_call(
+                approval_id=approval.id,
+                approval_status=approval.status,
+                tool_name=name,
+                args=args,
+            ) if ctx.authorization is not None else None
             try:
-                result = await execute_tool_call(spec, args, ctx)
+                result = await execute_tool_call(spec, args, approved_ctx)
                 tool_status = "ok"
                 if tool_observation is not None:
                     tool_observation.finish_success(result=result)
@@ -1569,7 +1594,7 @@ async def _agent_stream(
                                 },
                                 commit=False,
                             )
-                        elif spec.requires_approval:
+                        elif tool_requires_approval(spec):
                             approval = await request_approval(
                                 db,
                                 org_id=agent.org_id,

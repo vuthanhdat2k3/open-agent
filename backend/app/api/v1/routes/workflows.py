@@ -300,6 +300,7 @@ async def run_workflow_endpoint(
     background_tasks: BackgroundTasks,
     org_id: str = Depends(get_current_org_id),
     current_user: User = Depends(get_current_user),
+    authz: PrincipalContext = Depends(require_permission("workflows:run")),
     db: AsyncSession = Depends(get_db),
 ):
     wf = await WorkflowService(db).get(org_id, id)
@@ -313,6 +314,7 @@ async def run_workflow_endpoint(
             stream=False,
             workflow_run_id=body.workflow_run_id,
             user_id=current_user.id,
+            user_role=authz.role.value,
             timezone_name=body.timezone,
             trigger_node_id=body.trigger_node_id,
             trigger_type="manual" if body.trigger_node_id else None,
@@ -326,6 +328,7 @@ async def run_workflow_endpoint(
             db,
             body.workflow_run_id,
             current_user.id,
+            authz.role.value,
             body.timezone,
             body.trigger_node_id,
             "manual" if body.trigger_node_id else None,
@@ -367,6 +370,7 @@ async def replay_workflow_run(
     run_id: str,
     org_id: str = Depends(get_current_org_id),
     current_user: User = Depends(get_current_user),
+    authz: PrincipalContext = Depends(require_permission("workflows:run")),
     db: AsyncSession = Depends(get_db),
 ):
     """Re-run a finished run against its recorded tool results.
@@ -398,6 +402,7 @@ async def replay_workflow_run(
         force_inline=True,
         replay_of_run_id=source.id,
         user_id=current_user.id,
+        user_role=authz.role.value,
     )
     # A replay that took a different path is a real finding, not an error:
     # report it with the divergence point so the caller can see where.

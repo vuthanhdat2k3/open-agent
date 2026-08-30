@@ -3,6 +3,7 @@ from typing import Any
 
 from jsonschema import ValidationError, validate
 
+from app.core.tools.authorization import authorize_tool_call
 from app.core.tools.types import ToolContext, ToolSpec
 
 # name -> spec. Populated by app.core.tools.builtins on import.
@@ -57,6 +58,12 @@ async def execute_tool_call(spec: ToolSpec, args: dict[str, Any], ctx: ToolConte
         path = ".".join(str(p) for p in exc.path)
         location = f" at {path}" if path else ""
         return f"error: invalid arguments{location}: {exc.message}"
+    authorize_tool_call(
+        spec,
+        args,
+        context=ctx.authorization,
+        runtime_org_id=ctx.org_id,
+    )
     attempts = 1 + max(0, spec.max_retries)
     last_error: Exception | None = None
     for attempt in range(attempts):

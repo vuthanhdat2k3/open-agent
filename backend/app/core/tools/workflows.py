@@ -10,7 +10,6 @@ from app.core.authz.scope import scope_to_owner
 from app.core.tools.registry import register
 from app.core.tools.risk_tier import RiskTier
 from app.core.tools.types import ToolContext, ToolSpec
-from app.core.workflow.engine import run_workflow
 from app.db.base import gen_id
 from app.models.workflow import Workflow
 from app.models.workflow_installation import WorkflowInstallation
@@ -201,6 +200,8 @@ async def _workflow_run(args: dict[str, Any], ctx: ToolContext) -> str:
             f"error: workflow not found with id='{workflow_id}' or name='{name}'"
         )
 
+    from app.core.workflow.engine import run_workflow
+
     try:
         final_output, log, run_id = await run_workflow(
             workflow=wf,
@@ -208,6 +209,7 @@ async def _workflow_run(args: dict[str, Any], ctx: ToolContext) -> str:
             db=ctx.db,
             stream=False,
             user_id=ctx.user_id,
+            user_role=(ctx.authorization.role if ctx.authorization and ctx.authorization.is_human else None),
             timezone_name=ctx.timezone_name,
         )
     except Exception as exc:

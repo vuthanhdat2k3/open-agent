@@ -36,6 +36,11 @@ class WorkflowRun(Base):
     trigger_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
     trigger_occurrence_key: Mapped[str | None] = mapped_column(String(192), nullable=True, unique=True)
 
+    # Immutable principal snapshot used by queued workers and approval resume.
+    # It prevents a later worker from guessing the caller's role from mutable
+    # request state or accidentally executing as the approver.
+    execution_principal: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
     # --- Durable execution (M14) ---
     # How many times a worker has picked this run back up after a crash.
     # Bounded so a run that dies at the same node cannot loop forever.
