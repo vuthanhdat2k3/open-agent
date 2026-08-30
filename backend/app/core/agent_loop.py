@@ -17,6 +17,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.core import session_log as slog
 from app.core.chat_events import ChatEventRecorder
+from app.core.execution_policy import (
+    ExecutionPolicy,
+    policy_allows_tier,
+)
 from app.core.guardrails.approval import request_approval
 from app.core.guardrails.budget import BudgetTracker, RunBudget
 from app.core.guardrails.injection import wrap_untrusted_if_flagged
@@ -716,7 +720,13 @@ async def _agent_stream(
     record_stream: bool = True,
     approval_resume_id: str | None = None,
     timezone_name: str | None = None,
+    execution_policy: ExecutionPolicy | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
+    def _allows_tier(tier: str) -> bool:
+        if execution_policy is not None:
+            return policy_allows_tier(execution_policy, tier)
+        return tier in (agent.allowed_risk_tiers or [])
+
     phase_started_at = time.monotonic()
     logger.info(
         "chat_latency_phase",
@@ -846,6 +856,7 @@ async def _agent_stream(
             run_id=root_run_id or session_id or current_task_id,
             principal_type="human" if user_id else "system",
             principal_id=user_id or agent.created_by_user_id,
+            execution_policy=execution_policy,
             replay=replay_cursor is not None,
         ),
         timezone_name=normalize_timezone(timezone_name),
@@ -1117,6 +1128,7 @@ async def _agent_stream(
                 delegation_chain=delegation_chain,
                 record_stream=False,
                 approval_resume_id=approval_resume_id,
+                execution_policy=execution_policy,
             ):
                 if nested_ev["event"] == "message_done":
                     nested_result = nested_ev["data"]["content"]
@@ -1186,7 +1198,7 @@ async def _agent_stream(
                 else None
             )
             budget_reason = budget.record_call(name, args)
-            if budget_reason or spec.risk_tier.value not in agent.allowed_risk_tiers:
+            if budget_reason or not _allows_tier(spec.risk_tier.value):
                 result = budget_reason or (
                     f"error: tool '{name}' requires risk tier '{spec.risk_tier.value}' "
                     "which is not enabled for this agent"
@@ -1572,12 +1584,12 @@ async def _agent_stream(
                                 tool_observation.finish_error(RuntimeError(result), result=result)
                             return
                         # Layer 1: risk-tier capability gate
-                        if spec.risk_tier.value not in agent.allowed_risk_tiers:
+                        if not _allows_tier(spec.risk_tier.value):
                             tool_status = "denied"
                             result = (
                                 f"error: tool '{name}' requires risk tier "
-                                f"'{spec.risk_tier.value}' which is not enabled for this agent. "
-                                f"Allowed tiers: {agent.allowed_risk_tiers}"
+                                f"'{spec.risk_tier.value}' which is not allowed by the execution policy. "
+                                f"Policy: {execution_policy.value if execution_policy is not None else 'legacy-agent-tiers'}"
                             )
                             guardrail_events_total.labels(
                                 agent.org_id, "risk_tier_denied", "blocked"
@@ -1593,12 +1605,21 @@ async def _agent_stream(
                                 resource_id=name,
                                 metadata={
                                     "required_tier": spec.risk_tier.value,
-                                    "allowed_tiers": list(agent.allowed_risk_tiers or []),
+                                    "allowed_tiers": (
+                                        [tier for tier in (
+                                            ("safe", "read", "network")
+                                            if execution_policy is not None and execution_policy.value == "read-only"
+                                            else tuple(agent.allowed_risk_tiers or ())
+                                        )]
+                                    ),
+                                    "execution_policy": (
+                                        execution_policy.value if execution_policy is not None else None
+                                    ),
                                     "run_id": session_id,
                                 },
                                 commit=False,
                             )
-                        elif tool_requires_approval(spec):
+                        elif tool_requires_approval(spec, execution_policy):
                             approval = await request_approval(
                                 db,
                                 org_id=agent.org_id,
@@ -2253,6 +2274,7 @@ async def run_agent_loop(
     record_stream: bool = True,
     approval_resume_id: str | None = None,
     timezone_name: str | None = None,
+    execution_policy: ExecutionPolicy | None = None,
     on_event: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
 ) -> AgentLoopResult:
     content = ""
@@ -2278,6 +2300,7 @@ async def run_agent_loop(
         record_stream=record_stream,
         approval_resume_id=approval_resume_id,
         timezone_name=timezone_name,
+        execution_policy=execution_policy,
     ):
         if on_event is not None:
             try:

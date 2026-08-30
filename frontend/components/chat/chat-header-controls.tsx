@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Bot, ChevronDown, Cpu, MessageSquare, Plus, Trash2 } from "lucide-react";
+import { Bot, ChevronDown, Cpu, MessageSquare, Plus, ShieldCheck, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -12,7 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useTranslation } from "@/lib/i18n";
-import type { Agent, Model, Session } from "@/types";
+import type { Agent, ExecutionPolicy, Model, Session } from "@/types";
 
 interface ChatHeaderControlsProps {
   agents?: Agent[];
@@ -23,10 +23,12 @@ interface ChatHeaderControlsProps {
   currentAgent?: Agent;
   currentAgentModel?: Model;
   pendingSessionModelId: string;
+  pendingExecutionPolicy: ExecutionPolicy;
   streaming: boolean;
   updateAgentPending: boolean;
   onAgentChange: (agentId: string) => void;
   onDefaultModelChange: (modelId: string) => void;
+  onExecutionPolicyChange: (policy: ExecutionPolicy) => void;
   onSessionChange: (sessionId: string) => void;
   onNewSession: () => void;
   onDeleteSession: (sessionId: string) => Promise<void>;
@@ -34,6 +36,7 @@ interface ChatHeaderControlsProps {
   // may choose an admin-configured model, but never switch agents.
   canSwitchAgent: boolean;
   canSwitchModel: boolean;
+  canUseFullAccess: boolean;
 }
 
 const triggerClass = "h-7 gap-1.5 rounded-full px-2.5 text-xs font-medium text-muted-foreground hover:text-foreground";
@@ -51,21 +54,37 @@ export function ChatHeaderControls({
   currentAgent,
   currentAgentModel,
   pendingSessionModelId,
+  pendingExecutionPolicy,
   streaming,
   updateAgentPending,
   onAgentChange,
   onDefaultModelChange,
+  onExecutionPolicyChange,
   onSessionChange,
   onNewSession,
   onDeleteSession,
   canSwitchAgent,
   canSwitchModel,
+  canUseFullAccess,
 }: ChatHeaderControlsProps) {
   const { t, locale, tx } = useTranslation();
   const agentSessions = sessions?.filter((s) => s.agent_id === agentId) ?? [];
   const effectiveModelId = pendingSessionModelId || currentAgentModel?.id || "";
   const effectiveModel = models?.find((m) => m.id === effectiveModelId) ?? currentAgentModel;
   const currentSession = sessions?.find((s) => s.id === sessionId);
+  const effectiveExecutionPolicy = currentSession?.execution_policy ?? pendingExecutionPolicy;
+  const policyLabel = effectiveExecutionPolicy === "read-only"
+    ? tx("Chỉ đọc", "Read-only")
+    : effectiveExecutionPolicy === "full-access"
+      ? tx("Toàn quyền tự động", "Full access")
+      : tx("Cần phê duyệt", "Manual approval");
+  const policyOptions: Array<{ value: ExecutionPolicy; label: string }> = [
+    { value: "read-only", label: tx("Chỉ đọc", "Read-only") },
+    { value: "manual", label: tx("Cần phê duyệt", "Manual approval") },
+    ...(canUseFullAccess
+      ? [{ value: "full-access" as const, label: tx("Toàn quyền tự động", "Full access") }]
+      : []),
+  ];
 
   return (
     <div className="flex min-w-0 items-center gap-1">
@@ -121,6 +140,29 @@ export function ChatHeaderControls({
           <span className="max-w-[9rem] truncate font-mono">{effectiveModel?.display_name || effectiveModel?.name || (tx("Mô hình", "Model"))}</span>
         </span>
       ) : null}
+
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button type="button" variant="ghost" size="sm" disabled={streaming} className={triggerClass}>
+            <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
+            <span className="max-w-[8rem] truncate">{policyLabel}</span>
+            <ChevronDown className="h-3 w-3 opacity-60" aria-hidden="true" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="w-56">
+          <DropdownMenuLabel>{tx("Quyền thực thi", "Execution access")}</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          {policyOptions.map((option) => (
+            <DropdownMenuItem
+              key={option.value}
+              onSelect={() => onExecutionPolicyChange(option.value)}
+              className={option.value === effectiveExecutionPolicy ? "font-semibold text-foreground" : undefined}
+            >
+              {option.label}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>

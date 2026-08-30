@@ -1,6 +1,7 @@
 from sqlalchemy import DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.core.execution_policy import ExecutionPolicy
 from app.db.base import Base, gen_id, utc_now
 
 
@@ -19,5 +20,8 @@ class Session(Base):
         String(36), ForeignKey("agent_releases.id", ondelete="SET NULL"), nullable=True
     )
     title: Mapped[str] = mapped_column(String(256), default="New session")
+    execution_policy: Mapped[str] = mapped_column(
+        String(16), default=ExecutionPolicy.manual.value, nullable=False
+    )
     created_at: Mapped["utc_now"] = mapped_column(DateTime, default=utc_now)
     updated_at: Mapped["utc_now"] = mapped_column(DateTime, default=utc_now, onupdate=utc_now)

@@ -242,6 +242,10 @@ export const en: TranslationDictionary = {
       emptyStateCapabilities: 'Your capabilities',
       emptyStateCapabilitiesPrompt: 'What kinds of tasks can you help me with?',
       enlargeSvg: 'Enlarge SVG preview',
+      executionPolicy: 'Execution access',
+      executionPolicyReadOnly: 'Read-only',
+      executionPolicyManual: 'Manual approval',
+      executionPolicyFullAccess: 'Full access',
     },
     agents: {
       title: 'Agents',
