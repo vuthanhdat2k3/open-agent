@@ -29,6 +29,7 @@ from app.schemas.auth import (
     UpdateMemberRoleRequest,
 )
 from app.services.quota_service import default_organization_quota
+from app.services.rag_mcp_bootstrap import ensure_rag_mcp_server
 from app.services.zitadel_service import ZitadelProvisioningService
 
 router = APIRouter(prefix="/api/orgs", tags=["orgs"])
@@ -122,6 +123,7 @@ async def create_org(
     db.add(org)
     await db.flush()
     db.add(default_organization_quota(org.id))
+    await ensure_rag_mcp_server(db, org.id)
 
     if body.admin_email and body.admin_email.strip().lower() != (current_user.email or "").lower():
         target_email = body.admin_email.strip().lower()

@@ -130,6 +130,16 @@ class Settings(BaseSettings):
         default="http://rag-service:8100",
         validation_alias=AliasChoices("OPENAGENT_RAG_SERVICE_URL", "RAG_SERVICE_URL"),
     )
+    # The rag-service exposes its REST admin API and its MCP-SSE endpoint on
+    # two different ports of the same container (see rag-service/rag_service/
+    # config.py: rest_port=8100, mcp_port=8101). `rag_service_url` above is
+    # the REST port; this is the MCP port every agent's `rag_*` tools connect
+    # through (registered per-org as an McpServer - see
+    # app/services/rag_mcp_bootstrap.py).
+    rag_mcp_url: str = Field(
+        default="http://rag-service:8101/sse",
+        validation_alias=AliasChoices("OPENAGENT_RAG_MCP_URL", "RAG_MCP_URL"),
+    )
     rag_api_key: str = Field(
         default="",
         validation_alias=AliasChoices("OPENAGENT_RAG_API_KEY", "RAG_API_KEY"),

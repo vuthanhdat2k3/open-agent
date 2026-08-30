@@ -341,6 +341,7 @@ services:
     environment:
       RAG_API_KEY: ${RAG_API_KEY:-}
       OPENAGENT_RAG_SERVICE_URL: ${RAG_SERVICE_URL:-http://rag-service:8100}
+      OPENAGENT_RAG_MCP_URL: ${RAG_MCP_URL:-http://rag-service:8101/sse}
       OPENAGENT_HOST: 0.0.0.0
       OPENAGENT_RUNTIME: ${OPENAGENT_RUNTIME:-local}
       OPENAGENT_AUTH_PROVIDER: ${OPENAGENT_AUTH_PROVIDER:-local}
@@ -416,6 +417,7 @@ services:
     environment:
       RAG_API_KEY: ${RAG_API_KEY:-}
       OPENAGENT_RAG_SERVICE_URL: ${RAG_SERVICE_URL:-http://rag-service:8100}
+      OPENAGENT_RAG_MCP_URL: ${RAG_MCP_URL:-http://rag-service:8101/sse}
       OPENAGENT_RUNTIME: ${OPENAGENT_RUNTIME:-local}
       OPENAGENT_AUTH_PROVIDER: ${OPENAGENT_AUTH_PROVIDER:-local}
       OPENAGENT_PLATFORM_ADMIN_EMAILS: ${OPENAGENT_PLATFORM_ADMIN_EMAILS:-zitadel-admin@localhost}
