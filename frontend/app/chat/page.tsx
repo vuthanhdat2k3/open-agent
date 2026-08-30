@@ -28,7 +28,7 @@ import {
 import { ChatThread } from "@/components/chat/chat-thread";
 import { ChatInput } from "@/components/chat/chat-input";
 import { useTranslation } from "@/lib/i18n";
-import { isAdminRole, isOperator } from "@/lib/roles";
+import { isAdminRole, isEndUser, isOperator } from "@/lib/roles";
 import type { ConnectionState } from "@/components/chat/chat-connection-banner";
 import type { UploadedFile } from "@/types";
 
@@ -213,12 +213,25 @@ export default function ChatPage() {
 
   React.useEffect(() => {
     if (!chatHydrated || !agents.data?.length) return;
+    // The `user` role may only chat with the org's orchestrator-kind agent
+    // (enforced server-side in ChatService.ensure_session). Auto-selection
+    // must land on that agent instead of the first agent in the list, or the
+    // first message would be rejected by the backend.
+    const isEndUserRole = isEndUser(role);
+    const orchestratorAgent = agents.data.find((a) => a.kind === "orchestrator");
+    const fallbackAgent = (isEndUserRole && orchestratorAgent) || agents.data[0];
     const resolvedAgent =
-      urlAgent && agents.data.some((a) => a.id === urlAgent)
+      urlAgent &&
+      agents.data.some(
+        (a) => a.id === urlAgent && (!isEndUserRole || a.kind === "orchestrator"),
+      )
         ? urlAgent
-        : agentId && agents.data.some((a) => a.id === agentId)
+        : agentId &&
+            agents.data.some(
+              (a) => a.id === agentId && (!isEndUserRole || a.kind === "orchestrator"),
+            )
           ? agentId
-          : agents.data[0].id;
+          : fallbackAgent.id;
 
     if (resolvedAgent !== agentId) {
       setAgent(resolvedAgent);
@@ -249,7 +262,7 @@ export default function ChatPage() {
     }
   }, [
     agentId, agents.data, buildChatUrl, chatHydrated, models.data,
-    pendingSessionModelId, router, searchParams, sessionId, sessions.data,
+    pendingSessionModelId, role, router, searchParams, sessionId, sessions.data,
     sessions.isSuccess, setAgent, setPendingModel, setSession, urlAgent,
     urlModel, urlSession,
   ]);
