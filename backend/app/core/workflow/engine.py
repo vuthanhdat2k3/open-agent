@@ -21,7 +21,16 @@ from app.core.observability import genai
 from app.core.observability.llm_trace import ObservabilityContext, build_trace_context
 from app.core.observability.metrics import workflow_run_duration_seconds
 from app.core.providers.factory import build_driver
+from app.core.tools.authorization import (
+    authorize_tool_call,
+    build_tool_authorization,
+    tool_args_hash,
+)
+from app.core.tools.authorization import (
+    requires_approval as tool_requires_approval,
+)
 from app.core.tools.registry import BUILTIN_TOOLS, execute_tool_call
+from app.core.tools.risk_tier import RiskTier
 from app.core.tools.types import ToolContext
 from app.core.workflow import resume
 from app.core.workflow.replay import ReplayCursor, record_tool_call
@@ -171,6 +180,7 @@ async def _run_agent_node(
     upstream_text: str,
     db: AsyncSession,
     actor_user_id: str | None,
+    actor_user_role: str | None,
 ) -> NodeOutput:
     """Execute an agent node in dual mode (custom inline or inherit+override).
 
@@ -272,6 +282,7 @@ async def _run_agent_node(
         depth=0,
         root_run_id=node.get("_run_id"),
         user_id=actor_user_id,
+        user_role=actor_user_role,
         model_id=model_id,
     )
     data: dict[str, Any] = {"content": loop.content}
@@ -660,6 +671,7 @@ async def create_workflow_run(
     db: AsyncSession,
     workflow_run_id: str | None = None,
     user_id: str | None = None,
+    user_role: str | None = None,
     timezone_name: str | None = None,
     trigger_node_id: str | None = None,
     trigger_type: str | None = None,
@@ -702,6 +714,12 @@ async def create_workflow_run(
         graph_hash=graph_hash,
         trigger_node_id=trigger_node_id,
         trigger_type=trigger_type,
+        execution_principal={
+            "principal_type": "human" if user_id else "system",
+            "principal_id": user_id or "openagent:internal-runtime",
+            "user_id": user_id,
+            "role": user_role,
+        },
     )
     db.add(run)
     await db.commit()
@@ -769,6 +787,7 @@ async def _run_workflow_events(
     force_inline: bool = False,
     replay_of_run_id: str | None = None,
     user_id: str | None = None,
+    user_role: str | None = None,
     timezone_name: str | None = None,
     trigger_node_id: str | None = None,
     trigger_type: str | None = None,
@@ -781,12 +800,21 @@ async def _run_workflow_events(
         db,
         workflow_run_id,
         user_id,
+        user_role,
         timezone_name,
         trigger_node_id,
         trigger_type,
     )
     timezone_name = (workflow_run.input or {}).get("timezone") or timezone_name
-    actor_user_id = workflow_run.triggered_by_user_id or user_id or workflow.created_by_user_id
+    principal_snapshot = workflow_run.execution_principal or {}
+    actor_user_id = (
+        principal_snapshot.get("user_id")
+        if principal_snapshot
+        else workflow_run.triggered_by_user_id or user_id
+    ) or workflow.created_by_user_id
+    # Never infer the execution role from the person deciding an approval. A
+    # missing snapshot on a legacy queued run fails closed at tool execution.
+    actor_user_role = principal_snapshot.get("role") if principal_snapshot else None
     workflow_observability = (
         ObservabilityContext(
             build_trace_context(
@@ -1082,12 +1110,83 @@ async def _run_workflow_events(
                     tool_observation.finish_success(result=replayed)
                 return NodeOutput(text=str(replayed), data={"result": replayed})
 
+            authorization = build_tool_authorization(
+                org_id=workflow.org_id,
+                user_id=actor_user_id,
+                user_role=actor_user_role,
+                agent_id=None,
+                allowed_risk_tiers=[tier.value for tier in RiskTier],
+                run_id=workflow_run.id,
+                principal_type=(
+                    (workflow_run.execution_principal or {}).get("principal_type")
+                    or ("human" if actor_user_id and actor_user_role else "system")
+                ),
+                principal_id=(workflow_run.execution_principal or {}).get("principal_id"),
+                replay=replay_cursor is not None,
+            )
+            # Check capability/RBAC before creating an approval. Approval is
+            # only a confirmation gate; it must never grant a principal a risk
+            # tier they were not authorized to use in the first place.
+            authorize_tool_call(
+                spec,
+                args,
+                context=authorization,
+                runtime_org_id=workflow.org_id,
+                check_approval=False,
+            )
+            if tool_requires_approval(spec):
+                expected_hash = tool_args_hash(args)
+                existing = (
+                    await db.execute(
+                        select(ApprovalRequest)
+                        .where(
+                            ApprovalRequest.org_id == workflow.org_id,
+                            ApprovalRequest.run_type == "workflow.tool",
+                            ApprovalRequest.run_id == workflow_run.id,
+                            ApprovalRequest.node_id == node["id"],
+                            ApprovalRequest.tool_name == tool_name,
+                        )
+                        .order_by(ApprovalRequest.created_at.desc())
+                    )
+                ).scalars().first()
+                if existing is None:
+                    existing = await request_approval(
+                        db,
+                        org_id=workflow.org_id,
+                        run_type="workflow.tool",
+                        run_id=workflow_run.id,
+                        tool_name=tool_name,
+                        node_id=node["id"],
+                        args_snapshot=args,
+                        requested_by=actor_user_id,
+                        idempotency_key=(
+                            f"workflow-tool:{workflow_run.id}:{node['id']}:{expected_hash}"
+                        ),
+                    )
+                if existing.status == "pending":
+                    raise WorkflowWaitingApproval(existing.id)
+                if existing.status != "approved":
+                    raise RuntimeError(f"tool approval {existing.id} was {existing.status}")
+                if (
+                    existing.payload_hash != expected_hash
+                    or tool_args_hash(existing.args_snapshot or {}) != expected_hash
+                ):
+                    raise RuntimeError("approved workflow tool arguments no longer match")
+                authorization = authorization.for_approved_call(
+                    approval_id=existing.id,
+                    approval_status=existing.status,
+                    tool_name=tool_name,
+                    args=args,
+                )
+
             ctx = ToolContext(
                 db=db,
                 depth=0,
                 workspace_dir=settings.workspace_dir,
                 org_id=workflow.org_id,
                 user_id=actor_user_id,
+                root_run_id=workflow_run.id,
+                authorization=authorization,
                 timezone_name=timezone_name,
             )
             started = time.monotonic()
@@ -1184,12 +1283,15 @@ async def _run_workflow_events(
                 stream=False,
                 force_inline=True,
                 user_id=actor_user_id,
+                user_role=actor_user_role,
                 timezone_name=timezone_name,
                 subworkflow_depth=subworkflow_depth + 1,
             )
             return NodeOutput(text=str(child_output), data={"output": child_output})
         if kind == "agent":
-            return await _run_agent_node(node, cfg, node_run, upstream_text, db, actor_user_id)
+            return await _run_agent_node(
+                node, cfg, node_run, upstream_text, db, actor_user_id, actor_user_role
+            )
         raise RuntimeError(f"unknown node kind {kind}")
 
     async def run_node(node: dict[str, Any], db: AsyncSession) -> NodeOutput:
@@ -1464,6 +1566,7 @@ async def run_workflow_events(
     force_inline: bool = False,
     replay_of_run_id: str | None = None,
     user_id: str | None = None,
+    user_role: str | None = None,
     timezone_name: str | None = None,
     trigger_node_id: str | None = None,
     trigger_type: str | None = None,
@@ -1480,6 +1583,7 @@ async def run_workflow_events(
             force_inline=force_inline,
             replay_of_run_id=replay_of_run_id,
             user_id=user_id,
+            user_role=user_role,
             timezone_name=timezone_name,
             trigger_node_id=trigger_node_id,
             trigger_type=trigger_type,
@@ -1504,6 +1608,7 @@ async def run_workflow(
     force_inline: bool = False,
     replay_of_run_id: str | None = None,
     user_id: str | None = None,
+    user_role: str | None = None,
     timezone_name: str | None = None,
     trigger_node_id: str | None = None,
     trigger_type: str | None = None,
@@ -1520,6 +1625,7 @@ async def run_workflow(
             force_inline=force_inline,
             replay_of_run_id=replay_of_run_id,
             user_id=user_id,
+            user_role=user_role,
             timezone_name=timezone_name,
             trigger_node_id=trigger_node_id,
             trigger_type=trigger_type,

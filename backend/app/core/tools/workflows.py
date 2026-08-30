@@ -209,6 +209,7 @@ async def _workflow_run(args: dict[str, Any], ctx: ToolContext) -> str:
             db=ctx.db,
             stream=False,
             user_id=ctx.user_id,
+            user_role=(ctx.authorization.role if ctx.authorization and ctx.authorization.is_human else None),
             timezone_name=ctx.timezone_name,
         )
     except Exception as exc:

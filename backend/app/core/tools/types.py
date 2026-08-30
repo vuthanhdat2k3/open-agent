@@ -6,6 +6,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.tools.authorization import ToolAuthorizationContext
 from app.core.tools.risk_tier import RiskTier
 
 
@@ -28,6 +29,9 @@ class ToolContext:
     timezone_name: str = "UTC"
     actor_agent_identity_id: str | None = None
     delegation_chain: list | dict | None = None
+    # Immutable principal/risk/approval snapshot. The registry refuses to
+    # execute a tool without this context.
+    authorization: ToolAuthorizationContext | None = None
     # Optional async callback for streaming incremental progress (e.g. stdout
     # lines from sandbox tools) back to the caller. Tools that support it
     # await ctx.emit({"event": ..., "data": ...}); callers that do not set it

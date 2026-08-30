@@ -260,6 +260,16 @@ async def _call_agent(args: dict[str, Any], ctx: ToolContext) -> str:
         agent_id=agent.id,
         agent_release_id=agent.active_release_id,
         triggered_by_user_id=ctx.user_id,
+        execution_principal={
+            "principal_type": (
+                ctx.authorization.principal_type if ctx.authorization else "system"
+            ),
+            "principal_id": (
+                ctx.authorization.principal_id if ctx.authorization else "openagent:internal-runtime"
+            ),
+            "user_id": ctx.user_id,
+            "role": (ctx.authorization.role if ctx.authorization and ctx.authorization.is_human else None),
+        },
         goal=instruction,
         status="running",
         progress={"model_id": ctx.model_id},
@@ -354,6 +364,7 @@ async def _call_agent(args: dict[str, Any], ctx: ToolContext) -> str:
             current_task_id=task.id,
             root_run_id=task.root_run_id,
             user_id=ctx.user_id,
+            user_role=(ctx.authorization.role if ctx.authorization and ctx.authorization.is_human else None),
             model_id=ctx.model_id,
             timezone_name=ctx.timezone_name,
             actor_agent_identity_id=ctx.actor_agent_identity_id,
