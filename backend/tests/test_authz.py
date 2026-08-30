@@ -327,11 +327,15 @@ class TestRouteRBAC:
         owner_token = _register(client, "mcp_owner_create@test.com", PASSWORD, "MCP Create")
         org_id = _get_org_id(client, owner_token)
 
+        # Org creation auto-bootstraps a server named "rag" (see
+        # app/services/rag_mcp_bootstrap.py); use a distinct name here since
+        # this test only exercises the empty-tools creation path, not that
+        # specific name.
         resp = client.post(
             "/api/mcp/servers",
             headers=_auth_headers(owner_token, org_id),
             json={
-                "name": "rag",
+                "name": "custom-mcp",
                 "transport": "http",
                 "url": "http://rag-service:8100",
             },

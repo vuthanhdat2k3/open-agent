@@ -14,6 +14,13 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.core.authz.policy import evaluate_permission_intersection
+from app.core.execution_policy import (
+    ALL_RISK_TIERS,
+    ExecutionPolicy,
+    normalize_execution_policy,
+    policy_allows_tier,
+    policy_requires_approval,
+)
 
 
 class ToolAuthorizationError(PermissionError):
@@ -31,8 +38,10 @@ class ToolAuthorizationContext:
     """Immutable authorization snapshot carried by one runtime execution.
 
     ``principal_type=human`` requires both a user id and a resolved role.  A
-    system principal is reserved for explicitly internal jobs/evaluations and
-    still remains constrained by the agent's allowed risk tiers.
+    system principal is reserved for explicitly internal jobs/evaluations.
+    ``execution_policy`` is the session-level capability mode; the legacy
+    ``allowed_risk_tiers`` tuple remains only as a compatibility field for
+    non-chat callers.
     """
 
     org_id: str
@@ -42,6 +51,9 @@ class ToolAuthorizationContext:
     role: str | None
     agent_id: str | None
     allowed_risk_tiers: tuple[str, ...]
+    # ``None`` keeps legacy workflow/evaluation callers on their explicit
+    # allowed-risk-tier snapshot. Chat sessions always pass a policy.
+    execution_policy: ExecutionPolicy | None = None
     run_id: str | None = None
     approval_id: str | None = None
     approval_status: str | None = None
@@ -70,6 +82,7 @@ class ToolAuthorizationContext:
             role=self.role,
             agent_id=self.agent_id,
             allowed_risk_tiers=self.allowed_risk_tiers,
+            execution_policy=self.execution_policy,
             run_id=self.run_id,
             approval_id=approval_id,
             approval_status=approval_status,
@@ -89,6 +102,7 @@ def build_tool_authorization(
     run_id: str | None,
     principal_type: str | None = None,
     principal_id: str | None = None,
+    execution_policy: str | ExecutionPolicy | None = None,
     replay: bool = False,
 ) -> ToolAuthorizationContext:
     """Build an explicit principal snapshot for an agent/workflow runtime."""
@@ -102,6 +116,11 @@ def build_tool_authorization(
         role=user_role,
         agent_id=agent_id,
         allowed_risk_tiers=tuple(str(t) for t in (allowed_risk_tiers or ())),
+        execution_policy=(
+            normalize_execution_policy(execution_policy)
+            if execution_policy is not None
+            else None
+        ),
         run_id=run_id,
         replay=replay,
     )
@@ -127,20 +146,30 @@ def authorize_tool_call(
     if context.principal_type == "human" and (not context.user_id or not context.role):
         raise ToolAuthorizationError("human tool execution requires user and role context")
     tier = getattr(getattr(spec, "risk_tier", None), "value", None) or str(spec.risk_tier)
-    if tier not in context.allowed_risk_tiers and "*" not in context.allowed_risk_tiers:
-        raise ToolAuthorizationError(
-            f"tool '{spec.name}' requires risk tier '{tier}' which is not enabled for this agent"
-        )
+    if context.execution_policy is not None:
+        if not policy_allows_tier(context.execution_policy, tier):
+            raise ToolAuthorizationError(
+                f"tool '{spec.name}' is blocked by the '{context.execution_policy.value}' execution policy"
+            )
+        # The policy replaces agent-level tier capabilities for chat, but it
+        # never bypasses the authenticated principal's RBAC permission.
+        rbac_tiers = list(ALL_RISK_TIERS)
+    else:
+        if tier not in context.allowed_risk_tiers and "*" not in context.allowed_risk_tiers:
+            raise ToolAuthorizationError(
+                f"tool '{spec.name}' requires risk tier '{tier}' which is not enabled for this agent"
+            )
+        rbac_tiers = list(context.allowed_risk_tiers)
     if context.is_human and not evaluate_permission_intersection(
         context.role or "",
         f"tools:use:{tier}",
-        list(context.allowed_risk_tiers),
+        rbac_tiers,
         agent_identity_enabled=True,
     ):
         raise ToolAuthorizationError(
             f"principal is not authorized to use risk tier '{tier}' for tool '{spec.name}'"
         )
-    if check_approval and requires_approval(spec):
+    if check_approval and requires_approval(spec, context.execution_policy):
         if context.approval_status != "approved" or not context.approval_id:
             raise ToolAuthorizationError(f"tool '{spec.name}' requires an approved request")
         if context.approved_tool_name != spec.name:
@@ -149,7 +178,9 @@ def authorize_tool_call(
             raise ToolAuthorizationError("tool arguments do not match the approved snapshot")
 
 
-def requires_approval(spec: Any) -> bool:
+def requires_approval(
+    spec: Any, execution_policy: str | ExecutionPolicy | None = None
+) -> bool:
     """Return whether a runtime must pause before invoking this tool.
 
     Risk tier and approval are separate axes: ``risk_tier`` is the
@@ -158,4 +189,6 @@ def requires_approval(spec: Any) -> bool:
     author opts into. The ``dangerous`` tier does not implicitly require
     approval - it only gets the extra ``tool.dangerous.executed`` audit row.
     """
+    if execution_policy is not None:
+        return policy_requires_approval(execution_policy, spec)
     return bool(getattr(spec, "requires_approval", False))

@@ -3,6 +3,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict
 
+from app.core.execution_policy import ExecutionPolicy
+
 ChatRole = Literal["user", "assistant", "system", "tool"]
 
 
@@ -16,6 +18,7 @@ class ChatRequest(BaseModel):
     run_id: str | None = None
     stream: bool = True
     timezone: str | None = None
+    execution_policy: ExecutionPolicy | None = None
 
 
 class ChatMessageOut(BaseModel):
@@ -35,6 +38,7 @@ class SessionOut(BaseModel):
 
     id: str
     agent_id: str
+    execution_policy: ExecutionPolicy
     title: str
     created_at: datetime
     updated_at: datetime

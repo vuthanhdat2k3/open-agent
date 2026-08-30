@@ -28,9 +28,9 @@ import {
 import { ChatThread } from "@/components/chat/chat-thread";
 import { ChatInput } from "@/components/chat/chat-input";
 import { useTranslation } from "@/lib/i18n";
-import { isAdminRole, isOperator } from "@/lib/roles";
+import { isAdminRole, isEndUser, isOperator } from "@/lib/roles";
 import type { ConnectionState } from "@/components/chat/chat-connection-banner";
-import type { UploadedFile } from "@/types";
+import type { ExecutionPolicy, UploadedFile } from "@/types";
 
 export default function ChatPage() {
   const { locale, tx } = useTranslation();
@@ -45,12 +45,14 @@ export default function ChatPage() {
     activeRunId,
     debug,
     pendingModelIdByAgent,
+    pendingExecutionPolicy,
     hydrated: chatHydrated,
     setAgent,
     setSession,
     setActiveRun,
     toggleDebug,
     setPendingModel,
+    setPendingExecutionPolicy,
   } = useChatStore();
 
   const pendingSessionModelId = (agentId && pendingModelIdByAgent[agentId]) || "";
@@ -100,6 +102,7 @@ export default function ChatPage() {
   const updateAgent = useUpdateAgent();
   const [agentReady, setAgentReady] = React.useState(false);
   const selectedSession = sessions.data?.find((s) => s.id === sessionId);
+  const effectiveExecutionPolicy = selectedSession?.execution_policy ?? pendingExecutionPolicy;
   const [draft, setDraft] = React.useState("");
   const [attachments, setAttachments] = React.useState<UploadedFile[]>([]);
 
@@ -213,12 +216,25 @@ export default function ChatPage() {
 
   React.useEffect(() => {
     if (!chatHydrated || !agents.data?.length) return;
+    // The `user` role may only chat with the org's orchestrator-kind agent
+    // (enforced server-side in ChatService.ensure_session). Auto-selection
+    // must land on that agent instead of the first agent in the list, or the
+    // first message would be rejected by the backend.
+    const isEndUserRole = isEndUser(role);
+    const orchestratorAgent = agents.data.find((a) => a.kind === "orchestrator");
+    const fallbackAgent = (isEndUserRole && orchestratorAgent) || agents.data[0];
     const resolvedAgent =
-      urlAgent && agents.data.some((a) => a.id === urlAgent)
+      urlAgent &&
+      agents.data.some(
+        (a) => a.id === urlAgent && (!isEndUserRole || a.kind === "orchestrator"),
+      )
         ? urlAgent
-        : agentId && agents.data.some((a) => a.id === agentId)
+        : agentId &&
+            agents.data.some(
+              (a) => a.id === agentId && (!isEndUserRole || a.kind === "orchestrator"),
+            )
           ? agentId
-          : agents.data[0].id;
+          : fallbackAgent.id;
 
     if (resolvedAgent !== agentId) {
       setAgent(resolvedAgent);
@@ -249,7 +265,7 @@ export default function ChatPage() {
     }
   }, [
     agentId, agents.data, buildChatUrl, chatHydrated, models.data,
-    pendingSessionModelId, router, searchParams, sessionId, sessions.data,
+    pendingSessionModelId, role, router, searchParams, sessionId, sessions.data,
     sessions.isSuccess, setAgent, setPendingModel, setSession, urlAgent,
     urlModel, urlSession,
   ]);
@@ -593,6 +609,7 @@ export default function ChatPage() {
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     };
     if (pendingSessionModelId) payload.model_id = pendingSessionModelId;
+    if (!sessionId) payload.execution_policy = pendingExecutionPolicy;
 
     attachedRunRef.current = null;
     setActiveRun(null);
@@ -689,6 +706,12 @@ export default function ChatPage() {
     setPhase("");
   };
 
+  const handleExecutionPolicyChange = (policy: ExecutionPolicy) => {
+    if (streaming || policy === effectiveExecutionPolicy) return;
+    if (sessionId) clearMessages();
+    setPendingExecutionPolicy(policy);
+  };
+
   const setDefaultModel = async (modelId: string) => {
     if (!agentId) return;
     if (!isAdminRole(role) && !isOperator(role)) {
@@ -726,9 +749,11 @@ export default function ChatPage() {
         currentAgentModel={currentAgentModel}
         effectiveModel={effectiveModel}
         pendingSessionModelId={pendingSessionModelId}
+        pendingExecutionPolicy={pendingExecutionPolicy}
         updateAgentPending={updateAgent.isPending}
         onAgentChange={handleAgentChange}
         onDefaultModelChange={(modelId: string) => void setDefaultModel(modelId)}
+        onExecutionPolicyChange={handleExecutionPolicyChange}
         onSessionChange={handleSessionChange}
         onNewSession={clearMessages}
         onDeleteSession={async (id: string) => {

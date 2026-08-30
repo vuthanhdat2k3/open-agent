@@ -96,10 +96,11 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 |---|---|---|---|
 | `dev` | `G:\open-agent` | Nhánh tích hợp chính — không code trực tiếp ở đây | — |
 | `docs/demo-do-deploy-guide` | `G:\open-agent\.worktrees\demo-do-deploy-guide` | Viết docs/demo-digitalocean-deploy.md: hướng dẫn deploy demo full-stack lên DigitalOcean + phân tích chi phí | Kiro |
+| `feat/agent-orchestrator-redesign` | `.worktrees/agent-orchestrator-redesign` | Redesign multi-agent core và session execution policy | Kiro |
 
 > 2026-08-30: Đã dọn dẹp toàn bộ worktree và các nhánh đã merge vào `dev` trên cả Local và Remote:
 > - `feat/deploy-readiness` (PR #229, merge commit 036f5b4)
-> - `feat/agent-orchestrator-redesign`, `fix/chat-500` (đã merge, chỉ có local branch, không có remote)
+> - `feat/agent-orchestrator-redesign`, `fix/chat-500` (đã merge, chỉ có local branch, không có remote) — ghi chú lịch sử; worktree `feat/agent-orchestrator-redesign` hiện tại là phiên làm việc mới và vẫn đang hoạt động.
 > - `feat/i18n-hardcode-sweep-3`, `feat/i18n-enen-tx-sweep`, `feat/workflow-audit-fixes`,
 >   `audit/profile-roles-visibility` (đã merge, remote branch tồn tại nhưng không còn worktree local
 >   tương ứng — đã xóa remote)

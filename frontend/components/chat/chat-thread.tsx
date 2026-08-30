@@ -11,7 +11,7 @@ import { ChatEmptyState } from "@/components/chat/chat-empty-state";
 import { ChatStatusRow } from "@/components/chat/chat-status-row";
 import { ChatHeaderControls } from "@/components/chat/chat-header-controls";
 import type { ChatMessage } from "@/lib/chat/projection";
-import type { Agent, Model, Session, UploadedFile } from "@/types";
+import type { Agent, ExecutionPolicy, Model, Session, UploadedFile } from "@/types";
 import { useTranslation } from "@/lib/i18n";
 
 interface ChatThreadProps {
@@ -28,9 +28,11 @@ interface ChatThreadProps {
   currentAgentModel?: Model;
   effectiveModel?: Model;
   pendingSessionModelId: string;
+  pendingExecutionPolicy: ExecutionPolicy;
   updateAgentPending: boolean;
   onAgentChange: (agentId: string) => void;
   onDefaultModelChange: (modelId: string) => void;
+  onExecutionPolicyChange: (policy: ExecutionPolicy) => void;
   onSessionChange: (sessionId: string) => void;
   onNewSession: () => void;
   onDeleteSession: (sessionId: string) => Promise<void>;
@@ -62,9 +64,11 @@ export function ChatThread({
   currentAgentModel,
   effectiveModel,
   pendingSessionModelId,
+  pendingExecutionPolicy,
   updateAgentPending,
   onAgentChange,
   onDefaultModelChange,
+  onExecutionPolicyChange,
   onSessionChange,
   onNewSession,
   onDeleteSession,
@@ -116,13 +120,16 @@ export function ChatThread({
           currentAgent={currentAgent}
           currentAgentModel={currentAgentModel}
           pendingSessionModelId={pendingSessionModelId}
+          pendingExecutionPolicy={pendingExecutionPolicy}
           streaming={streaming}
           updateAgentPending={updateAgentPending}
           onAgentChange={onAgentChange}
           onDefaultModelChange={onDefaultModelChange}
+          onExecutionPolicyChange={onExecutionPolicyChange}
           onSessionChange={onSessionChange}
           onNewSession={onNewSession}
           onDeleteSession={onDeleteSession}
+          canUseFullAccess={isAdminRole(role) || isOperator(role)}
         />
         <div className="ml-auto flex items-center gap-1">
           <Button

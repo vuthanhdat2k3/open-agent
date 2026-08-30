@@ -84,14 +84,14 @@ async def test_env(async_session_factory):
 
 
 @pytest.mark.asyncio
-async def test_zero_row_org_lists_all_13_blueprints(test_env):
+async def test_zero_row_org_lists_all_blueprints(test_env):
     db = test_env["db"]
     service = AgentService(db)
 
-    # Empty Org 1 should return all 13 Blueprints
+    # Empty Org 1 should return all blueprints (1 orchestrator + 11 workers)
     agents = await service.list(test_env["org1_id"])
     assert len(agents) == len(SYSTEM_AGENT_BLUEPRINTS)
-    assert len(agents) == 13
+    assert len(agents) == 12
 
     # Check that template keys and virtual IDs are correctly populated
     keys = {a.template_key for a in agents}
@@ -105,7 +105,7 @@ async def test_zero_row_org_lists_all_13_blueprints(test_env):
 
     # Verify FastAPI Response serialization (AgentOut) succeeds for all virtual agents
     serialized = [AgentOut.model_validate(a) for a in agents]
-    assert len(serialized) == 13
+    assert len(serialized) == 12
     for s in serialized:
         assert s.latest_release_number == 0
         assert s.is_customized is False
@@ -120,7 +120,7 @@ async def test_get_by_id_and_key_resolver(test_env):
     agent_by_id = await service.get(test_env["org1_id"], "sys-agent-coder")
     assert agent_by_id is not None
     assert agent_by_id.template_key == "coder"
-    assert agent_by_id.name == "Coder & UI Designer"
+    assert agent_by_id.name == "Software & Data Engineer"
 
     # Get by template_key string
     agent_by_key = await service.get(test_env["org1_id"], "coder")
@@ -147,16 +147,16 @@ async def test_fork_on_write_when_updating_system_blueprint(test_env):
     assert updated.system_prompt == "Custom specialized coder prompt for Org 1"
     assert updated.temperature == 0.1
 
-    # In Org 1, list() now returns 13 agents, with 'coder' coming from the DB override (no duplicate)
+    # In Org 1, list() now returns the full blueprint count, with 'coder' coming from the DB override (no duplicate)
     org1_agents = await service.list(org1_id)
-    assert len(org1_agents) == 13
+    assert len(org1_agents) == 12
     coder_org1 = next(a for a in org1_agents if a.template_key == "coder")
     assert coder_org1.id == updated.id
     assert coder_org1.is_customized is True
 
     # In Org 2, 'coder' remains a pure un-forked virtual blueprint
     org2_agents = await service.list(org2_id)
-    assert len(org2_agents) == 13
+    assert len(org2_agents) == 12
     coder_org2 = next(a for a in org2_agents if a.template_key == "coder")
     assert coder_org2.id == "sys-agent-coder"
     assert coder_org2.is_customized is False
@@ -314,9 +314,9 @@ async def test_repeated_update_on_already_forked_agent_does_not_create_duplicate
     assert forked_3.id == first_id
     assert forked_3.temperature == 0.2
 
-    # Verify list() only has 13 agents and coder has 1 row
+    # Verify list() only has the full blueprint count and coder has 1 row
     agents = await service.list(org1_id)
-    assert len(agents) == 13
+    assert len(agents) == 12
     coder_agents = [a for a in agents if a.template_key == "coder"]
     assert len(coder_agents) == 1
     assert coder_agents[0].id == first_id
@@ -352,7 +352,7 @@ async def test_reset_to_template_deletes_override_row(test_env):
 
     # 3. Verify DB row is gone and list() now returns virtual un-forked blueprint
     agents_after = await service.list(org1_id)
-    assert len(agents_after) == 13
+    assert len(agents_after) == 12
     coder_after = next(a for a in agents_after if a.template_key == "coder")
     assert coder_after.id == "sys-agent-coder"
     assert coder_after.is_customized is False

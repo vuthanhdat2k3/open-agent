@@ -242,6 +242,10 @@ export const vi: TranslationDictionary = {
       emptyStateCapabilities: 'Khả năng của bạn',
       emptyStateCapabilitiesPrompt: 'Bạn có thể giúp tôi làm những tác vụ nào?',
       enlargeSvg: 'Phóng to xem ảnh SVG',
+      executionPolicy: 'Quyền thực thi',
+      executionPolicyReadOnly: 'Chỉ đọc',
+      executionPolicyManual: 'Cần phê duyệt',
+      executionPolicyFullAccess: 'Toàn quyền tự động',
     },
     agents: {
       title: 'Agent',

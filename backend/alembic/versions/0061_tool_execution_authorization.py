@@ -10,7 +10,14 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision: str = "0061_tool_execution_authorization"
+# PostgreSQL's default alembic_version.version_num is VARCHAR(32). Keep this
+# revision identifier within that limit (see 0045_identity_sessions /
+# 0061_workflow_template_key_and_customized for the same constraint) - the
+# original "0061_tool_execution_authorization" id (34 chars) was one byte
+# over the wire and silently rolled back this migration's schema changes on
+# every database that stamped it, since the INSERT into alembic_version
+# failed inside the same transaction as the ADD COLUMN statements above.
+revision: str = "0061_tool_exec_authz"
 down_revision: str | None = "0060_profile_role_hardening"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None

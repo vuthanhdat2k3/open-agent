@@ -314,9 +314,12 @@ export interface Workflow {
   updated_at: string;
 }
 
+export type ExecutionPolicy = "read-only" | "manual" | "full-access";
+
 export interface Session {
   id: string;
   agent_id: string;
+  execution_policy: ExecutionPolicy;
   title: string;
   created_at: string;
   updated_at: string;

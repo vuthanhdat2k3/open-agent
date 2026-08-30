@@ -242,6 +242,10 @@ export interface TranslationDictionary {
       emptyStateCapabilities: string;
       emptyStateCapabilitiesPrompt: string;
       enlargeSvg: string;
+      executionPolicy: string;
+      executionPolicyReadOnly: string;
+      executionPolicyManual: string;
+      executionPolicyFullAccess: string;
     };
     agents: {
       title: string;
