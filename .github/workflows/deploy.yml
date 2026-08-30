@@ -11,6 +11,15 @@
 #                    .env file, e.g. G:\open-agent\.env. Kept out of git on
 #                    purpose (credentials); see .gitignore.
 #
+# Optional repository VARIABLE:
+#   DEPLOY_COMPOSE_PROFILES  Space-separated Compose profiles to enable in
+#                            addition to `identity`, e.g. "tls" once a real
+#                            reachable domain/IP and OPENAGENT_APP_DOMAIN /
+#                            OPENAGENT_API_DOMAIN / OPENAGENT_AUTH_DOMAIN are
+#                            set in DEPLOY_ENV_FILE (see
+#                            docs/deployment-runbook.md). Empty/unset keeps
+#                            today's behavior (no TLS profile, HTTP only).
+#
 # This job builds and starts the full Compose stack on the self-hosted runner.
 # It never runs `down -v`, so named volumes (postgres, qdrant, minio, ...)
 # survive every deploy.
@@ -60,9 +69,16 @@ jobs:
         shell: powershell
         env:
           DEPLOY_ENV_FILE: ${{ vars.DEPLOY_ENV_FILE }}
+          DEPLOY_COMPOSE_PROFILES: ${{ vars.DEPLOY_COMPOSE_PROFILES }}
         run: |
           docker container prune -f
-          docker compose --env-file "$env:DEPLOY_ENV_FILE" --profile identity up -d --build --remove-orphans
+          $profileArgs = @("--profile", "identity")
+          if (-not [string]::IsNullOrWhiteSpace($env:DEPLOY_COMPOSE_PROFILES)) {
+            foreach ($p in ($env:DEPLOY_COMPOSE_PROFILES -split '\s+' | Where-Object { $_ })) {
+              $profileArgs += @("--profile", $p)
+            }
+          }
+          docker compose --env-file "$env:DEPLOY_ENV_FILE" @profileArgs up -d --build --remove-orphans
           if ($LASTEXITCODE -ne 0) { throw "docker compose up failed" }
 
       - name: Wait for API health

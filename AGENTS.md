@@ -95,7 +95,7 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 | Branch | Worktree path | Phạm vi/task | Agent/người phụ trách |
 |---|---|---|---|
 | `dev` | `G:\open-agent` | Nhánh tích hợp chính — không code trực tiếp ở đây | — |
-| `feat/production-hardening` | `G:\open-agent\.worktrees\production-hardening` | Hardening production: tool authorization, approval, tenant boundary, config và CI | Kiro |
+| `feat/deploy-readiness` | `G:\open-agent\.worktrees\deploy-readiness` | Deploy readiness: TLS (Caddy), khoá port data-plane về loopback, Redis auth, deployment runbook | Kiro |
 | `feat/i18n-hardcode-sweep-3` | `G:\open-agent\.worktrees\i18n-hardcode-sweep-3` | Quét + sửa toàn bộ hardcode UI text frontend sang i18n (tx()) | DeepSeek agent |
 | `feat/i18n-enen-tx-sweep` | `G:\open-agent\.worktrees\i18n-enen-tx-sweep` | Sửa các cặp tx(EN,EN) trùng lặp (dịch vi đúng) — stack trên sweep-3 | DeepSeek agent |
 | `feat/workflow-audit-fixes` | `G:\open-agent\.worktrees\workflow-audit-fixes` | Fix toàn bộ findings workflow audit: approval resume, pause/archive stop scheduler, sub_workflow depth cap, cancel run, webhook idempotency, default timeout, error codes, FE AbortSignal/JSON editor/cancel UX | DeepSeek agent |
