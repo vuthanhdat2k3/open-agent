@@ -540,7 +540,7 @@ services:
       - "8301"
 
   searxng:
-    image: searxng/searxng:latest
+    image: searxng/searxng:2026.8.29-d226b78bc
     environment:
       SEARXNG_BASE_URL: http://searxng:8080/
     volumes:
@@ -549,7 +549,7 @@ services:
       - "8080"
 
   crawler:
-    image: unclecode/crawl4ai:latest
+    image: unclecode/crawl4ai:0.9.2
     environment:
       # The image refuses a non-loopback bind (see crawler/config.yml) unless
       # this is set - required so the API isn't open/unauthenticated to

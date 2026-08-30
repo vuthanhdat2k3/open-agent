@@ -253,6 +253,34 @@ class Settings(BaseSettings):
                 )
         return self
 
+    @model_validator(mode="after")
+    def validate_production_secrets(self) -> "Settings":
+        """Fail closed on insecure defaults that are only safe for local dev.
+
+        These settings ship with permissive defaults so a fresh checkout runs
+        without any `.env` at all. That convenience becomes a real exposure
+        the moment `OPENAGENT_RUNTIME=production` — a deployment that forgets
+        to override them would otherwise sign JWTs with a public secret,
+        drop the `Secure` cookie flag, and/or talk to object storage with the
+        published MinIO default credentials.
+        """
+        if self.runtime.lower() not in {"production", "prod"}:
+            return self
+        errors: list[str] = []
+        if self.jwt_secret_key == "dev-secret-key-change-in-production" or len(self.jwt_secret_key) < 32:
+            errors.append(
+                "OPENAGENT_JWT_SECRET_KEY must be set to a random secret of at least 32 characters"
+            )
+        if not self.cookie_secure:
+            errors.append("OPENAGENT_COOKIE_SECURE must be true (cookies require HTTPS in production)")
+        if self.s3_access_key == "minioadmin" or self.s3_secret_key == "minioadmin":
+            errors.append(
+                "OPENAGENT_S3_ACCESS_KEY / OPENAGENT_S3_SECRET_KEY must not use the default MinIO credentials"
+            )
+        if errors:
+            raise ValueError("Production configuration is insecure: " + "; ".join(errors))
+        return self
+
     @property
     def platform_admin_email_set(self) -> set[str]:
         return {item.strip().lower() for item in self.platform_admin_emails.split(",") if item.strip()}
