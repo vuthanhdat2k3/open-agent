@@ -98,6 +98,11 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 | `docs/demo-do-deploy-guide` | `G:\open-agent\.worktrees\demo-do-deploy-guide` | Viết docs/demo-digitalocean-deploy.md: hướng dẫn deploy demo full-stack lên DigitalOcean + phân tích chi phí | Kiro |
 | `feat/agent-orchestrator-redesign` | `.worktrees/agent-orchestrator-redesign` | Redesign multi-agent core và session execution policy | Kiro |
 
+> 2026-08-31: Đã dọn dẹp worktree/branch `fix/langfuse-trace-coverage` (Sửa 3 lỗ hổng trace continuity
+> của Langfuse: triager node và sub_workflow node giờ kế thừa trace_id của workflow run cha thay vì tạo
+> trace mới độc lập; CI email classifier (`agent_classifier.py`) giờ được gắn `observability=` khi gọi
+> `build_driver`) sau khi merge trực tiếp vào `dev` (merge commit 541c886) theo yêu cầu người dùng.
+
 > 2026-08-30: Đã dọn dẹp toàn bộ worktree và các nhánh đã merge vào `dev` trên cả Local và Remote:
 > - `feat/deploy-readiness` (PR #229, merge commit 036f5b4)
 > - `feat/agent-orchestrator-redesign`, `fix/chat-500` (đã merge, chỉ có local branch, không có remote) — ghi chú lịch sử; worktree `feat/agent-orchestrator-redesign` hiện tại là phiên làm việc mới và vẫn đang hoạt động.
