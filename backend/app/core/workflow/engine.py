@@ -302,7 +302,12 @@ async def _run_agent_node(
 
 
 async def _run_triager(
-    node: dict[str, Any], cfg: dict[str, Any], upstream_text: str, db: AsyncSession
+    node: dict[str, Any],
+    cfg: dict[str, Any],
+    upstream_text: str,
+    db: AsyncSession,
+    *,
+    trace_id: str | None = None,
 ) -> NodeOutput:
     """Route/classify upstream data via LLM or rules."""
     mode = cfg.get("mode")
@@ -347,7 +352,7 @@ async def _run_triager(
     org_id = node.get("_org_id", "")
     instruction = str(cfg.get("instruction") or "")
     result, _usage, _calls = await _llm_classify(
-        db, org_id, model_id, upstream_text, category_list, instruction
+        db, org_id, model_id, upstream_text, category_list, instruction, trace_id=trace_id
     )
     try:
         parsed = json.loads(result)
@@ -369,6 +374,8 @@ async def _llm_classify(
     text: str,
     categories: list[str],
     instruction: str,
+    *,
+    trace_id: str | None = None,
 ) -> tuple[str, dict, list]:
     """Call the org's model to classify text into one of ``categories``."""
     from app.models.model import Model
@@ -392,7 +399,11 @@ async def _llm_classify(
     observability = (
         ObservabilityContext(
             build_trace_context(
-                trace_id=f"workflow-triager-{node_id()}",
+                # Use the parent workflow run's trace id (when known) so this
+                # generation lands inside the same Langfuse trace as the rest
+                # of the run, instead of appearing as an orphaned trace with
+                # no link back to the workflow that triggered it.
+                trace_id=trace_id or f"workflow-triager-{node_id()}",
                 session_id=None,
                 org_id=org_id,
                 metadata={"run_type": "workflow_triager"},
@@ -792,6 +803,7 @@ async def _run_workflow_events(
     trigger_node_id: str | None = None,
     trigger_type: str | None = None,
     subworkflow_depth: int = 0,
+    parent_trace_id: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     settings = get_settings()
     workflow_run = await create_workflow_run(
@@ -818,7 +830,11 @@ async def _run_workflow_events(
     workflow_observability = (
         ObservabilityContext(
             build_trace_context(
-                trace_id=workflow_run.id,
+                # A sub_workflow node passes its parent run's trace id so the
+                # child run's generations/tool calls land in the SAME
+                # Langfuse trace as the parent, instead of starting an
+                # unrelated trace that loses the parent-child relationship.
+                trace_id=parent_trace_id or workflow_run.id,
                 session_id=None,
                 org_id=workflow.org_id,
                 user_id=actor_user_id,
@@ -1025,7 +1041,13 @@ async def _run_workflow_events(
                 },
             )
         if kind == "triager":
-            return await _run_triager(node, cfg, upstream_text, db)
+            # Reuse the same trace id as the rest of this run (which is
+            # already the parent's trace id for a nested sub_workflow), so a
+            # triager node never starts an orphaned trace disconnected from
+            # its own run's Langfuse trace.
+            return await _run_triager(
+                node, cfg, upstream_text, db, trace_id=parent_trace_id or workflow_run.id
+            )
         if kind == "integration":
             src = str(cfg.get("source") or "").lower()
             if src in {"gmail", "gmail_and_calendar", "gmail_calendar"}:
@@ -1286,6 +1308,9 @@ async def _run_workflow_events(
                 user_role=actor_user_role,
                 timezone_name=timezone_name,
                 subworkflow_depth=subworkflow_depth + 1,
+                # Keep the child run's Langfuse trace nested inside the
+                # parent's trace instead of starting an unrelated one.
+                parent_trace_id=workflow_run.id,
             )
             return NodeOutput(text=str(child_output), data={"output": child_output})
         if kind == "agent":
@@ -1389,7 +1414,11 @@ async def _run_workflow_events(
     for n in nodes:
         n["_org_id"] = workflow.org_id
         n["_user_id"] = actor_user_id
-        n["_run_id"] = workflow_run.id
+        # Agent nodes use this as their root_run_id (Langfuse trace id). Use
+        # the same trace id as workflow_observability/triager so a
+        # sub_workflow's agent nodes land in the parent's trace instead of
+        # starting an unrelated one.
+        n["_run_id"] = parent_trace_id or workflow_run.id
         n["_webhook_payload"] = (workflow_run.input or {}).get("webhook_payload") or {}
 
     concurrency_limit = max(1, int(getattr(settings, "workflow_max_concurrency", 8) or 8))
@@ -1571,6 +1600,7 @@ async def run_workflow_events(
     trigger_node_id: str | None = None,
     trigger_type: str | None = None,
     subworkflow_depth: int = 0,
+    parent_trace_id: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """Stream workflow events and release any executor lease on close."""
     run_id = workflow_run_id
@@ -1588,6 +1618,7 @@ async def run_workflow_events(
             trigger_node_id=trigger_node_id,
             trigger_type=trigger_type,
             subworkflow_depth=subworkflow_depth,
+            parent_trace_id=parent_trace_id,
         ):
             if event.get("event") == "workflow_start":
                 run_id = event.get("data", {}).get("workflow_run_id") or run_id
@@ -1613,6 +1644,7 @@ async def run_workflow(
     trigger_node_id: str | None = None,
     trigger_type: str | None = None,
     subworkflow_depth: int = 0,
+    parent_trace_id: str | None = None,
 ) -> Any:
     """If stream=True, returns the async generator of events.
     Otherwise awaits and returns (final_output, event_log)."""
@@ -1630,6 +1662,7 @@ async def run_workflow(
             trigger_node_id=trigger_node_id,
             trigger_type=trigger_type,
             subworkflow_depth=subworkflow_depth,
+            parent_trace_id=parent_trace_id,
         )
     final = ""
     log: list[dict[str, Any]] = []
@@ -1646,6 +1679,7 @@ async def run_workflow(
         trigger_node_id=trigger_node_id,
         trigger_type=trigger_type,
         subworkflow_depth=subworkflow_depth,
+        parent_trace_id=parent_trace_id,
     ):
         log.append(ev)
         if ev["event"] == "workflow_start":
