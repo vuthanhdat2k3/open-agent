@@ -42,6 +42,8 @@ from app.models.message import Message
 from app.models.model import Model
 from app.models.oauth_account import OAuthAccount
 from app.models.oidc_login_transaction import OidcLoginTransaction
+from app.models.org_agent_settings import OrgAgentSettings
+from app.models.org_model_tier_config import OrgModelTierConfig
 from app.models.organization import Organization
 from app.models.organization_quota import OrganizationQuota
 from app.models.outbox import OutboxEvent, ProcessedEvent
@@ -102,6 +104,8 @@ __all__ = [
     "Model",
     "OAuthAccount",
     "OidcLoginTransaction",
+    "OrgAgentSettings",
+    "OrgModelTierConfig",
     "Organization",
     "OrganizationQuota",
     "OutboxEvent",

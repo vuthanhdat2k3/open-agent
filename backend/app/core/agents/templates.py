@@ -44,7 +44,7 @@ class SystemAgentBlueprint:
     name: str  # Display name
     description: str
     system_prompt: str
-    recommended_tier: str  # fast | standard | reasoning | frontier
+    recommended_tier: str  # economy | balanced | frontier (or fast | standard | reasoning)
     tools: list[str]
     allowed_risk_tiers: list[str]
     kind: str = "worker"
@@ -54,6 +54,19 @@ class SystemAgentBlueprint:
     a2a_exposed: bool = False
     auto_rollback_enabled: bool = False
     is_pinned_by_default: bool = False  # UI default pin state
+
+    @property
+    def capability_tier(self) -> str:
+        """Normalized tier name: economy | balanced | frontier."""
+        mapping = {
+            "fast": "economy",
+            "economy": "economy",
+            "standard": "balanced",
+            "balanced": "balanced",
+            "reasoning": "frontier",
+            "frontier": "frontier",
+        }
+        return mapping.get(self.recommended_tier, "balanced")
 
     @property
     def baseline_match_hash(self) -> str:

@@ -279,6 +279,7 @@ export interface TranslationDictionary {
       description: string;
       tabProviders: string;
       tabModels: string;
+      tabTierMatrix: string;
       btnAddProvider: string;
       btnDiscoverModels: string;
       providerType: string;
@@ -287,6 +288,16 @@ export interface TranslationDictionary {
       testModel: string;
       statusConnected: string;
       statusUnreachable: string;
+      tierMatrixTitle: string;
+      tierMatrixDesc: string;
+      tierEconomy: string;
+      tierEconomyDesc: string;
+      tierBalanced: string;
+      tierBalancedDesc: string;
+      tierFrontier: string;
+      tierFrontierDesc: string;
+      tierSelectPlaceholder: string;
+      tierSaveSuccess: string;
     };
     workflows: {
       title: string;

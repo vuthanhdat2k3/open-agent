@@ -2,13 +2,42 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_current_org_id, get_db, require_permission
-from app.schemas.model import ModelCreate, ModelOut, ModelTestResult, ModelUpdate
+from app.schemas.model import (
+    ModelCreate,
+    ModelOut,
+    ModelTestResult,
+    ModelUpdate,
+    OrgModelTierMatrixResponse,
+    OrgModelTierMatrixUpdate,
+)
 from app.services.model_service import ModelService
 
 router = APIRouter(
     prefix="/api/models",
     tags=["models"],
 )
+
+
+@router.get("/tier-matrix", response_model=OrgModelTierMatrixResponse, dependencies=[Depends(require_permission("models:read"))])
+async def get_tier_matrix(
+    org_id: str = Depends(get_current_org_id),
+    db: AsyncSession = Depends(get_db),
+):
+    tiers = await ModelService(db).get_tier_matrix(org_id)
+    return OrgModelTierMatrixResponse(tiers=tiers)
+
+
+@router.put("/tier-matrix", response_model=OrgModelTierMatrixResponse, dependencies=[Depends(require_permission("models:manage"))])
+async def update_tier_matrix(
+    body: OrgModelTierMatrixUpdate,
+    org_id: str = Depends(get_current_org_id),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        tiers = await ModelService(db).set_tier_matrix(org_id, body.tier_mappings)
+        return OrgModelTierMatrixResponse(tiers=tiers)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
 
 @router.get("", response_model=list[ModelOut], dependencies=[Depends(require_permission("models:read"))])
@@ -86,3 +115,5 @@ async def test_model(
         return await ModelService(db).test_chat(org_id, id)
     except ValueError as e:
         raise HTTPException(404, str(e))
+
+
