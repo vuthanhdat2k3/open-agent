@@ -121,13 +121,17 @@ SYSTEM_AGENT_BLUEPRINTS: dict[str, SystemAgentBlueprint] = {
             "right worker agent when it does.\n\n"
             "Delegation Routing Rules:\n"
             "- For writing code, creating/editing files in workspace (HTML, Python, JS, scripts, data files), "
-            "running code or shell commands: ALWAYS delegate to `delegate_to_software_data_engineer`.\n"
-            "- For Google Drive cloud files: delegate to `delegate_to_drive_manager`.\n"
+            "reading local files, or running code in Sandbox: ALWAYS delegate to `delegate_to_software_data_engineer`.\n"
+            "- For Google Drive cloud files (Docs, Sheets, Drive files): delegate to `delegate_to_google_drive_assistant` "
+            "ONLY when the user explicitly requests Google Drive cloud actions. NEVER use Google Drive for local workspace files.\n"
             "- For web research/news/YouTube: delegate to `delegate_to_deep_web_researcher`.\n"
             "- For email tasks: delegate to `delegate_to_email_intelligence`.\n"
             "- For calendar/schedule: delegate to `delegate_to_calendar_assistant`.\n"
             "- For RAG/Knowledge base search: delegate to `delegate_to_rag_knowledge_researcher`.\n\n"
-            "Synthesize sub-agent results into one clear, concise final answer for the user."
+            "Workflow Execution Guidelines:\n"
+            "- When a sub-agent (like Software & Data Engineer) finishes creating or running a file, do NOT delegate again "
+            "to look for the file. Directly summarize the outcome, explain what was created, and provide the user with clear instructions.\n"
+            "- Synthesize sub-agent results into one clear, concise final answer for the user."
         ),
         recommended_tier="fast",
         tools=_with_common("call_agent", "workflow_list"),
@@ -195,16 +199,16 @@ SYSTEM_AGENT_BLUEPRINTS: dict[str, SystemAgentBlueprint] = {
         temperature=0.2,
         is_pinned_by_default=False,
     ),
-    # --- 4. Drive Manager ---
+    # --- 4. Google Drive Assistant ---
     "drive-manager": SystemAgentBlueprint(
         id="sys-agent-drive-manager",
         key="drive-manager",
-        name="Drive Manager",
-        description="Google Drive file lookup, retrieval, creation, and lifecycle management",
+        name="Google Drive Assistant",
+        description="Google Drive cloud storage (Docs, Sheets, Drive files) only. Do NOT use for local workspace files.",
         system_prompt=(
-            "You are a Drive Manager. Find, read, create, and update files in "
-            "the connected Google Drive on the user's behalf. Confirm intent "
-            "before deleting a file."
+            "You are a Google Drive Cloud Storage Assistant. Find, read, create, and update files in "
+            "the connected Google Drive on the user's behalf. NOTE: You ONLY manage remote Google Drive cloud storage, "
+            "NOT local workspace files or local code sandbox. Confirm intent before deleting a file."
         ),
         recommended_tier="fast",
         tools=_with_common(
@@ -263,7 +267,7 @@ SYSTEM_AGENT_BLUEPRINTS: dict[str, SystemAgentBlueprint] = {
         id="sys-agent-coder",
         key="coder",
         name="Software & Data Engineer",
-        description="Software development, debugging, dataset analysis, and sandboxed script execution",
+        description="Software development, writing/reading/running files in local workspace sandbox, script execution, and data analysis",
         system_prompt=(
             "You are a Software & Data Engineer. Read the relevant files, plan "
             "the change, and implement it with clear, minimal diffs. For data "
