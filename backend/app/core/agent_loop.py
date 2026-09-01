@@ -208,6 +208,8 @@ ORCHESTRATOR_SYSTEM_SUFFIX = (
     "Orchestrator behavior:\n"
     "- Break the user's goal into clear sub-tasks when delegation helps.\n"
     "- Use named delegate tools (delegate_to_*) to delegate work to the single most appropriate worker agent.\n"
+    "- For follow-up requests on files created in earlier turns (e.g., 'chạy luôn file đó cho tôi', 'preview it', 'run it'): "
+    "DO NOT ask the worker to regenerate or recode the file. Specify the exact file name and the target action (preview_web_artifact for html/svg, run_code for py/sh/js).\n"
     "- Do NOT chain sub-agents redundantly (e.g. do not call another agent to search for a file that Software & Data Engineer just created).\n"
     "- When a sub-agent completes its work, directly synthesize its output and present the final answer and usage guidance to the user.\n"
     "- Synthesize all sub-agent results into one clear, concise final answer."
@@ -755,6 +757,7 @@ async def _agent_stream(
     approval_resume_id: str | None = None,
     timezone_name: str | None = None,
     execution_policy: ExecutionPolicy | None = None,
+    parent_session_id: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     def _allows_tier(tier: str) -> bool:
         if execution_policy is not None:
@@ -881,6 +884,7 @@ async def _agent_stream(
         model_id=selected_model_id,
         actor_agent_identity_id=actor_agent_identity_id,
         delegation_chain=delegation_chain,
+        parent_session_id=session_id,
         authorization=build_tool_authorization(
             org_id=agent.org_id,
             user_id=user_id or agent.created_by_user_id,
@@ -962,20 +966,21 @@ async def _agent_stream(
     # session_events yet (safe backfill path for sessions created before
     # this feature shipped).
     messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
-    if session_id:
-        events = await slog.load_events(db, session_id)
+    effective_session_id = session_id or parent_session_id
+    if effective_session_id:
+        events = await slog.load_events(db, effective_session_id)
         if events:
             messages.extend(derive_messages(events))
         else:
             res = await db.execute(
-                select(Message).where(Message.session_id == session_id).order_by(Message.position)
+                select(Message).where(Message.session_id == effective_session_id).order_by(Message.position)
             )
             hist = res.scalars().all()
             if len(hist) > 20:
                 # Legacy sessions: still apply tiered compaction so old
                 # sessions don't blow the window until they earn events.
                 tiered = await compact_tiered_memory(
-                    session_id,
+                    effective_session_id,
                     db,
                     model,
                     provider,
@@ -2323,6 +2328,7 @@ async def run_agent_loop(
     approval_resume_id: str | None = None,
     timezone_name: str | None = None,
     execution_policy: ExecutionPolicy | None = None,
+    parent_session_id: str | None = None,
     on_event: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
 ) -> AgentLoopResult:
     content = ""
@@ -2349,6 +2355,7 @@ async def run_agent_loop(
         approval_resume_id=approval_resume_id,
         timezone_name=timezone_name,
         execution_policy=execution_policy,
+        parent_session_id=parent_session_id,
     ):
         if on_event is not None:
             try:
