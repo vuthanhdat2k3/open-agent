@@ -8,6 +8,7 @@ import {
   Check,
   CheckCircle2,
   Cpu,
+  Layers,
   Pencil,
   Play,
   Plus,
@@ -32,9 +33,11 @@ import {
   useDeleteModel,
   useUpdateModel,
   useTestModel,
+  useModelTierMatrix,
+  useUpdateModelTierMatrix,
   useUrlSearchParam,
 } from "@/hooks";
-import type { Model, Provider, ProviderTemplate } from "@/types";
+import type { Model, ModelTier, Provider, ProviderTemplate } from "@/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -56,7 +59,7 @@ import { ConfirmDialog, ErrorState, LoadingSkeleton, DataPagination } from "@/co
 export default function ProvidersPage() {
   const { t, dict, locale, tx } = useTranslation();
   const [tabParam, setTabParam] = useUrlSearchParam("tab");
-  const activeTab = (tabParam as "providers" | "models") || "providers";
+  const activeTab = (tabParam as "providers" | "models" | "tier-matrix") || "providers";
 
   // --- Providers State & Queries ---
   const providers = useProviders(true);
@@ -99,6 +102,10 @@ export default function ProvidersPage() {
   const deleteModel = useDeleteModel();
   const updateModel = useUpdateModel();
   const testModel = useTestModel();
+  const tierMatrix = useModelTierMatrix(true);
+  const updateTierMatrix = useUpdateModelTierMatrix();
+
+  const [savingTier, setSavingTier] = React.useState<string | null>(null);
 
   // Reset template dialog
   const resetTemplate = () => {
@@ -430,6 +437,15 @@ export default function ProvidersPage() {
             {totalModels}
           </Badge>
         </Button>
+
+        <Button
+          type="button"
+          variant={activeTab === "tier-matrix" ? "secondary" : "ghost"}
+          onClick={() => setTabParam("tier-matrix")}
+          className="gap-2 font-medium"
+        >
+          <Layers className="h-4 w-4 text-primary" />{dict.pages.providers.tabTierMatrix}
+        </Button>
       </div>
 
       {/* 4. Tab 1: Connected Providers View */}
@@ -752,6 +768,201 @@ export default function ProvidersPage() {
                   <Plus className="h-4 w-4" />{tx("Thêm Custom Model", "Add Custom Model")}</Button>
               }
             />
+          )}
+        </div>
+      )}
+
+      {/* 6. Tab 3: Model Tier Matrix Routing View */}
+      {activeTab === "tier-matrix" && (
+        <div className="space-y-6">
+          <Card className="p-6 border-primary/20 bg-primary/[0.02]">
+            <div className="flex items-start gap-4">
+              <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-primary/10 text-primary">
+                <Layers className="h-6 w-6" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-lg font-semibold text-foreground">
+                  {dict.pages.providers.tierMatrixTitle}
+                </h3>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  {dict.pages.providers.tierMatrixDesc}
+                </p>
+              </div>
+            </div>
+          </Card>
+
+          {tierMatrix.isLoading ? (
+            <LoadingSkeleton />
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {/* Tier 1: Economy */}
+              <Card className="flex flex-col justify-between p-5 border-border/80 hover:border-border transition-colors">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 font-medium">
+                      Economy / Fast
+                    </Badge>
+                    <span className="text-xs text-muted-foreground font-mono">Tier 1</span>
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-foreground">{dict.pages.providers.tierEconomy}</h4>
+                    <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
+                      {dict.pages.providers.tierEconomyDesc}
+                    </p>
+                  </div>
+                  <div className="space-y-2 pt-2 border-t border-border/60">
+                    <Label className="text-xs font-medium text-muted-foreground">{tx("Model đang sử dụng:", "Current Model:")}</Label>
+                    <select
+                      className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      value={tierMatrix.data?.tiers?.economy?.id || ""}
+                      disabled={updateTierMatrix.isPending}
+                      onChange={async (e) => {
+                        const newModelId = e.target.value || null;
+                        setSavingTier("economy");
+                        try {
+                          await updateTierMatrix.mutateAsync({
+                            tier_mappings: {
+                              economy: newModelId,
+                              balanced: tierMatrix.data?.tiers?.balanced?.id || null,
+                              frontier: tierMatrix.data?.tiers?.frontier?.id || null,
+                            },
+                          });
+                          toast.success(dict.pages.providers.tierSaveSuccess);
+                        } catch (err: any) {
+                          toast.error(err.message || tx("Không thể lưu cấu hình", "Failed to save config"));
+                        } finally {
+                          setSavingTier(null);
+                        }
+                      }}
+                    >
+                      <option value="">{dict.pages.providers.tierSelectPlaceholder}</option>
+                      {(models.data ?? []).filter((m) => m.active).map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.display_name} ({m.name}) {m.tier ? `· ${m.tier}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="mt-6 pt-3 border-t border-border/40 text-[11px] text-muted-foreground flex items-center justify-between">
+                  <span>{tx("Áp dụng cho:", "Applies to:")}</span>
+                  <span className="font-medium text-foreground">General, Email, Calendar, Drive, Summarizer</span>
+                </div>
+              </Card>
+
+              {/* Tier 2: Balanced */}
+              <Card className="flex flex-col justify-between p-5 border-border/80 hover:border-border transition-colors">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <Badge variant="outline" className="bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/20 font-medium">
+                      Balanced / Standard
+                    </Badge>
+                    <span className="text-xs text-muted-foreground font-mono">Tier 2</span>
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-foreground">{dict.pages.providers.tierBalanced}</h4>
+                    <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
+                      {dict.pages.providers.tierBalancedDesc}
+                    </p>
+                  </div>
+                  <div className="space-y-2 pt-2 border-t border-border/60">
+                    <Label className="text-xs font-medium text-muted-foreground">{tx("Model đang sử dụng:", "Current Model:")}</Label>
+                    <select
+                      className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      value={tierMatrix.data?.tiers?.balanced?.id || ""}
+                      disabled={updateTierMatrix.isPending}
+                      onChange={async (e) => {
+                        const newModelId = e.target.value || null;
+                        setSavingTier("balanced");
+                        try {
+                          await updateTierMatrix.mutateAsync({
+                            tier_mappings: {
+                              economy: tierMatrix.data?.tiers?.economy?.id || null,
+                              balanced: newModelId,
+                              frontier: tierMatrix.data?.tiers?.frontier?.id || null,
+                            },
+                          });
+                          toast.success(dict.pages.providers.tierSaveSuccess);
+                        } catch (err: any) {
+                          toast.error(err.message || tx("Không thể lưu cấu hình", "Failed to save config"));
+                        } finally {
+                          setSavingTier(null);
+                        }
+                      }}
+                    >
+                      <option value="">{dict.pages.providers.tierSelectPlaceholder}</option>
+                      {(models.data ?? []).filter((m) => m.active).map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.display_name} ({m.name}) {m.tier ? `· ${m.tier}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="mt-6 pt-3 border-t border-border/40 text-[11px] text-muted-foreground flex items-center justify-between">
+                  <span>{tx("Áp dụng cho:", "Applies to:")}</span>
+                  <span className="font-medium text-foreground">Document Analyst, RAG Researcher, Content Writer</span>
+                </div>
+              </Card>
+
+              {/* Tier 3: Frontier */}
+              <Card className="flex flex-col justify-between p-5 border-border/80 hover:border-border transition-colors">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <Badge variant="outline" className="bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20 font-medium">
+                      Frontier / Reasoning
+                    </Badge>
+                    <span className="text-xs text-muted-foreground font-mono">Tier 3</span>
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-foreground">{dict.pages.providers.tierFrontier}</h4>
+                    <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
+                      {dict.pages.providers.tierFrontierDesc}
+                    </p>
+                  </div>
+                  <div className="space-y-2 pt-2 border-t border-border/60">
+                    <Label className="text-xs font-medium text-muted-foreground">{tx("Model đang sử dụng:", "Current Model:")}</Label>
+                    <select
+                      className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      value={tierMatrix.data?.tiers?.frontier?.id || ""}
+                      disabled={updateTierMatrix.isPending}
+                      onChange={async (e) => {
+                        const newModelId = e.target.value || null;
+                        setSavingTier("frontier");
+                        try {
+                          await updateTierMatrix.mutateAsync({
+                            tier_mappings: {
+                              economy: tierMatrix.data?.tiers?.economy?.id || null,
+                              balanced: tierMatrix.data?.tiers?.balanced?.id || null,
+                              frontier: newModelId,
+                            },
+                          });
+                          toast.success(dict.pages.providers.tierSaveSuccess);
+                        } catch (err: any) {
+                          toast.error(err.message || tx("Không thể lưu cấu hình", "Failed to save config"));
+                        } finally {
+                          setSavingTier(null);
+                        }
+                      }}
+                    >
+                      <option value="">{dict.pages.providers.tierSelectPlaceholder}</option>
+                      {(models.data ?? []).filter((m) => m.active).map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.display_name} ({m.name}) {m.tier ? `· ${m.tier}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="mt-6 pt-3 border-t border-border/40 text-[11px] text-muted-foreground flex items-center justify-between">
+                  <span>{tx("Áp dụng cho:", "Applies to:")}</span>
+                  <span className="font-medium text-foreground">Software Engineer (Coder), Deep Web Researcher, Workflow Manager</span>
+                </div>
+              </Card>
+            </div>
           )}
         </div>
       )}

@@ -47,6 +47,17 @@ export interface ModelTestResult {
   model_name?: string | null;
 }
 
+export type ModelTier = "economy" | "balanced" | "frontier";
+
+export interface OrgModelTierMatrixResponse {
+  tiers: Record<ModelTier, Model | null>;
+}
+
+export interface OrgModelTierMatrixUpdate {
+  tier_mappings: Record<ModelTier, string | null>;
+}
+
+
 export interface Model {
   id: string;
   provider_id: string;

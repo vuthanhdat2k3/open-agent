@@ -67,3 +67,23 @@ class ModelTestResult(BaseModel):
     message: str
     sample_response: str | None = None
     model_name: str | None = None
+
+
+class OrgModelTierConfigOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    org_id: str
+    tier: Tier
+    model_id: str | None = None
+    model: ModelOut | None = None
+    updated_at: datetime
+
+
+class OrgModelTierMatrixUpdate(BaseModel):
+    tier_mappings: dict[Tier, str | None]
+
+
+class OrgModelTierMatrixResponse(BaseModel):
+    tiers: dict[Tier, ModelOut | None]
+

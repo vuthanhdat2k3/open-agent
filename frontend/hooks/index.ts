@@ -23,6 +23,8 @@ import type {
   Message,
   Model,
   ModelTestResult,
+  OrgModelTierMatrixResponse,
+  OrgModelTierMatrixUpdate,
   OrganizationQuota,
   Organization,
   OrgMember,
@@ -358,6 +360,26 @@ export function useTestModel() {
     mutationFn: (id: string) => api.post<ModelTestResult>(`/api/models/${id}/test`),
   });
 }
+
+export function useModelTierMatrix(enabled: boolean = true) {
+  return useQuery({
+    queryKey: ["model-tier-matrix"],
+    queryFn: () => api.get<OrgModelTierMatrixResponse>("/api/models/tier-matrix"),
+    enabled,
+  });
+}
+
+export function useUpdateModelTierMatrix() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: OrgModelTierMatrixUpdate) => api.put<OrgModelTierMatrixResponse>("/api/models/tier-matrix", body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["model-tier-matrix"] });
+      qc.invalidateQueries({ queryKey: ["agents"] });
+    },
+  });
+}
+
 
 export function useAgents() {
   return useQuery({ queryKey: ["agents"], queryFn: () => api.get<Agent[]>("/api/agents") });

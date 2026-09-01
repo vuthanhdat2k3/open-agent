@@ -16,6 +16,7 @@ from app.models.agent_release import AgentRelease
 from app.models.evaluation import EvaluationRun, EvaluationSuite
 from app.models.model import Model
 from app.models.org_agent_settings import OrgAgentSettings
+from app.models.org_model_tier_config import OrgModelTierConfig
 from app.repositories.agent_repo import AgentRepository
 from app.repositories.model_repo import ModelRepository
 
@@ -432,6 +433,30 @@ class AgentService:
     async def _resolve_model_for_tier(
         self, org_id: str, recommended_tier: str, active_models: list[Model] | None = None
     ) -> str | None:
+        # Normalize tier name: fast/economy -> economy, standard/balanced -> balanced, reasoning/frontier -> frontier
+        normalized_tier = {
+            "fast": "economy",
+            "economy": "economy",
+            "standard": "balanced",
+            "balanced": "balanced",
+            "reasoning": "frontier",
+            "frontier": "frontier",
+        }.get(recommended_tier, "balanced")
+
+        # 1. Check org_model_tier_config for this org & tier
+        tier_cfg = await self.repo.db.scalar(
+            select(OrgModelTierConfig).where(
+                OrgModelTierConfig.org_id == org_id,
+                OrgModelTierConfig.tier == normalized_tier,
+            )
+        )
+        if tier_cfg is not None and tier_cfg.model_id:
+            # Verify the configured model is active
+            target_model = await self.model_repo.get(org_id, tier_cfg.model_id)
+            if target_model and target_model.active:
+                return target_model.id
+
+        # 2. Lookup active models
         models = active_models
         if models is None:
             res = await self.repo.db.execute(
@@ -440,11 +465,14 @@ class AgentService:
             models = list(res.scalars().all())
         if not models:
             return None
-        # Try matching recommended tier
+
+        # 3. Match active model by normalized tier or legacy recommended_tier
         for m in models:
-            if getattr(m, "tier", None) == recommended_tier:
+            m_tier = getattr(m, "tier", None)
+            if m_tier in (normalized_tier, recommended_tier):
                 return m.id
-        # Fallback to first available active model
+
+        # 4. Fallback to first available active model
         return models[0].id
 
     def _build_virtual_agent(
