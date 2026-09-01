@@ -2,11 +2,15 @@
 
 import { FolderSearch, ListTodo, Sparkles } from "lucide-react";
 import { ChatComposer } from "@/components/chat/chat-composer";
-import type { Agent, Model, UploadedFile } from "@/types";
+import type { Agent, Model, UploadedFile, ExecutionPolicy } from "@/types";
 
 interface ChatEmptyStateProps {
   currentAgent?: Agent;
+  models?: Model[];
   effectiveModel?: Model;
+  onModelChange: (modelId: string) => void;
+  executionPolicy: ExecutionPolicy;
+  onExecutionPolicyChange: (policy: ExecutionPolicy) => void;
   draft: string;
   onDraftChange: (value: string) => void;
   onSubmit: () => void;
@@ -22,7 +26,10 @@ interface ChatEmptyStateProps {
 // active, so attach/send behave identically in both states.
 import { useTranslation } from "@/lib/i18n";
 
-export function ChatEmptyState({ currentAgent, effectiveModel, draft, onDraftChange, onSubmit, disabled, attachments, onAttachmentsChange }: ChatEmptyStateProps) {
+export function ChatEmptyState({ 
+  currentAgent, models, effectiveModel, onModelChange, executionPolicy, onExecutionPolicyChange,
+  draft, onDraftChange, onSubmit, disabled, attachments, onAttachmentsChange 
+}: ChatEmptyStateProps) {
   const { t, locale, tx } = useTranslation();
 
   const quickActions = [
@@ -60,7 +67,6 @@ export function ChatEmptyState({ currentAgent, effectiveModel, draft, onDraftCha
         </h2>
         <p className="mt-2 text-sm text-muted-foreground">
           {tx("Xây dựng mọi ý tưởng — bắt đầu gửi tin nhắn ngay bên dưới.", "Build something amazing — just start typing below.")}
-          {effectiveModel && <span className="ml-1 font-mono text-xs text-foreground/60">({effectiveModel.display_name || effectiveModel.name})</span>}
         </p>
       </div>
 
@@ -74,6 +80,11 @@ export function ChatEmptyState({ currentAgent, effectiveModel, draft, onDraftCha
           onAttachmentsChange={onAttachmentsChange}
           variant="floating"
           placeholder={tx("Nhập yêu cầu của bạn…", "Type your request…")}
+          models={models}
+          effectiveModel={effectiveModel}
+          onModelChange={onModelChange}
+          executionPolicy={executionPolicy}
+          onExecutionPolicyChange={onExecutionPolicyChange}
         />
 
         <div className="mt-5 flex flex-wrap items-center justify-center gap-2">

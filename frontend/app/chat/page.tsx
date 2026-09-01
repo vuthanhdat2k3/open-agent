@@ -25,6 +25,7 @@ import {
   messagesFromPersisted,
   type PersistedMessageRow,
 } from "@/lib/chat/projection";
+import { ChatSidebar } from "@/components/chat/chat-sidebar";
 import { ChatThread } from "@/components/chat/chat-thread";
 import { ChatInput } from "@/components/chat/chat-input";
 import { useTranslation } from "@/lib/i18n";
@@ -734,26 +735,10 @@ export default function ChatPage() {
   };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <ChatThread
-        messages={messages}
-        debug={debug}
-        streaming={streaming}
-        statusPhase={statusPhase}
-        agents={agents.data}
-        models={models.data}
-        sessions={sessions.data}
-        agentId={agentId}
-        sessionId={sessionId}
-        currentAgent={currentAgent}
-        currentAgentModel={currentAgentModel}
-        effectiveModel={effectiveModel}
-        pendingSessionModelId={pendingSessionModelId}
-        pendingExecutionPolicy={pendingExecutionPolicy}
-        updateAgentPending={updateAgent.isPending}
-        onAgentChange={handleAgentChange}
-        onDefaultModelChange={(modelId: string) => void setDefaultModel(modelId)}
-        onExecutionPolicyChange={handleExecutionPolicyChange}
+    <div className="flex min-h-0 flex-1 flex-row">
+      <ChatSidebar
+        sessions={sessions.data ?? []}
+        activeSessionId={sessionId}
         onSessionChange={handleSessionChange}
         onNewSession={clearMessages}
         onDeleteSession={async (id: string) => {
@@ -765,34 +750,61 @@ export default function ChatPage() {
             toast.error(error instanceof Error ? error.message : (tx("Không thể xóa phiên", "Could not delete session")));
           }
         }}
-        onToggleDebug={toggleDebug}
-        onClearMessages={clearMessages}
-        onApprovalDecision={handleApprovalDecision}
-        draft={draft}
-        onDraftChange={setDraft}
-        onSubmit={send}
-        composerDisabled={!agentId || (!draft.trim() && attachments.length === 0)}
-        attachments={attachments}
-        onAttachmentsChange={setAttachments}
-        scrollHostRef={scrollHostRef}
-        bottomRef={bottomRef}
-        onThreadScroll={onThreadScroll}
       />
+      <div className="flex min-h-0 flex-1 flex-col">
+        <ChatThread
+          messages={messages}
+          debug={debug}
+          streaming={streaming}
+          statusPhase={statusPhase}
+          agents={agents.data}
+          models={models.data}
+          agentId={agentId}
+          sessionId={sessionId}
+          currentAgent={currentAgent}
+          currentAgentModel={currentAgentModel}
+          effectiveModel={effectiveModel}
+          pendingSessionModelId={pendingSessionModelId}
+          pendingExecutionPolicy={pendingExecutionPolicy}
+          updateAgentPending={updateAgent.isPending}
+          onAgentChange={handleAgentChange}
+          onDefaultModelChange={(modelId: string) => void setDefaultModel(modelId)}
+          onExecutionPolicyChange={handleExecutionPolicyChange}
+          onNewSession={clearMessages}
+          onToggleDebug={toggleDebug}
+          onClearMessages={clearMessages}
+          onApprovalDecision={handleApprovalDecision}
+          draft={draft}
+          onDraftChange={setDraft}
+          onSubmit={send}
+          composerDisabled={!agentId || (!draft.trim() && attachments.length === 0)}
+          attachments={attachments}
+          onAttachmentsChange={setAttachments}
+          scrollHostRef={scrollHostRef}
+          bottomRef={bottomRef}
+          onThreadScroll={onThreadScroll}
+        />
 
-      {messages.length > 0 && (
-        <div className="mx-auto w-full max-w-[var(--dsh-chat-content-width,736px)] px-4 pb-4 sm:px-6">
-          <ChatInput
-            draft={draft}
-            onDraftChange={setDraft}
-            onSubmit={streaming ? stop : send}
-            disabled={!agentId || (!streaming && !draft.trim() && attachments.length === 0)}
-            streaming={streaming}
-            connectionState={connectionState}
-            attachments={attachments}
-            onAttachmentsChange={setAttachments}
-          />
-        </div>
-      )}
+        {messages.length > 0 && (
+          <div className="mx-auto w-full max-w-[var(--dsh-chat-content-width,736px)] px-4 pb-4 sm:px-6">
+            <ChatInput
+              draft={draft}
+              onDraftChange={setDraft}
+              onSubmit={streaming ? stop : send}
+              disabled={!agentId || (!streaming && !draft.trim() && attachments.length === 0)}
+              streaming={streaming}
+              connectionState={connectionState}
+              attachments={attachments}
+              onAttachmentsChange={setAttachments}
+              models={models.data}
+              effectiveModel={effectiveModel}
+              onModelChange={(modelId: string) => void setDefaultModel(modelId)}
+              executionPolicy={pendingExecutionPolicy}
+              onExecutionPolicyChange={handleExecutionPolicyChange}
+            />
+          </div>
+        )}
+      </div>
     </div>
   );
 }
