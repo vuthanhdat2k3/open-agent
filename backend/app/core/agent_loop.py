@@ -206,9 +206,10 @@ RAG_DIRECTIVE = (
 ORCHESTRATOR_SYSTEM_SUFFIX = (
     "Orchestrator behavior:\n"
     "- Break the user's goal into clear sub-tasks when delegation helps.\n"
-    "- Use `call_agent` to delegate work to suitable worker agents. You may call it "
-    "multiple times, including multiple tool calls in one turn when tasks can run independently.\n"
-    "- Synthesize subagent results into one concise final answer."
+    "- Use named delegate tools (delegate_to_*) to delegate work to the single most appropriate worker agent.\n"
+    "- Do NOT chain sub-agents redundantly (e.g. do not call another agent to search for a file that Software & Data Engineer just created).\n"
+    "- When a sub-agent completes its work, directly synthesize its output and present the final answer and usage guidance to the user.\n"
+    "- Synthesize all sub-agent results into one clear, concise final answer."
 )
 
 
