@@ -606,6 +606,10 @@ export interface TranslationDictionary {
       tablePath: string;
       tableSize: string;
       tableTime: string;
+      tableCreator: string;
+      tableSession: string;
+      filterAllUsers: string;
+      filterUserPlaceholder: string;
       btnRunCode: string;
     };
     organizations: {

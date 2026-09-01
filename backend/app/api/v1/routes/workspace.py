@@ -96,7 +96,7 @@ async def download_artifact(
 
 @router.delete(
     "/artifacts/{artifact_id}",
-    dependencies=[Depends(require_permission("files:manage"))],
+    dependencies=[Depends(require_permission("files:write"))],
 )
 async def delete_artifact(
     artifact_id: str,
@@ -182,7 +182,7 @@ async def delete_execution(
     "/artifacts/{artifact_id}/run",
     response_model=SandboxRunOut,
     status_code=202,
-    dependencies=[Depends(require_permission("files:manage"))],
+    dependencies=[Depends(require_permission("files:write"))],
 )
 async def run_artifact(
     artifact_id: str,
@@ -248,7 +248,7 @@ async def stream_execution(
 
 @router.post(
     "/executions/{execution_id}/stop",
-    dependencies=[Depends(require_permission("files:manage"))],
+    dependencies=[Depends(require_permission("files:write"))],
 )
 async def stop_execution(
     execution_id: str,

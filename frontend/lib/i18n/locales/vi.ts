@@ -606,6 +606,10 @@ export const vi: TranslationDictionary = {
       tablePath: 'Đường dẫn tệp',
       tableSize: 'Kích thước',
       tableTime: 'Thời gian chạy',
+      tableCreator: 'Người tạo',
+      tableSession: 'Phiên hội thoại',
+      filterAllUsers: 'Tất cả thành viên',
+      filterUserPlaceholder: 'Lọc theo người tạo...',
       btnRunCode: 'Thực thi tệp',
     },
     organizations: {

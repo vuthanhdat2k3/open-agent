@@ -606,6 +606,10 @@ export const en: TranslationDictionary = {
       tablePath: 'File Path',
       tableSize: 'File Size',
       tableTime: 'Execution Time',
+      tableCreator: 'Creator',
+      tableSession: 'Chat Session',
+      filterAllUsers: 'All Members',
+      filterUserPlaceholder: 'Filter by creator...',
       btnRunCode: 'Run File',
     },
     organizations: {

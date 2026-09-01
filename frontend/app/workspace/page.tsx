@@ -43,7 +43,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useTranslation } from "@/lib/i18n";
-import { isAdminRole } from "@/lib/roles";
+import { isAdminRole, isOperatorOrAdmin } from "@/lib/roles";
 import type { WorkspaceArtifact, SandboxExecution } from "@/types";
 
 function formatBytes(bytes: number): string {
@@ -79,6 +79,9 @@ export default function WorkspacePage() {
   const deleteExecution = useDeleteSandboxExecution();
   const role = useCurrentRole();
   const isAdmin = isAdminRole(role);
+  const isOperator = isOperatorOrAdmin(role);
+
+  const [selectedUserFilter, setSelectedUserFilter] = React.useState<string>("all");
 
   const [previewArtifact, setPreviewArtifact] = React.useState<WorkspaceArtifact | null>(null);
   const [previewContent, setPreviewContent] = React.useState<string | null>(null);
@@ -86,20 +89,53 @@ export default function WorkspacePage() {
 
   const [viewExecution, setViewExecution] = React.useState<SandboxExecution | null>(null);
 
+  // Extract unique creators for filter dropdown
+  const uniqueCreators = React.useMemo(() => {
+    const map = new Map<string, { id: string; label: string }>();
+    (artifacts.data ?? []).forEach((a) => {
+      if (a.created_by_user_id) {
+        map.set(a.created_by_user_id, {
+          id: a.created_by_user_id,
+          label: a.creator_email || a.creator_name || a.created_by_user_id.slice(0, 8),
+        });
+      }
+    });
+    (executions.data ?? []).forEach((e) => {
+      if (e.created_by_user_id) {
+        map.set(e.created_by_user_id, {
+          id: e.created_by_user_id,
+          label: e.creator_email || e.creator_name || e.created_by_user_id.slice(0, 8),
+        });
+      }
+    });
+    return Array.from(map.values());
+  }, [artifacts.data, executions.data]);
+
+  // Filtered lists
+  const filteredArtifacts = React.useMemo(() => {
+    if (selectedUserFilter === "all") return artifacts.data ?? [];
+    return (artifacts.data ?? []).filter((a) => a.created_by_user_id === selectedUserFilter);
+  }, [artifacts.data, selectedUserFilter]);
+
+  const filteredExecutions = React.useMemo(() => {
+    if (selectedUserFilter === "all") return executions.data ?? [];
+    return (executions.data ?? []).filter((e) => e.created_by_user_id === selectedUserFilter);
+  }, [executions.data, selectedUserFilter]);
+
   // Pagination states
   const [artifactPage, setArtifactPage] = React.useState(1);
   const [artifactPageSize, setArtifactPageSize] = React.useState(10);
   const paginatedArtifacts = React.useMemo(() => {
     const start = (artifactPage - 1) * artifactPageSize;
-    return (artifacts.data ?? []).slice(start, start + artifactPageSize);
-  }, [artifacts.data, artifactPage, artifactPageSize]);
+    return filteredArtifacts.slice(start, start + artifactPageSize);
+  }, [filteredArtifacts, artifactPage, artifactPageSize]);
 
   const [executionPage, setExecutionPage] = React.useState(1);
   const [executionPageSize, setExecutionPageSize] = React.useState(10);
   const paginatedExecutions = React.useMemo(() => {
     const start = (executionPage - 1) * executionPageSize;
-    return (executions.data ?? []).slice(start, start + executionPageSize);
-  }, [executions.data, executionPage, executionPageSize]);
+    return filteredExecutions.slice(start, start + executionPageSize);
+  }, [filteredExecutions, executionPage, executionPageSize]);
 
   async function openArtifact(artifact: WorkspaceArtifact) {
     setPreviewArtifact(artifact);
@@ -174,27 +210,51 @@ export default function WorkspacePage() {
         }
       />
 
-      {/* Segmented Navigation Tabs */}
-      <div className="flex gap-2 border-b border-border/70 pb-2">
-        <Button
-          type="button"
-          variant={activeTab === "artifacts" ? "secondary" : "ghost"}
-          onClick={() => setTabParam("artifacts")}
-          className="gap-2 font-medium"
-        >
-          <FileCode2 className="h-4 w-4 text-primary" />
-          {tx("Tệp Artifacts", "Artifacts")} ({artifacts.data?.length ?? 0})
-        </Button>
+      {/* Segmented Navigation Tabs & Operator User Filter */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-border/70 pb-2">
+        <div className="flex gap-2">
+          <Button
+            type="button"
+            variant={activeTab === "artifacts" ? "secondary" : "ghost"}
+            onClick={() => setTabParam("artifacts")}
+            className="gap-2 font-medium"
+          >
+            <FileCode2 className="h-4 w-4 text-primary" />
+            {dict.pages.workspace.artifactsCard} ({filteredArtifacts.length})
+          </Button>
 
-        <Button
-          type="button"
-          variant={activeTab === "executions" ? "secondary" : "ghost"}
-          onClick={() => setTabParam("executions")}
-          className="gap-2 font-medium"
-        >
-          <TerminalSquare className="h-4 w-4 text-primary" />
-          {tx("Lịch sử Thực thi Sandbox", "Sandbox Executions")} ({executions.data?.length ?? 0})
-        </Button>
+          <Button
+            type="button"
+            variant={activeTab === "executions" ? "secondary" : "ghost"}
+            onClick={() => setTabParam("executions")}
+            className="gap-2 font-medium"
+          >
+            <TerminalSquare className="h-4 w-4 text-primary" />
+            {dict.pages.workspace.executionsCard} ({filteredExecutions.length})
+          </Button>
+        </div>
+
+        {isOperator && uniqueCreators.length > 0 && (
+          <div className="flex items-center gap-2 text-xs">
+            <span className="text-muted-foreground font-medium">{dict.pages.workspace.tableCreator}:</span>
+            <select
+              value={selectedUserFilter}
+              onChange={(e) => {
+                setSelectedUserFilter(e.target.value);
+                setArtifactPage(1);
+                setExecutionPage(1);
+              }}
+              className="rounded-md border border-input bg-background/80 px-2.5 py-1 text-xs text-foreground shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+            >
+              <option value="all">{dict.pages.workspace.filterAllUsers}</option>
+              {uniqueCreators.map((creator) => (
+                <option key={creator.id} value={creator.id}>
+                  {creator.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {/* Tab 1: Artifacts Table */}
@@ -216,9 +276,12 @@ export default function WorkspacePage() {
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/40">
-                      <TableHead className="text-xs font-semibold">{tx("Đường dẫn tệp", "Path")}</TableHead>
-                      <TableHead className="text-xs font-semibold">{tx("Kích thước", "Size")}</TableHead>
+                      <TableHead className="text-xs font-semibold">{dict.pages.workspace.tablePath}</TableHead>
+                      <TableHead className="text-xs font-semibold">{dict.pages.workspace.tableSize}</TableHead>
                       <TableHead className="text-xs font-semibold">{tx("Trạng thái", "Status")}</TableHead>
+                      {isOperator && (
+                        <TableHead className="text-xs font-semibold">{dict.pages.workspace.tableCreator}</TableHead>
+                      )}
                       <TableHead className="text-xs font-semibold">{tx("Cập nhật", "Updated")}</TableHead>
                       <TableHead className="text-right text-xs font-semibold">{tx("Thao tác", "Actions")}</TableHead>
                     </TableRow>
@@ -226,7 +289,7 @@ export default function WorkspacePage() {
                   <TableBody>
                     {paginatedArtifacts.map((artifact) => (
                       <TableRow key={artifact.id} className="hover:bg-muted/20 transition-colors">
-                        <TableCell className="max-w-[320px] truncate font-medium text-foreground text-xs">
+                        <TableCell className="max-w-[300px] truncate font-medium text-foreground text-xs">
                           <div className="flex items-center gap-2">
                             <Code2 className="h-4 w-4 text-muted-foreground shrink-0" />
                             <span className="truncate">{artifact.path}</span>
@@ -240,6 +303,13 @@ export default function WorkspacePage() {
                             {artifact.exists ? (tx("Đã lưu", "stored")) : (tx("Thất lạc", "missing"))}
                           </Badge>
                         </TableCell>
+                        {isOperator && (
+                          <TableCell className="text-xs text-muted-foreground max-w-[160px] truncate">
+                            <span className="font-mono text-[11px] bg-muted/50 px-1.5 py-0.5 rounded border border-border/50">
+                              {artifact.creator_email || artifact.creator_name || artifact.created_by_user_id?.slice(0, 8) || "—"}
+                            </span>
+                          </TableCell>
+                        )}
                         <TableCell className="text-muted-foreground font-mono text-xs">
                           {new Date(artifact.updated_at).toLocaleString(tx("vi-VN", "en-US"))}
                         </TableCell>
@@ -346,9 +416,12 @@ export default function WorkspacePage() {
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/40">
-                      <TableHead className="text-xs font-semibold">{tx("Tác vụ / Lệnh", "Run")}</TableHead>
+                      <TableHead className="text-xs font-semibold">{dict.pages.workspace.executionsCard}</TableHead>
                       <TableHead className="text-xs font-semibold">{tx("Trạng thái", "Status")}</TableHead>
-                      <TableHead className="text-right text-xs font-semibold">{tx("Thời gian", "Time")}</TableHead>
+                      {isOperator && (
+                        <TableHead className="text-xs font-semibold">{dict.pages.workspace.tableCreator}</TableHead>
+                      )}
+                      <TableHead className="text-right text-xs font-semibold">{dict.pages.workspace.tableTime}</TableHead>
                       <TableHead className="text-right text-xs font-semibold">{tx("Thao tác", "Actions")}</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -374,6 +447,13 @@ export default function WorkspacePage() {
                             {execution.status}
                           </Badge>
                         </TableCell>
+                        {isOperator && (
+                          <TableCell className="text-xs text-muted-foreground max-w-[160px] truncate">
+                            <span className="font-mono text-[11px] bg-muted/50 px-1.5 py-0.5 rounded border border-border/50">
+                              {execution.creator_email || execution.creator_name || execution.created_by_user_id?.slice(0, 8) || "—"}
+                            </span>
+                          </TableCell>
+                        )}
                         <TableCell className="text-right font-mono text-xs text-muted-foreground">
                           {formatMs(execution.duration_ms)}
                         </TableCell>
