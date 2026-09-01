@@ -170,6 +170,13 @@ class AgentService:
 
         existing = await self.repo.get(org_id, agent.id)
         if existing is not None:
+            if not getattr(existing, "is_customized", True) and getattr(existing, "template_key", None) in SYSTEM_AGENT_BLUEPRINTS:
+                bp = SYSTEM_AGENT_BLUEPRINTS[existing.template_key]
+                existing.tools = list(bp.tools)
+                existing.allowed_risk_tiers = list(bp.allowed_risk_tiers)
+                existing.kind = bp.kind
+                existing.system_prompt = bp.system_prompt
+                existing.description = bp.description
             return existing
 
         persisted = Agent(
@@ -645,13 +652,20 @@ class AgentService:
         )
         active_models = list(models_res.scalars().all())
 
-        # Tag DB agents with is_pinned
+        # Tag DB agents with is_pinned and keep uncustomized system agents in sync with blueprints
         for a in db_agents:
             tpl_key = getattr(a, "template_key", None)
             if tpl_key and tpl_key in settings_by_key:
                 a.is_pinned = settings_by_key[tpl_key].is_pinned
             else:
                 a.is_pinned = True  # DB agents pinned by default
+            if not getattr(a, "is_customized", True) and tpl_key in SYSTEM_AGENT_BLUEPRINTS:
+                bp = SYSTEM_AGENT_BLUEPRINTS[tpl_key]
+                a.tools = list(bp.tools)
+                a.allowed_risk_tiers = list(bp.allowed_risk_tiers)
+                a.kind = bp.kind
+                a.system_prompt = bp.system_prompt
+                a.description = bp.description
 
         result_agents: list[Agent] = list(db_agents)
 
@@ -695,6 +709,14 @@ class AgentService:
                 )
             )
             agent.is_pinned = settings.is_pinned if settings else True
+            tpl_key = getattr(agent, "template_key", None)
+            if not getattr(agent, "is_customized", True) and tpl_key in SYSTEM_AGENT_BLUEPRINTS:
+                bp = SYSTEM_AGENT_BLUEPRINTS[tpl_key]
+                agent.tools = list(bp.tools)
+                agent.allowed_risk_tiers = list(bp.allowed_risk_tiers)
+                agent.kind = bp.kind
+                agent.system_prompt = bp.system_prompt
+                agent.description = bp.description
             return agent
 
         # 2. Check if ID matches a System Blueprint (sys-agent-* or template_key)
