@@ -104,3 +104,19 @@ def test_legacy_context_still_uses_agent_risk_tiers() -> None:
             context=_context(None, allowed_tiers=[RiskTier.safe.value]),
             runtime_org_id=ORG_ID,
         )
+
+
+def test_build_execution_policy_context() -> None:
+    from app.core.execution_policy import build_execution_policy_context
+
+    ro = build_execution_policy_context(ExecutionPolicy.read_only)
+    assert "[Execution Policy: read-only]" in ro
+    assert "blocked" in ro
+
+    fa = build_execution_policy_context(ExecutionPolicy.full_access)
+    assert "[Execution Policy: full-access]" in fa
+    assert "autonomous full access" in fa
+
+    ma = build_execution_policy_context(ExecutionPolicy.manual)
+    assert "[Execution Policy: manual-approval]" in ma
+    assert "require user confirmation" in ma

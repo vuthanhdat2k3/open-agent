@@ -54,5 +54,32 @@ def policy_requires_approval(policy: str | ExecutionPolicy | None, spec: Any) ->
     return bool(getattr(spec, "requires_approval", False))
 
 
+def build_execution_policy_context(policy: str | ExecutionPolicy | None) -> str:
+    """Build standardized, model-visible runtime execution policy context.
+
+    Follows the capability-neutral runtime policy context convention (inspired by DSH):
+    - Explicitly communicates current tool authorization and approval requirements to the LLM.
+    - Prevents hallucinated assumptions or confusion on tool execution gating.
+    """
+    resolved = normalize_execution_policy(policy)
+    if resolved is ExecutionPolicy.read_only:
+        return (
+            "[Execution Policy: read-only]\n"
+            "Standing mode permits only safe, read, and network queries. "
+            "Mutating actions (file writes, code execution, dangerous operations) are blocked."
+        )
+    if resolved is ExecutionPolicy.full_access:
+        return (
+            "[Execution Policy: full-access]\n"
+            "Approval prompts are disabled for this session: you have autonomous full access "
+            "to invoke all permitted tools (read, write, execute, network) without user confirmation."
+        )
+    return (
+        "[Execution Policy: manual-approval]\n"
+        "Mutating or high-risk actions (write, execute, dangerous) require user confirmation/approval "
+        "before settlement. Read and network inspection tools execute automatically."
+    )
+
+
 def policy_values() -> tuple[str, ...]:
     return tuple(policy.value for policy in ExecutionPolicy)

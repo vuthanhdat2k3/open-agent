@@ -8,7 +8,6 @@ from app.db.base import Base, gen_id
 from app.main import app
 from app.models.membership import Membership
 from app.models.model import Model
-from app.models.org_model_tier_config import OrgModelTierConfig
 from app.models.organization import Organization
 from app.models.provider import Provider
 from app.models.role import Role

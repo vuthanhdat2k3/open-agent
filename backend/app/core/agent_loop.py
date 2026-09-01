@@ -19,6 +19,7 @@ from app.core import session_log as slog
 from app.core.chat_events import ChatEventRecorder
 from app.core.execution_policy import (
     ExecutionPolicy,
+    build_execution_policy_context,
     policy_allows_tier,
 )
 from app.core.guardrails.approval import request_approval
@@ -914,6 +915,8 @@ async def _agent_stream(
     )
 
     system_parts = [build_runtime_context(timezone_name)]
+    if execution_policy is not None:
+        system_parts.append(build_execution_policy_context(execution_policy))
     if base_prompt:
         system_parts.append(base_prompt)
     system_parts.extend(directives)
