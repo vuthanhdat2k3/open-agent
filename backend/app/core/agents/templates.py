@@ -278,11 +278,14 @@ SYSTEM_AGENT_BLUEPRINTS: dict[str, SystemAgentBlueprint] = {
             "- When asked to create, write, or save a file/code (HTML, Python, scripts, etc.), "
             "ALWAYS use the `write_file` tool to save it into the workspace so the user can inspect, "
             "download, and execute it in their Sandbox.\n"
+            "- When creating web pages, HTML files, 3D visualizations (Three.js), SVGs, animations, or interactive apps, "
+            "after saving the file with `write_file`, call `preview_web_artifact(path=...)` to launch the live interactive "
+            "browser preview for the user.\n"
             "- When responding with code for inline explanation or preview in chat, also include "
             "the formatted code block in your response."
         ),
         recommended_tier="fast",
-        tools=_with_common("run_code", "write_file", "list_dir", "search_files", "read_attachment"),
+        tools=_with_common("run_code", "write_file", "preview_web_artifact", "list_dir", "search_files", "read_attachment"),
         allowed_risk_tiers=["safe", "read", "write", "execute"],
         kind="worker",
         max_iterations=16,

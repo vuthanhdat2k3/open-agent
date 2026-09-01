@@ -14,10 +14,14 @@ import {
   Brain,
   Sparkles,
   Loader2,
+  Globe,
+  ExternalLink,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { WebArtifactPreviewDialog } from "@/components/shared";
 import type { ToolCallBlock } from "@/lib/chat/projection";
 import { useTranslation } from "@/lib/i18n";
 
@@ -85,10 +89,17 @@ export function ToolCallCard({ block, compact = false }: ToolCallCardProps) {
     // Keep argsText
   }
 
+  const [showWebPreview, setShowWebPreview] = React.useState(false);
   const isRunning = block.status === "running";
   const isError = block.status === "error";
   const subagent = block.subagent;
   const subagentDisplayName = subagent?.agentName || (block.name.startsWith("delegate_to_") ? block.name.replace(/^delegate_to_/, "").replace(/_/g, " ") : null);
+
+  const isWebFile = Boolean(
+    block.name === "preview_web_artifact" ||
+    (targetPath && (targetPath.endsWith(".html") || targetPath.endsWith(".htm") || targetPath.endsWith(".svg"))) ||
+    (codeStr && (codeStr.includes("<!DOCTYPE html>") || codeStr.includes("<html") || (codeStr.includes("<svg") && codeStr.includes("</svg>"))))
+  );
 
   return (
     <div className={`w-full shrink-0 rounded-xl border border-border bg-card/80 backdrop-blur-md shadow-card overflow-hidden my-1.5 transition-all ${compact ? "border-primary/30" : ""}`}>
@@ -234,6 +245,37 @@ export function ToolCallCard({ block, compact = false }: ToolCallCardProps) {
             {block.result}
           </pre>
         </div>
+      )}
+
+      {/* Interactive Web Artifact Live Preview Banner */}
+      {isWebFile && codeStr && (
+        <div className="flex items-center justify-between p-2 px-3 bg-gradient-to-r from-primary/15 via-primary/5 to-transparent border-t border-border/60">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+            <Globe className="h-3.5 w-3.5 text-primary animate-pulse" />
+            <span className="font-mono text-[11px] truncate max-w-[240px]">
+              {targetPath || block.name}
+            </span>
+          </div>
+          <Button
+            size="sm"
+            variant="default"
+            className="h-6 text-[11px] px-2.5 gap-1 shadow-sm font-medium"
+            onClick={() => setShowWebPreview(true)}
+          >
+            <Globe className="h-3 w-3" />
+            <span>{tx("Chạy trực tiếp", "Live Preview")}</span>
+          </Button>
+        </div>
+      )}
+
+      {showWebPreview && (
+        <WebArtifactPreviewDialog
+          open={showWebPreview}
+          onOpenChange={setShowWebPreview}
+          title={targetPath || block.name}
+          content={codeStr}
+          initialTab="preview"
+        />
       )}
     </div>
   );

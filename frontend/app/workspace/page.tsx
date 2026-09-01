@@ -14,6 +14,7 @@ import {
   Code2,
   Layers,
   Square,
+  Globe,
 } from "lucide-react";
 import {
   useWorkspaceArtifacts,
@@ -37,7 +38,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { PageHeader } from "@/components/page-header";
-import { EmptyState, ErrorState, LoadingSkeleton, DataPagination, ConfirmDialog } from "@/components/shared";
+import { EmptyState, ErrorState, LoadingSkeleton, DataPagination, ConfirmDialog, WebArtifactPreviewDialog } from "@/components/shared";
 import {
   Dialog,
   DialogContent,
@@ -105,6 +106,7 @@ export default function WorkspacePage() {
   const [previewArtifact, setPreviewArtifact] = React.useState<WorkspaceArtifact | null>(null);
   const [previewContent, setPreviewContent] = React.useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = React.useState(false);
+  const [previewTab, setPreviewTab] = React.useState<"preview" | "code">("preview");
 
   const [viewExecution, setViewExecution] = React.useState<SandboxExecution | null>(null);
 
@@ -265,8 +267,14 @@ export default function WorkspacePage() {
     return filteredExecutions.slice(start, start + executionPageSize);
   }, [filteredExecutions, executionPage, executionPageSize]);
 
-  async function openArtifact(artifact: WorkspaceArtifact) {
+  function isWebArtifact(path: string): boolean {
+    const lower = path.toLowerCase();
+    return lower.endsWith(".html") || lower.endsWith(".htm") || lower.endsWith(".svg");
+  }
+
+  async function openArtifact(artifact: WorkspaceArtifact, initialTab: "preview" | "code" = "preview") {
     setPreviewArtifact(artifact);
+    setPreviewTab(isWebArtifact(artifact.path) ? initialTab : "code");
     setPreviewLoading(true);
     try {
       const res = await fetch(`/api/workspace/artifacts/${artifact.id}/content`);
@@ -452,6 +460,19 @@ export default function WorkspacePage() {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-1.5">
+                            {isWebArtifact(artifact.path) && (
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8 text-primary hover:text-primary hover:bg-primary/10"
+                                disabled={!artifact.exists}
+                                aria-label={tx(`Chạy trực tiếp ${artifact.path}`, `Live preview ${artifact.path}`)}
+                                title={tx(`Chạy trực tiếp ${artifact.path}`, `Live preview ${artifact.path}`)}
+                                onClick={() => openArtifact(artifact, "preview")}
+                              >
+                                <Globe className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
                             {isRunnableArtifact(artifact.path) && (
                               <Button
                                 size="icon"
@@ -459,6 +480,7 @@ export default function WorkspacePage() {
                                 className="h-8 w-8"
                                 disabled={!artifact.exists || runArtifact.isPending}
                                 aria-label={tx(`Chạy ${artifact.path}`, `Run ${artifact.path}`)}
+                                title={tx(`Chạy ${artifact.path}`, `Run ${artifact.path}`)}
                                 onClick={() => runWorkspaceArtifact(artifact)}
                               >
                                 <Play className="h-3.5 w-3.5" />
@@ -474,7 +496,8 @@ export default function WorkspacePage() {
                                   className="h-8 w-8"
                                   disabled={!artifact.exists || !canPreview}
                                   aria-label={tx(`Xem trước ${artifact.path}`, `Preview ${artifact.path}`)}
-                                  onClick={() => openArtifact(artifact)}
+                                  title={tx(`Xem trước ${artifact.path}`, `Preview ${artifact.path}`)}
+                                  onClick={() => openArtifact(artifact, isWebArtifact(artifact.path) ? "preview" : "code")}
                                 >
                                   <Eye className="h-3.5 w-3.5" />
                                 </Button>
@@ -643,8 +666,8 @@ export default function WorkspacePage() {
         </Card>
       )}
 
-      {/* Artifact Preview Modal */}
-      <Dialog
+      {/* Interactive Web & Artifact Preview Dialog */}
+      <WebArtifactPreviewDialog
         open={Boolean(previewArtifact)}
         onOpenChange={(open) => {
           if (!open) {
@@ -652,23 +675,11 @@ export default function WorkspacePage() {
             setPreviewContent(null);
           }
         }}
-      >
-        <DialogContent className="max-w-3xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 font-mono text-sm">
-              <FileCode2 className="h-4 w-4 text-primary" />
-              {previewArtifact?.path}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="max-h-[60vh] overflow-auto rounded-lg border border-border/80 bg-muted/30 p-4 font-mono text-xs">
-            {previewLoading ? (
-              <p className="text-muted-foreground">{tx("Đang tải nội dung tệp...", "Loading content...")}</p>
-            ) : (
-              <pre className="whitespace-pre-wrap">{previewContent}</pre>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+        title={previewArtifact?.path || "artifact"}
+        content={previewContent || ""}
+        initialTab={previewTab}
+        onDownload={previewArtifact ? () => downloadArtifact(previewArtifact) : undefined}
+      />
 
       {/* Execution Output Modal */}
       <Dialog

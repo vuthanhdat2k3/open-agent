@@ -241,3 +241,70 @@ register(
         risk_tier=RiskTier.read,
     )
 )
+
+async def _preview_web_artifact(args: dict[str, Any], ctx: ToolContext) -> str:
+    path = args.get("path", "")
+    if not path:
+        return "error: missing 'path'"
+    target = safe_resolve(ctx.workspace_dir, path)
+    if target is None:
+        return "error: path escapes workspace directory"
+    if not target.exists():
+        return f"error: file not found: {path}"
+    if not target.is_file():
+        return f"error: path is not a file: {path}"
+
+    suffix = target.suffix.lower()
+    if suffix not in {".html", ".htm", ".svg"}:
+        return f"error: preview_web_artifact only supports web artifacts (.html, .htm, .svg), got '{suffix}'"
+
+    size_bytes = target.stat().st_size
+    if ctx.emit:
+        await ctx.emit({
+            "stage": "previewing",
+            "path": path,
+            "line": f"Launching live interactive web preview for '{path}' ({size_bytes} bytes)...\n",
+        })
+
+    try:
+        await upsert_workspace_artifact(
+            ctx.db,
+            org_id=ctx.org_id,
+            path=target,
+            workspace_dir=ctx.workspace_dir,
+            source_tool="preview_web_artifact",
+            user_id=ctx.user_id,
+            agent_id=ctx.agent_id,
+            session_id=ctx.session_id,
+            task_id=ctx.current_task_id,
+            root_run_id=ctx.root_run_id,
+        )
+    except Exception:
+        pass
+
+    return f"Live interactive web preview ready for '{path}' ({size_bytes} bytes). The user can now view and interact with the rendered web application directly in the Live Preview panel."
+
+
+register(
+    ToolSpec(
+        name="preview_web_artifact",
+        description=(
+            "Launch a live interactive browser preview for a web artifact (.html, .htm, .svg) "
+            "in the workspace. Allows the user to view, test, and interact with 3D scenes (Three.js), "
+            "animations, games, and web layouts directly."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Relative path to the .html or .svg file in the workspace",
+                }
+            },
+            "required": ["path"],
+        },
+        run=_preview_web_artifact,
+        risk_tier=RiskTier.read,
+    )
+)
+

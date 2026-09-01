@@ -611,6 +611,7 @@ export interface TranslationDictionary {
       filterAllUsers: string;
       filterUserPlaceholder: string;
       btnRunCode: string;
+      btnLivePreview: string;
       runPanelTitle: string;
       runPanelStop: string;
       runPanelExitCode: string;

@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, Loader2, Wrench, XCircle, Bot, Terminal } from "lucide-react";
+import { CheckCircle2, Loader2, Wrench, XCircle, Bot, Terminal, Globe } from "lucide-react";
 import type { ToolCallBlock } from "@/lib/chat/projection";
 
 interface ToolCallChipProps {
@@ -10,6 +10,7 @@ interface ToolCallChipProps {
 export function ToolCallChip({ block }: ToolCallChipProps) {
   const isSubagent = block.name === "call_agent" || block.name.startsWith("delegate_to_") || Boolean(block.subagent);
   const isCode = block.name === "run_code" || block.name === "write_file";
+  const isWeb = block.name === "preview_web_artifact";
 
   const statusIcon =
     block.status === "running" ? (
@@ -22,6 +23,8 @@ export function ToolCallChip({ block }: ToolCallChipProps) {
 
   const kindIcon = isSubagent ? (
     <Bot className="h-3 w-3 text-indigo-400" aria-hidden="true" />
+  ) : isWeb ? (
+    <Globe className="h-3 w-3 text-primary" aria-hidden="true" />
   ) : isCode ? (
     <Terminal className="h-3 w-3 text-primary/80" aria-hidden="true" />
   ) : (
