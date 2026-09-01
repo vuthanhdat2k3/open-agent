@@ -537,7 +537,19 @@ export default function ChatPage() {
   ]);
 
   React.useEffect(() => {
-    const approval = approvals.data?.find((item) => item.run_id === activeRunId);
+    // If run has finished or failed, remove any remaining pending approval messages
+    if (chatRun.data?.status === "succeeded" || chatRun.data?.status === "failed") {
+      if (projectionRef.current.messages.some((item) => item.role === "approval" && item.status === "pending")) {
+        projectionRef.current = {
+          ...projectionRef.current,
+          messages: projectionRef.current.messages.filter((item) => !(item.role === "approval" && item.status === "pending")),
+        };
+        commit();
+      }
+      return;
+    }
+
+    const approval = approvals.data?.find((item) => item.run_id === activeRunId && item.status === "pending");
     if (!approval || projectionRef.current.messages.some((item) => item.role === "approval" && item.approvalId === approval.id)) return;
     const approvalMsg: ChatMessage = {
       id: `approval-${approval.id}`,
@@ -553,7 +565,7 @@ export default function ChatPage() {
     };
     commit();
     setPhase("approval");
-  }, [activeRunId, approvals.data, commit]);
+  }, [activeRunId, approvals.data, chatRun.data?.status, commit]);
 
   const handleApprovalDecision = React.useCallback(
     async (messageOrApprovalId: string, decision: "approved" | "rejected") => {

@@ -11,7 +11,7 @@ from datetime import timedelta
 from typing import Any
 
 import structlog
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -43,6 +43,7 @@ from app.core.runtime_context import build_runtime_context, normalize_timezone
 from app.core.session_surface import derive_messages
 from app.core.tools.authorization import (
     build_tool_authorization,
+    tool_args_hash,
 )
 from app.core.tools.authorization import (
     requires_approval as tool_requires_approval,
@@ -714,6 +715,18 @@ async def _finish_task(
     task.cost_usd = cost_usd
     task.token_usage = token_usage or {}
     task.finished_at = utc_now()
+    if task.parent_task_id is None and status in {"succeeded", "failed", "cancelled"} and task.root_run_id:
+        try:
+            await db.execute(
+                update(ApprovalRequest)
+                .where(
+                    ApprovalRequest.run_id == task.root_run_id,
+                    ApprovalRequest.status == "pending",
+                )
+                .values(status="expired", decided_at=utc_now(), reason="run finished")
+            )
+        except Exception:
+            pass
     await db.commit()
 
 
@@ -1663,6 +1676,7 @@ async def _agent_stream(
                                 args_snapshot=args,
                                 requested_by=user_id or agent.created_by_user_id,
                                 owning_task_id=current_task_id,
+                                idempotency_key=f"{root_run_id}:{current_task_id or 'root'}:{name}:{tool_args_hash(args)}",
                             )
                             guardrail_events_total.labels(
                                 agent.org_id, "approval_required", "paused"
