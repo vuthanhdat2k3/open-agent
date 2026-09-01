@@ -19,6 +19,7 @@ from app.core.observability.logging import configure_logging, request_context_mi
 from app.core.observability.metrics import mount_metrics
 from app.core.observability.tracing import init_tracing
 from app.core.security import allowed_origins
+from app.core.workflow.sync import sync_system_workflow_templates
 from app.db.session import SessionLocal, engine, get_db, init_db
 from app.schemas.common import HealthResponse
 
@@ -30,6 +31,7 @@ async def lifespan(app: FastAPI):
     await init_db()
     async with SessionLocal() as db:
         await sync_system_agents_all_orgs(db)
+        await sync_system_workflow_templates(db)
     sink = None
     settings = get_settings()
     if settings.observability_enabled and settings.langfuse_enabled:
