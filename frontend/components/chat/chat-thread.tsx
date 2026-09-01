@@ -21,7 +21,6 @@ interface ChatThreadProps {
   statusPhase: string;
   agents?: Agent[];
   models?: Model[];
-  sessions?: Session[];
   agentId: string | null;
   sessionId: string | null;
   currentAgent?: Agent;
@@ -33,9 +32,7 @@ interface ChatThreadProps {
   onAgentChange: (agentId: string) => void;
   onDefaultModelChange: (modelId: string) => void;
   onExecutionPolicyChange: (policy: ExecutionPolicy) => void;
-  onSessionChange: (sessionId: string) => void;
   onNewSession: () => void;
-  onDeleteSession: (sessionId: string) => Promise<void>;
   onToggleDebug: () => void;
   onClearMessages: () => void;
   onApprovalDecision: (messageId: string, decision: "approved" | "rejected") => void;
@@ -57,7 +54,6 @@ export function ChatThread({
   statusPhase,
   agents,
   models,
-  sessions,
   agentId,
   sessionId,
   currentAgent,
@@ -69,9 +65,7 @@ export function ChatThread({
   onAgentChange,
   onDefaultModelChange,
   onExecutionPolicyChange,
-  onSessionChange,
   onNewSession,
-  onDeleteSession,
   onToggleDebug,
   onClearMessages,
   onApprovalDecision,
@@ -104,32 +98,16 @@ export function ChatThread({
 
   const role = useCurrentRole();
   const canSwitchAgent = isAdminRole(role) || isOperator(role);
-  const canSwitchModel = Boolean(models?.some((model) => model.active));
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="sticky top-0 z-10 flex shrink-0 items-center gap-2 border-b border-border/60 bg-background px-2 py-1.5 sm:px-4">
         <ChatHeaderControls
           canSwitchAgent={canSwitchAgent}
-          canSwitchModel={canSwitchModel}
           agents={agents}
-          models={models}
-          sessions={sessions}
           agentId={agentId}
-          sessionId={sessionId}
           currentAgent={currentAgent}
-          currentAgentModel={currentAgentModel}
-          pendingSessionModelId={pendingSessionModelId}
-          pendingExecutionPolicy={pendingExecutionPolicy}
-          streaming={streaming}
-          updateAgentPending={updateAgentPending}
           onAgentChange={onAgentChange}
-          onDefaultModelChange={onDefaultModelChange}
-          onExecutionPolicyChange={onExecutionPolicyChange}
-          onSessionChange={onSessionChange}
-          onNewSession={onNewSession}
-          onDeleteSession={onDeleteSession}
-          canUseFullAccess={isAdminRole(role) || isOperator(role)}
         />
         <div className="ml-auto flex items-center gap-1">
           <Button
