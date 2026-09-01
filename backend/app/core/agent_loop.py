@@ -1683,6 +1683,7 @@ async def _agent_stream(
                                 owning_task_id=current_task_id,
                                 idempotency_key=f"{root_run_id}:{current_task_id or 'root'}:{name}:{tool_args_hash(args)}",
                             )
+                            await db.commit()
                             guardrail_events_total.labels(
                                 agent.org_id, "approval_required", "paused"
                             ).inc()
