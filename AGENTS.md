@@ -95,8 +95,10 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 | Branch | Worktree path | Phạm vi/task | Agent/người phụ trách |
 |---|---|---|---|
 | `dev` | `G:\open-agent` | Nhánh tích hợp chính — không code trực tiếp ở đây | — |
-| `docs/demo-do-deploy-guide` | `G:\open-agent\.worktrees\demo-do-deploy-guide` | Viết docs/demo-digitalocean-deploy.md: hướng dẫn deploy demo full-stack lên DigitalOcean + phân tích chi phí | Kiro |
-| `feat/system-agent-startup-sync` | `.worktrees/system-agent-startup-sync` | Đồng bộ System Agent Blueprints lúc startup | Kiro |
+
+> 2026-09-01: Đã dọn dẹp worktree và branch `docs/demo-do-deploy-guide` (Viết docs/demo-digitalocean-deploy.md: hướng dẫn deploy demo full-stack lên DigitalOcean + phân tích chi phí) sau khi đã merge vào `dev`.
+
+> 2026-09-01: Đã dọn dẹp worktree và branch `feat/system-agent-startup-sync` (Đồng bộ System Agent Blueprints lúc startup) sau khi đã merge vào `dev`.
 
 > 2026-09-01: Đã merge trực tiếp vào `dev` và dọn dẹp worktree `feat/sandbox-isolation-and-operator-view` (Sandbox Isolation Zero-Trust & Live Run Output Panel Drawer, streaming real-time output, stop controls, creator deletion rights, Node.js/Python/Bash runner) theo yêu cầu người dùng.
 
