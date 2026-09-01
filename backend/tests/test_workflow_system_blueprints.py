@@ -233,3 +233,28 @@ async def test_reset_workflow_to_template(
     assert len(workflows) == 7
     eod = [w for w in workflows if w.template_key == "end-of-day-client-digest"][0]
     assert eod.is_customized is False
+
+
+@pytest.mark.asyncio
+async def test_ensure_persisted_materializes_virtual_blueprint(
+    db_session: AsyncSession, test_org: Organization, test_user: User
+):
+    """ensure_persisted materializes a virtual blueprint into a DB row for foreign-key safety."""
+    service = WorkflowService(db_session)
+
+    # 1. Virtual blueprint before materialization
+    wf = await service.get(test_org.id, "sys-wf-morning-command-center")
+    assert wf is not None
+    assert wf.id == "sys-wf-morning-command-center"
+
+    # 2. ensure_persisted creates a DB row with template_key
+    persisted = await service.ensure_persisted(test_org.id, "sys-wf-morning-command-center", user_id=test_user.id)
+    assert persisted is not None
+    assert persisted.id != "sys-wf-morning-command-center"
+    assert len(persisted.id) == 32
+    assert persisted.template_key == "morning-command-center"
+    assert persisted.is_customized is False
+
+    # 3. Calling ensure_persisted again returns the existing record
+    persisted2 = await service.ensure_persisted(test_org.id, "sys-wf-morning-command-center", user_id=test_user.id)
+    assert persisted2.id == persisted.id

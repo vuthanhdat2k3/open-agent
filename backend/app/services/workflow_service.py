@@ -229,6 +229,46 @@ class WorkflowService:
 
         return None
 
+    async def ensure_persisted(self, org_id: str, id: str, user_id: str | None = None) -> Workflow | None:
+        """Ensure a workflow exists in the DB (materializing virtual blueprints on-demand if needed)."""
+        wf = await self.get(org_id, id)
+        if wf is None:
+            return None
+        # If it's already a real DB record
+        if not getattr(wf, "id", "").startswith("sys-wf-"):
+            return wf
+        # It's a virtual blueprint - find the blueprint definition
+        matched_blueprint = None
+        for bp in SYSTEM_WORKFLOW_BLUEPRINTS.values():
+            if (
+                bp.id == wf.id
+                or bp.key == wf.template_key
+                or bp.name.lower() == wf.name.lower()
+            ):
+                matched_blueprint = bp
+                break
+        if matched_blueprint is None:
+            return wf
+
+        # Check again if an override was created concurrently
+        override = await self.repo.db.scalar(
+            select(Workflow).where(
+                Workflow.org_id == org_id,
+                Workflow.template_key == matched_blueprint.key,
+            )
+        )
+        if override is not None:
+            return override
+
+        base_data = {
+            "name": matched_blueprint.name,
+            "description": matched_blueprint.description,
+            "graph": dict(matched_blueprint.graph),
+            "template_key": matched_blueprint.key,
+            "is_customized": False,
+        }
+        return await self.create(org_id, base_data, user_id)
+
     async def generate_graph(self, org_id: str, prompt: str, model_id: str) -> dict:
         agents = await AgentRepository(self.repo.db).list(org_id)
         agents_desc = (

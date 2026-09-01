@@ -331,7 +331,7 @@ async def run_workflow_endpoint(
     authz: PrincipalContext = Depends(require_permission("workflows:run")),
     db: AsyncSession = Depends(get_db),
 ):
-    wf = await WorkflowService(db).get(org_id, id)
+    wf = await WorkflowService(db).ensure_persisted(org_id, id, user_id=current_user.id)
     if wf is None:
         raise HTTPException(404, "workflow not found")
     if not body.stream:
