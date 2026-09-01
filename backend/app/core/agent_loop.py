@@ -208,8 +208,10 @@ ORCHESTRATOR_SYSTEM_SUFFIX = (
     "Orchestrator behavior:\n"
     "- Break the user's goal into clear sub-tasks when delegation helps.\n"
     "- Use named delegate tools (delegate_to_*) to delegate work to the single most appropriate worker agent.\n"
-    "- For follow-up requests on files created in earlier turns (e.g., 'chạy luôn file đó cho tôi', 'preview it', 'run it'): "
-    "DO NOT ask the worker to regenerate or recode the file. Specify the exact file name and the target action (preview_web_artifact for html/svg, run_code for py/sh/js).\n"
+    "- For follow-up requests on files created in earlier turns (e.g., 'chạy luôn file đó cho tôi', 'preview it', 'run it'):\n"
+    "  * DO NOT ask the worker to regenerate, recreate, edit, or check if the file exists.\n"
+    "  * Instruct the worker ONLY to execute or preview the existing file directly: e.g. 'Chạy file add.py bằng run_code và trả về kết quả' or 'Xem trước file house.html bằng preview_web_artifact'.\n"
+    "  * NEVER say 'Tạo file nếu chưa có' or 'tạo file' for files already discussed or created in previous turns.\n"
     "- Do NOT chain sub-agents redundantly (e.g. do not call another agent to search for a file that Software & Data Engineer just created).\n"
     "- When a sub-agent completes its work, directly synthesize its output and present the final answer and usage guidance to the user.\n"
     "- Synthesize all sub-agent results into one clear, concise final answer."
@@ -1171,15 +1173,133 @@ async def _agent_stream(
                 approval_resume_id=approval_resume_id,
                 execution_policy=execution_policy,
             ):
-                if nested_ev["event"] == "message_done":
-                    nested_result = nested_ev["data"]["content"]
-                elif nested_ev["event"] in {"approval_required", "error", "replay_diverged"}:
-                    # The nested run itself paused/failed further down the
-                    # tree (e.g. a third approval gate) - surface that
-                    # outcome as-is rather than pretending this level
-                    # finished.
+                ev_type = nested_ev.get("event")
+                ev_data = nested_ev.get("data", {})
+                if ev_type == "message_done":
+                    nested_result = ev_data.get("content", "")
+                elif ev_type == "approval_required":
+                    prog_ev = {
+                        "event": "tool_progress",
+                        "data": {
+                            "index": 0,
+                            "name": resume_tool_name,
+                            "stage": "subagent_approval_required",
+                            "agent_name": child_agent.name,
+                            "agent_id": child_agent.id,
+                            "approval_id": ev_data.get("approval_id"),
+                            "tool_name": ev_data.get("tool_name"),
+                            "line": f"\n[Subagent '{child_agent.name}' requires approval for {ev_data.get('tool_name')}]\n",
+                        },
+                    }
+                    if rec is not None:
+                        await rec.record(prog_ev)
+                        await rec.record(nested_ev)
+                        await rec.close()
+                    yield prog_ev
                     yield nested_ev
                     return
+                elif ev_type in {"error", "replay_diverged"}:
+                    if rec is not None:
+                        await rec.record(nested_ev)
+                        await rec.close()
+                    yield nested_ev
+                    return
+                elif ev_type == "reasoning":
+                    text = ev_data.get("content", "")
+                    prog_ev = {
+                        "event": "tool_progress",
+                        "data": {
+                            "index": 0,
+                            "name": resume_tool_name,
+                            "stage": "subagent_reasoning",
+                            "agent_name": child_agent.name,
+                            "agent_id": child_agent.id,
+                            "content": text,
+                            "line": text,
+                        },
+                    }
+                    if rec is not None:
+                        await rec.record(prog_ev)
+                    yield prog_ev
+                elif ev_type == "token":
+                    text = ev_data.get("content", "")
+                    prog_ev = {
+                        "event": "tool_progress",
+                        "data": {
+                            "index": 0,
+                            "name": resume_tool_name,
+                            "stage": "subagent_token",
+                            "agent_name": child_agent.name,
+                            "agent_id": child_agent.id,
+                            "content": text,
+                            "line": text,
+                        },
+                    }
+                    if rec is not None:
+                        await rec.record(prog_ev)
+                    yield prog_ev
+                elif ev_type == "tool_call":
+                    tool_name = ev_data.get("name", "")
+                    tool_args = ev_data.get("arguments", {})
+                    prog_ev = {
+                        "event": "tool_progress",
+                        "data": {
+                            "index": 0,
+                            "name": resume_tool_name,
+                            "stage": "subagent_tool_call",
+                            "agent_name": child_agent.name,
+                            "agent_id": child_agent.id,
+                            "tool_name": tool_name,
+                            "arguments": tool_args,
+                            "line": f"\n[Subagent '{child_agent.name}' calling tool: {tool_name}]\n",
+                        },
+                    }
+                    if rec is not None:
+                        await rec.record(prog_ev)
+                    yield prog_ev
+                elif ev_type == "tool_progress":
+                    prog_ev = {
+                        "event": "tool_progress",
+                        "data": {
+                            "index": 0,
+                            "name": resume_tool_name,
+                            "stage": "subagent_tool_progress",
+                            "agent_name": child_agent.name,
+                            "agent_id": child_agent.id,
+                            **ev_data,
+                        },
+                    }
+                    if rec is not None:
+                        await rec.record(prog_ev)
+                    yield prog_ev
+                elif ev_type == "tool_result":
+                    tool_name = ev_data.get("name", "")
+                    prog_ev = {
+                        "event": "tool_progress",
+                        "data": {
+                            "index": 0,
+                            "name": resume_tool_name,
+                            "stage": "subagent_tool_result",
+                            "agent_name": child_agent.name,
+                            "agent_id": child_agent.id,
+                            "tool_name": tool_name,
+                            "line": f"[Subagent '{child_agent.name}' tool {tool_name} completed]\n",
+                        },
+                    }
+                    if rec is not None:
+                        await rec.record(prog_ev)
+                    yield prog_ev
+            res_ev = {
+                "event": "tool_result",
+                "data": {
+                    "index": 0,
+                    "name": resume_tool_name,
+                    "result": nested_result,
+                },
+            }
+            if rec is not None:
+                await rec.record(res_ev)
+            yield res_ev
             messages.append({
                 "role": "assistant",
                 "content": None,

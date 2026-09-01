@@ -323,6 +323,11 @@ async def test_approve_resumes_the_owning_subagent_and_root_continues(
     errors = [e for e in resume_events if e["event"] == "error"]
     assert not errors, f"resume must not error, got: {errors}"
 
+    assert any(
+        e["event"] == "tool_result" and e["data"]["name"] == "call_agent"
+        for e in resume_events
+    ), "resumed stream must emit tool_result for the delegated agent"
+
     done_events = [e for e in resume_events if e["event"] == "message_done"]
     assert done_events, "the orchestrator's run must reach a final answer after resuming"
 
