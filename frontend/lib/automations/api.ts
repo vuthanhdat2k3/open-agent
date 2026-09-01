@@ -17,7 +17,7 @@ export type WorkflowCatalogItem = {
   side_effect_policy: "none" | "approval_required" | "trusted_rule_eligible" | string;
   recommendation: { recommended: boolean; reason_code: string | null; params: Record<string, unknown> };
   installed: boolean;
-  capabilities: { can_view: boolean; can_install: boolean };
+  capabilities: { can_view: boolean; can_install: boolean; can_delete?: boolean };
   blocked_reasons: Record<string, string[]>;
 };
 

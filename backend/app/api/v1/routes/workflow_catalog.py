@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authz.policy import PrincipalContext
@@ -37,6 +37,7 @@ async def list_workflow_templates(
     category: str | None = Query(default=None, max_length=48),
     org_id: str = Depends(get_current_org_id),
     current_user: User = Depends(get_current_user),
+    principal: PrincipalContext = Depends(require_permission("workflows:read")),
     db: AsyncSession = Depends(get_db),
 ) -> WorkflowCatalogResponse:
     latest_version = (
@@ -54,6 +55,7 @@ async def list_workflow_templates(
         WorkflowTemplateVersion.published_at.is_not(None),
         WorkflowTemplateVersion.template_id == latest_version.c.template_id,
         WorkflowTemplateVersion.version == latest_version.c.version,
+        or_(WorkflowTemplate.org_id.is_(None), WorkflowTemplate.org_id == org_id),
     ]
     if category:
         filters.append(WorkflowTemplateVersion.category == category)
@@ -84,6 +86,8 @@ async def list_workflow_templates(
     )
     installed_keys: set[str] = set(installed_result.scalars().all())
 
+    is_admin = principal.role in ("org_admin", "platform_admin")
+
     items = [
         WorkflowCatalogItem(
             key=template.key,
@@ -107,6 +111,10 @@ async def list_workflow_templates(
             capabilities=WorkflowCatalogCapabilities(
                 can_view=True,
                 can_install=template.key not in installed_keys,
+                can_delete=bool(
+                    template.created_by_user_id is not None
+                    and (template.created_by_user_id == current_user.id or is_admin)
+                ),
             ),
             blocked_reasons={},
         )
@@ -155,13 +163,19 @@ async def publish_workflow_to_catalog(
     if template is None:
         template = WorkflowTemplate(
             id=gen_id(),
+            org_id=org_id,
+            created_by_user_id=current_user.id,
             key=template_key,
             status="published",
         )
         db.add(template)
         await db.flush()
     else:
+        if template.org_id is not None and template.org_id != org_id:
+            raise HTTPException(403, "Cannot overwrite template from another organization")
         template.status = "published"
+        template.org_id = org_id
+        template.created_by_user_id = current_user.id
 
     version_row = await db.scalar(
         select(WorkflowTemplateVersion)
@@ -210,7 +224,7 @@ async def publish_workflow_to_catalog(
         estimated_cost_usd={},
         side_effect_policy="safe",
         recommendation=WorkflowCatalogRecommendation(recommended=False, reason_code=None),
-        capabilities=WorkflowCatalogCapabilities(can_view=True, can_install=True),
+        capabilities=WorkflowCatalogCapabilities(can_view=True, can_install=True, can_delete=True),
         blocked_reasons={},
     )
 
@@ -229,20 +243,33 @@ async def unpublish_workflow_from_catalog(
     # operators own marketplace publishing; admins grant it via ``*``.
     if not principal.allows("workflows:manage"):
         raise HTTPException(403, "Only operators can unpublish from the workflow marketplace")
-    """Remove a published template from the Marketplace (Operator/Admin)."""
+    """Remove a published template from the Marketplace (Creator or Org Admin)."""
+    # 1. Reject deletion of known system blueprints
+    from app.core.workflow.templates import SYSTEM_WORKFLOW_BLUEPRINTS
+    if key in SYSTEM_WORKFLOW_BLUEPRINTS:
+        raise HTTPException(403, "System templates cannot be unpublished or deleted")
+
     template = await db.scalar(
         select(WorkflowTemplate).where(WorkflowTemplate.key == key)
     )
     if template is None:
-        from app.models.workflow_template import gen_id
-        template = WorkflowTemplate(
-            id=gen_id(),
-            key=key,
-            status="archived",
-        )
-        db.add(template)
-    else:
-        template.status = "archived"
+        raise HTTPException(404, "Template not found")
+
+    # Built-in system templates cannot be deleted by anyone
+    if template.org_id is None or template.created_by_user_id is None:
+        raise HTTPException(403, "System templates cannot be unpublished or deleted")
+
+    # Organization scope check
+    if template.org_id != org_id:
+        raise HTTPException(404, "Template not found")
+
+    # Creator or Org Admin check: Only the person who created/published it or an admin can delete it
+    is_admin = principal.role in ("org_admin", "platform_admin")
+    is_creator = template.created_by_user_id == current_user.id
+    if not (is_creator or is_admin):
+        raise HTTPException(403, "Only the creator or an organization admin can unpublish this template")
+
+    template.status = "archived"
     TEMPLATE_DAGS.pop(key, None)
     await db.commit()
     return {"ok": True}
