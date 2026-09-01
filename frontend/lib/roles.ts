@@ -35,6 +35,11 @@ export function isAdminRole(role: string | null | undefined): boolean {
   return role === "org_admin" || role === "platform_admin";
 }
 
+// Any role with operational/management visibility (operator, org_admin, or platform_admin).
+export function isOperatorOrAdmin(role: string | null | undefined): boolean {
+  return role === "operator" || role === "org_admin" || role === "platform_admin";
+}
+
 // Coerce a role value coming from the wire (BE or local storage) to the canonical
 // `Role` type. The legacy `admin` spelling is normalized to `org_admin` so FE code
 // only ever sees canonical values.

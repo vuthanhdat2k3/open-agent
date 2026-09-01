@@ -395,6 +395,9 @@ export interface WorkspaceArtifact {
   session_id: string | null;
   task_id: string | null;
   root_run_id: string | null;
+  created_by_user_id?: string | null;
+  creator_email?: string | null;
+  creator_name?: string | null;
   exists: boolean;
   created_at: string;
   updated_at: string;
@@ -414,6 +417,9 @@ export interface SandboxExecution {
   session_id: string | null;
   task_id: string | null;
   root_run_id: string | null;
+  created_by_user_id?: string | null;
+  creator_email?: string | null;
+  creator_name?: string | null;
   started_at: string;
   finished_at: string | null;
   created_at: string;

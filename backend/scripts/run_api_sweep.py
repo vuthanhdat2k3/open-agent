@@ -3,14 +3,14 @@ import hashlib
 import json
 import secrets
 from datetime import datetime, timedelta, timezone
+
 import httpx
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.config import get_settings
 from app.models.application_session import ApplicationSession
 from app.models.membership import Membership
-from app.models.organization import Organization
 from app.models.user import User
 
 API_BASE = "http://127.0.0.1.sslip.io:8000"
