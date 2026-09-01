@@ -180,7 +180,11 @@ export function ChatThread({
         {messages.length === 0 ? (
           <ChatEmptyState
             currentAgent={currentAgent}
+            models={models}
             effectiveModel={effectiveModel}
+            onModelChange={onDefaultModelChange}
+            executionPolicy={pendingExecutionPolicy}
+            onExecutionPolicyChange={onExecutionPolicyChange}
             draft={draft}
             onDraftChange={onDraftChange}
             onSubmit={onSubmit}
