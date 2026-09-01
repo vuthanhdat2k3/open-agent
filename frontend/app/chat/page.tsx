@@ -608,6 +608,7 @@ export default function ChatPage() {
         setStreaming(true);
         setPhase("thinking");
         void approvals.refetch();
+        void refetchMessages();
         await refetchChatRun();
       } catch (error) {
         projectionRef.current = {
