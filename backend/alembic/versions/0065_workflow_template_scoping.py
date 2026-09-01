@@ -18,32 +18,34 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "workflow_templates",
-        sa.Column(
-            "org_id",
-            sa.String(length=36),
-            sa.ForeignKey("organizations.id", ondelete="CASCADE"),
-            nullable=True,
-        ),
-    )
-    op.add_column(
-        "workflow_templates",
-        sa.Column(
-            "created_by_user_id",
-            sa.String(length=36),
-            sa.ForeignKey("users.id", ondelete="SET NULL"),
-            nullable=True,
-        ),
-    )
-    op.create_index("ix_workflow_templates_org_id", "workflow_templates", ["org_id"])
-    op.create_index(
-        "ix_workflow_templates_created_by_user_id", "workflow_templates", ["created_by_user_id"]
-    )
+    with op.batch_alter_table("workflow_templates") as batch_op:
+        batch_op.add_column(
+            sa.Column(
+                "org_id",
+                sa.String(length=36),
+                sa.ForeignKey(
+                    "organizations.id", ondelete="CASCADE", name="fk_workflow_templates_org_id"
+                ),
+                nullable=True,
+            )
+        )
+        batch_op.add_column(
+            sa.Column(
+                "created_by_user_id",
+                sa.String(length=36),
+                sa.ForeignKey(
+                    "users.id", ondelete="SET NULL", name="fk_workflow_templates_created_by_user_id"
+                ),
+                nullable=True,
+            )
+        )
+        batch_op.create_index("ix_workflow_templates_org_id", ["org_id"])
+        batch_op.create_index("ix_workflow_templates_created_by_user_id", ["created_by_user_id"])
 
 
 def downgrade() -> None:
-    op.drop_index("ix_workflow_templates_created_by_user_id", table_name="workflow_templates")
-    op.drop_index("ix_workflow_templates_org_id", table_name="workflow_templates")
-    op.drop_column("workflow_templates", "created_by_user_id")
-    op.drop_column("workflow_templates", "org_id")
+    with op.batch_alter_table("workflow_templates") as batch_op:
+        batch_op.drop_index("ix_workflow_templates_created_by_user_id")
+        batch_op.drop_index("ix_workflow_templates_org_id")
+        batch_op.drop_column("created_by_user_id")
+        batch_op.drop_column("org_id")
