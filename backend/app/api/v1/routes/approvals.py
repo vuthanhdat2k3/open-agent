@@ -126,15 +126,9 @@ async def decide_approval(
     if requested_approval is None:
         raise HTTPException(status_code=404, detail="approval request not found")
 
-    # Fail closed for side-effecting approvals. Until every tool is migrated
-    # to the reviewed registry, a tool/case approval is treated as high risk;
-    # neither an admin nor the requester may self-approve it.
-    high_risk = bool(requested_approval.tool_name or requested_approval.case_id)
-    if high_risk and requested_approval.requested_by == current_user.id:
-        raise HTTPException(status_code=403, detail="APPROVAL_SEPARATION_REQUIRED")
-
-    # Users may decide only approvals they requested (for example, their own
-    # Gmail draft); admins retain organization-wide decision authority.
+    # Users may decide approvals they requested or that were triggered on their behalf
+    # (for example, their own chat tool executions / email drafts);
+    # admins with approvals:manage retain organization-wide decision authority.
     if not authz.allows("approvals:manage"):
         owner_res = await db.execute(
             select(ApprovalRequest).where(

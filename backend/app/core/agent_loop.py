@@ -335,9 +335,11 @@ async def _build_orchestrator_delegate_tools(
 
 
 _ROUTING_SYNONYMS: dict[str, tuple[str, ...]] = {
-    "email": ("email", "gmail", "mail", "thư", "email"),
+    "email": ("email", "gmail", "mail", "thư"),
     "calendar": ("calendar", "lịch", "schedule", "meeting", "cuộc họp"),
-    "drive": ("drive", "tài liệu", "document", "documents", "file", "files"),
+    "drive": ("drive", "google drive", "gdrive"),
+    "write": ("write_file", "viết code", "tao file", "tạo file", "lưu file", "save file", "code html", "code python", "lập trình"),
+    "run": ("run_code", "chạy code", "execute", "thực thi", "sandbox"),
 }
 
 _GOOGLE_TOOL_PREFIXES = ("email_", "drive_", "calendar_")
