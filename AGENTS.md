@@ -96,7 +96,8 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 |---|---|---|---|
 | `dev` | `G:\open-agent` | Nhánh tích hợp chính — không code trực tiếp ở đây | — |
 | `docs/demo-do-deploy-guide` | `G:\open-agent\.worktrees\demo-do-deploy-guide` | Viết docs/demo-digitalocean-deploy.md: hướng dẫn deploy demo full-stack lên DigitalOcean + phân tích chi phí | Kiro |
-| `feat/agent-orchestrator-redesign` | `.worktrees/agent-orchestrator-redesign` | Redesign multi-agent core và session execution policy | Kiro |
+
+> 2026-08-31: Đã merge trực tiếp vào `dev` và dọn dẹp worktree/branch `fix/static-logo-render` (render logo sidebar tĩnh unoptimized + chặn và phân tách ranh giới công cụ Orchestrator vs Worker) và `feat/agent-orchestrator-redesign` (PR #231) theo yêu cầu người dùng.
 
 > 2026-08-31: Đã dọn dẹp worktree/branch `fix/langfuse-trace-coverage` (Sửa 3 lỗ hổng trace continuity
 > của Langfuse: triager node và sub_workflow node giờ kế thừa trace_id của workflow run cha thay vì tạo
