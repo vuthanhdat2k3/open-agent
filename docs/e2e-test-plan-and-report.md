@@ -8,7 +8,8 @@
 3. [Role 2: Operator (AI Engineer / AI Operations Stack)](#3-role-2-operator-ai-engineer--ai-operations-stack)
 4. [Role 3: Org Admin (Organization Administrator)](#4-role-3-org-admin-organization-administrator)
 5. [Role 4: Platform Admin (System Super Admin)](#5-role-4-platform-admin-system-super-admin)
-6. [Tổng kết & Đánh giá Chung](#6-tổng-kết--đánh-giá-chung)
+6. [Kết quả Kiểm thử Từng API Backend (API Sweep Report - 45/45 Passed)](#6-kết-quả-kiểm-thử-từng-api-backend-api-sweep-report---4545-passed)
+7. [Tổng kết & Đánh giá Chung](#7-tổng-kết--đánh-giá-chung)
 
 ---
 
@@ -104,12 +105,63 @@ OpenAgent phân chia 4 vai trò rõ rệt theo ma trận phân quyền:
 
 ---
 
-## 6. Tổng kết & Đánh giá Chung
+## 6. Kết quả Kiểm thử Từng API Backend (API Sweep Report - 45/45 Passed)
 
-- **Tổng số Test Cases**: **26 / 26 PASSED (100%)**
-- **Độ phủ phân quyền**: Đã kiểm tra đầy đủ cả **4 cấp độ Role** (`user`, `operator`, `org_admin`, `platform_admin`).
-- **Khả năng tự phục hồi & toàn vẹn**:
-  - Đã fix triệt để lỗi giật session/click đúp (1-click New Chat).
-  - Đã fix triệt để lỗi CORS khi chạy SSE Workflow run trực tiếp.
-  - Đã fix triệt để lỗi vi phạm khóa ngoại khi chạy các Blueprint Workflow ảo thông qua cơ chế Fork-on-Run / `ensure_persisted()`.
-- **Tài liệu kiểm thử**: Được lưu trữ cố định tại [`docs/e2e-test-plan-and-report.md`](docs/e2e-test-plan-and-report.md).
+Đã chạy sweep tự động toàn diện qua script `run_api_sweep.py` kiểm tra từng endpoint API và xác thực tính thực thi phân quyền RBAC/BFF Session:
+
+| STT | Endpoint API | HTTP Method | Role Thực thi | Mã HTTP Trả về | Kết quả Mong đợi | Trạng thái |
+|---|---|:---:|:---:|:---:|:---:|:---:|
+| 1 | `/health` | GET | User | 200 OK | 200 OK | **PASS** |
+| 2 | `/api/health` | GET | User | 200 OK | 200 OK | **PASS** |
+| 3 | `/api/auth/me` | GET | User | 200 OK | 200 OK | **PASS** |
+| 4 | `/api/auth/me` | GET | Operator | 200 OK | 200 OK | **PASS** |
+| 5 | `/api/auth/me` | GET | Org Admin | 200 OK | 200 OK | **PASS** |
+| 6 | `/api/auth/me` | GET | Platform Admin | 200 OK | 200 OK | **PASS** |
+| 7 | `/api/agents` | GET | User | 200 OK | 200 OK (Read allowed) | **PASS** |
+| 8 | `/api/agents/tools` | GET | Operator | 200 OK | 200 OK | **PASS** |
+| 9 | `/api/agents` | POST | User | 403 Forbidden | 403 Forbidden | **PASS** |
+| 10 | `/api/agents` | POST | Operator | 201 Created | 201 Created | **PASS** |
+| 11 | `/api/providers` | GET | User | 403 Forbidden | 403 Forbidden | **PASS** |
+| 12 | `/api/providers` | GET | Operator | 200 OK | 200 OK | **PASS** |
+| 13 | `/api/providers/templates` | GET | Operator | 200 OK | 200 OK | **PASS** |
+| 14 | `/api/models/tier-matrix` | GET | User | 200 OK | 200 OK (Read allowed) | **PASS** |
+| 15 | `/api/models/tier-matrix` | GET | Operator | 200 OK | 200 OK | **PASS** |
+| 16 | `/api/models/tier-matrix` | PUT | User | 403 Forbidden | 403 Forbidden | **PASS** |
+| 17 | `/api/models` | GET | Operator | 200 OK | 200 OK | **PASS** |
+| 18 | `/api/sessions` | GET | User | 200 OK | 200 OK | **PASS** |
+| 19 | `/api/workflows` | GET | User | 200 OK | 200 OK | **PASS** |
+| 20 | `/api/workflows/node-definitions` | GET | User | 200 OK | 200 OK | **PASS** |
+| 21 | `/api/workflows/node-options` | GET | User | 200 OK | 200 OK | **PASS** |
+| 22 | `/api/workflows/tool-options` | GET | User | 200 OK | 200 OK | **PASS** |
+| 23 | `/api/mcp/servers` | GET | User | 403 Forbidden | 403 Forbidden | **PASS** |
+| 24 | `/api/mcp/servers` | GET | Operator | 200 OK | 200 OK | **PASS** |
+| 25 | `/api/files` | GET | User | 200 OK | 200 OK (Read allowed) | **PASS** |
+| 26 | `/api/files` | GET | Operator | 200 OK | 200 OK | **PASS** |
+| 27 | `/api/workspace/artifacts` | GET | User | 200 OK | 200 OK (Read allowed) | **PASS** |
+| 28 | `/api/workspace/artifacts` | GET | Operator | 200 OK | 200 OK | **PASS** |
+| 29 | `/api/evaluations/suites` | GET | User | 403 Forbidden | 403 Forbidden | **PASS** |
+| 30 | `/api/evaluations/suites` | GET | Operator | 200 OK | 200 OK | **PASS** |
+| 31 | `/api/customer-intelligence/cases` | GET | User | 200 OK | 200 OK | **PASS** |
+| 32 | `/api/customer-intelligence/calendar-connections` | GET | User | 200 OK | 200 OK | **PASS** |
+| 33 | `/api/email-intelligence/trusted-rules` | GET | User | 200 OK | 200 OK | **PASS** |
+| 34 | `/api/approvals` | GET | User | 200 OK | 200 OK | **PASS** |
+| 35 | `/api/debug/sessions` | GET | User | 200 OK | 200 OK (Read allowed) | **PASS** |
+| 36 | `/api/debug/sessions` | GET | Operator | 200 OK | 200 OK | **PASS** |
+| 37 | `/api/debug/usage` | GET | Org Admin | 200 OK | 200 OK | **PASS** |
+| 38 | `/api/orgs/{org_id}/members` | GET | Operator | 403 Forbidden | 403 Forbidden | **PASS** |
+| 39 | `/api/orgs/{org_id}/members` | GET | Org Admin | 200 OK | 200 OK | **PASS** |
+| 40 | `/api/orgs/{org_id}/quota` | GET | Operator | 403 Forbidden | 403 Forbidden | **PASS** |
+| 41 | `/api/orgs/{org_id}/quota` | GET | Org Admin | 200 OK | 200 OK | **PASS** |
+| 42 | `/api/admin/email-intelligence/overview` | GET | Org Admin | 200 OK | 200 OK | **PASS** |
+| 43 | `/api/orgs` | GET | Org Admin | 200 OK | 200 OK (Read own org) | **PASS** |
+| 44 | `/api/orgs` | POST | Org Admin | 403 Forbidden | 403 Forbidden | **PASS** |
+| 45 | `/api/orgs` | GET | Platform Admin | 200 OK | 200 OK (Full tenant list) | **PASS** |
+
+---
+
+## 7. Tổng kết & Đánh giá Chung
+
+- **E2E UI Test Cases**: **26 / 26 PASSED (100%)**
+- **Backend API Sweep Test Cases**: **45 / 45 PASSED (100%)**
+- **Tất cả các Role** (`user`, `operator`, `org_admin`, `platform_admin`) đều hoạt động chính xác theo thiết kế kiến trúc phân quyền và nghiệp vụ.
+- **Tài liệu kiểm thử**: Được cập nhật đầy đủ và lưu trữ cố định tại [`docs/e2e-test-plan-and-report.md`](docs/e2e-test-plan-and-report.md).
