@@ -56,7 +56,11 @@ def _skip_lifespan_db_init(monkeypatch: pytest.MonkeyPatch) -> None:
     async def _noop_init_db() -> None:
         return None
 
+    async def _noop_sync_system_agents(_db):
+        return []
+
     monkeypatch.setattr(main, "init_db", _noop_init_db)
+    monkeypatch.setattr(main, "sync_system_agents_all_orgs", _noop_sync_system_agents)
     yield
 
 

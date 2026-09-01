@@ -13,12 +13,13 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.router import api_router
 from app.config import get_settings
+from app.core.agents.sync import sync_system_agents_all_orgs
 from app.core.observability.llm_trace import NoopSink, set_default_sink
 from app.core.observability.logging import configure_logging, request_context_middleware
 from app.core.observability.metrics import mount_metrics
 from app.core.observability.tracing import init_tracing
 from app.core.security import allowed_origins
-from app.db.session import engine, get_db, init_db
+from app.db.session import SessionLocal, engine, get_db, init_db
 from app.schemas.common import HealthResponse
 
 logger = structlog.get_logger(__name__)
@@ -27,6 +28,8 @@ logger = structlog.get_logger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    async with SessionLocal() as db:
+        await sync_system_agents_all_orgs(db)
     sink = None
     settings = get_settings()
     if settings.observability_enabled and settings.langfuse_enabled:

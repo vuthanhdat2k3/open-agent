@@ -9,6 +9,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
+from app.core.agents.sync import sync_system_agents_for_org
 from app.core.auth.api_key import generate_api_key
 from app.core.auth.password import hash_password
 from app.core.observability.audit import log_action
@@ -159,6 +160,7 @@ async def create_org(
             initial_password=initial_pass,
         )
 
+    await sync_system_agents_for_org(db, org.id)
     await db.commit()
     await db.refresh(org)
     return OrgOut(id=org.id, name=org.name, slug=org.slug, created_at=org.created_at)
