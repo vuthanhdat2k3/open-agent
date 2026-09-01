@@ -451,11 +451,11 @@ register(
     ToolSpec(
         name="run_code",
         description=(
-            "Execute Python or bash inside an isolated Docker container and return "
+            "Execute Python, bash, or JavaScript/Node.js inside an isolated Docker container and return "
             "its combined output plus exit code. Code cannot access the host or "
-            "network (unless enabled). Provide 'language' (python|bash) and 'code'. "
+            "network (unless enabled). Provide 'language' (python|bash|javascript) and 'code'. "
             "Optional 'filename', 'timeout' (seconds). Use language='python' for "
-            "Python code. The bash image is minimal and does not include python, "
+            "Python code, language='javascript' for Node.js. The bash image is minimal and does not include python, "
             "pip, npm, apt-get, or build tools.\n\n"
             "NOTE FOR GRAPHICS & DRAWINGS: The sandbox runs in headless mode (no GUI/turtle/X11). "
             "To draw or display visual graphics (flowers, charts, diagrams) directly in the Chat UI, "
@@ -470,8 +470,8 @@ register(
             "properties": {
                 "language": {
                     "type": "string",
-                    "description": "python or bash",
-                    "enum": ["python", "bash"],
+                    "description": "python, bash, or javascript (Node.js)",
+                    "enum": ["python", "bash", "javascript", "node"],
                 },
                 "code": {
                     "type": "string",
@@ -483,7 +483,7 @@ register(
                 },
                 "filename": {
                     "type": "string",
-                    "description": "Optional filename (default script.py/script.sh)",
+                    "description": "Optional filename (default script.py/script.sh/script.js)",
                 },
                 "timeout": {
                     "type": "number",

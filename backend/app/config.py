@@ -112,7 +112,7 @@ class Settings(BaseSettings):
     sandbox_enabled: bool = True
     sandbox_docker_image_python: str = "python:3.11-slim"
     sandbox_docker_image_bash: str = "bash:5"
-    sandbox_docker_image_node: str = "node:20-slim"
+    sandbox_docker_image_node: str = "node:20-alpine"
     sandbox_memory: str = "256m"
     sandbox_cpus: float = 1.0
     sandbox_default_timeout: float = 30.0
