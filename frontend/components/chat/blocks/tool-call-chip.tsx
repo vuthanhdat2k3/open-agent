@@ -8,7 +8,7 @@ interface ToolCallChipProps {
 }
 
 export function ToolCallChip({ block }: ToolCallChipProps) {
-  const isSubagent = block.name === "call_agent" || Boolean(block.subagent);
+  const isSubagent = block.name === "call_agent" || block.name.startsWith("delegate_to_") || Boolean(block.subagent);
   const isCode = block.name === "run_code" || block.name === "write_file";
 
   const statusIcon =
@@ -28,7 +28,8 @@ export function ToolCallChip({ block }: ToolCallChipProps) {
     <Wrench className="h-3 w-3 text-muted-foreground/60" aria-hidden="true" />
   );
 
-  const displayName = block.subagent?.agentName ? `subagent: ${block.subagent.agentName}` : block.name;
+  const subagentName = block.subagent?.agentName || (block.name.startsWith("delegate_to_") ? block.name.replace(/^delegate_to_/, "").replace(/_/g, " ") : null);
+  const displayName = subagentName ? `subagent: ${subagentName}` : block.name;
 
   return (
     <span

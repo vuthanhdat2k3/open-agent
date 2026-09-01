@@ -67,7 +67,7 @@ interface ToolCallCardProps {
 export function ToolCallCard({ block, compact = false }: ToolCallCardProps) {
     const { locale, tx } = useTranslation();
   const isCodeTool = block.name === "run_code" || block.name === "write_file";
-  const isSubagent = block.name === "call_agent" || Boolean(block.subagent);
+  const isSubagent = block.name === "call_agent" || block.name.startsWith("delegate_to_") || Boolean(block.subagent);
   const isSvg =
     block.result != null &&
     (block.result.trim().startsWith("<svg") || block.result.includes("xmlns=\"http://www.w3.org/2000/svg\""));
@@ -88,6 +88,7 @@ export function ToolCallCard({ block, compact = false }: ToolCallCardProps) {
   const isRunning = block.status === "running";
   const isError = block.status === "error";
   const subagent = block.subagent;
+  const subagentDisplayName = subagent?.agentName || (block.name.startsWith("delegate_to_") ? block.name.replace(/^delegate_to_/, "").replace(/_/g, " ") : null);
 
   return (
     <div className={`w-full shrink-0 rounded-xl border border-border bg-card/80 backdrop-blur-md shadow-card overflow-hidden my-1.5 transition-all ${compact ? "border-primary/30" : ""}`}>
@@ -104,8 +105,8 @@ export function ToolCallCard({ block, compact = false }: ToolCallCardProps) {
           <span className="uppercase tracking-wider font-bold shrink-0">
             {isSubagent ? tx("Gọi subagent", "Subagent Call") : isCodeTool ? tx("Thực thi mã", "Code Execution") : tx("Gọi tool", "Tool Call")}
           </span>
-          <Badge variant="outline" className="font-mono text-[9px] bg-muted text-foreground border-border shrink-0">
-            {subagent?.agentName ? `${subagent.agentName}` : block.name}
+          <Badge variant="outline" className="font-mono text-[9px] bg-muted text-foreground border-border shrink-0 capitalize">
+            {subagentDisplayName || block.name}
           </Badge>
           {targetPath && (
             <span className="font-mono text-[10px] text-muted-foreground bg-muted/40 px-1.5 py-0.2 rounded border border-border/30 truncate max-w-[200px]">
@@ -143,7 +144,9 @@ export function ToolCallCard({ block, compact = false }: ToolCallCardProps) {
               <CollapsibleTrigger className="group flex w-full cursor-pointer items-center justify-between rounded bg-muted/30 px-2.5 py-1 text-[10px] font-medium text-indigo-300 hover:bg-muted/50">
                 <span className="flex items-center gap-1.5">
                   <Brain className="h-3 w-3 text-indigo-400" />
-                  {tx("Tư duy subagent", "Subagent Thinking")}{isRunning && <span className="inline-block h-1.5 w-1.5 rounded-full bg-indigo-400 animate-ping" />}
+                  {subagentDisplayName
+                    ? tx(`Tư duy của Subagent (${subagentDisplayName})`, `Subagent (${subagentDisplayName}) Thinking`)
+                    : tx("Tư duy subagent", "Subagent Thinking")}{isRunning && <span className="inline-block h-1.5 w-1.5 rounded-full bg-indigo-400 animate-ping" />}
                 </span>
                 <ChevronDown className="h-3 w-3 transition-transform duration-200 group-data-[state=closed]:-rotate-90" />
               </CollapsibleTrigger>
