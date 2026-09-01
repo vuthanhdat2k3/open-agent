@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app import models  # noqa: F401
 from app.config import get_settings
 from app.core.tools import live_run
 from app.db.base import Base

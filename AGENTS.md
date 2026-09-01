@@ -96,6 +96,11 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 |---|---|---|---|
 | `dev` | `G:\open-agent` | Nhánh tích hợp chính — không code trực tiếp ở đây | — |
 | `docs/demo-do-deploy-guide` | `G:\open-agent\.worktrees\demo-do-deploy-guide` | Viết docs/demo-digitalocean-deploy.md: hướng dẫn deploy demo full-stack lên DigitalOcean + phân tích chi phí | Kiro |
+| `feat/system-agent-startup-sync` | `.worktrees/system-agent-startup-sync` | Đồng bộ System Agent Blueprints lúc startup | Kiro |
+
+> 2026-09-01: Đã merge trực tiếp vào `dev` và dọn dẹp worktree `feat/sandbox-isolation-and-operator-view` (Sandbox Isolation Zero-Trust & Live Run Output Panel Drawer, streaming real-time output, stop controls, creator deletion rights, Node.js/Python/Bash runner) theo yêu cầu người dùng.
+
+> 2026-09-01: Đã merge trực tiếp vào `dev` và dọn dẹp worktree `feat/workflow-marketplace-scoping` (Chuẩn hóa Marketplace workflow templates: User mới có danh sách workflow trống, System Templates thuộc Marketplace toàn cục không có người tạo và không thể xóa, Custom Templates theo Org hiển thị nút Xóa/Gỡ bỏ cho chính Creator hoặc Org Admin) theo yêu cầu người dùng.
 
 > 2026-09-01: Đã merge trực tiếp vào `dev` và dọn dẹp worktree/branch `fix/chat-session-sync-race` (Sửa triệt để race condition: dùng transitioningSessionRef/transitioningAgentRef ngăn URL watcher phục hồi session cũ trong render tick trung gian của Next.js router, tạo session mới chuẩn xác chỉ với 1 click) theo yêu cầu người dùng.
 
