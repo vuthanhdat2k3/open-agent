@@ -78,12 +78,22 @@ export function ChatHeaderControls({
     : effectiveExecutionPolicy === "full-access"
       ? tx("Toàn quyền tự động", "Full access")
       : tx("Cần phê duyệt", "Manual approval");
-  const policyOptions: Array<{ value: ExecutionPolicy; label: string }> = [
-    { value: "read-only", label: tx("Chỉ đọc", "Read-only") },
-    { value: "manual", label: tx("Cần phê duyệt", "Manual approval") },
-    ...(canUseFullAccess
-      ? [{ value: "full-access" as const, label: tx("Toàn quyền tự động", "Full access") }]
-      : []),
+  const policyOptions: Array<{ value: ExecutionPolicy; label: string; description: string }> = [
+    {
+      value: "read-only",
+      label: tx("Chỉ đọc", "Read-only"),
+      description: tx("Chỉ cho phép truy vấn an toàn, chặn ghi và chạy mã", "Safe queries only, blocks writes and execution"),
+    },
+    {
+      value: "manual",
+      label: tx("Cần phê duyệt", "Manual approval"),
+      description: tx("Yêu cầu người dùng duyệt trước khi ghi hoặc chạy mã", "Requires user approval for mutating or dangerous actions"),
+    },
+    {
+      value: "full-access",
+      label: tx("Toàn quyền tự động", "Full access"),
+      description: tx("Tự động chạy mọi công cụ mà không cần phê duyệt", "Autonomous execution for all permitted tools"),
+    },
   ];
 
   return (
@@ -149,16 +159,17 @@ export function ChatHeaderControls({
             <ChevronDown className="h-3 w-3 opacity-60" aria-hidden="true" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-56">
-          <DropdownMenuLabel>{tx("Quyền thực thi", "Execution access")}</DropdownMenuLabel>
+        <DropdownMenuContent align="start" className="w-64">
+          <DropdownMenuLabel>{tx("Quyền thực thi hệ thống", "System Execution Policy")}</DropdownMenuLabel>
           <DropdownMenuSeparator />
           {policyOptions.map((option) => (
             <DropdownMenuItem
               key={option.value}
               onSelect={() => onExecutionPolicyChange(option.value)}
-              className={option.value === effectiveExecutionPolicy ? "font-semibold text-foreground" : undefined}
+              className={`flex flex-col items-start gap-0.5 py-1.5 ${option.value === effectiveExecutionPolicy ? "font-semibold text-foreground bg-primary/10" : undefined}`}
             >
-              {option.label}
+              <span className="text-xs font-medium">{option.label}</span>
+              <span className="text-[10px] text-muted-foreground leading-tight font-normal">{option.description}</span>
             </DropdownMenuItem>
           ))}
         </DropdownMenuContent>

@@ -109,15 +109,6 @@ function toolGroup(name: string): string {
   return "other";
 }
 
-const RISK_TIERS = [
-  { key: "safe", label: ["An toàn", "Safe"], description: ["Không có tác dụng phụ", "No side effects"] },
-  { key: "read", label: ["Đọc", "Read"], description: ["Đọc dữ liệu và tệp", "Read data and files"] },
-  { key: "write", label: ["Ghi", "Write"], description: ["Tạo hoặc thay đổi dữ liệu", "Create or change data"] },
-  { key: "network", label: ["Mạng", "Network"], description: ["Cuộc gọi mạng đi ra ngoài", "Outbound network calls"] },
-  { key: "execute", label: ["Thực thi", "Execute"], description: ["Chạy mã trong sandbox", "Run sandboxed code"] },
-  { key: "dangerous", label: ["Nguy hiểm", "Dangerous"], description: ["Thao tác tác động cao", "High-impact operations"] },
-] as const;
-
 export default function AgentsPage() {
   const { t, dict, locale, tx } = useTranslation();
   const toolGroupLabel = (group: string) => {
@@ -313,14 +304,6 @@ export default function AgentsPage() {
   const toggleTool = (t: string) =>
     setSelectedTools((cur) => (cur.includes(t) ? cur.filter((x) => x !== t) : [...cur, t]));
 
-  const toggleRiskTier = (tier: string) =>
-    setForm((current) => ({
-      ...current,
-      allowed_risk_tiers: current.allowed_risk_tiers.includes(tier)
-        ? current.allowed_risk_tiers.filter((item) => item !== tier)
-        : [...current.allowed_risk_tiers, tier],
-    }));
-
   const handleSubmit = async () => {
     try {
       if (editingAgent) {
@@ -468,28 +451,6 @@ export default function AgentsPage() {
                     </div>
 
                     <div className="space-y-2">
-                      <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{tx("Mức độ rủi ro cho phép", "Allowed Risk Tiers")}</Label>
-                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                        {RISK_TIERS.map((tier) => {
-                          const active = form.allowed_risk_tiers.includes(tier.key);
-                          return (
-                            <button
-                              key={tier.key}
-                              type="button"
-                              onClick={() => toggleRiskTier(tier.key)}
-                              className={`rounded-lg border p-2 text-left text-xs transition-colors ${
-                                active ? "border-primary bg-primary/10" : "border-border bg-background/50 hover:border-primary/40"
-                              }`}
-                            >
-                              <p className="font-semibold text-foreground">{tx(tier.label[0], tier.label[1])}</p>
-                              <p className="text-[10px] text-muted-foreground">{tx(tier.description[0], tier.description[1])}</p>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
                       {form.kind === "orchestrator" && (
                         <div className="rounded-lg border border-primary/30 bg-primary/5 p-2.5 text-xs text-foreground/90 flex items-start gap-2">
                           <Sparkles className="h-4 w-4 text-primary shrink-0 mt-0.5" />
@@ -532,8 +493,7 @@ export default function AgentsPage() {
                             <div className="grid gap-2 sm:grid-cols-2">
                               {items.map((tool) => {
                                 const selected = selectedTools.includes(tool.name);
-                                const tierAllowed = !tool.risk_tier || form.allowed_risk_tiers.includes(tool.risk_tier);
-                                const disabled = (!tool.available || !tierAllowed) && !selected;
+                                const disabled = !tool.available && !selected;
                                 return (
                                   <button
                                     key={tool.name}
