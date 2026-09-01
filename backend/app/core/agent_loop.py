@@ -308,16 +308,16 @@ async def _build_orchestrator_delegate_tools(
             )
 
         spec = ToolSpec(
-                name=tool_name,
-                description=description,
-                input_schema={
-                    "type": "object",
-                    "properties": {"instruction": {"type": "string"}},
-                    "required": ["instruction"],
-                },
-                run=run_delegate,
-                risk_tier=RiskTier.execute,
-            )
+            name=tool_name,
+            description=description,
+            input_schema={
+                "type": "object",
+                "properties": {"instruction": {"type": "string"}},
+                "required": ["instruction"],
+            },
+            run=run_delegate,
+            risk_tier=RiskTier.safe,
+        )
         delegate_specs.append(spec)
         delegate_by_agent_id[target.id] = spec
         lines.append(f"- {target.id}: {target.name} - {description}")
