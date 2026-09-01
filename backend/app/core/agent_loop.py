@@ -972,7 +972,7 @@ async def _agent_stream(
     if effective_session_id:
         events = await slog.load_events(db, effective_session_id)
         if events:
-            messages.extend(derive_messages(events))
+            messages.extend(derive_messages(events, repair_crash_tail=not bool(approval_resume_id)))
         else:
             res = await db.execute(
                 select(Message).where(Message.session_id == effective_session_id).order_by(Message.position)
