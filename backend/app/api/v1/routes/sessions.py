@@ -7,6 +7,7 @@ from app.dependencies import get_current_org_id, get_db, require_permission
 from app.models.memory import SessionMemory
 from app.models.message import Message
 from app.models.session import Session
+from app.models.session_event import SessionEvent
 from app.schemas.chat import ChatMessageOut, SessionOut
 
 router = APIRouter(
@@ -70,6 +71,12 @@ async def delete_session(
     await db.execute(
         delete(Message).where(Message.session_id == session_id, Message.org_id == org_id)
     )
+    await db.execute(
+        delete(SessionEvent).where(
+            SessionEvent.session_id == session_id, SessionEvent.org_id == org_id
+        )
+    )
     await db.delete(s)
     await db.commit()
+    return {"ok": True, "id": session_id}
     return {"ok": True, "id": session_id}
