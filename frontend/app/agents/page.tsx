@@ -20,6 +20,7 @@ import {
   Layers,
   ShieldCheck,
   RefreshCw,
+  Scaling,
 } from "lucide-react";
 import {
   useAgents,
@@ -38,6 +39,7 @@ import {
   getCompanionConfig,
   saveCompanionConfig,
   AVATAR_3D_PRESETS,
+  COMPANION_SCALE_PRESETS,
   type CompanionConfig,
 } from "@/lib/operator/companion-config";
 import { Button } from "@/components/ui/button";
@@ -835,7 +837,13 @@ export default function AgentsPage() {
                 )}
 
                 {/* Simulated 3D Model HUD */}
-                <div className="relative h-56 w-56">
+                <div
+                  className="relative transition-all duration-300 flex items-center justify-center"
+                  style={{
+                    width: `${Math.round(224 * ((companionConfig.avatarScale || 85) / 100))}px`,
+                    height: `${Math.round(224 * ((companionConfig.avatarScale || 85) / 100))}px`,
+                  }}
+                >
                   <svg className="pointer-events-none absolute inset-0 animate-spin-slow opacity-65" viewBox="0 0 200 200" fill="none" stroke="currentColor">
                     <circle cx="100" cy="100" r="94" stroke="currentColor" className="text-primary" strokeWidth="1" strokeDasharray="4 8" opacity="0.6" />
                     <circle cx="100" cy="100" r="86" stroke="currentColor" className="text-primary" strokeWidth="1.5" strokeDasharray="24 16 8 16" opacity="0.8" />
@@ -868,6 +876,12 @@ export default function AgentsPage() {
               <div className="w-full mt-4 border-t border-border/60 pt-3 text-center text-xs text-muted-foreground">
                 <p className="font-medium text-foreground">{companionConfig.name}</p>
                 <p className="text-[11px] text-muted-foreground">{companionConfig.tagline}</p>
+                <div className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-border/70 bg-muted/40 px-2.5 py-1 text-[11px] font-mono text-foreground">
+                  <Scaling className="h-3 w-3 text-primary" />
+                  <span>
+                    {tx("Kích thước:", "Scale:")} {companionConfig.avatarScale || 85}% ({Math.round(190 * ((companionConfig.avatarScale || 85) / 100))} × {Math.round(185 * ((companionConfig.avatarScale || 85) / 100))} px)
+                  </span>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -996,10 +1010,111 @@ export default function AgentsPage() {
                 </div>
               </div>
 
-              {/* Section C: Docking Position & Screen Placement */}
+              {/* Section 3: Avatar Display Scale & Dimensions */}
+              <div className="space-y-3 border-t border-border/60 pt-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-primary flex items-center gap-1.5">
+                      <Scaling className="h-3.5 w-3.5" />
+                      {tx("3. Kích thước hiển thị & tỷ lệ mô hình", "3. Display Size & Model Scale")}
+                    </h3>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      {tx(
+                        "Tùy chỉnh độ lớn của robot companion để góc làm việc thoáng và tránh che khuất nội dung quan trọng.",
+                        "Customize the 3D avatar scale to keep workspace clear and unobstructed."
+                      )}
+                    </p>
+                  </div>
+                  <Badge variant="secondary" className="font-mono text-xs font-semibold">
+                    {companionConfig.avatarScale || 85}% ({Math.round(190 * ((companionConfig.avatarScale || 85) / 100))} × {Math.round(185 * ((companionConfig.avatarScale || 85) / 100))} px)
+                  </Badge>
+                </div>
+
+                {/* Preset Scale Buttons */}
+                <div className="grid gap-2.5 sm:grid-cols-4">
+                  {COMPANION_SCALE_PRESETS.map((preset) => {
+                    const presetLabels: Record<string, { label: string; desc: string }> = {
+                      compact: {
+                        label: tx("Nhỏ gọn (70%)", "Compact (70%)"),
+                        desc: tx("133 × 130 px · Gọn nhẹ", "133 × 130 px · Minimal"),
+                      },
+                      standard: {
+                        label: tx("Tiêu chuẩn (85%)", "Standard (85%)"),
+                        desc: tx("162 × 157 px · Cân đối nhất", "162 × 157 px · Recommended"),
+                      },
+                      default: {
+                        label: tx("Nguyên bản (100%)", "Default (100%)"),
+                        desc: tx("190 × 185 px · Kích thước gốc", "190 × 185 px · Original"),
+                      },
+                      large: {
+                        label: tx("Lớn (115%)", "Large (115%)"),
+                        desc: tx("219 × 213 px · Màn hình lớn", "219 × 213 px · Hi-DPI"),
+                      },
+                    };
+                    const isSelected = (companionConfig.avatarScale || 85) === preset.scale;
+                    const meta = presetLabels[preset.id] || { label: `${preset.scale}%`, desc: "" };
+                    return (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => setCompanionConfig({ ...companionConfig, avatarScale: preset.scale })}
+                        className={`rounded-lg border p-2.5 text-left transition-all ${
+                          isSelected
+                            ? "border-primary bg-primary/10 shadow-sm ring-1 ring-primary/30"
+                            : "border-border/80 bg-card hover:border-border hover:bg-muted/30"
+                        }`}
+                      >
+                        <p className={`text-xs font-semibold ${isSelected ? "text-primary" : "text-foreground"}`}>
+                          {meta.label}
+                        </p>
+                        <p className="mt-0.5 text-[10px] text-muted-foreground">{meta.desc}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Slider for smooth continuous adjustment */}
+                <div className="space-y-2 rounded-lg border border-border/70 bg-card/50 p-3.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground font-medium flex items-center gap-1.5">
+                      <SlidersHorizontal className="h-3.5 w-3.5 text-primary" />
+                      {tx("Thanh trượt tinh chỉnh tỷ lệ tự do:", "Fine-tune Scale Range:")}
+                    </span>
+                    <span className="font-mono font-bold text-primary">
+                      {companionConfig.avatarScale || 85}%
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3 pt-1">
+                    <span className="text-[11px] font-mono text-muted-foreground">60%</span>
+                    <Slider
+                      value={[companionConfig.avatarScale || 85]}
+                      min={60}
+                      max={130}
+                      step={5}
+                      onValueChange={(val) => setCompanionConfig({ ...companionConfig, avatarScale: val[0] })}
+                      className="flex-1"
+                    />
+                    <span className="text-[11px] font-mono text-muted-foreground">130%</span>
+                  </div>
+                  <div className="flex items-center justify-between pt-1 text-[11px] text-muted-foreground">
+                    <span>{tx("Mặc định đề xuất: 85% (Tiêu chuẩn tối ưu trải nghiệm)", "Recommended default: 85% (Optimal UX)")}</span>
+                    {companionConfig.avatarScale !== 85 && (
+                      <button
+                        type="button"
+                        onClick={() => setCompanionConfig({ ...companionConfig, avatarScale: 85 })}
+                        className="text-primary hover:underline font-medium"
+                      >
+                        {tx("Đặt lại về 85%", "Reset to 85%")}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Section 4: Docking Position & Screen Placement */}
               <div className="space-y-3 border-t border-border/60 pt-4">
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-primary">
-                  {tx("3. Vị trí mặc định trên màn hình & neo đậu", "3. Default Screen Placement & Docking")}</h3>
+                  {tx("4. Vị trí mặc định trên màn hình & neo đậu", "4. Default Screen Placement & Docking")}</h3>
                 <div className="grid gap-3 sm:grid-cols-4">
                   {[
                     { id: "bottom-right", label: tx("Dưới-phải (Mặc định)", "Bottom-Right (Default)") },
@@ -1031,10 +1146,10 @@ export default function AgentsPage() {
                 </div>
               </div>
 
-              {/* Section D: Feature Toggles & Capabilities */}
+              {/* Section 5: Feature Toggles & Capabilities */}
               <div className="space-y-3 border-t border-border/60 pt-4">
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-primary">
-                  {tx("4. Khả năng tương tác & điều khiển bề mặt", "4. Interactive Capabilities & Surface Controls")}</h3>
+                  {tx("5. Khả năng tương tác & điều khiển bề mặt", "5. Interactive Capabilities & Surface Controls")}</h3>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="flex items-center gap-2.5 rounded-lg border border-border/70 p-3 text-xs text-foreground cursor-pointer hover:bg-muted/30">
                     <input
