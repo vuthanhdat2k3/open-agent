@@ -51,6 +51,7 @@ export function AppSidebar({ queryClient }: { queryClient: QueryClient }) {
               height={36}
               className="h-full w-full object-cover"
               priority
+              unoptimized
             />
           </div>
           <div className="min-w-0 group-data-[collapsible=icon]:hidden">

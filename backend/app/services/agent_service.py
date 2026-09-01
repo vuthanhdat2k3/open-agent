@@ -30,6 +30,39 @@ RELEASE_CONFIG_FIELDS = (
     "temperature",
 )
 
+ALLOWED_ORCHESTRATOR_TOOLS: frozenset[str] = frozenset({
+    "call_agent",
+    "workflow_list",
+    "get_current_time",
+    "save_memory",
+    "call_memory",
+    "memory_store",
+    "memory_recall",
+    "call_external_agent",
+})
+
+PROHIBITED_WORKER_TOOLS: frozenset[str] = frozenset({"call_agent"})
+
+
+def _validate_agent_kind_tools(kind: str | None, tools: list[str] | None) -> None:
+    if not tools:
+        return
+    effective_kind = kind or "worker"
+    if effective_kind == "orchestrator":
+        disallowed = [t for t in tools if t not in ALLOWED_ORCHESTRATOR_TOOLS]
+        if disallowed:
+            raise ValueError(
+                f"Orchestrator agents cannot be directly assigned domain worker tools ({', '.join(disallowed)}). "
+                "Orchestrators delegate specialized tasks to worker agents via call_agent."
+            )
+    elif effective_kind == "worker":
+        prohibited = [t for t in tools if t in PROHIBITED_WORKER_TOOLS]
+        if prohibited:
+            raise ValueError(
+                f"Worker agents cannot be assigned {', '.join(prohibited)}. "
+                "Multi-agent delegation is governed exclusively by the orchestrator."
+            )
+
 
 class QualityGateBlocked(ValueError):
     """Publishing was refused because the release regressed on its suite.
@@ -89,6 +122,7 @@ class AgentService:
         m = await self.model_repo.get(org_id, data["model_id"])
         if m is None or not m.active:
             raise ValueError("model not found or inactive")
+        _validate_agent_kind_tools(data.get("kind"), data.get("tools"))
         data["org_id"] = org_id
         if user_id:
             data["created_by_user_id"] = user_id
@@ -495,6 +529,7 @@ class AgentService:
         publish: bool,
     ) -> AgentRelease:
         config = _snapshot(agent, overrides)
+        _validate_agent_kind_tools(config.get("kind"), config.get("tools"))
         agent.latest_release_number += 1
         release = AgentRelease(
             org_id=agent.org_id,
@@ -772,6 +807,8 @@ class AgentService:
                     "description": spec.description,
                     "available": tool_available(spec.name),
                     "risk_tier": spec.risk_tier.value,
+                    "allowed_for_orchestrator": spec.name in ALLOWED_ORCHESTRATOR_TOOLS,
+                    "allowed_for_worker": spec.name not in PROHIBITED_WORKER_TOOLS,
                 }
             )
         res = await self.repo.db.execute(
@@ -792,6 +829,8 @@ class AgentService:
                     "name": t.name,
                     "description": t.description,
                     "available": True,
+                    "allowed_for_orchestrator": t.name in ALLOWED_ORCHESTRATOR_TOOLS,
+                    "allowed_for_worker": t.name not in PROHIBITED_WORKER_TOOLS,
                 }
             )
         return out

@@ -110,7 +110,7 @@ async def update_agent(
             user_id,
         )
     except ValueError as e:
-        raise HTTPException(404, str(e))
+        raise _release_error(e)
     if agent.latest_release_number != previous_release_number:
         await log_action(
             db,
