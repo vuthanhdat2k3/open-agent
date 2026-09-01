@@ -96,6 +96,9 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 |---|---|---|---|
 | `dev` | `G:\open-agent` | Nhánh tích hợp chính — không code trực tiếp ở đây | — |
 | `docs/demo-do-deploy-guide` | `G:\open-agent\.worktrees\demo-do-deploy-guide` | Viết docs/demo-digitalocean-deploy.md: hướng dẫn deploy demo full-stack lên DigitalOcean + phân tích chi phí | Kiro |
+| `feat/companion-size-config` | `.worktrees/companion-size-config` | Cho phép operator tùy chỉnh kích thước companion 3D avatar | Antigravity |
+
+> 2026-08-31: Đã merge trực tiếp vào `dev` và dọn dẹp worktree/branch `feat/org-model-tier-matrix` (Triển khai Org-wide Model Tier Matrix 3 tầng: Economy, Balanced, Frontier cho toàn bộ multi-agent network) theo yêu cầu người dùng.
 
 > 2026-08-31: Đã merge trực tiếp vào `dev` và dọn dẹp worktree/branch `fix/static-logo-render` (render logo sidebar tĩnh unoptimized + chặn và phân tách ranh giới công cụ Orchestrator vs Worker) và `feat/agent-orchestrator-redesign` (PR #231) theo yêu cầu người dùng.
 
