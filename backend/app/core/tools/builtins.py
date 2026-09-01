@@ -488,7 +488,7 @@ register(
             "required": ["target_agent_id", "instruction"],
         },
         run=_call_agent,
-        risk_tier=RiskTier.execute,
+        risk_tier=RiskTier.safe,
     )
 )
 
