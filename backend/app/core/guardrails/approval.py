@@ -31,6 +31,7 @@ async def request_approval(
             select(ApprovalRequest).where(
                 ApprovalRequest.org_id == org_id,
                 ApprovalRequest.idempotency_key == idempotency_key,
+                ApprovalRequest.status == "pending",
             )
         )
         if existing is not None:
