@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Copy, Check, ShieldCheck, ShieldX, ShieldAlert, Bot, XCircle } from "lucide-react";
+import { Copy, Check, ShieldCheck, ShieldX, ShieldAlert, Bot, XCircle, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -20,8 +20,9 @@ export interface ChatMessageItemProps {
 }
 
 function ChatMessageItemBase({ message: m, debug, onApprovalDecision }: ChatMessageItemProps) {
-    const { locale, tx } = useTranslation();
+  const { locale, tx } = useTranslation();
   const [copied, setCopied] = React.useState(false);
+  const [isDeciding, setIsDeciding] = React.useState(false);
 
   const copyText = React.useCallback(async (text: string) => {
     try {
@@ -99,18 +100,40 @@ function ChatMessageItemBase({ message: m, debug, onApprovalDecision }: ChatMess
               size="sm"
               variant="default"
               className="gap-1 text-xs"
-              onClick={() => onApprovalDecision(m.approvalId, "approved")}
+              disabled={isDeciding}
+              onClick={async () => {
+                setIsDeciding(true);
+                try {
+                  await onApprovalDecision(m.approvalId || m.id, "approved");
+                } finally {
+                  setIsDeciding(false);
+                }
+              }}
             >
-              <ShieldCheck className="h-3.5 w-3.5" />
-              {tx("Phê duyệt", "Approve")}</Button>
+              {isDeciding ? (
+                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <ShieldCheck className="h-3.5 w-3.5" />
+              )}
+              {tx("Phê duyệt", "Approve")}
+            </Button>
             <Button
               size="sm"
               variant="destructive"
               className="gap-1 text-xs"
-              onClick={() => onApprovalDecision(m.approvalId, "rejected")}
+              disabled={isDeciding}
+              onClick={async () => {
+                setIsDeciding(true);
+                try {
+                  await onApprovalDecision(m.approvalId || m.id, "rejected");
+                } finally {
+                  setIsDeciding(false);
+                }
+              }}
             >
               <ShieldX className="h-3.5 w-3.5" />
-              {tx("Từ chối", "Reject")}</Button>
+              {tx("Từ chối", "Reject")}
+            </Button>
           </div>
         )}
       </div>

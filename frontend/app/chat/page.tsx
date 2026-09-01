@@ -557,14 +557,19 @@ export default function ChatPage() {
 
   const handleApprovalDecision = React.useCallback(
     async (messageId: string, decision: "approved" | "rejected") => {
-      const message = projectionRef.current.messages.find((item) => item.id === messageId);
+      const message = projectionRef.current.messages.find(
+        (item) => item.id === messageId || (item.role === "approval" && item.approvalId === messageId),
+      );
       if (!message || message.role !== "approval") return;
       const approvalId = message.approvalId;
+      const targetId = message.id;
 
       projectionRef.current = {
         ...projectionRef.current,
         messages: projectionRef.current.messages.map((item) =>
-          item.id === messageId && item.role === "approval" ? { ...item, status: decision } : item,
+          item.id === targetId || (item.role === "approval" && item.approvalId === approvalId)
+            ? { ...item, status: decision }
+            : item,
         ),
       };
       commit();
@@ -578,7 +583,9 @@ export default function ChatPage() {
         projectionRef.current = {
           ...projectionRef.current,
           messages: projectionRef.current.messages.map((item) =>
-            item.id === messageId && item.role === "approval" ? { ...item, status: authoritative } : item,
+            item.id === targetId || (item.role === "approval" && item.approvalId === approvalId)
+              ? { ...item, status: authoritative }
+              : item,
           ),
         };
         commit();
@@ -591,14 +598,16 @@ export default function ChatPage() {
         projectionRef.current = {
           ...projectionRef.current,
           messages: projectionRef.current.messages.map((item) =>
-            item.id === messageId && item.role === "approval" ? { ...item, status: "pending" } : item,
+            item.id === targetId || (item.role === "approval" && item.approvalId === approvalId)
+              ? { ...item, status: "pending" }
+              : item,
           ),
         };
         commit();
         toast.error(error instanceof Error ? error.message : (tx("Không thể quyết định phê duyệt", "Could not decide approval")));
       }
     },
-    [commit, refetchChatRun, setStreaming],
+    [commit, refetchChatRun, setStreaming, tx],
   );
 
   const abortRef = React.useRef<AbortController | null>(null);
