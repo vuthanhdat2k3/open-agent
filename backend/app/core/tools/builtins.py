@@ -304,6 +304,15 @@ async def _call_agent(args: dict[str, Any], ctx: ToolContext) -> str:
                 "content": text,
                 "line": text,
             })
+        elif ev_type == "approval_required":
+            await ctx.emit({
+                "stage": "subagent_approval_required",
+                "agent_name": agent.name,
+                "agent_id": agent.id,
+                "approval_id": ev_data.get("approval_id"),
+                "tool_name": ev_data.get("tool_name"),
+                "line": f"\n[Subagent '{agent.name}' requires approval for {ev_data.get('tool_name')}]\n",
+            })
         elif ev_type == "tool_call":
             tool_name = ev_data.get("name", "")
             tool_args = ev_data.get("arguments", {})
