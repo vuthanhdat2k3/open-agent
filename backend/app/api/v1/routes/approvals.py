@@ -166,7 +166,7 @@ async def decide_approval(
             select(Task).where(
                 Task.root_run_id == approval.run_id,
                 Task.org_id == org_id,
-                Task.status == "waiting_approval",
+                Task.status.in_(["waiting_approval", "running", "pending", "queued"]),
                 # `root_run_id` is shared by the root task and every nested
                 # delegated sub-task spawned under it (see agent_loop.py's
                 # nested-resume recursion), so this filter alone is

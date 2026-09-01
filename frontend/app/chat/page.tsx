@@ -556,13 +556,14 @@ export default function ChatPage() {
   }, [activeRunId, approvals.data, commit]);
 
   const handleApprovalDecision = React.useCallback(
-    async (messageId: string, decision: "approved" | "rejected") => {
+    async (messageOrApprovalId: string, decision: "approved" | "rejected") => {
       const message = projectionRef.current.messages.find(
-        (item) => item.id === messageId || (item.role === "approval" && item.approvalId === messageId),
+        (item) =>
+          item.id === messageOrApprovalId ||
+          (item.role === "approval" && (item.approvalId === messageOrApprovalId || item.id === `approval-${messageOrApprovalId}`)),
       );
-      if (!message || message.role !== "approval") return;
-      const approvalId = message.approvalId;
-      const targetId = message.id;
+      const approvalId = (message && message.role === "approval" ? message.approvalId : null) || messageOrApprovalId.replace(/^approval-/, "");
+      const targetId = message?.id || `approval-${approvalId}`;
 
       projectionRef.current = {
         ...projectionRef.current,
