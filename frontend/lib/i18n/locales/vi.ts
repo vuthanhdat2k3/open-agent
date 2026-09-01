@@ -611,6 +611,11 @@ export const vi: TranslationDictionary = {
       filterAllUsers: 'Tất cả thành viên',
       filterUserPlaceholder: 'Lọc theo người tạo...',
       btnRunCode: 'Thực thi tệp',
+      runPanelTitle: 'Thực thi',
+      runPanelStop: 'Dừng',
+      runPanelExitCode: 'Mã thoát:',
+      runPanelNoOutput: '(không có output)',
+      runPanelConnecting: 'Đang kết nối...',
     },
     organizations: {
       title: 'Tổ chức',

@@ -611,6 +611,11 @@ export interface TranslationDictionary {
       filterAllUsers: string;
       filterUserPlaceholder: string;
       btnRunCode: string;
+      runPanelTitle: string;
+      runPanelStop: string;
+      runPanelExitCode: string;
+      runPanelNoOutput: string;
+      runPanelConnecting: string;
     };
     organizations: {
       title: string;

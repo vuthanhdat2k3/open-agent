@@ -276,7 +276,7 @@ def test_run_while_active_409(client, workspace_env, monkeypatch) -> None:
     assert second.status_code == 409
 
 
-def test_run_requires_files_read(client, workspace_env) -> None:
+def test_run_unowned_artifact_404_for_normal_user(client, workspace_env) -> None:
     env = workspace_env
     viewer_token = _add_member(client, env.token, env.org_id, "wr_viewer@test.com", "user")
 
@@ -285,7 +285,7 @@ def test_run_requires_files_read(client, workspace_env) -> None:
         headers=_auth_headers(viewer_token, env.org_id),
     )
 
-    assert resp.status_code == 403
+    assert resp.status_code == 404
 
 
 def test_run_unauthenticated_401(client, workspace_env) -> None:

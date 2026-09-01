@@ -26,6 +26,8 @@ SKIP_WORKSPACE_DIRS = {".git", "__pycache__", ".venv", "node_modules", ".codegra
 _LANG_IMAGES = {
     "python": (settings.sandbox_docker_image_python, "python"),
     "bash": (settings.sandbox_docker_image_bash, "bash"),
+    "node": (settings.sandbox_docker_image_node, "node"),
+    "javascript": (settings.sandbox_docker_image_node, "node"),
 }
 
 _DOCKER_OK: bool | None = None

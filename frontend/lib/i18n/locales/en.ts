@@ -611,6 +611,11 @@ export const en: TranslationDictionary = {
       filterAllUsers: 'All Members',
       filterUserPlaceholder: 'Filter by creator...',
       btnRunCode: 'Run File',
+      runPanelTitle: 'Running',
+      runPanelStop: 'Stop',
+      runPanelExitCode: 'Exit code:',
+      runPanelNoOutput: '(no output)',
+      runPanelConnecting: 'Connecting...',
     },
     organizations: {
       title: 'Organizations',

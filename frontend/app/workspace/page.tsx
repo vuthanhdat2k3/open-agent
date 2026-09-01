@@ -13,6 +13,7 @@ import {
   RefreshCw,
   Code2,
   Layers,
+  Square,
 } from "lucide-react";
 import {
   useWorkspaceArtifacts,
@@ -42,6 +43,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { cn } from "@/lib/utils";
+import { streamSSEGet, api } from "@/lib/api";
 import { useTranslation } from "@/lib/i18n";
 import { isAdminRole, isOperatorOrAdmin } from "@/lib/roles";
 import type { WorkspaceArtifact, SandboxExecution } from "@/types";
@@ -67,6 +76,13 @@ const executionVariant: Record<string, "default" | "secondary" | "destructive" |
   queued: "secondary",
 };
 
+const runStatusVariant: Record<string, "default" | "secondary" | "destructive" | "warning" | "success"> = {
+  running: "warning",
+  succeeded: "success",
+  failed: "destructive",
+  stopped: "secondary",
+};
+
 export default function WorkspacePage() {
   const { t, dict, locale, tx } = useTranslation();
   const [tabParam, setTabParam] = useUrlSearchParam("tab");
@@ -88,6 +104,115 @@ export default function WorkspacePage() {
   const [previewLoading, setPreviewLoading] = React.useState(false);
 
   const [viewExecution, setViewExecution] = React.useState<SandboxExecution | null>(null);
+
+  const [runPanel, setRunPanel] = React.useState<{
+    executionId: string;
+    filename: string;
+    status: "running" | "succeeded" | "failed" | "stopped";
+    lines: string[];
+    exitCode: number | null;
+  } | null>(null);
+  const abortRef = React.useRef<AbortController | null>(null);
+  const terminalEndRef = React.useRef<HTMLDivElement>(null);
+  const [isStopping, setIsStopping] = React.useState(false);
+
+  const runPanelLines = runPanel?.lines;
+  React.useEffect(() => {
+    if (runPanelLines) {
+      terminalEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [runPanelLines]);
+
+  React.useEffect(() => {
+    return () => {
+      if (abortRef.current) {
+        abortRef.current.abort();
+      }
+    };
+  }, []);
+
+  const startStream = React.useCallback((executionId: string) => {
+    if (abortRef.current) {
+      abortRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    streamSSEGet(
+      `/api/workspace/executions/${executionId}/stream`,
+      (ev) => {
+        if (ev.event === "stdout") {
+          const line = typeof ev.data?.line === "string" ? ev.data.line : "";
+          if (line) {
+            setRunPanel((prev) => {
+              if (!prev || prev.executionId !== executionId) return prev;
+              return {
+                ...prev,
+                lines: [...prev.lines, line],
+              };
+            });
+          }
+        } else if (ev.event === "exit") {
+          const code = typeof ev.data?.code === "number" ? ev.data.code : 0;
+          setRunPanel((prev) => {
+            if (!prev || prev.executionId !== executionId) return prev;
+            return {
+              ...prev,
+              status: code === 0 ? "succeeded" : "failed",
+              exitCode: code,
+            };
+          });
+          void executions.refetch();
+        } else if (ev.event === "stopped") {
+          setRunPanel((prev) => {
+            if (!prev || prev.executionId !== executionId) return prev;
+            return {
+              ...prev,
+              status: "stopped",
+            };
+          });
+          void executions.refetch();
+        } else if (ev.event === "timed_out") {
+          setRunPanel((prev) => {
+            if (!prev || prev.executionId !== executionId) return prev;
+            return {
+              ...prev,
+              status: "failed",
+            };
+          });
+          void executions.refetch();
+        } else if (ev.event === "error") {
+          const msg = (ev.data?.message as string) || (typeof ev.data === "string" ? ev.data : "Error");
+          setRunPanel((prev) => {
+            if (!prev || prev.executionId !== executionId) return prev;
+            return {
+              ...prev,
+              status: "failed",
+              lines: [...prev.lines, `[ERROR] ${msg}`],
+            };
+          });
+          void executions.refetch();
+        }
+      },
+      controller.signal,
+    ).catch((err) => {
+      if (controller.signal.aborted) return;
+      console.error("Workspace stream SSE error:", err);
+    });
+  }, [executions]);
+
+  async function handleStopExecution() {
+    if (!runPanel || runPanel.status !== "running" || isStopping) return;
+    setIsStopping(true);
+    try {
+      await api.post(`/api/workspace/executions/${runPanel.executionId}/stop`);
+      toast.success(tx("Đã gửi yêu cầu dừng", "Stop request sent"));
+    } catch (err: any) {
+      toast.error(err.message || tx("Không thể dừng thực thi", "Failed to stop execution"));
+    } finally {
+      setIsStopping(false);
+    }
+  }
 
   // Extract unique creators for filter dropdown
   const uniqueCreators = React.useMemo(() => {
@@ -176,14 +301,23 @@ export default function WorkspacePage() {
       lower.endsWith(".py") ||
       lower.endsWith(".sh") ||
       lower.endsWith(".js") ||
-      lower.endsWith(".ts")
+      lower.endsWith(".mjs") ||
+      lower.endsWith(".cjs")
     );
   }
 
   async function runWorkspaceArtifact(artifact: WorkspaceArtifact) {
     try {
-      await runArtifact.mutateAsync(artifact.id);
-      toast.success(tx(`Đã khởi chạy ${artifact.path}`, `Started ${artifact.path}`));
+      const filename = artifact.path.split("/").pop() || artifact.path;
+      const res = await runArtifact.mutateAsync(artifact.id);
+      setRunPanel({
+        executionId: res.execution_id,
+        filename,
+        status: "running",
+        lines: [],
+        exitCode: null,
+      });
+      startStream(res.execution_id);
     } catch (err: any) {
       toast.error(err.message);
     }
@@ -583,6 +717,119 @@ export default function WorkspacePage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Run Output Panel Sheet */}
+      <Sheet
+        open={Boolean(runPanel)}
+        onOpenChange={(open) => {
+          if (!open) {
+            if (abortRef.current) {
+              abortRef.current.abort();
+              abortRef.current = null;
+            }
+            setRunPanel(null);
+          }
+        }}
+      >
+        <SheetContent
+          side="right"
+          className="w-full sm:max-w-[600px] flex flex-col h-full bg-card border-l border-border/80 p-0 shadow-3d-floating"
+        >
+          <SheetHeader className="p-4 border-b border-border/70 flex flex-row items-center justify-between space-y-0">
+            <div className="flex items-center gap-2 min-w-0 pr-6">
+              <TerminalSquare className="h-4 w-4 text-primary shrink-0" />
+              <SheetTitle className="font-mono text-sm font-semibold truncate">
+                {runPanel?.filename}
+              </SheetTitle>
+              {runPanel && (
+                <Badge
+                  variant={runStatusVariant[runPanel.status] || "secondary"}
+                  className="text-[10px] uppercase tracking-wider shrink-0"
+                >
+                  {runPanel.status === "running"
+                    ? tx("Đang chạy", "Running")
+                    : runPanel.status === "succeeded"
+                    ? tx("Thành công", "Succeeded")
+                    : runPanel.status === "failed"
+                    ? tx("Thất bại", "Failed")
+                    : tx("Đã dừng", "Stopped")}
+                </Badge>
+              )}
+            </div>
+          </SheetHeader>
+
+          <div className="flex-1 min-h-0 p-4 flex flex-col">
+            <div className="flex-1 bg-black text-green-400 font-mono text-xs p-4 rounded-lg overflow-y-auto border border-zinc-800 shadow-inner space-y-1">
+              {runPanel?.lines.length === 0 ? (
+                <div className="text-zinc-500 italic">
+                  {runPanel.status === "running"
+                    ? dict.pages.workspace.runPanelConnecting
+                    : dict.pages.workspace.runPanelNoOutput}
+                </div>
+              ) : (
+                runPanel?.lines.map((line, idx) => (
+                  <div
+                    key={idx}
+                    className={cn(
+                      "whitespace-pre-wrap leading-relaxed break-all",
+                      line.startsWith("[ERROR]") ? "text-red-400" : "text-green-400"
+                    )}
+                  >
+                    {line}
+                  </div>
+                ))
+              )}
+              <div ref={terminalEndRef} />
+            </div>
+          </div>
+
+          <div className="p-4 border-t border-border/70 bg-muted/20 flex items-center justify-between gap-3">
+            <div>
+              {runPanel?.exitCode !== null && runPanel?.exitCode !== undefined && (
+                <div className="text-xs font-mono text-muted-foreground">
+                  <span className="font-semibold">{dict.pages.workspace.runPanelExitCode}</span>{" "}
+                  <span
+                    className={cn(
+                      "font-bold",
+                      runPanel.exitCode === 0 ? "text-emerald-500" : "text-rose-500"
+                    )}
+                  >
+                    {runPanel.exitCode}
+                  </span>
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {runPanel?.status === "running" && (
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  disabled={isStopping}
+                  onClick={handleStopExecution}
+                  className="gap-1.5 text-xs font-medium"
+                >
+                  <Square className="h-3.5 w-3.5 fill-current" />
+                  {dict.pages.workspace.runPanelStop}
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  if (abortRef.current) {
+                    abortRef.current.abort();
+                    abortRef.current = null;
+                  }
+                  setRunPanel(null);
+                }}
+                className="text-xs"
+              >
+                {tx("Đóng", "Close")}
+              </Button>
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

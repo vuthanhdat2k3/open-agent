@@ -24,6 +24,9 @@ router = APIRouter(prefix="/api/workspace", tags=["workspace"])
 _LANG_BY_SUFFIX = {
     ".py": "python",
     ".sh": "bash",
+    ".js": "node",
+    ".mjs": "node",
+    ".cjs": "node",
 }
 
 
@@ -198,7 +201,7 @@ async def run_artifact(
 
     language = _infer_language(str(target))
     if language is None:
-        raise HTTPException(400, "unsupported artifact type (use .py or .sh)")
+        raise HTTPException(400, "unsupported artifact type (supported: .py, .sh, .js)")
 
     try:
         live = await live_run.start_live_run(
