@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import asyncio
 import os
@@ -68,7 +68,7 @@ class LLMClient:
         self.base_url = base_url
         self.api_key = api_key
         self.model_name = model_name
-        self._client = AsyncOpenAI(base_url=base_url, api_key=api_key)
+        self._client = AsyncOpenAI(base_url=base_url, api_key=api_key, timeout=120.0)
 
     async def complete(
         self,
@@ -172,7 +172,15 @@ class LLMClient:
 
         usage: dict[str, int] | None = None
         finish_reasons: list[str] = []
-        async for chunk in stream:
+        chunk_iter = aiter(stream)
+        while True:
+            try:
+                chunk = await asyncio.wait_for(anext(chunk_iter), timeout=60.0)
+            except StopAsyncIteration:
+                break
+            except TimeoutError:
+                break
+
             chunk_usage = getattr(chunk, "usage", None)
             if chunk_usage:
                 usage = {

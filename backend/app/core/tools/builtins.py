@@ -1,3 +1,4 @@
+import asyncio
 from datetime import timezone
 from typing import Any
 
@@ -356,22 +357,25 @@ async def _call_agent(args: dict[str, Any], ctx: ToolContext) -> str:
                 "line": f"Starting subagent '{agent.name}'...\n",
             })
 
-        loop_result = await run_agent_loop(
-            agent,
-            instruction,
-            ctx.db,
-            depth=ctx.depth + 1,
-            session_id=None,
-            current_task_id=task.id,
-            root_run_id=task.root_run_id,
-            user_id=ctx.user_id,
-            user_role=(ctx.authorization.role if ctx.authorization and ctx.authorization.is_human else None),
-            model_id=ctx.model_id,
-            timezone_name=ctx.timezone_name,
-            actor_agent_identity_id=ctx.actor_agent_identity_id,
-            delegation_chain=ctx.delegation_chain,
-            execution_policy=(ctx.authorization.execution_policy if ctx.authorization else None),
-            on_event=_handle_subagent_event,
+        loop_result = await asyncio.wait_for(
+            run_agent_loop(
+                agent,
+                instruction,
+                ctx.db,
+                depth=ctx.depth + 1,
+                session_id=None,
+                current_task_id=task.id,
+                root_run_id=task.root_run_id,
+                user_id=ctx.user_id,
+                user_role=(ctx.authorization.role if ctx.authorization and ctx.authorization.is_human else None),
+                model_id=ctx.model_id,
+                timezone_name=ctx.timezone_name,
+                actor_agent_identity_id=ctx.actor_agent_identity_id,
+                delegation_chain=ctx.delegation_chain,
+                execution_policy=(ctx.authorization.execution_policy if ctx.authorization else None),
+                on_event=_handle_subagent_event,
+            ),
+            timeout=180.0,
         )
     except Exception as exc:  # noqa: BLE001
         task.status = "failed"
