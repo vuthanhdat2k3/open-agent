@@ -884,7 +884,7 @@ async def _agent_stream(
         model_id=selected_model_id,
         actor_agent_identity_id=actor_agent_identity_id,
         delegation_chain=delegation_chain,
-        parent_session_id=session_id,
+        parent_session_id=parent_session_id or session_id,
         authorization=build_tool_authorization(
             org_id=agent.org_id,
             user_id=user_id or agent.created_by_user_id,
