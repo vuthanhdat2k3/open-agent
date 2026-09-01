@@ -1054,15 +1054,18 @@ async def _agent_stream(
         else None
     )
     if rec is not None:
+        if approval_resume_id:
+            await rec.sync_seq_from_db(db)
         rec.start_liveness()
 
     start = time.monotonic()
-    if rec is not None:
+    if rec is not None and not approval_resume_id:
         await rec.record({"event": "message_start", "data": {}})
         asyncio.create_task(
             rec.flush_progress(phase="thinking", content_chars=0, reasoning_chars=0)
         )
-    yield {"event": "message_start", "data": {}}
+    if not approval_resume_id:
+        yield {"event": "message_start", "data": {}}
 
     tool_calls_log: list[dict[str, Any]] = []
     consecutive_failures = 0
