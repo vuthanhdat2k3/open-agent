@@ -266,6 +266,22 @@ async def _build_orchestrator_delegate_tools(
         )
     )
     agents = list(result.scalars().all())
+    if agents:
+        from app.models.org_agent_settings import OrgAgentSettings
+
+        disabled_res = await db.execute(
+            select(OrgAgentSettings.template_key).where(
+                OrgAgentSettings.org_id == org_id,
+                OrgAgentSettings.is_enabled.is_(False),
+            )
+        )
+        disabled_keys = set(disabled_res.scalars().all())
+        if disabled_keys:
+            agents = [
+                agent
+                for agent in agents
+                if getattr(agent, "template_key", None) not in disabled_keys
+            ]
     if not agents:
         return "", [], {}, {}
 
