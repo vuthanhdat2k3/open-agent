@@ -317,6 +317,7 @@ async def _build_orchestrator_delegate_tools(
             },
             run=run_delegate,
             risk_tier=RiskTier.safe,
+            timeout_s=300.0,
         )
         delegate_specs.append(spec)
         delegate_by_agent_id[target.id] = spec

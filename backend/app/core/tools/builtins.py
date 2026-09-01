@@ -489,6 +489,7 @@ register(
         },
         run=_call_agent,
         risk_tier=RiskTier.safe,
+        timeout_s=300.0,
     )
 )
 
