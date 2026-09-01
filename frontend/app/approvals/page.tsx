@@ -116,10 +116,18 @@ export default function ApprovalsPage() {
   const approvals = useApprovals();
   const usage = useQuotaUsage(orgId);
   const decide = useDecideApproval();
-  const [selected, setSelected] = React.useState<ApprovalRequest | null>(null);
-
   const items = approvals.data ?? [];
   const urgent = items.filter((item) => item.risk_level === "HIGH").length;
+
+  const [selectedId, setSelectedId] = useUrlSearchParam("selected");
+  const selected = React.useMemo(() => {
+    const targetId = selectedId || highlightId;
+    if (!targetId || !items.length) return null;
+    return items.find((item) => item.id === targetId) ?? null;
+  }, [items, selectedId, highlightId]);
+  const setSelected = (req: ApprovalRequest | null) => {
+    setSelectedId(req ? req.id : null);
+  };
 
   const [page, setPage] = React.useState(1);
   const [pageSize, setPageSize] = React.useState(5);
@@ -128,12 +136,6 @@ export default function ApprovalsPage() {
     const start = (page - 1) * pageSize;
     return items.slice(start, start + pageSize);
   }, [items, page, pageSize]);
-
-  React.useEffect(() => {
-    if (highlightId && items.length) {
-      setSelected(items.find((item) => item.id === highlightId) ?? null);
-    }
-  }, [items, highlightId]);
 
   async function submit(id: string, decision: "approved" | "rejected") {
     try {

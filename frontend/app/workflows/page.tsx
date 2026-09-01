@@ -26,7 +26,7 @@ import {
   type WorkflowCatalogItem,
 } from "@/lib/automations/api";
 import { workflowIcon } from "@/lib/automations/icons";
-import { useCurrentRole } from "@/hooks";
+import { useCurrentRole, useUrlSearchParam } from "@/hooks";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/shared";
 import {
@@ -172,8 +172,12 @@ export default function WorkflowEditor() {
   const role = useCurrentRole();
   const isOperator = role === "operator";
 
-  // Tab State: "editor" (My Workflows) vs "marketplace" (Workflow Marketplace)
-  const [activeTab, setActiveTab] = React.useState<"editor" | "marketplace">("editor");
+  // Tab State: "editor" (My Workflows) vs "marketplace" (Workflow Marketplace) with URL synchronization
+  const [tabParam, setTabParam] = useUrlSearchParam("tab");
+  const activeTab = (tabParam as "editor" | "marketplace") || "editor";
+  const setActiveTab = (tab: "editor" | "marketplace") => {
+    setTabParam(tab === "editor" ? null : tab);
+  };
 
   // Marketplace State
   const [marketSearch, setMarketSearch] = React.useState("");
@@ -197,16 +201,6 @@ export default function WorkflowEditor() {
   });
 
   const catalogItems = catalogQuery.data?.data ?? [];
-
-  // Synchronize Tab from URL
-  React.useEffect(() => {
-    if (typeof window === "undefined") return;
-    const url = new URL(window.location.href);
-    const tabParam = url.searchParams.get("tab");
-    if (tabParam === "marketplace") {
-      setActiveTab("marketplace");
-    }
-  }, []);
 
   const [publishDialogOpen, setPublishDialogOpen] = React.useState(false);
   const [publishCategory, setPublishCategory] = React.useState("custom");

@@ -14,7 +14,7 @@ import { ErrorState, LoadingSkeleton, DataPagination, EmptyState } from "@/compo
 import { useQuery } from "@tanstack/react-query";
 import { getActiveOrgId } from "@/lib/auth";
 import { emailIntelligenceQueryKeys } from "@/lib/email-intelligence/query-keys";
-import { useCan } from "@/hooks";
+import { useCan, useUrlSearchParam } from "@/hooks";
 
 type Overview = {
   connections: { total: number; healthy: number; unhealthy: number };
@@ -59,7 +59,11 @@ function EmailOperationsContent() {
     queryFn: () => api.get<Overview>("/api/admin/email-intelligence/overview"),
     refetchInterval: 30_000,
   });
-  const [tab, setTab] = React.useState("overview");
+  const [tabParam, setTabParam] = useUrlSearchParam("tab");
+  const tab = tabParam || "overview";
+  const setTab = (t: string) => {
+    setTabParam(t === "overview" ? null : t);
+  };
   const [traceId, setTraceId] = React.useState("");
   const queue = useAdminResource<Array<Record<string, unknown>>>("queue", tab === "queue");
   const schedulers = useAdminResource<Array<Record<string, unknown>>>("schedulers", tab === "schedulers");
