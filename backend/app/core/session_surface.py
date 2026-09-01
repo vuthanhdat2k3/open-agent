@@ -40,7 +40,11 @@ def _synthesize_repair_node(call_data: dict[str, Any], call_seq: int) -> dict[st
     }
 
 
-def derive_messages(events: list[SessionEvent]) -> list[dict[str, Any]]:
+def derive_messages(
+    events: list[SessionEvent],
+    *,
+    repair_crash_tail: bool = True,
+) -> list[dict[str, Any]]:
     """Fold session events into OpenAI-format provider messages.
 
     - Only surface-eligible types participate; everything else is ignored.
@@ -141,15 +145,18 @@ def derive_messages(events: list[SessionEvent]) -> list[dict[str, Any]]:
 
     # Crash-tail repair: any trailing call whose result never landed gets a
     # deterministic synthetic result so providers never see dangling calls.
-    open_calls: dict[str, SessionEvent] = {}
-    for ev in events:
-        if ev.type == slog.TOOL_CALL and not _shadowed(ev.seq, shadow_ranges):
-            open_calls[str(ev.data.get("tool_call_id") or "")] = ev
-        elif ev.type == slog.TOOL_RESULT:
-            open_calls.pop(str(ev.data.get("tool_call_id") or ""), None)
-    for cid, ev in open_calls.items():
-        if cid and cid not in result_by_call_id:
-            out.append(_synthesized_tool_message(ev))
+    # When repair_crash_tail is False (e.g. active approval resume), un-resulted
+    # trailing calls are left open to be satisfied by the resumed execution step.
+    if repair_crash_tail:
+        open_calls: dict[str, SessionEvent] = {}
+        for ev in events:
+            if ev.type == slog.TOOL_CALL and not _shadowed(ev.seq, shadow_ranges):
+                open_calls[str(ev.data.get("tool_call_id") or "")] = ev
+            elif ev.type == slog.TOOL_RESULT:
+                open_calls.pop(str(ev.data.get("tool_call_id") or ""), None)
+        for cid, ev in open_calls.items():
+            if cid and cid not in result_by_call_id:
+                out.append(_synthesized_tool_message(ev))
 
     return out
 
