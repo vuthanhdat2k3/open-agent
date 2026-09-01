@@ -29,6 +29,7 @@ class ToolContext:
     timezone_name: str = "UTC"
     actor_agent_identity_id: str | None = None
     delegation_chain: list | dict | None = None
+    parent_session_id: str | None = None
     # Immutable principal/risk/approval snapshot. The registry refuses to
     # execute a tool without this context.
     authorization: ToolAuthorizationContext | None = None

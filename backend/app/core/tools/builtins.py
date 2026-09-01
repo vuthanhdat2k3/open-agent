@@ -373,6 +373,7 @@ async def _call_agent(args: dict[str, Any], ctx: ToolContext) -> str:
                 actor_agent_identity_id=ctx.actor_agent_identity_id,
                 delegation_chain=ctx.delegation_chain,
                 execution_policy=(ctx.authorization.execution_policy if ctx.authorization else None),
+                parent_session_id=ctx.session_id or ctx.parent_session_id,
                 on_event=_handle_subagent_event,
             ),
             timeout=180.0,
