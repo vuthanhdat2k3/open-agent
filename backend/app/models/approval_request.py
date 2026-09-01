@@ -40,7 +40,7 @@ class ApprovalRequest(Base):
     )
     expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     payload_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    idempotency_key: Mapped[str | None] = mapped_column(String(256), nullable=True)
 
     # The Task that actually issued the gated tool call — the root task for a
     # direct approval, or the (possibly deeply nested) delegated sub-task for
