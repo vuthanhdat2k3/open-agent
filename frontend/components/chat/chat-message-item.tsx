@@ -47,7 +47,18 @@ function ChatMessageItemBase({ message: m, debug, onApprovalDecision }: ChatMess
   // 1. User message
   if (m.role === "user") {
     return (
-      <div className="flex w-full justify-end">
+      <div className="group flex w-full justify-end gap-2">
+        <div className="mt-1 flex opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+          <button
+            type="button"
+            onClick={() => void copyText(m.content)}
+            className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            aria-label={copied ? tx("Đã sao chép tin nhắn", "Message copied") : tx("Sao chép tin nhắn", "Copy message")}
+            title={copied ? tx("Đã sao chép", "Copied") : tx("Sao chép tin nhắn", "Copy message")}
+          >
+            {copied ? <Check className="h-3.5 w-3.5" aria-hidden="true" /> : <Copy className="h-3.5 w-3.5" aria-hidden="true" />}
+          </button>
+        </div>
         <div className="max-w-[85%] rounded-2xl bg-primary px-4 py-2.5 text-sm text-primary-foreground shadow-sm">
           <p className="whitespace-pre-wrap break-words">{m.content}</p>
         </div>
