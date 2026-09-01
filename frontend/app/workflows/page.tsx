@@ -1467,19 +1467,21 @@ export default function WorkflowEditor() {
                             >
                               <Edit className="h-3.5 w-3.5 text-primary" /> {tx("Chỉnh sửa", "Edit")}
                             </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-8 px-2.5 text-destructive hover:bg-destructive/10 text-xs font-semibold gap-1"
-                              onClick={() => handleUnpublish(template.key)}
-                              title={tx("Gỡ bỏ khỏi Marketplace", "Remove from Marketplace")}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" /> {tx("Gỡ bỏ", "Remove")}
-                            </Button>
+                            {template.capabilities?.can_delete && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 px-2.5 text-destructive hover:bg-destructive/10 text-xs font-semibold gap-1 shrink-0"
+                                onClick={() => handleUnpublish(template.key)}
+                                title={tx("Gỡ bỏ khỏi Marketplace", "Remove from Marketplace")}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" /> {tx("Gỡ bỏ", "Remove")}
+                              </Button>
+                            )}
                           </div>
                         ) : (
-                          /* User Action: Install to Personal Workflows */
-                          <div className="flex items-center justify-end gap-2 ml-auto w-full">
+                          /* User Action: Install to Personal Workflows + Optional Remove if Creator */
+                          <div className="flex items-center justify-between gap-2 w-full">
                             {template.installed ? (
                               <Button
                                 size="sm"
@@ -1504,6 +1506,17 @@ export default function WorkflowEditor() {
                                     {tx("Cài đặt", "Install")} <ArrowRight className="h-3.5 w-3.5" />
                                   </>
                                 )}
+                              </Button>
+                            )}
+                            {template.capabilities?.can_delete && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 px-2 text-destructive hover:bg-destructive/10 text-xs font-semibold gap-1 shrink-0"
+                                onClick={() => handleUnpublish(template.key)}
+                                title={tx("Gỡ bỏ khỏi Marketplace", "Remove from Marketplace")}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
                               </Button>
                             )}
                           </div>

@@ -188,3 +188,39 @@ async def test_workflow_single_ownership_and_marketplace(async_session_factory, 
     my_wfs = res.json()
     assert any(w["id"] == member_wf_id for w in my_wfs)
     assert not any(w["id"] == op_wf_id for w in my_wfs)
+
+    # 7. Operator sees can_delete=True for their own published template, but member sees can_delete=False
+    op_cat_res = await client.get(
+        "/api/workflow-catalog/templates",
+        headers={"Authorization": f"Bearer {op_token}", "X-Organization-Id": org.id},
+    )
+    assert op_cat_res.status_code == 200
+    op_items = {t["key"]: t for t in op_cat_res.json()["data"]}
+    assert op_items[template_key]["capabilities"]["can_delete"] is True
+
+    member_cat_res = await client.get(
+        "/api/workflow-catalog/templates",
+        headers={"Authorization": f"Bearer {member_token}", "X-Organization-Id": org.id},
+    )
+    assert member_cat_res.status_code == 200
+    member_items = {t["key"]: t for t in member_cat_res.json()["data"]}
+    assert member_items[template_key]["capabilities"]["can_delete"] is False
+
+    # 8. Built-in system templates have can_delete=False for EVERYONE (including operator)
+    for sys_key in ("morning-command-center", "meeting-preparation"):
+        if sys_key in op_items:
+            assert op_items[sys_key]["capabilities"]["can_delete"] is False
+
+    # 9. Attempting to unpublish a built-in system template returns 403 Forbidden
+    res = await client.delete(
+        "/api/workflow-catalog/templates/morning-command-center",
+        headers={"Authorization": f"Bearer {op_token}", "X-Organization-Id": org.id},
+    )
+    assert res.status_code == 403, res.text
+
+    # 10. Operator can unpublish their own custom template
+    res = await client.delete(
+        f"/api/workflow-catalog/templates/{template_key}",
+        headers={"Authorization": f"Bearer {op_token}", "X-Organization-Id": org.id},
+    )
+    assert res.status_code == 200, res.text

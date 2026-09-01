@@ -174,21 +174,7 @@ class WorkflowService:
         return self._build_virtual_workflow(org_id, matched_blueprint)
 
     async def list(self, org_id: str, created_by_user_id: str | None = None) -> list[Workflow]:
-        db_workflows = await self.repo.list(org_id, created_by_user_id=created_by_user_id)
-
-        covered_keys = {w.template_key for w in db_workflows if getattr(w, "template_key", None)}
-        covered_names = {w.name.strip().lower().replace(" ", "-") for w in db_workflows}
-
-        result: list[Workflow] = list(db_workflows)
-
-        for blueprint in SYSTEM_WORKFLOW_BLUEPRINTS.values():
-            norm_name = blueprint.name.strip().lower().replace(" ", "-")
-            if blueprint.key in covered_keys or norm_name in covered_names or blueprint.key in covered_names:
-                continue
-            v_wf = self._build_virtual_workflow(org_id, blueprint)
-            result.append(v_wf)
-
-        return result
+        return await self.repo.list(org_id, created_by_user_id=created_by_user_id)
 
     async def get(self, org_id: str, id: str) -> Workflow | None:
         # 1. Try DB lookup by exact ID
