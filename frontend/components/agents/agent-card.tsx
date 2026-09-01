@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Bot, Cpu, Pencil, Trash2, History, Wrench } from "lucide-react";
+import { Bot, Cpu, Pencil, Trash2, History, Wrench, Sparkles } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -124,6 +124,13 @@ export function AgentCard({
               </Badge>
             ))}
           </div>
+        </div>
+      )}
+
+      {agent.kind === "orchestrator" && (
+        <div className="mt-3 flex items-center gap-1.5 text-[10px] text-primary font-medium bg-primary/5 border border-primary/20 rounded-md px-2 py-1.5">
+          <Sparkles className="h-3 w-3 shrink-0" />
+          <span>{tx("Ủy quyền động tới các Worker chuyên trách", "Dynamically delegates to specialized workers")}</span>
         </div>
       )}
     </Card>

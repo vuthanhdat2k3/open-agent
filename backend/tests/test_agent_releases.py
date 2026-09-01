@@ -628,3 +628,83 @@ def test_user_model_selection_is_per_chat_and_validated(
                 )
 
     anyio.run(_run_cross_org_model)
+
+
+def test_agent_kind_tool_validation_rules(client: TestClient) -> None:
+    token, org_id = _register(client, "kind-tools-admin@example.com", "Kind Tools Org")
+    headers = _headers(token, org_id)
+    provider = client.post(
+        "/api/providers",
+        headers=headers,
+        json={
+            "key": "test-kind-provider",
+            "name": "Test Kind Provider",
+            "base_url": "http://localhost:9999/v1",
+            "api_key": "test",
+        },
+    )
+    assert provider.status_code == 201, provider.text
+    model = client.post(
+        "/api/models",
+        headers=headers,
+        json={
+            "provider_id": provider.json()["id"],
+            "name": "kind-model",
+            "display_name": "Kind Model",
+        },
+    )
+    assert model.status_code == 201, model.text
+    model_id = model.json()["id"]
+
+    # 1. Orchestrator with worker tools (e.g. email_send, run_code) must fail
+    res_orch_invalid = client.post(
+        "/api/agents",
+        headers=headers,
+        json={
+            "name": "Invalid Orch",
+            "model_id": model_id,
+            "kind": "orchestrator",
+            "tools": ["email_send", "run_code"],
+        },
+    )
+    assert res_orch_invalid.status_code == 400
+    assert "Orchestrator agents cannot be directly assigned domain worker tools" in res_orch_invalid.text
+
+    # 2. Worker with call_agent must fail
+    res_worker_invalid = client.post(
+        "/api/agents",
+        headers=headers,
+        json={
+            "name": "Invalid Worker",
+            "model_id": model_id,
+            "kind": "worker",
+            "tools": ["call_agent", "email_send"],
+        },
+    )
+    assert res_worker_invalid.status_code == 400
+    assert "Worker agents cannot be assigned call_agent" in res_worker_invalid.text
+
+    # 3. Valid orchestrator with orchestrator tools succeeds
+    res_orch_valid = client.post(
+        "/api/agents",
+        headers=headers,
+        json={
+            "name": "Valid Orch",
+            "model_id": model_id,
+            "kind": "orchestrator",
+            "tools": ["call_agent", "workflow_list", "save_memory", "call_memory", "get_current_time"],
+        },
+    )
+    assert res_orch_valid.status_code == 201
+    orch_id = res_orch_valid.json()["id"]
+
+    # 4. Updating orchestrator with domain tools must fail
+    res_update_invalid = client.put(
+        f"/api/agents/{orch_id}",
+        headers=headers,
+        json={"tools": ["rag_search"]},
+    )
+    assert res_update_invalid.status_code == 400
+    assert "Orchestrator agents cannot be directly assigned domain worker tools" in res_update_invalid.text
+
+

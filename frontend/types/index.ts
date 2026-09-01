@@ -226,6 +226,8 @@ export interface AgentToolInfo {
   description: string;
   available: boolean;
   risk_tier?: "safe" | "read" | "write" | "execute" | "network" | "dangerous";
+  allowed_for_orchestrator?: boolean;
+  allowed_for_worker?: boolean;
 }
 
 export interface McpTool {

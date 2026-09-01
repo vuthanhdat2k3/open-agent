@@ -196,15 +196,49 @@ export default function AgentsPage() {
     }
   };
 
+  const ORCHESTRATOR_ALLOWED_TOOLS = React.useMemo(
+    () =>
+      new Set([
+        "call_agent",
+        "workflow_list",
+        "get_current_time",
+        "save_memory",
+        "call_memory",
+        "memory_store",
+        "memory_recall",
+        "call_external_agent",
+      ]),
+    []
+  );
+
   const groupedTools = React.useMemo(() => {
     const map: Record<string, AgentToolInfo[]> = {};
     for (const tool of tools.data ?? []) {
       if (search && !tool.name.toLowerCase().includes(search.toLowerCase())) continue;
+      if (form.kind === "orchestrator") {
+        const isAllowed = tool.allowed_for_orchestrator ?? ORCHESTRATOR_ALLOWED_TOOLS.has(tool.name);
+        if (!isAllowed) continue;
+      } else if (form.kind === "worker") {
+        const isProhibited = tool.allowed_for_worker === false || tool.name === "call_agent";
+        if (isProhibited) continue;
+      }
       const group = toolGroup(tool.name);
       (map[group] ??= []).push(tool);
     }
     return map;
-  }, [tools.data, search]);
+  }, [tools.data, search, form.kind, ORCHESTRATOR_ALLOWED_TOOLS]);
+
+  const handleKindChange = (newKind: "worker" | "orchestrator") => {
+    setForm((prev) => ({ ...prev, kind: newKind }));
+    if (newKind === "orchestrator") {
+      setSelectedTools((prev) => {
+        const valid = prev.filter((t) => ORCHESTRATOR_ALLOWED_TOOLS.has(t));
+        return valid.length > 0 ? valid : ["call_agent", "workflow_list", "get_current_time", "save_memory", "call_memory"];
+      });
+    } else {
+      setSelectedTools((prev) => prev.filter((t) => t !== "call_agent"));
+    }
+  };
 
   const openEdit = (agent: Agent) => {
     setEditingAgent(agent);
@@ -354,7 +388,7 @@ export default function AgentsPage() {
                         <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{tx("Loại", "Kind")}</Label>
                         <Select
                           value={form.kind}
-                          onChange={(e) => setForm({ ...form, kind: e.target.value as "worker" | "orchestrator" })}
+                          onChange={(e) => handleKindChange(e.target.value as "worker" | "orchestrator")}
                         >
                           <option value="worker">{tx("Công nhân", "Worker")}</option>
                           <option value="orchestrator">{tx("Điều phối viên", "Orchestrator")}</option>
@@ -454,6 +488,23 @@ export default function AgentsPage() {
                     </div>
 
                     <div className="space-y-2">
+                      {form.kind === "orchestrator" && (
+                        <div className="rounded-lg border border-primary/30 bg-primary/5 p-2.5 text-xs text-foreground/90 flex items-start gap-2">
+                          <Sparkles className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+                          <div className="space-y-0.5">
+                            <p className="font-semibold text-primary">
+                              {tx("Mô hình Điều phối viên (Orchestrator)", "Orchestrator Architecture")}
+                            </p>
+                            <p className="text-[11px] text-muted-foreground leading-relaxed">
+                              {tx(
+                                "Orchestrator tự động sinh các công cụ ủy quyền (delegate_to_*) tới toàn bộ Worker chuyên trách trong tổ chức và tổng hợp kết quả. Không gán trực tiếp công cụ domain cho Orchestrator.",
+                                "Orchestrators automatically dynamically generate delegation tools (delegate_to_*) for all active worker agents in the organization and synthesize results. Domain-specific tools are prohibited."
+                              )}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
                       <div className="flex items-center justify-between">
                         <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                           <Wrench className="h-3.5 w-3.5 text-primary" /> {tx(`Công cụ (${selectedTools.length} đã chọn)`, `Tools (${selectedTools.length} selected)`)}

@@ -41,6 +41,8 @@ class AgentToolInfo(BaseModel):
     description: str
     available: bool
     risk_tier: str | None = None
+    allowed_for_orchestrator: bool = False
+    allowed_for_worker: bool = True
 
 
 class AgentOut(AgentBase):
