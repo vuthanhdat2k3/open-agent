@@ -593,6 +593,7 @@ export default function ChatPage() {
         terminalRunRef.current = null;
         setStreaming(true);
         setPhase("thinking");
+        void approvals.refetch();
         await refetchChatRun();
       } catch (error) {
         projectionRef.current = {
