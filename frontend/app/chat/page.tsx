@@ -58,6 +58,9 @@ export default function ChatPage() {
 
   const pendingSessionModelId = (agentId && pendingModelIdByAgent[agentId]) || "";
 
+  const transitioningSessionRef = React.useRef<string | null | undefined>(undefined);
+  const transitioningAgentRef = React.useRef<string | null | undefined>(undefined);
+
   const buildChatUrl = React.useCallback(
     (agent: string | null, session: string | null, model: string | null) => {
       const params = new URLSearchParams();
@@ -80,6 +83,7 @@ export default function ChatPage() {
 
   const changeSession = React.useCallback(
     (id: string | null) => {
+      transitioningSessionRef.current = id;
       setSession(id);
       const model = agentId ? pendingModelIdByAgent[agentId] ?? null : null;
       router.replace(buildChatUrl(agentId, id, model), { scroll: false });
@@ -89,6 +93,8 @@ export default function ChatPage() {
 
   const changeAgent = React.useCallback(
     (nextAgentId: string | null) => {
+      transitioningAgentRef.current = nextAgentId;
+      transitioningSessionRef.current = null;
       setAgent(nextAgentId);
       setSession(null);
       router.replace(buildChatUrl(nextAgentId, null, null), { scroll: false });
@@ -217,6 +223,21 @@ export default function ChatPage() {
 
   React.useEffect(() => {
     if (!chatHydrated || !agents.data?.length) return;
+
+    // Check if in-flight agent transition has caught up to the URL
+    if (transitioningAgentRef.current !== undefined) {
+      if (urlAgent === transitioningAgentRef.current || (!urlAgent && !transitioningAgentRef.current)) {
+        transitioningAgentRef.current = undefined;
+      }
+    }
+
+    // Check if in-flight session transition has caught up to the URL
+    if (transitioningSessionRef.current !== undefined) {
+      if (urlSession === transitioningSessionRef.current || (!urlSession && !transitioningSessionRef.current)) {
+        transitioningSessionRef.current = undefined;
+      }
+    }
+
     // The `user` role may only chat with the org's orchestrator-kind agent
     // (enforced server-side in ChatService.ensure_session). Auto-selection
     // must land on that agent instead of the first agent in the list, or the
@@ -237,12 +258,17 @@ export default function ChatPage() {
           ? agentId
           : fallbackAgent.id;
 
-    if (resolvedAgent !== agentId) {
+    if (transitioningAgentRef.current === undefined && resolvedAgent !== agentId) {
       setAgent(resolvedAgent);
       setAgentReady(true);
       return;
     }
     setAgentReady(true);
+
+    // If an in-app session transition is in flight, do not sync from URL until URL catches up
+    if (transitioningSessionRef.current !== undefined) {
+      return;
+    }
 
     if (urlSession && urlSession !== sessionId && sessions.isSuccess) {
       const session = sessions.data.find((s) => s.id === urlSession);
@@ -254,6 +280,13 @@ export default function ChatPage() {
       return;
     }
 
+    if (!urlSession && sessionId !== null) {
+      setSession(null);
+      projectionRef.current = createRunProjection("");
+      setMessages([]);
+      return;
+    }
+
     if (urlModel && urlModel !== pendingSessionModelId) {
       if (models.data?.some((m) => m.id === urlModel)) {
         setPendingModel(resolvedAgent, urlModel);
@@ -262,9 +295,6 @@ export default function ChatPage() {
     }
 
     if (!urlAgent && !urlSession) {
-      if (sessionId) {
-        setSession(null);
-      }
       router.replace(buildChatUrl(resolvedAgent, null, pendingSessionModelId || null), { scroll: false });
     }
   }, [
