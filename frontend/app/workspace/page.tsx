@@ -23,6 +23,7 @@ import {
   useDeleteSandboxExecution,
   useUrlSearchParam,
   useCurrentRole,
+  useMe,
 } from "@/hooks";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -94,6 +95,8 @@ export default function WorkspacePage() {
   const deleteArtifact = useDeleteWorkspaceArtifact();
   const deleteExecution = useDeleteSandboxExecution();
   const role = useCurrentRole();
+  const me = useMe();
+  const currentUserId = me.data?.id;
   const isAdmin = isAdminRole(role);
   const isOperator = isOperatorOrAdmin(role);
 
@@ -493,7 +496,7 @@ export default function WorkspacePage() {
                             >
                               <Download className="h-3.5 w-3.5" />
                             </Button>
-                            {isAdmin && (
+                            {(isOperator || !artifact.created_by_user_id || artifact.created_by_user_id === currentUserId) && (
                               <ConfirmDialog
                                 trigger={<Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-destructive" aria-label={tx(`Xóa ${artifact.path}`, `Delete ${artifact.path}`)}><Trash2 className="h-3.5 w-3.5" /></Button>}
                                 title={tx(`Xóa ${artifact.path}?`, `Delete ${artifact.path}?`)}
@@ -602,7 +605,7 @@ export default function WorkspacePage() {
                             >
                               <Eye className="h-3.5 w-3.5" />
                             </Button>
-                            {isAdmin && (
+                            {(isOperator || !execution.created_by_user_id || execution.created_by_user_id === currentUserId) && (
                               <ConfirmDialog
                                 trigger={<Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-destructive" aria-label={tx(`Xóa thực thi ${execution.id}`, `Delete execution ${execution.id}`)}><Trash2 className="h-3.5 w-3.5" /></Button>}
                                 title={tx("Xóa bản ghi thực thi này?", "Delete this execution?")}
