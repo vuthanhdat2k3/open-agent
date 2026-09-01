@@ -55,6 +55,11 @@ export function ChatComposer({
   variant = "docked",
   placeholder,
   className,
+  models,
+  effectiveModel,
+  onModelChange,
+  executionPolicy,
+  onExecutionPolicyChange,
 }: ChatComposerProps) {
   const { t, locale, tx } = useTranslation();
   const defaultPlaceholder = tx("Nhập tin nhắn… (Enter để gửi, Shift+Enter để xuống dòng)", "Type a message… (Enter to send, Shift+Enter for newline)");
