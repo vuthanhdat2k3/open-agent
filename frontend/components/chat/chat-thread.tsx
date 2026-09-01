@@ -131,15 +131,15 @@ export function ChatThread({
             <span>{tx("Debug", "Debug")}</span>
             {debug && <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-hidden="true" />}
           </Button>
-          {messages.length > 0 && (
+          {sessionId && (
             <Button
               type="button"
               variant="ghost"
               size="icon"
               className="h-8 w-8 text-muted-foreground hover:text-destructive"
               onClick={onClearMessages}
-              aria-label={tx("Xóa hội thoại", "Clear conversation")}
-              title={tx("Xóa hội thoại", "Clear conversation")}
+              aria-label={tx("Đóng phiên hội thoại", "Close session")}
+              title={tx("Đóng phiên hội thoại", "Close session")}
             >
               <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
             </Button>
