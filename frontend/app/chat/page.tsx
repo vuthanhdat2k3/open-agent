@@ -262,7 +262,10 @@ export default function ChatPage() {
     }
 
     if (!urlAgent && !urlSession) {
-      router.replace(buildChatUrl(resolvedAgent, sessionId, pendingSessionModelId || null), { scroll: false });
+      if (sessionId) {
+        setSession(null);
+      }
+      router.replace(buildChatUrl(resolvedAgent, null, pendingSessionModelId || null), { scroll: false });
     }
   }, [
     agentId, agents.data, buildChatUrl, chatHydrated, models.data,
