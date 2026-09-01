@@ -97,6 +97,8 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 | `dev` | `G:\open-agent` | Nhánh tích hợp chính — không code trực tiếp ở đây | — |
 | `docs/demo-do-deploy-guide` | `G:\open-agent\.worktrees\demo-do-deploy-guide` | Viết docs/demo-digitalocean-deploy.md: hướng dẫn deploy demo full-stack lên DigitalOcean + phân tích chi phí | Kiro |
 
+> 2026-09-01: Đã merge trực tiếp vào `dev` và dọn dẹp worktree/branch `fix/chat-session-sync-race` (Sửa triệt để race condition: dùng transitioningSessionRef/transitioningAgentRef ngăn URL watcher phục hồi session cũ trong render tick trung gian của Next.js router, tạo session mới chuẩn xác chỉ với 1 click) theo yêu cầu người dùng.
+
 > 2026-09-01: Đã merge trực tiếp vào `dev` và dọn dẹp worktree/branch `fix/new-session-click` (Sửa lỗi URL synchronization trong useEffect: reset session khi URL chuyển về clean /chat thay vì phục hồi session từ store, giúp 1-click tạo session mới ngay lập tức) theo yêu cầu người dùng.
 
 > 2026-09-01: Đã merge trực tiếp vào `dev` và dọn dẹp worktree/branch `fix/subagent-delegation-timeout` (Nâng ngân sách timeout_s cho call_agent và delegate_to_* lên 300s ngăn sub-agent deep reasoning timeout) theo yêu cầu người dùng.
