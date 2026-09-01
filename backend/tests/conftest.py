@@ -9,7 +9,7 @@ import os
 # shell or parent .env.
 os.environ.setdefault("OPENAGENT_AUTH_PROVIDER", "local")
 os.environ["OPENAGENT_DB_URL"] = "sqlite+aiosqlite:///:memory:"
-os.environ["OPENAGENT_REDIS_URL"] = "redis://127.0.0.1:6379/15"
+os.environ["OPENAGENT_REDIS_URL"] = "redis://:695ddab0ea43f1fc2fbf57d3ee559620709b4d7405557c92f759f5fa4c8fa5fd@127.0.0.1:6379/15"
 os.environ["OPENAGENT_WORKFLOW_EXECUTION_MODE"] = "inline"
 os.environ["OPENAGENT_OTEL_ENABLED"] = "false"
 os.environ["OPENAI_API_KEY"] = ""

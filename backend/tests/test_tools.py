@@ -67,7 +67,7 @@ async def test_run_shell_echo(tmp_path: Path, monkeypatch) -> None:
             return next(self._lines, b"")
 
     class FakeWriter:
-        async def write(self, _b: bytes) -> None:
+        def write(self, _b: bytes) -> None:
             return None
 
         async def drain(self) -> None:
