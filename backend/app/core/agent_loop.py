@@ -1185,6 +1185,17 @@ async def _agent_stream(
                 "content": nested_result,
             })
             approved_resume_result = nested_result
+            tool_args = (
+                {"target_agent_id": child_agent.id, "instruction": next_hop.goal}
+                if resume_tool_name == "call_agent"
+                else {"instruction": next_hop.goal}
+            )
+            tool_calls_log.append({
+                "name": resume_tool_name,
+                "arguments": tool_args,
+                "result": nested_result,
+                "approval_id": approval.id,
+            })
             # The routing directive that forced this turn's tool_choice
             # already did its job (it is why this delegation happened at
             # all); forcing it again on the next model call - which is what
