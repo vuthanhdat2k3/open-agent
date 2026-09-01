@@ -60,7 +60,7 @@ function ChatMessageItemBase({ message: m, debug, onApprovalDecision }: ChatMess
           </button>
         </div>
         <div className="max-w-[85%] rounded-2xl bg-primary px-4 py-2.5 text-sm text-primary-foreground shadow-sm">
-          <p className="whitespace-pre-wrap break-words">{m.content}</p>
+          <p className="whitespace-pre-wrap break-words select-text">{m.content}</p>
         </div>
       </div>
     );
