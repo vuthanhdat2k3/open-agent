@@ -97,6 +97,10 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 | `dev` | `G:\open-agent` | Nhánh tích hợp chính — không code trực tiếp ở đây | — |
 | `docs/demo-do-deploy-guide` | `G:\open-agent\.worktrees\demo-do-deploy-guide` | Viết docs/demo-digitalocean-deploy.md: hướng dẫn deploy demo full-stack lên DigitalOcean + phân tích chi phí | Kiro |
 
+> 2026-09-01: Đã merge trực tiếp vào `dev` và dọn dẹp worktree/branch `fix/session-delete-events` (Sửa lỗi xóa session: bổ sung xóa cascade bảng session_events, trả về JSON chuẩn và cập nhật nút xóa/đóng session trên giao diện) theo yêu cầu người dùng.
+
+> 2026-09-01: Đã merge trực tiếp vào `dev` và dọn dẹp worktree/branch `feat/system-execution-policy` (Tinh gọn quyền thực thi Agent, chuyển giao quyền sang System/Session Policy Context chuẩn DSH) theo yêu cầu người dùng.
+
 > 2026-09-01: Đã merge trực tiếp vào `dev` và dọn dẹp worktree/branch `feat/companion-size-config` (Cho phép operator tùy chỉnh kích thước companion 3D avatar qua preset và thanh trượt) theo yêu cầu người dùng.
 
 > 2026-08-31: Đã merge trực tiếp vào `dev` và dọn dẹp worktree/branch `feat/org-model-tier-matrix` (Triển khai Org-wide Model Tier Matrix 3 tầng: Economy, Balanced, Frontier cho toàn bộ multi-agent network) theo yêu cầu người dùng.
