@@ -88,10 +88,14 @@ async def resolve_approval(
     return approval
 
 
-async def get_pending(db: AsyncSession, *, org_id: str) -> list[ApprovalRequest]:
+async def get_pending(
+    db: AsyncSession, *, org_id: str, exclude_run_types: list[str] | tuple[str, ...] | None = None
+) -> list[ApprovalRequest]:
+    base_filter = [ApprovalRequest.org_id == org_id, ApprovalRequest.status == "pending"]
+    if exclude_run_types:
+        base_filter.append(ApprovalRequest.run_type.not_in(exclude_run_types))
     stmt = scope_to_owner(
-        select(ApprovalRequest)
-        .where(ApprovalRequest.org_id == org_id, ApprovalRequest.status == "pending"),
+        select(ApprovalRequest).where(*base_filter),
         db,
         ApprovalRequest.requested_by,
     )
