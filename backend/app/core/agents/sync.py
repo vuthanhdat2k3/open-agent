@@ -8,7 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.agents.templates import SYSTEM_AGENT_BLUEPRINTS, SystemAgentBlueprint
-from app.db.base import utc_now
+from app.db.base import gen_id, utc_now
 from app.models.agent import Agent
 from app.models.agent_release import AgentRelease
 from app.models.model import Model
@@ -50,9 +50,14 @@ async def _create_blueprint_agent(
     *,
     model_id: str,
     temperature: float,
+    agent_id: str | None = None,
 ) -> Agent:
+    if not agent_id:
+        existing_id = await db.scalar(select(Agent.id).where(Agent.id == blueprint.id))
+        agent_id = blueprint.id if existing_id is None else gen_id()
+
     persisted = Agent(
-        id=blueprint.id,
+        id=agent_id,
         org_id=org_id,
         created_by_user_id=None,
         name=blueprint.name,
@@ -74,6 +79,7 @@ async def _create_blueprint_agent(
     await db.flush()
     release_config = _snapshot(persisted)
     release = AgentRelease(
+        id=gen_id(),
         org_id=org_id,
         agent_id=persisted.id,
         version=1,
@@ -148,7 +154,7 @@ async def sync_system_agents_for_org(
         if existing is None:
             try:
                 async with db.begin_nested():
-                    await _create_blueprint_agent(
+                    existing = await _create_blueprint_agent(
                         db,
                         org_id,
                         blueprint,
@@ -156,12 +162,23 @@ async def sync_system_agents_for_org(
                         temperature=temperature,
                     )
                 created += 1
+                existing_by_key[blueprint.key] = existing
             except IntegrityError:
                 existing = await db.scalar(
                     select(Agent).where(Agent.org_id == org_id, Agent.template_key == blueprint.key)
                 )
                 if existing is None:
-                    raise
+                    # Retry with a guaranteed unique UUID in case of PK collision from another org
+                    async with db.begin_nested():
+                        existing = await _create_blueprint_agent(
+                            db,
+                            org_id,
+                            blueprint,
+                            model_id=model_id,
+                            temperature=temperature,
+                            agent_id=gen_id(),
+                        )
+                    created += 1
                 existing_by_key[blueprint.key] = existing
             else:
                 continue

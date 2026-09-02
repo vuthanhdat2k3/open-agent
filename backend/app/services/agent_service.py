@@ -9,7 +9,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 
 from app.core.agents.templates import SYSTEM_AGENT_BLUEPRINTS, SystemAgentBlueprint
-from app.db.base import utc_now
+from app.db.base import gen_id, utc_now
 from app.evals.quality_gate import quality_gate_passes
 from app.models.agent import Agent
 from app.models.agent_release import AgentRelease
@@ -180,8 +180,11 @@ class AgentService:
                 existing.description = bp.description
             return existing
 
+        existing_id = await self.repo.db.scalar(select(Agent.id).where(Agent.id == agent.id))
+        target_id = agent.id if existing_id is None else gen_id()
+
         persisted = Agent(
-            id=agent.id,
+            id=target_id,
             org_id=org_id,
             created_by_user_id=None,
             name=agent.name,
@@ -221,7 +224,31 @@ class AgentService:
         except IntegrityError:
             existing = await self.repo.get(org_id, agent.id)
             if existing is None:
-                raise
+                existing = await self.repo.db.scalar(
+                    select(Agent).where(Agent.org_id == org_id, Agent.template_key == blueprint.key)
+                )
+            if existing is None:
+                persisted.id = gen_id()
+                async with self.repo.db.begin_nested():
+                    self.repo.db.add(persisted)
+                    await self.repo.db.flush()
+                    release_config = _snapshot(persisted)
+                    release = AgentRelease(
+                        id=gen_id(),
+                        org_id=org_id,
+                        agent_id=persisted.id,
+                        version=1,
+                        status="published",
+                        **release_config,
+                        change_note="Materialized system blueprint",
+                        config_hash=_config_hash(release_config),
+                        published_at=utc_now(),
+                    )
+                    self.repo.db.add(release)
+                    await self.repo.db.flush()
+                    persisted.active_release_id = release.id
+                    persisted.latest_release_number = 1
+                return persisted
             return existing
 
         await self.repo.db.commit()

@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.agents.sync import sync_system_agents_all_orgs
+from app.core.agents.templates import SYSTEM_AGENT_BLUEPRINTS
 from app.core.providers.sync import sync_system_providers_all_orgs
 from app.core.workflow.sync import sync_system_workflow_templates
 from app.core.workflow.templates import SYSTEM_WORKFLOW_BLUEPRINTS
@@ -187,3 +188,28 @@ async def test_agent_update_sets_is_customized_and_preserves_on_sync(async_sessi
         assert refreshed is not None
         assert refreshed.system_prompt == custom_prompt
         assert refreshed.is_customized is True
+
+@pytest.mark.asyncio
+async def test_startup_sync_multi_orgs_no_pk_collision(async_session_factory) -> None:
+    async with async_session_factory() as db:
+        # Create Org 1 and Org 2
+        org1 = Organization(id=gen_id(), name="Org One", slug="org-one")
+        org2 = Organization(id=gen_id(), name="Org Two", slug="org-two")
+        db.add(org1)
+        db.add(org2)
+        await db.commit()
+
+        # Sync providers for all orgs
+        await sync_system_providers_all_orgs(db)
+
+        # Sync system agents for all orgs (must not crash with PK collision!)
+        results = await sync_system_agents_all_orgs(db)
+        assert len(results) == 2
+        assert results[0].created > 0
+        assert results[1].created > 0
+
+        # Verify both orgs have their system agents populated
+        agents_org1 = (await db.scalars(select(Agent).where(Agent.org_id == org1.id))).all()
+        agents_org2 = (await db.scalars(select(Agent).where(Agent.org_id == org2.id))).all()
+        assert len(agents_org1) >= len(SYSTEM_AGENT_BLUEPRINTS)
+        assert len(agents_org2) >= len(SYSTEM_AGENT_BLUEPRINTS)
