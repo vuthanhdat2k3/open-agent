@@ -130,9 +130,12 @@ export default function WorkspacePage() {
     }
   }, [runPanelLines]);
 
+  const lastClosedParamRef = React.useRef<string | null>(null);
+  const lastClosedExecutionRef = React.useRef<string | null>(null);
+
   // Restore preview from URL search param
   React.useEffect(() => {
-    if (previewParam && artifacts.data && !previewArtifact) {
+    if (previewParam && previewParam !== lastClosedParamRef.current && artifacts.data && !previewArtifact) {
       const art = artifacts.data.find(
         (a) => a.id === previewParam || a.path === previewParam || a.path.endsWith(previewParam)
       );
@@ -140,15 +143,21 @@ export default function WorkspacePage() {
         void openArtifact(art);
       }
     }
+    if (!previewParam) {
+      lastClosedParamRef.current = null;
+    }
   }, [previewParam, artifacts.data, previewArtifact]);
 
   // Restore execution details from URL search param
   React.useEffect(() => {
-    if (executionParam && executions.data && !viewExecution) {
+    if (executionParam && executionParam !== lastClosedExecutionRef.current && executions.data && !viewExecution) {
       const exec = executions.data.find((e) => e.id === executionParam);
       if (exec) {
         setViewExecution(exec);
       }
+    }
+    if (!executionParam) {
+      lastClosedExecutionRef.current = null;
     }
   }, [executionParam, executions.data, viewExecution]);
 
@@ -697,6 +706,7 @@ export default function WorkspacePage() {
         open={Boolean(previewArtifact)}
         onOpenChange={(open) => {
           if (!open) {
+            lastClosedParamRef.current = previewParam;
             setPreviewArtifact(null);
             setPreviewContent(null);
             setPreviewParam(null);
@@ -713,6 +723,7 @@ export default function WorkspacePage() {
         open={Boolean(viewExecution)}
         onOpenChange={(open) => {
           if (!open) {
+            lastClosedExecutionRef.current = executionParam;
             setViewExecution(null);
             setExecutionParam(null);
           }
