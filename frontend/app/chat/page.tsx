@@ -615,13 +615,11 @@ export default function ChatPage() {
           `/api/approvals/${approvalId}/decide`,
           { decision },
         );
-        const authoritative = decided.status === "expired" ? "rejected" : decided.status;
+        // Remove the decided approval message completely so it does not clutter the chat history
         projectionRef.current = {
           ...projectionRef.current,
-          messages: projectionRef.current.messages.map((item) =>
-            item.id === targetId || (item.role === "approval" && item.approvalId === approvalId)
-              ? { ...item, status: authoritative }
-              : item,
+          messages: projectionRef.current.messages.filter(
+            (item) => !(item.id === targetId || (item.role === "approval" && item.approvalId === approvalId)),
           ),
         };
         commit();

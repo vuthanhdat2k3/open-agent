@@ -67,49 +67,9 @@ function ChatMessageItemBase({ message: m, debug, onApprovalDecision }: ChatMess
     );
   }
 
-  // 2. Approval card (Resolved audit state in message log)
+  // 2. Approval messages: Handled exclusively by the dedicated bottom ApprovalDock while pending; hidden once approved/decided to keep the chat stream clean
   if (m.role === "approval") {
-    // If still pending, the dedicated bottom ApprovalDock handles the interaction
-    if (m.status === "pending") {
-      return null;
-    }
-    const isApproved = m.status === "approved";
-    return (
-      <div
-        tabIndex={0}
-        role="region"
-        aria-label={tx(`Lịch sử phê duyệt: ${m.toolName ?? "tool"}`, `Approval log: ${m.toolName ?? "tool"}`)}
-        className={`animate-scale-in self-start w-full max-w-[92%] rounded-xl border p-3.5 text-xs shadow-sm my-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-          isApproved
-            ? "border-success/30 bg-success/[0.04] text-foreground"
-            : "border-destructive/30 bg-destructive/[0.04] text-foreground"
-        }`}
-      >
-        <div className="flex items-center justify-between gap-2 font-semibold">
-          <div className="flex items-center gap-2">
-            {isApproved ? (
-              <ShieldCheck className="h-4 w-4 text-success" />
-            ) : (
-              <ShieldX className="h-4 w-4 text-destructive" />
-            )}
-            <span className="text-xs">
-              {isApproved
-                ? tx("Hành động đã được phê duyệt", "Action Approved")
-                : tx("Hành động đã bị từ chối", "Action Rejected")}
-            </span>
-          </div>
-          <Badge
-            variant={isApproved ? "success" : "destructive"}
-            className="text-[9.5px] font-mono capitalize"
-          >
-            {m.status}
-          </Badge>
-        </div>
-        <p className="mt-1.5 text-[11px] text-muted-foreground">
-          {tx("Công cụ được gọi:", "Tool called:")} <code className="font-mono text-foreground font-medium">{m.toolName ?? "tool"}</code>
-        </p>
-      </div>
-    );
+    return null;
   }
 
   // 3. Error message
