@@ -106,7 +106,7 @@ export default function ChatPage() {
   );
   const chatRun = useChatRun(activeRunId);
   const { refetch: refetchChatRun } = chatRun;
-  const approvals = useApprovals(Boolean(activeRunId));
+  const approvals = useApprovals(Boolean(activeRunId || sessionId), true);
   const sessions = useSessions();
   const delSession = useDeleteSession();
   const updateAgent = useUpdateAgent();
@@ -572,8 +572,14 @@ export default function ChatPage() {
       return;
     }
 
-    const approval = approvals.data?.find((item) => item.run_id === activeRunId && item.status === "pending");
-    if (!approval || projectionRef.current.messages.some((item) => item.role === "approval" && item.approvalId === approval.id)) return;
+    const approval = approvals.data?.find(
+      (item) => (activeRunId ? item.run_id === activeRunId : true) && item.status === "pending"
+    );
+    if (!approval) return;
+    if (!activeRunId && approval.run_id) {
+      setActiveRun(approval.run_id);
+    }
+    if (projectionRef.current.messages.some((item) => item.role === "approval" && item.approvalId === approval.id)) return;
     const approvalMsg: ChatMessage = {
       id: `approval-${approval.id}`,
       role: "approval",
@@ -588,7 +594,7 @@ export default function ChatPage() {
     };
     commit();
     setPhase("approval");
-  }, [activeRunId, approvals.data, chatRun.data?.status, commit]);
+  }, [activeRunId, approvals.data, chatRun.data?.status, commit, setActiveRun]);
 
   const handleApprovalDecision = React.useCallback(
     async (messageOrApprovalId: string, decision: "approved" | "rejected") => {

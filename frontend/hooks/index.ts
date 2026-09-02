@@ -865,15 +865,13 @@ export function useUpdateOrganizationQuota(orgId?: string) {
   });
 }
 
-export function useApprovals(enabled: boolean = true) {
+export function useApprovals(enabled: boolean = true, includeChat: boolean = true) {
   const orgId = getActiveOrgId();
   return useQuery({
-    queryKey: emailIntelligenceQueryKeys(orgId).approvals(),
-    queryFn: () => api.get<ApprovalRequest[]>("/api/approvals"),
+    queryKey: [...emailIntelligenceQueryKeys(orgId).approvals(), { includeChat }],
+    queryFn: () => api.get<ApprovalRequest[]>(`/api/approvals${includeChat ? "?include_chat=true" : ""}`),
     // Poll frequently while approval handling is active so the chat page
-    // discovers a second (or third) approval card quickly after the agent
-    // resumes and raises another gate.  60 s was fast enough for the
-    // dashboard bell but causes noticeable hangs in chat approval rounds.
+    // and approvals dashboard discover new approval gates promptly.
     refetchInterval: enabled ? 5000 : false,
     refetchIntervalInBackground: false,
     enabled,
