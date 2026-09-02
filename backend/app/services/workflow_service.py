@@ -129,9 +129,14 @@ class WorkflowService:
         if "graph" in data:
             self.validate_graph(data["graph"])
             await self._validate_agent_ownership(data["graph"], org_id=org_id)
+        if getattr(wf, "template_key", None):
+            data["is_customized"] = True
         return await self.repo.update(wf, data)
 
     async def delete(self, org_id: str, id: str) -> bool:
+        wf = await self.repo.get(org_id, id)
+        if wf and getattr(wf, "template_key", None) in SYSTEM_WORKFLOW_BLUEPRINTS and not getattr(wf, "is_customized", True):
+            raise ValueError("System template workflows cannot be deleted. Reset or modify them instead.")
         return await self.repo.delete(org_id, id)
 
     async def reset_to_template(self, org_id: str, id: str) -> Workflow:

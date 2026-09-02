@@ -284,6 +284,23 @@ class AgentService:
                 setattr(agent, field, data[field])
         if "enable_thinking" in data:
             agent.enable_thinking = data["enable_thinking"]
+        if (
+            config_changes
+            or any(
+                k in data
+                for k in (
+                    "name",
+                    "a2a_exposed",
+                    "auto_rollback_enabled",
+                    "enable_thinking",
+                    "system_prompt",
+                    "tools",
+                    "model_id",
+                    "temperature",
+                )
+            )
+        ) and getattr(agent, "template_key", None):
+            agent.is_customized = True
         if config_changes:
             await self._create_release_locked(
                 agent,

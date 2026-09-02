@@ -18,6 +18,7 @@ from app.core.observability.llm_trace import NoopSink, set_default_sink
 from app.core.observability.logging import configure_logging, request_context_middleware
 from app.core.observability.metrics import mount_metrics
 from app.core.observability.tracing import init_tracing
+from app.core.providers.sync import sync_system_providers_all_orgs
 from app.core.security import allowed_origins
 from app.core.workflow.sync import sync_system_workflow_templates
 from app.db.session import SessionLocal, engine, get_db, init_db
@@ -30,6 +31,7 @@ logger = structlog.get_logger(__name__)
 async def lifespan(app: FastAPI):
     await init_db()
     async with SessionLocal() as db:
+        await sync_system_providers_all_orgs(db)
         await sync_system_agents_all_orgs(db)
         await sync_system_workflow_templates(db)
     sink = None
