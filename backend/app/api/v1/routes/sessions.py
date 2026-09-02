@@ -3,12 +3,14 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authz.scope import scope_to_owner
-from app.dependencies import get_current_org_id, get_db, require_permission
+from app.core.execution_policy import ExecutionPolicy, normalize_execution_policy
+from app.dependencies import get_current_org_id, get_current_user, get_db, require_permission
 from app.models.memory import SessionMemory
 from app.models.message import Message
 from app.models.session import Session
 from app.models.session_event import SessionEvent
-from app.schemas.chat import ChatMessageOut, SessionOut
+from app.models.user import User
+from app.schemas.chat import ChatMessageOut, SessionOut, SessionUpdate
 
 router = APIRouter(
     prefix="/api/sessions",
@@ -49,6 +51,40 @@ async def list_messages(
     return list(res.scalars().all())
 
 
+@router.patch("/{session_id}", response_model=SessionOut, dependencies=[Depends(require_permission("sessions:write"))])
+async def update_session(
+    session_id: str,
+    payload: SessionUpdate,
+    org_id: str = Depends(get_current_org_id),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    res = await db.execute(
+        scope_to_owner(
+            select(Session).where(Session.id == session_id, Session.org_id == org_id),
+            db,
+            Session.created_by_user_id,
+        )
+    )
+    s = res.scalar_one_or_none()
+    if s is None:
+        raise HTTPException(404, "session not found")
+    if payload.execution_policy is not None:
+        new_policy = normalize_execution_policy(payload.execution_policy)
+        if new_policy is ExecutionPolicy.full_access and getattr(user, "role", None) not in {
+            "operator",
+            "org_admin",
+            "platform_admin",
+        }:
+            raise HTTPException(403, "full-access execution policy is not available for this role")
+        s.execution_policy = new_policy.value
+    if payload.title is not None:
+        s.title = payload.title
+    await db.commit()
+    await db.refresh(s)
+    return s
+
+
 @router.delete("/{session_id}", dependencies=[Depends(require_permission("sessions:delete"))])
 async def delete_session(
     session_id: str, org_id: str = Depends(get_current_org_id), db: AsyncSession = Depends(get_db)
@@ -78,5 +114,4 @@ async def delete_session(
     )
     await db.delete(s)
     await db.commit()
-    return {"ok": True, "id": session_id}
     return {"ok": True, "id": session_id}

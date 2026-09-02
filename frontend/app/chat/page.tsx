@@ -10,6 +10,7 @@ import {
   useCurrentRole,
   useSessions,
   useSessionMessages,
+  useUpdateSession,
   useDeleteSession,
   useModels,
   useChatRun,
@@ -109,6 +110,7 @@ export default function ChatPage() {
   const { refetch: refetchChatRun } = chatRun;
   const approvals = useApprovals(Boolean(activeRunId), true, activeRunId);
   const sessions = useSessions();
+  const updateSession = useUpdateSession();
   const delSession = useDeleteSession();
   const updateAgent = useUpdateAgent();
   const [agentReady, setAgentReady] = React.useState(false);
@@ -717,7 +719,7 @@ export default function ChatPage() {
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     };
     if (pendingSessionModelId) payload.model_id = pendingSessionModelId;
-    if (!sessionId) payload.execution_policy = pendingExecutionPolicy;
+    if (effectiveExecutionPolicy) payload.execution_policy = effectiveExecutionPolicy;
 
     attachedRunRef.current = null;
     setActiveRun(null);
@@ -816,10 +818,17 @@ export default function ChatPage() {
     setPhase("");
   };
 
-  const handleExecutionPolicyChange = (policy: ExecutionPolicy) => {
+  const handleExecutionPolicyChange = async (policy: ExecutionPolicy) => {
     if (streaming || policy === effectiveExecutionPolicy) return;
-    if (sessionId) clearMessages();
     setPendingExecutionPolicy(policy);
+    if (sessionId) {
+      try {
+        await updateSession.mutateAsync({ id: sessionId, execution_policy: policy });
+        toast.success(tx("Đã cập nhật quyền thực thi của phiên", "Session execution policy updated"));
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : tx("Không thể cập nhật quyền thực thi", "Could not update execution policy"));
+      }
+    }
   };
 
   const setDefaultModel = async (modelId: string) => {
@@ -874,7 +883,7 @@ export default function ChatPage() {
           currentAgentModel={currentAgentModel}
           effectiveModel={effectiveModel}
           pendingSessionModelId={pendingSessionModelId}
-          pendingExecutionPolicy={pendingExecutionPolicy}
+          pendingExecutionPolicy={effectiveExecutionPolicy}
           updateAgentPending={updateAgent.isPending}
           onAgentChange={handleAgentChange}
           onDefaultModelChange={(modelId: string) => void setDefaultModel(modelId)}
@@ -921,7 +930,7 @@ export default function ChatPage() {
               models={models.data}
               effectiveModel={effectiveModel}
               onModelChange={(modelId: string) => void setDefaultModel(modelId)}
-              executionPolicy={pendingExecutionPolicy}
+              executionPolicy={effectiveExecutionPolicy}
               onExecutionPolicyChange={handleExecutionPolicyChange}
             />
           </div>

@@ -38,6 +38,7 @@ import type {
   UsageSummary,
   Workflow,
   ChatRunDetail,
+  ExecutionPolicy,
   WorkflowRunDetail,
   WorkspaceArtifact,
   UserProfile,
@@ -579,6 +580,18 @@ export function useResetWorkflowTemplate() {
 
 export function useSessions() {
   return useQuery({ queryKey: ["sessions"], queryFn: () => api.get<Session[]>("/api/sessions") });
+}
+export function useUpdateSession() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...data }: { id: string; execution_policy?: ExecutionPolicy; title?: string }) =>
+      api.patch<Session>(`/api/sessions/${id}`, data),
+    onSuccess: (updated) => {
+      qc.setQueriesData<Session[]>({ queryKey: ["sessions"] }, (old) =>
+        old ? old.map((s) => (s.id === updated.id ? { ...s, ...updated } : s)) : [updated],
+      );
+    },
+  });
 }
 export function useDeleteSession() {
   const qc = useQueryClient();

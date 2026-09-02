@@ -44,6 +44,11 @@ class SessionOut(BaseModel):
     updated_at: datetime
 
 
+class SessionUpdate(BaseModel):
+    execution_policy: ExecutionPolicy | None = None
+    title: str | None = None
+
+
 class ChatStreamEvent(BaseModel):
     # message_start | token | tool_call | tool_result | message_done | error
     # retry | self_correct (self-correction loop)

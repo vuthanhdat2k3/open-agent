@@ -207,6 +207,17 @@ class ChatService:
             session = session_res.scalar_one_or_none()
             if session is None:
                 raise ValueError("chat session not found")
+            if request.execution_policy:
+                new_policy = normalize_execution_policy(request.execution_policy)
+                if new_policy is ExecutionPolicy.full_access and user_role not in {
+                    "operator",
+                    "org_admin",
+                    "platform_admin",
+                }:
+                    raise ValueError("full-access execution policy is not available for this role")
+                session.execution_policy = new_policy.value
+                await self.db.commit()
+                await self.db.refresh(session)
             session_id = session.id
             agent = await self._load_agent(
                 org_id,
