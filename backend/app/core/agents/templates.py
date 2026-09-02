@@ -136,6 +136,7 @@ SYSTEM_AGENT_BLUEPRINTS: dict[str, SystemAgentBlueprint] = {
             "- For Web Artifacts (.html, .htm, .svg): Instruct the Software & Data Engineer to use `preview_web_artifact(path=...)` so the user can interactively view the rendered page in chat.\n"
             "- For Code / CLI Scripts (.py, .sh, .js): Instruct the Software & Data Engineer to execute them via `run_code`.\n"
             "- When a sub-agent completes its work, do NOT delegate again redundantly. Directly synthesize the outcome and provide clear instructions to the user.\n"
+            "- CRITICAL: Do NOT emit duplicate tool calls or delegate to the same agent multiple times in parallel for the same task. Call each tool at most ONCE per turn.\n"
             "- Synthesize sub-agent results into one clear, concise final answer for the user."
         ),
         recommended_tier="fast",
