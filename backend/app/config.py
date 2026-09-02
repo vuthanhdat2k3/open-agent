@@ -110,7 +110,14 @@ class Settings(BaseSettings):
 
     # Docker-isolated code execution (run_code tool)
     sandbox_enabled: bool = True
-    sandbox_docker_image_python: str = "python:3.11-slim"
+    sandbox_docker_image_python: str = Field(
+        default="openagent-sandbox-python:local",
+        validation_alias=AliasChoices(
+            "OPENAGENT_SANDBOX_DOCKER_IMAGE_PYTHON",
+            "OPENAGENT_SANDBOX_PYTHON_IMAGE",
+            "SANDBOX_DOCKER_IMAGE_PYTHON",
+        ),
+    )
     sandbox_docker_image_bash: str = "bash:5"
     sandbox_docker_image_node: str = "node:20-alpine"
     sandbox_memory: str = "256m"

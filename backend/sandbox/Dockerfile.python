@@ -1,0 +1,44 @@
+# OpenAgent High-Capability Python Sandbox Image
+# Equipped with essential Data Science, Document Processing, and Visualization packages.
+# Used by run_code in isolated Zero-Trust execution.
+
+FROM python:3.11-slim
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    MPLCONFIGDIR=/tmp/matplotlib
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    fonts-dejavu-core \
+    fonts-liberation \
+    pandoc \
+    ca-certificates \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install pre-packaged data analytics, document conversion, and plotting libraries
+RUN pip install --upgrade pip && \
+    pip install \
+    numpy \
+    pandas \
+    scipy \
+    matplotlib \
+    seaborn \
+    fpdf2 \
+    reportlab \
+    pypdf \
+    markdown \
+    openpyxl \
+    xlsxwriter \
+    jinja2 \
+    Pillow \
+    tabulate \
+    sympy \
+    python-dateutil \
+    pytz
+
+WORKDIR /workspace
+
+CMD ["python3"]

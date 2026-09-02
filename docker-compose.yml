@@ -334,6 +334,16 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
 
+  # Python Sandbox Image Builder
+  # Builds the feature-packed Python sandbox (pandas, numpy, matplotlib, fpdf2, reportlab, pandoc)
+  # used by run_code.
+  sandbox-python:
+    image: ${OPENAGENT_SANDBOX_PYTHON_IMAGE:-openagent-sandbox-python:local}
+    build:
+      context: ./backend
+      dockerfile: sandbox/Dockerfile.python
+    restart: "no"
+
   api:
     image: ${OPENAGENT_API_IMAGE:-openagent-api:local}
     build:
@@ -341,6 +351,7 @@ services:
     volumes:
       - openagent_workspace:/app/workspace:rw
     environment:
+      OPENAGENT_SANDBOX_DOCKER_IMAGE_PYTHON: ${OPENAGENT_SANDBOX_PYTHON_IMAGE:-openagent-sandbox-python:local}
       RAG_API_KEY: ${RAG_API_KEY:-}
       OPENAGENT_RAG_SERVICE_URL: ${RAG_SERVICE_URL:-http://rag-service:8100}
       OPENAGENT_RAG_MCP_URL: ${RAG_MCP_URL:-http://rag-service:8101/sse}
@@ -410,7 +421,8 @@ services:
       test: ["CMD", "curl", "-fsS", "http://localhost:8000/readyz"]
       interval: 10s
       timeout: 5s
-      retries: 12
+      retries: 5
+      start_period: 15s
 
   worker:
     restart: unless-stopped
@@ -420,6 +432,7 @@ services:
     volumes:
       - openagent_workspace:/app/workspace:rw
     environment:
+      OPENAGENT_SANDBOX_DOCKER_IMAGE_PYTHON: ${OPENAGENT_SANDBOX_PYTHON_IMAGE:-openagent-sandbox-python:local}
       RAG_API_KEY: ${RAG_API_KEY:-}
       OPENAGENT_RAG_SERVICE_URL: ${RAG_SERVICE_URL:-http://rag-service:8100}
       OPENAGENT_RAG_MCP_URL: ${RAG_MCP_URL:-http://rag-service:8101/sse}
