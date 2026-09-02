@@ -1642,6 +1642,7 @@ async def _agent_stream(
                 openai_tcs = []
                 iter_failures = 0
                 iter_results: list[dict[str, str]] = []
+                batch_cached_results: dict[tuple[str, str], tuple[Any, str]] = {}
                 for entry in tc_map.values():
                     openai_tcs.append(
                         {
@@ -1653,7 +1654,7 @@ async def _agent_stream(
                             },
                         }
                     )
-                    messages.append({"role": "assistant", "content": None, "tool_calls": openai_tcs})
+                messages.append({"role": "assistant", "content": None, "tool_calls": openai_tcs})
                 for idx, entry in enumerate(tc_map.values()):
                     name = entry["name"]
                     try:
@@ -1662,6 +1663,7 @@ async def _agent_stream(
                         args = {}
                     spec = tool_by_name.get(name)
                     tool_index = idx
+                    call_sig = (name, json.dumps(args, sort_keys=True))
                     approved_replay = (
                         approved_resume_name == name
                         and approved_resume_args == args
@@ -1709,6 +1711,9 @@ async def _agent_stream(
                     if approved_replay:
                         result = approved_resume_result
                         tool_status = "approved_replay"
+                    elif call_sig in batch_cached_results:
+                        # Parallel duplicate tool call in the same turn: reuse cached result
+                        result, tool_status = batch_cached_results[call_sig]
                     elif spec is None:
                         result = f"error: tool '{name}' not available"
                         tool_status = "error"
@@ -2122,6 +2127,7 @@ async def _agent_stream(
                         await rec.record(result_ev)
                         await rec.heartbeat(phase="thinking")
                     yield result_ev
+                    batch_cached_results[call_sig] = (result, tool_status)
                     log_entry: dict[str, Any] = {"name": name, "arguments": args, "result": result}
                     if secret_findings:
                         log_entry["redacted_secret_findings"] = [f.kind for f in secret_findings]
