@@ -3,7 +3,7 @@
 import * as React from "react";
 import { CheckCircle2, Loader2, Wrench, XCircle, Bot, Terminal, Globe } from "lucide-react";
 import type { ToolCallBlock } from "@/lib/chat/projection";
-import { WebArtifactPreviewDialog } from "@/components/workspace/web-artifact-preview-dialog";
+import { WebArtifactPreviewDialog } from "@/components/shared/web-artifact-preview";
 import { useTranslation } from "@/lib/i18n";
 
 interface ToolCallChipProps {
@@ -17,14 +17,20 @@ export function ToolCallChip({ block }: ToolCallChipProps) {
   const isCode = block.name === "run_code" || block.name === "write_file";
   const isWeb = block.name === "preview_web_artifact";
 
-  let codeStr = "";
+  let codeStr = block.argsText || "";
   let targetPath = "";
-  if (typeof block.arguments === "string") {
-    codeStr = block.arguments;
-  } else if (block.arguments && typeof block.arguments === "object") {
-    const rawCode = (block.arguments as any).code || (block.arguments as any).content || "";
-    codeStr = typeof rawCode === "string" ? rawCode : JSON.stringify(rawCode, null, 2);
-    targetPath = (block.arguments as any).path || (block.arguments as any).filename || "";
+  if (block.argsText) {
+    try {
+      const parsed = JSON.parse(block.argsText);
+      if (parsed && typeof parsed === "object") {
+        if (parsed.path) targetPath = parsed.path;
+        else if (parsed.filename) targetPath = parsed.filename;
+        if (parsed.code) codeStr = typeof parsed.code === "string" ? parsed.code : JSON.stringify(parsed.code, null, 2);
+        else if (parsed.content) codeStr = typeof parsed.content === "string" ? parsed.content : JSON.stringify(parsed.content, null, 2);
+      }
+    } catch {
+      // Keep codeStr as block.argsText
+    }
   }
 
   const isWebFile = Boolean(
