@@ -130,7 +130,7 @@ export function WebArtifactPreviewDialog({
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex items-center gap-1.5 shrink-0 pr-10">
             {/* Tab selector */}
             <div className="flex items-center bg-muted/80 p-0.5 rounded-lg border border-border/60 mr-2">
               <button
