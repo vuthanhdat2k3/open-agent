@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/dialog";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+import { useUrlSearchParam } from "@/hooks";
 
 export interface WebArtifactPreviewProps {
   open: boolean;
@@ -44,13 +45,27 @@ export function WebArtifactPreviewDialog({
   const [copied, setCopied] = React.useState(false);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
   const [iframeKey, setIframeKey] = React.useState(0);
+  const [previewParam, setPreviewParam] = useUrlSearchParam("preview");
 
   React.useEffect(() => {
     if (open) {
       setTab(initialTab);
       setIframeKey((k) => k + 1);
+      if (title && previewParam !== title) {
+        setPreviewParam(title);
+      }
     }
-  }, [open, initialTab]);
+  }, [open, initialTab, title, previewParam, setPreviewParam]);
+
+  const handleOpenChange = React.useCallback(
+    (nextOpen: boolean) => {
+      if (!nextOpen) {
+        setPreviewParam(null);
+      }
+      onOpenChange(nextOpen);
+    },
+    [onOpenChange, setPreviewParam],
+  );
 
   const handleCopy = React.useCallback(async () => {
     try {
@@ -105,7 +120,7 @@ export function WebArtifactPreviewDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
         className={cn(
           "transition-all duration-200 flex flex-col p-0 gap-0 overflow-hidden bg-background border-border/80 shadow-2xl",

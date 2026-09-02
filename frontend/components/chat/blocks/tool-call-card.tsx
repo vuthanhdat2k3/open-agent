@@ -24,6 +24,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { WebArtifactPreviewDialog } from "@/components/shared";
 import type { ToolCallBlock } from "@/lib/chat/projection";
 import { useTranslation } from "@/lib/i18n";
+import { useUrlSearchParam } from "@/hooks";
 
 const LazyMarkdownRenderer = React.lazy(() =>
   import("@/components/markdown-renderer").then((m) => ({ default: m.MarkdownRenderer })),
@@ -89,7 +90,14 @@ export function ToolCallCard({ block, compact = false }: ToolCallCardProps) {
     // Keep argsText
   }
 
+  const [previewParam, setPreviewParam] = useUrlSearchParam("preview");
   const [showWebPreview, setShowWebPreview] = React.useState(false);
+  const previewTitle = targetPath || block.name;
+  const isTargetPreview = Boolean(
+    previewParam && (previewParam === previewTitle || (targetPath && previewParam.endsWith(targetPath)))
+  );
+  const isPreviewOpen = showWebPreview || isTargetPreview;
+
   const isRunning = block.status === "running";
   const isError = block.status === "error";
   const subagent = block.subagent;
@@ -97,7 +105,7 @@ export function ToolCallCard({ block, compact = false }: ToolCallCardProps) {
 
   const isWebFile = Boolean(
     block.name === "preview_web_artifact" ||
-    (targetPath && (targetPath.endsWith(".html") || targetPath.endsWith(".htm") || targetPath.endsWith(".svg"))) ||
+    (targetPath && (targetPath.endsWith(".html") || targetPath.endsWith(".htm") || targetPath.endsWith(".svg") || targetPath.endsWith(".md"))) ||
     (codeStr && (codeStr.includes("<!DOCTYPE html>") || codeStr.includes("<html") || (codeStr.includes("<svg") && codeStr.includes("</svg>"))))
   );
 
@@ -260,7 +268,10 @@ export function ToolCallCard({ block, compact = false }: ToolCallCardProps) {
             size="sm"
             variant="default"
             className="h-6 text-[11px] px-2.5 gap-1 shadow-sm font-medium"
-            onClick={() => setShowWebPreview(true)}
+            onClick={() => {
+              setShowWebPreview(true);
+              setPreviewParam(previewTitle);
+            }}
           >
             <Globe className="h-3 w-3" />
             <span>{tx("Chạy trực tiếp", "Live Preview")}</span>
@@ -268,11 +279,16 @@ export function ToolCallCard({ block, compact = false }: ToolCallCardProps) {
         </div>
       )}
 
-      {showWebPreview && (
+      {isPreviewOpen && (
         <WebArtifactPreviewDialog
-          open={showWebPreview}
-          onOpenChange={setShowWebPreview}
-          title={targetPath || block.name}
+          open={isPreviewOpen}
+          onOpenChange={(open) => {
+            setShowWebPreview(open);
+            if (!open) {
+              setPreviewParam(null);
+            }
+          }}
+          title={previewTitle}
           content={codeStr}
           initialTab="preview"
         />

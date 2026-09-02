@@ -5,6 +5,7 @@ import { CheckCircle2, Loader2, Wrench, XCircle, Bot, Terminal, Globe } from "lu
 import type { ToolCallBlock } from "@/lib/chat/projection";
 import { WebArtifactPreviewDialog } from "@/components/shared/web-artifact-preview";
 import { useTranslation } from "@/lib/i18n";
+import { useUrlSearchParam } from "@/hooks";
 
 interface ToolCallChipProps {
   block: ToolCallBlock;
@@ -12,6 +13,7 @@ interface ToolCallChipProps {
 
 export function ToolCallChip({ block }: ToolCallChipProps) {
   const { tx } = useTranslation();
+  const [previewParam, setPreviewParam] = useUrlSearchParam("preview");
   const [showWebPreview, setShowWebPreview] = React.useState(false);
   const isSubagent = block.name === "call_agent" || block.name.startsWith("delegate_to_") || Boolean(block.subagent);
   const isCode = block.name === "run_code" || block.name === "write_file";
@@ -35,9 +37,15 @@ export function ToolCallChip({ block }: ToolCallChipProps) {
 
   const isWebFile = Boolean(
     block.name === "preview_web_artifact" ||
-    (targetPath && (targetPath.endsWith(".html") || targetPath.endsWith(".htm") || targetPath.endsWith(".svg"))) ||
+    (targetPath && (targetPath.endsWith(".html") || targetPath.endsWith(".htm") || targetPath.endsWith(".svg") || targetPath.endsWith(".md"))) ||
     (codeStr && (codeStr.includes("<!DOCTYPE html>") || codeStr.includes("<html") || (codeStr.includes("<svg") && codeStr.includes("</svg>"))))
   );
+
+  const previewTitle = targetPath || block.name;
+  const isTargetPreview = Boolean(
+    previewParam && (previewParam === previewTitle || (targetPath && previewParam.endsWith(targetPath)))
+  );
+  const isPreviewOpen = showWebPreview || isTargetPreview;
 
   const statusIcon =
     block.status === "running" ? (
@@ -76,6 +84,7 @@ export function ToolCallChip({ block }: ToolCallChipProps) {
             onClick={(e) => {
               e.stopPropagation();
               setShowWebPreview(true);
+              setPreviewParam(previewTitle);
             }}
             className="ml-1 inline-flex items-center gap-1 rounded bg-primary/15 hover:bg-primary/25 text-primary text-[10px] font-medium px-1.5 py-0.5 transition-colors cursor-pointer"
             title={tx("Mở xem trước trực tiếp", "Open live preview")}
@@ -86,11 +95,16 @@ export function ToolCallChip({ block }: ToolCallChipProps) {
         )}
       </span>
 
-      {showWebPreview && (
+      {isPreviewOpen && (
         <WebArtifactPreviewDialog
-          open={showWebPreview}
-          onOpenChange={setShowWebPreview}
-          title={targetPath || block.name}
+          open={isPreviewOpen}
+          onOpenChange={(open) => {
+            setShowWebPreview(open);
+            if (!open) {
+              setPreviewParam(null);
+            }
+          }}
+          title={previewTitle}
           content={codeStr}
           initialTab="preview"
         />

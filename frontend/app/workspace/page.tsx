@@ -89,6 +89,8 @@ export default function WorkspacePage() {
   const { t, dict, locale, tx } = useTranslation();
   const [tabParam, setTabParam] = useUrlSearchParam("tab");
   const activeTab = (tabParam as "artifacts" | "executions") || "artifacts";
+  const [previewParam, setPreviewParam] = useUrlSearchParam("preview");
+  const [executionParam, setExecutionParam] = useUrlSearchParam("execution");
 
   const artifacts = useWorkspaceArtifacts();
   const executions = useSandboxExecutions();
@@ -127,6 +129,28 @@ export default function WorkspacePage() {
       terminalEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
   }, [runPanelLines]);
+
+  // Restore preview from URL search param
+  React.useEffect(() => {
+    if (previewParam && artifacts.data && !previewArtifact) {
+      const art = artifacts.data.find(
+        (a) => a.id === previewParam || a.path === previewParam || a.path.endsWith(previewParam)
+      );
+      if (art) {
+        void openArtifact(art);
+      }
+    }
+  }, [previewParam, artifacts.data, previewArtifact]);
+
+  // Restore execution details from URL search param
+  React.useEffect(() => {
+    if (executionParam && executions.data && !viewExecution) {
+      const exec = executions.data.find((e) => e.id === executionParam);
+      if (exec) {
+        setViewExecution(exec);
+      }
+    }
+  }, [executionParam, executions.data, viewExecution]);
 
   React.useEffect(() => {
     return () => {
@@ -276,6 +300,7 @@ export default function WorkspacePage() {
     setPreviewArtifact(artifact);
     setPreviewTab(isWebArtifact(artifact.path) ? initialTab : "code");
     setPreviewLoading(true);
+    setPreviewParam(artifact.path);
     try {
       const res = await fetch(`/api/workspace/artifacts/${artifact.id}/content`);
       if (!res.ok) throw new Error(tx("Không thể tải nội dung tệp tin.", "Failed to load content"));
@@ -304,6 +329,7 @@ export default function WorkspacePage() {
 
   function openExecution(execution: SandboxExecution) {
     setViewExecution(execution);
+    setExecutionParam(execution.id);
   }
 
   function isRunnableArtifact(path: string): boolean {
@@ -673,6 +699,7 @@ export default function WorkspacePage() {
           if (!open) {
             setPreviewArtifact(null);
             setPreviewContent(null);
+            setPreviewParam(null);
           }
         }}
         title={previewArtifact?.path || "artifact"}
@@ -685,7 +712,10 @@ export default function WorkspacePage() {
       <Dialog
         open={Boolean(viewExecution)}
         onOpenChange={(open) => {
-          if (!open) setViewExecution(null);
+          if (!open) {
+            setViewExecution(null);
+            setExecutionParam(null);
+          }
         }}
       >
         <DialogContent className="max-w-2xl">
