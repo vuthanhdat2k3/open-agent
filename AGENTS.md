@@ -95,6 +95,7 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 | Branch | Worktree path | Phạm vi/task | Agent/người phụ trách |
 |---|---|---|---|
 | `dev` | `G:\open-agent` | Nhánh tích hợp chính — không code trực tiếp ở đây | — |
+| `feat/nondestructive-system-templates-sync` | `G:\open-agent-worktrees\nondestructive-system-templates-sync` | Tự động kiểm tra và sync providers, workflow templates, agent templates không làm mất bản đã chỉnh sửa, bảo vệ không bị xóa | Antigravity |
 
 > 2026-09-02: Đã xóa các nhánh remote đã merge vào `dev`: `origin/docs/demo-do-deploy-guide`, `origin/feat/system-agent-startup-sync`. Sửa luồng phê duyệt đa tầng sub-agent không bị treo, fix overlap nút fullscreen/close và hoàn thiện URL query parameter deep linking + backdrop close cho Web Artifact Preview Dialog.
 
