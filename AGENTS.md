@@ -95,7 +95,8 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 | Branch | Worktree path | Phạm vi/task | Agent/người phụ trách |
 |---|---|---|---|
 | `dev` | `G:\open-agent` | Nhánh tích hợp chính — không code trực tiếp ở đây | — |
-| `feat/operator-workflow-actions-fix` | `G:\open-agent-worktrees\operator-workflow-actions-fix` | Cho phép Operator cả Cài đặt (Install) và Chỉnh sửa (Canvas Edit) trực tiếp các Marketplace templates | Antigravity |
+
+> 2026-09-02: Đã merge PR #238 vào `dev` và dọn dẹp worktree `feat/operator-workflow-actions-fix` (Cho phép Operator cả Cài đặt và Chỉnh sửa trực tiếp trên Canvas các Marketplace templates, sửa backfill legacy custom templates).
 
 > 2026-09-02: Đã merge PR #234 và #236 vào `dev`, deploy thành công lên `deploy/dev` (PR #237) và dọn dẹp worktree `feat/nondestructive-system-templates-sync` (Đồng bộ non-destructive cho providers, workflow templates, agent templates và xử lý triệt để đụng độ khóa chính multi-org).
 
