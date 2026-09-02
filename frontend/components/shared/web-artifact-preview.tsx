@@ -45,17 +45,14 @@ export function WebArtifactPreviewDialog({
   const [copied, setCopied] = React.useState(false);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
   const [iframeKey, setIframeKey] = React.useState(0);
-  const [previewParam, setPreviewParam] = useUrlSearchParam("preview");
+  const [, setPreviewParam] = useUrlSearchParam("preview");
 
   React.useEffect(() => {
     if (open) {
       setTab(initialTab);
       setIframeKey((k) => k + 1);
-      if (title && previewParam !== title) {
-        setPreviewParam(title);
-      }
     }
-  }, [open, initialTab, title, previewParam, setPreviewParam]);
+  }, [open, initialTab]);
 
   const handleOpenChange = React.useCallback(
     (nextOpen: boolean) => {

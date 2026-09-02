@@ -42,10 +42,17 @@ export function ToolCallChip({ block }: ToolCallChipProps) {
   );
 
   const previewTitle = targetPath || block.name;
-  const isTargetPreview = Boolean(
-    previewParam && (previewParam === previewTitle || (targetPath && previewParam.endsWith(targetPath)))
-  );
-  const isPreviewOpen = showWebPreview || isTargetPreview;
+
+  React.useEffect(() => {
+    const isTarget = Boolean(
+      previewParam && (previewParam === previewTitle || (targetPath && previewParam.endsWith(targetPath)))
+    );
+    if (isTarget) {
+      setShowWebPreview(true);
+    } else if (!previewParam) {
+      setShowWebPreview(false);
+    }
+  }, [previewParam, previewTitle, targetPath]);
 
   const statusIcon =
     block.status === "running" ? (
@@ -95,9 +102,9 @@ export function ToolCallChip({ block }: ToolCallChipProps) {
         )}
       </span>
 
-      {isPreviewOpen && (
+      {showWebPreview && (
         <WebArtifactPreviewDialog
-          open={isPreviewOpen}
+          open={showWebPreview}
           onOpenChange={(open) => {
             setShowWebPreview(open);
             if (!open) {

@@ -93,10 +93,17 @@ export function ToolCallCard({ block, compact = false }: ToolCallCardProps) {
   const [previewParam, setPreviewParam] = useUrlSearchParam("preview");
   const [showWebPreview, setShowWebPreview] = React.useState(false);
   const previewTitle = targetPath || block.name;
-  const isTargetPreview = Boolean(
-    previewParam && (previewParam === previewTitle || (targetPath && previewParam.endsWith(targetPath)))
-  );
-  const isPreviewOpen = showWebPreview || isTargetPreview;
+
+  React.useEffect(() => {
+    const isTarget = Boolean(
+      previewParam && (previewParam === previewTitle || (targetPath && previewParam.endsWith(targetPath)))
+    );
+    if (isTarget) {
+      setShowWebPreview(true);
+    } else if (!previewParam) {
+      setShowWebPreview(false);
+    }
+  }, [previewParam, previewTitle, targetPath]);
 
   const isRunning = block.status === "running";
   const isError = block.status === "error";
@@ -279,9 +286,9 @@ export function ToolCallCard({ block, compact = false }: ToolCallCardProps) {
         </div>
       )}
 
-      {isPreviewOpen && (
+      {showWebPreview && (
         <WebArtifactPreviewDialog
-          open={isPreviewOpen}
+          open={showWebPreview}
           onOpenChange={(open) => {
             setShowWebPreview(open);
             if (!open) {
