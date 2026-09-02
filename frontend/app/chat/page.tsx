@@ -33,6 +33,9 @@ import { isAdminRole, isEndUser, isOperator } from "@/lib/roles";
 import type { ConnectionState } from "@/components/chat/chat-connection-banner";
 import type { ExecutionPolicy, UploadedFile } from "@/types";
 
+import { ApprovalDock } from "@/components/chat/approval-dock";
+import type { ApprovalMessage } from "@/types";
+
 export default function ChatPage() {
   const { locale, tx } = useTranslation();
   const searchParams = useSearchParams();
@@ -842,12 +845,25 @@ export default function ChatPage() {
         />
 
         {messages.length > 0 && (
-          <div className="mx-auto w-full max-w-[var(--dsh-chat-content-width,736px)] px-4 pb-4 sm:px-6">
+          <div className="mx-auto w-full max-w-[var(--dsh-chat-content-width,736px)] px-4 pb-4 sm:px-6 space-y-3">
+            {/* DSH-style Dedicated Interactive Approval Dock */}
+            {messages.some((m) => m.role === "approval" && m.status === "pending") && (
+              <ApprovalDock
+                pendingApprovals={
+                  messages.filter((m) => m.role === "approval" && m.status === "pending") as ApprovalMessage[]
+                }
+                onApprovalDecision={handleApprovalDecision}
+              />
+            )}
             <ChatInput
               draft={draft}
               onDraftChange={setDraft}
               onSubmit={streaming ? stop : send}
-              disabled={!agentId || (!streaming && !draft.trim() && attachments.length === 0)}
+              disabled={
+                !agentId ||
+                (!streaming && !draft.trim() && attachments.length === 0) ||
+                messages.some((m) => m.role === "approval" && m.status === "pending")
+              }
               streaming={streaming}
               connectionState={connectionState}
               attachments={attachments}

@@ -67,75 +67,47 @@ function ChatMessageItemBase({ message: m, debug, onApprovalDecision }: ChatMess
     );
   }
 
-  // 2. Approval card
+  // 2. Approval card (Resolved audit state in message log)
   if (m.role === "approval") {
+    // If still pending, the dedicated bottom ApprovalDock handles the interaction
+    if (m.status === "pending") {
+      return null;
+    }
+    const isApproved = m.status === "approved";
     return (
       <div
         tabIndex={0}
         role="region"
-        aria-label={tx(`Yêu cầu phê duyệt: ${m.toolName ?? "tool"}`, `Approval request: ${m.toolName ?? "tool"}`)}
-        className="animate-scale-in self-start w-full max-w-[92%] rounded-xl border border-warning/40 bg-warning/[0.06] p-4 text-sm shadow-card my-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        aria-label={tx(`Lịch sử phê duyệt: ${m.toolName ?? "tool"}`, `Approval log: ${m.toolName ?? "tool"}`)}
+        className={`animate-scale-in self-start w-full max-w-[92%] rounded-xl border p-3.5 text-xs shadow-sm my-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+          isApproved
+            ? "border-success/30 bg-success/[0.04] text-foreground"
+            : "border-destructive/30 bg-destructive/[0.04] text-foreground"
+        }`}
       >
-        <div className="flex items-center gap-2 font-semibold text-foreground">
-          <ShieldAlert className="h-4 w-4 text-warning" />
-          <span>{tx("Yêu cầu phê duyệt", "Approval required")}</span>
+        <div className="flex items-center justify-between gap-2 font-semibold">
+          <div className="flex items-center gap-2">
+            {isApproved ? (
+              <ShieldCheck className="h-4 w-4 text-success" />
+            ) : (
+              <ShieldX className="h-4 w-4 text-destructive" />
+            )}
+            <span className="text-xs">
+              {isApproved
+                ? tx("Hành động đã được phê duyệt", "Action Approved")
+                : tx("Hành động đã bị từ chối", "Action Rejected")}
+            </span>
+          </div>
           <Badge
-            variant={m.status === "approved" ? "success" : m.status === "rejected" ? "destructive" : "warning"}
-            className="ml-auto text-[10px]"
+            variant={isApproved ? "success" : "destructive"}
+            className="text-[9.5px] font-mono capitalize"
           >
             {m.status}
           </Badge>
         </div>
-        <p className="mt-2 text-xs text-muted-foreground">
-          {tx("Agent muốn chạy", "The agent wants to run")}<code className="font-mono text-foreground">{m.toolName ?? "a tool"}</code>.
+        <p className="mt-1.5 text-[11px] text-muted-foreground">
+          {tx("Công cụ được gọi:", "Tool called:")} <code className="font-mono text-foreground font-medium">{m.toolName ?? "tool"}</code>
         </p>
-        {m.argsSnapshot != null && (
-          <pre className="mt-2 max-h-40 overflow-auto rounded-lg bg-background/80 p-2 text-[11px] font-mono text-muted-foreground">
-            {typeof m.argsSnapshot === "string" ? m.argsSnapshot : JSON.stringify(m.argsSnapshot, null, 2)}
-          </pre>
-        )}
-        {m.status === "pending" && onApprovalDecision && (
-          <div className="mt-3 flex items-center gap-2">
-            <Button
-              size="sm"
-              variant="default"
-              className="gap-1 text-xs"
-              disabled={isDeciding}
-              onClick={async () => {
-                setIsDeciding(true);
-                try {
-                  await onApprovalDecision(m.approvalId || m.id, "approved");
-                } finally {
-                  setIsDeciding(false);
-                }
-              }}
-            >
-              {isDeciding ? (
-                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <ShieldCheck className="h-3.5 w-3.5" />
-              )}
-              {tx("Phê duyệt", "Approve")}
-            </Button>
-            <Button
-              size="sm"
-              variant="destructive"
-              className="gap-1 text-xs"
-              disabled={isDeciding}
-              onClick={async () => {
-                setIsDeciding(true);
-                try {
-                  await onApprovalDecision(m.approvalId || m.id, "rejected");
-                } finally {
-                  setIsDeciding(false);
-                }
-              }}
-            >
-              <ShieldX className="h-3.5 w-3.5" />
-              {tx("Từ chối", "Reject")}
-            </Button>
-          </div>
-        )}
       </div>
     );
   }
