@@ -159,5 +159,24 @@ async def sync_system_workflow_templates(db: AsyncSession) -> None:
             if not version_row.published_at:
                 version_row.published_at = now
 
+    # Heal any legacy custom marketplace templates with missing org_id/created_by_user_id
+    from app.models.workflow import Workflow
+    legacy_customs = (
+        await db.scalars(
+            select(WorkflowTemplate).where(
+                WorkflowTemplate.key.like("market-%"),
+                WorkflowTemplate.org_id.is_(None),
+            )
+        )
+    ).all()
+    for lt in legacy_customs:
+        wf_prefix = lt.key.removeprefix("market-")
+        wf = await db.scalar(
+            select(Workflow).where(Workflow.id.like(f"{wf_prefix}%")).limit(1)
+        )
+        if wf is not None:
+            lt.org_id = wf.org_id
+            lt.created_by_user_id = wf.created_by_user_id
+
     await db.commit()
     logger.info("system_workflow_templates_synced", count=len(SYSTEM_WORKFLOW_BLUEPRINTS))
