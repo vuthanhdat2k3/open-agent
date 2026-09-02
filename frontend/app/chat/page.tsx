@@ -140,6 +140,10 @@ export default function ChatPage() {
   const lastEventSeqRef = React.useRef(0);
   const nearBottomRef = React.useRef(true);
   const scrollHostRef = React.useRef<HTMLDivElement>(null);
+  // Set to true immediately after the user decides an approval so that the
+  // stream-attachment effect can bypass its early-return on waiting_approval
+  // status and reconnect to the backend run that was just re-queued.
+  const approvalJustDecidedRef = React.useRef(false);
 
   const pendingSession = Boolean(
     agentReady && streaming && (!sessionId || !selectedSession),
@@ -463,21 +467,37 @@ export default function ChatPage() {
     if (!run && !justStarted) return;
     const TERMINAL = ["succeeded", "failed", "diverged", "cancelled", "waiting_approval"];
     if (run && TERMINAL.includes(run.status)) {
-      if (terminalRunRef.current !== run.id) {
-        terminalRunRef.current = run.id;
-        setStreaming(false);
-        setPhase(run.status === "waiting_approval" ? "approval" : "");
-        if (run.status !== "waiting_approval") {
-          void syncPersistedMessages();
+      // If the user just decided an approval, the backend re-queues the root
+      // task and streams a new round of events.  The run status visible here
+      // may still read "waiting_approval" (stale cache) even though the task
+      // is already being processed again.  Bypass the early-return once so
+      // the follow-stream can reconnect and pick up the resumed run.
+      if (approvalJustDecidedRef.current && run.status === "waiting_approval") {
+        approvalJustDecidedRef.current = false;
+        // Fall through to attach the SSE stream below.
+      } else {
+        if (terminalRunRef.current !== run.id) {
+          terminalRunRef.current = run.id;
+          setStreaming(false);
+          setPhase(run.status === "waiting_approval" ? "approval" : "");
+          if (run.status !== "waiting_approval") {
+            void syncPersistedMessages();
+          }
+          if (run.status !== "succeeded" && run.error) toast.error(run.error);
         }
-        if (run.status !== "succeeded" && run.error) toast.error(run.error);
+        return;
       }
-      return;
     }
     attachedRunRef.current = activeRunId;
     setStreaming(true);
 
-    if (!justStarted) {
+    // Skip the full reset when we're reconnecting after the user decided an
+    // approval (approvalJustDecidedRef was true when we entered this effect).
+    // The existing projection already has all prior messages and the seq
+    // counter tells the SSE endpoint to stream only new events, so resetting
+    // either would cause messages to disappear or replay.
+    const isApprovalReconnect = !justStarted && lastEventSeqRef.current > 0 && projectionRef.current.messages.length > 0;
+    if (!justStarted && !isApprovalReconnect) {
       assistantIdRef.current = `a-${activeRunId}`;
       lastEventSeqRef.current = 0;
       projectionRef.current = createRunProjection(assistantIdRef.current);
@@ -605,6 +625,9 @@ export default function ChatPage() {
           ),
         };
         commit();
+        // Signal to the stream-attachment effect that it should reconnect
+        // even if the chatRun still shows waiting_approval in stale cache.
+        approvalJustDecidedRef.current = true;
         attachedRunRef.current = null;
         terminalRunRef.current = null;
         setStreaming(true);

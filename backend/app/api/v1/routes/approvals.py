@@ -186,6 +186,12 @@ async def decide_approval(
         task = task_res.scalars().first()
         if task is not None:
             task.status = "queued"
+            # Reset finished_at so the task is treated as live again.
+            # When a sub-agent hits an approval gate, _finish_task() sets
+            # finished_at on the root task. Without clearing it here the
+            # resumed run looks "done" to any observer that relies on
+            # finished_at being NULL for in-progress tasks.
+            task.finished_at = None
             task.progress = {
                 **(task.progress or {}),
                 "phase": "queued",

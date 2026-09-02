@@ -870,7 +870,11 @@ export function useApprovals(enabled: boolean = true) {
   return useQuery({
     queryKey: emailIntelligenceQueryKeys(orgId).approvals(),
     queryFn: () => api.get<ApprovalRequest[]>("/api/approvals"),
-    refetchInterval: enabled ? 60000 : false,
+    // Poll frequently while approval handling is active so the chat page
+    // discovers a second (or third) approval card quickly after the agent
+    // resumes and raises another gate.  60 s was fast enough for the
+    // dashboard bell but causes noticeable hangs in chat approval rounds.
+    refetchInterval: enabled ? 5000 : false,
     refetchIntervalInBackground: false,
     enabled,
   });
@@ -950,7 +954,13 @@ export function useChatRun(runId: string | null) {
     },
     refetchInterval: (query) => {
       const status = query.state.data?.status;
-      return status && ["succeeded", "failed", "diverged", "cancelled", "waiting_approval"].includes(status)
+      // Keep polling at a shorter cadence during waiting_approval so the
+      // frontend discovers when the root task transitions back to "queued" /
+      // "running" after the user decides an approval (whether inline or via
+      // the /approvals page). Without this the hook stops polling the moment
+      // it first sees waiting_approval and never learns about the resumed run.
+      if (status === "waiting_approval") return 3000;
+      return status && ["succeeded", "failed", "diverged", "cancelled"].includes(status)
         ? false
         : 2000;
     },
