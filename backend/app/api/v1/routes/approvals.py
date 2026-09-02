@@ -58,6 +58,7 @@ class ApprovalDecision(BaseModel):
 )
 async def list_approvals(
     include_chat: bool = False,
+    run_id: str | None = None,
     org_id: str = Depends(get_current_org_id),
     current_user: User = Depends(get_current_user),
     authz: PrincipalContext = Depends(require_permission("approvals:read")),
@@ -66,7 +67,7 @@ async def list_approvals(
     now = datetime.now()
     is_admin = authz.allows("approvals:manage")
     exclude_run_types = [] if include_chat else ["agent"]
-    approvals = await get_pending(db, org_id=org_id, exclude_run_types=exclude_run_types)
+    approvals = await get_pending(db, org_id=org_id, exclude_run_types=exclude_run_types, run_id=run_id)
     result = []
     for approval in approvals:
         owner = is_admin or approval.requested_by == current_user.id

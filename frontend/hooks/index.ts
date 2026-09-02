@@ -865,11 +865,16 @@ export function useUpdateOrganizationQuota(orgId?: string) {
   });
 }
 
-export function useApprovals(enabled: boolean = true, includeChat: boolean = true) {
+export function useApprovals(enabled: boolean = true, includeChat: boolean = false, runId?: string | null) {
   const orgId = getActiveOrgId();
+  const queryParams = new URLSearchParams();
+  if (includeChat) queryParams.set("include_chat", "true");
+  if (runId) queryParams.set("run_id", runId);
+  const qs = queryParams.toString() ? `?${queryParams.toString()}` : "";
+
   return useQuery({
-    queryKey: [...emailIntelligenceQueryKeys(orgId).approvals(), { includeChat }],
-    queryFn: () => api.get<ApprovalRequest[]>(`/api/approvals${includeChat ? "?include_chat=true" : ""}`),
+    queryKey: [...emailIntelligenceQueryKeys(orgId).approvals(), { includeChat, runId }],
+    queryFn: () => api.get<ApprovalRequest[]>(`/api/approvals${qs}`),
     // Poll frequently while approval handling is active so the chat page
     // and approvals dashboard discover new approval gates promptly.
     refetchInterval: enabled ? 5000 : false,

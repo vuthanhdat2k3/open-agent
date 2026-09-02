@@ -106,7 +106,7 @@ export default function ChatPage() {
   );
   const chatRun = useChatRun(activeRunId);
   const { refetch: refetchChatRun } = chatRun;
-  const approvals = useApprovals(Boolean(activeRunId || sessionId), true);
+  const approvals = useApprovals(Boolean(activeRunId), true, activeRunId);
   const sessions = useSessions();
   const delSession = useDeleteSession();
   const updateAgent = useUpdateAgent();
