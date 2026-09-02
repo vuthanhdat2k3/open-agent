@@ -88,7 +88,12 @@ SYSTEM_CATALOG_METADATA: dict[str, dict[str, Any]] = {
 
 
 async def sync_system_workflow_templates(db: AsyncSession) -> None:
-    """Ensure all built-in system workflow blueprints are registered in WorkflowCatalog."""
+    """Ensure all built-in system workflow blueprints are registered in WorkflowCatalog.
+
+    NON-DESTRUCTIVE: System blueprints cannot be permanently deleted or archived;
+    their published status is automatically restored, while preserving any customized
+    metadata or versions.
+    """
     now = utc_now()
     for bp_key, blueprint in SYSTEM_WORKFLOW_BLUEPRINTS.items():
         meta = SYSTEM_CATALOG_METADATA.get(bp_key, {})
@@ -107,6 +112,11 @@ async def sync_system_workflow_templates(db: AsyncSession) -> None:
             )
             db.add(template)
             await db.flush()
+        else:
+            # System blueprints MUST NEVER remain archived or hidden. Always restore published status.
+            if template.status != "published":
+                template.status = "published"
+                template.updated_at = now
 
         # Ensure latest published version exists
         version_row = await db.scalar(
@@ -137,11 +147,15 @@ async def sync_system_workflow_templates(db: AsyncSession) -> None:
             )
             db.add(version)
         else:
-            # Sync metadata updates if needed
-            version_row.name = blueprint.name
-            version_row.description = blueprint.description
-            version_row.category = blueprint.category
-            version_row.icon = blueprint.icon
+            # Non-destructive sync: preserve custom metadata if modified; ensure baseline fields exist
+            if not version_row.name:
+                version_row.name = blueprint.name
+            if not version_row.description:
+                version_row.description = blueprint.description
+            if not version_row.category:
+                version_row.category = blueprint.category
+            if not version_row.icon:
+                version_row.icon = blueprint.icon
             if not version_row.published_at:
                 version_row.published_at = now
 
