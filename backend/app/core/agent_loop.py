@@ -1286,6 +1286,7 @@ async def _agent_stream(
                             "agent_name": child_agent.name,
                             "agent_id": child_agent.id,
                             "tool_name": tool_name,
+                            "result": ev_data.get("result", ""),
                             "line": f"[Subagent '{child_agent.name}' tool {tool_name} completed]\n",
                         },
                     }

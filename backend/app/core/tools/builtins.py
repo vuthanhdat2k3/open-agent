@@ -333,11 +333,13 @@ async def _call_agent(args: dict[str, Any], ctx: ToolContext) -> str:
             })
         elif ev_type == "tool_result":
             tool_name = ev_data.get("name", "")
+            tool_result_content = ev_data.get("result", "")
             await ctx.emit({
                 "stage": "subagent_tool_result",
                 "agent_name": agent.name,
                 "agent_id": agent.id,
                 "tool_name": tool_name,
+                "result": tool_result_content,
                 "line": f"[Subagent '{agent.name}' tool {tool_name} completed]\n",
             })
         elif ev_type == "message_done":

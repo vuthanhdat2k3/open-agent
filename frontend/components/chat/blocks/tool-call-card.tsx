@@ -189,20 +189,85 @@ export function ToolCallCard({ block, compact = false }: ToolCallCardProps) {
             </Collapsible>
           )}
 
-          {/* Subagent Sub-tools */}
+          {/* Subagent Sub-tools Detailed Trace */}
           {subagent?.tools && subagent.tools.length > 0 && (
-            <div className="flex flex-wrap items-center gap-1.5 pt-1">
-              <span className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">{tx("Công cụ con:", "Sub-tools:")}</span>
-              {subagent.tools.map((t, i) => (
-                <Badge key={i} variant="outline" className="text-[10px] gap-1 font-mono py-0 px-2 bg-muted/40 border-border/60">
-                  {t.status === "running" ? (
-                    <Loader2 className="h-2.5 w-2.5 animate-spin text-primary" />
-                  ) : (
-                    <CheckCircle2 className="h-2.5 w-2.5 text-success" />
-                  )}
-                  {t.name}
-                </Badge>
-              ))}
+            <div className="space-y-1.5 pt-1">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">
+                  {tx("Công cụ con:", "Sub-tools:")}
+                </span>
+                {subagent.tools.map((t, i) => (
+                  <Badge
+                    key={i}
+                    variant="outline"
+                    className="text-[10px] gap-1 font-mono py-0 px-2 bg-muted/40 border-border/60"
+                  >
+                    {t.status === "running" ? (
+                      <Loader2 className="h-2.5 w-2.5 animate-spin text-primary" />
+                    ) : t.status === "error" ? (
+                      <XCircle className="h-2.5 w-2.5 text-destructive" />
+                    ) : (
+                      <CheckCircle2 className="h-2.5 w-2.5 text-success" />
+                    )}
+                    {t.name}
+                  </Badge>
+                ))}
+              </div>
+
+              {/* Expandable Sub-tool Executions */}
+              <div className="space-y-1.5 pt-1">
+                {subagent.tools.map((t, i) => {
+                  const hasDetails = Boolean(t.args || t.result);
+                  return (
+                    <Collapsible key={i} defaultOpen={t.status === "running" || Boolean(t.result)}>
+                      <CollapsibleTrigger className="group flex w-full cursor-pointer items-center justify-between rounded bg-muted/30 hover:bg-muted/50 px-2.5 py-1 text-[10px] font-mono text-foreground/90 border border-border/40">
+                        <div className="flex items-center gap-1.5 truncate">
+                          {t.status === "running" ? (
+                            <Loader2 className="h-2.5 w-2.5 animate-spin text-primary shrink-0" />
+                          ) : t.status === "error" ? (
+                            <XCircle className="h-2.5 w-2.5 text-destructive shrink-0" />
+                          ) : (
+                            <CheckCircle2 className="h-2.5 w-2.5 text-success shrink-0" />
+                          )}
+                          <span className="font-semibold text-primary/90">{t.name}</span>
+                          {t.status === "running" && (
+                            <span className="text-[9px] text-muted-foreground">({tx("đang chạy...", "running...")})</span>
+                          )}
+                        </div>
+                        {hasDetails && (
+                          <ChevronDown className="h-3 w-3 transition-transform duration-200 group-data-[state=closed]:-rotate-90 text-muted-foreground shrink-0" />
+                        )}
+                      </CollapsibleTrigger>
+                      {hasDetails && (
+                        <CollapsibleContent>
+                          <div className="mt-1 space-y-1.5 rounded-lg border border-border/40 bg-muted/20 p-2 text-[10.5px] font-mono leading-relaxed">
+                            {t.args && (
+                              <div className="space-y-0.5">
+                                <span className="text-[9px] uppercase tracking-wider text-muted-foreground/80 font-bold">
+                                  {tx("Tham số:", "Args:")}
+                                </span>
+                                <pre className="max-h-36 overflow-auto whitespace-pre-wrap break-all rounded bg-background/60 p-1.5 text-muted-foreground text-[10px] border border-border/20">
+                                  {t.args}
+                                </pre>
+                              </div>
+                            )}
+                            {t.result && (
+                              <div className="space-y-0.5">
+                                <span className="text-[9px] uppercase tracking-wider text-success/90 font-bold">
+                                  {tx("Kết quả:", "Result:")}
+                                </span>
+                                <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all rounded bg-background/80 p-1.5 text-foreground text-[10px] border border-border/30">
+                                  {t.result}
+                                </pre>
+                              </div>
+                            )}
+                          </div>
+                        </CollapsibleContent>
+                      )}
+                    </Collapsible>
+                  );
+                })}
+              </div>
             </div>
           )}
 

@@ -25,13 +25,20 @@ export interface TextBlock {
   streaming: boolean;
 }
 
+export interface SubagentToolCall {
+  name: string;
+  status: "running" | "done" | "error";
+  args?: string;
+  result?: string;
+}
+
 export interface SubagentActivity {
   agentName?: string;
   agentId?: string;
   stage?: string;
   thinking?: string;
   response?: string;
-  tools?: { name: string; status: "running" | "done" }[];
+  tools?: SubagentToolCall[];
 }
 
 export interface ToolCallBlock {
@@ -319,10 +326,12 @@ export function applyChatEvent(
             subagent.response = (subagent.response ?? "") + String(d.content);
           } else if (stage === "subagent_tool_call" && d.tool_name) {
             const currentTools = subagent.tools ?? [];
-            subagent.tools = [...currentTools, { name: String(d.tool_name), status: "running" }];
+            const argsStr = d.arguments ? (typeof d.arguments === "string" ? d.arguments : JSON.stringify(d.arguments, null, 2)) : undefined;
+            subagent.tools = [...currentTools, { name: String(d.tool_name), status: "running", args: argsStr }];
           } else if (stage === "subagent_tool_result" && d.tool_name) {
+            const resultStr = d.result != null ? (typeof d.result === "string" ? d.result : JSON.stringify(d.result, null, 2)) : undefined;
             const currentTools = (subagent.tools ?? []).map((t) =>
-              t.name === d.tool_name && t.status === "running" ? { ...t, status: "done" as const } : t,
+              t.name === d.tool_name && t.status === "running" ? { ...t, status: "done" as const, result: resultStr } : t,
             );
             subagent.tools = currentTools;
           }
