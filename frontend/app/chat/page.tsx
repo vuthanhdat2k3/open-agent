@@ -604,11 +604,9 @@ export default function ChatPage() {
         commit();
         attachedRunRef.current = null;
         terminalRunRef.current = null;
-        lastEventSeqRef.current = 0;
         setStreaming(true);
         setPhase("thinking");
         void approvals.refetch();
-        void refetchMessages();
         await refetchChatRun();
       } catch (error) {
         projectionRef.current = {
