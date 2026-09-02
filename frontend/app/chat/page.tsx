@@ -21,6 +21,7 @@ import {
   type ChatMessage,
   type RunProjectionState,
   createRunProjection,
+  stopProjectionStreaming,
   applyChatEvent,
   messagesFromPersisted,
   type PersistedMessageRow,
@@ -202,6 +203,10 @@ export default function ChatPage() {
         }
 
         if (persisted.length === 0 && projectionRef.current.messages.length > 0) {
+          return;
+        }
+
+        if (persisted.length < projectionRef.current.messages.length) {
           return;
         }
 
@@ -764,6 +769,8 @@ export default function ChatPage() {
     const runId = activeRunId;
     abortRef.current?.abort();
     resetReattach();
+    projectionRef.current = stopProjectionStreaming(projectionRef.current);
+    commit();
     setStreaming(false);
     setPhase("");
     setActiveRun(null);

@@ -138,6 +138,30 @@ export function createRunProjection(
 }
 
 /**
+ * Marks all in-flight streaming blocks (text, reasoning) as non-streaming
+ * without dropping any partial content. Used when user cancels or stops.
+ */
+export function stopProjectionStreaming(state: RunProjectionState): RunProjectionState {
+  const messages = state.messages.map((m) => {
+    if (m.role !== "assistant") return m;
+    const hasStreaming = m.blocks.some(
+      (b) => (b.kind === "text" || b.kind === "reasoning") && b.streaming,
+    );
+    if (!hasStreaming) return m;
+    return {
+      ...m,
+      blocks: m.blocks.map((b) => {
+        if (b.kind === "text" || b.kind === "reasoning") {
+          return { ...b, streaming: false };
+        }
+        return b;
+      }),
+    };
+  });
+  return { ...state, messages };
+}
+
+/**
  * Reduce one chat stream event into view nodes. Returns a new state object;
  * sibling messages keep their references so React.memo stays effective.
  * Unknown events return the SAME state reference (cheap bail-out).
