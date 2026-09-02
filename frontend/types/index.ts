@@ -683,3 +683,11 @@ export interface EmailIntelligenceNavigationSummary {
   };
   meta: { server_time: string; reason_registry_version?: string; correlation_id?: string };
 }
+
+export type {
+  ChatMessage,
+  ApprovalMessage,
+  UserMessage,
+  AssistantMessage,
+  ErrorMessage,
+} from "@/lib/chat/projection";
