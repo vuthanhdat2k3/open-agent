@@ -96,6 +96,8 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 |---|---|---|---|
 | `dev` | `G:\open-agent` | Nhánh tích hợp chính — không code trực tiếp ở đây | — |
 
+> 2026-09-02: Đã xóa các nhánh remote đã merge vào `dev`: `origin/docs/demo-do-deploy-guide`, `origin/feat/system-agent-startup-sync`. Sửa luồng phê duyệt đa tầng sub-agent không bị treo, fix overlap nút fullscreen/close và hoàn thiện URL query parameter deep linking + backdrop close cho Web Artifact Preview Dialog.
+
 > 2026-09-01: Đã dọn dẹp worktree và branch `docs/demo-do-deploy-guide` (Viết docs/demo-digitalocean-deploy.md: hướng dẫn deploy demo full-stack lên DigitalOcean + phân tích chi phí) sau khi đã merge vào `dev`.
 
 > 2026-09-01: Đã dọn dẹp worktree và branch `feat/system-agent-startup-sync` (Đồng bộ System Agent Blueprints lúc startup) sau khi đã merge vào `dev`.
