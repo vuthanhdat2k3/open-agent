@@ -24,6 +24,9 @@ router = APIRouter(prefix="/api/workspace", tags=["workspace"])
 _LANG_BY_SUFFIX = {
     ".py": "python",
     ".sh": "bash",
+    ".js": "node",
+    ".mjs": "node",
+    ".cjs": "node",
 }
 
 
@@ -96,7 +99,7 @@ async def download_artifact(
 
 @router.delete(
     "/artifacts/{artifact_id}",
-    dependencies=[Depends(require_permission("files:manage"))],
+    dependencies=[Depends(require_permission("files:write"))],
 )
 async def delete_artifact(
     artifact_id: str,
@@ -182,7 +185,7 @@ async def delete_execution(
     "/artifacts/{artifact_id}/run",
     response_model=SandboxRunOut,
     status_code=202,
-    dependencies=[Depends(require_permission("files:manage"))],
+    dependencies=[Depends(require_permission("files:write"))],
 )
 async def run_artifact(
     artifact_id: str,
@@ -198,7 +201,7 @@ async def run_artifact(
 
     language = _infer_language(str(target))
     if language is None:
-        raise HTTPException(400, "unsupported artifact type (use .py or .sh)")
+        raise HTTPException(400, "unsupported artifact type (supported: .py, .sh, .js)")
 
     try:
         live = await live_run.start_live_run(
@@ -248,7 +251,7 @@ async def stream_execution(
 
 @router.post(
     "/executions/{execution_id}/stop",
-    dependencies=[Depends(require_permission("files:manage"))],
+    dependencies=[Depends(require_permission("files:write"))],
 )
 async def stop_execution(
     execution_id: str,

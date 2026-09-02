@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.agent_loop import run_agent_loop
+from app.core.execution_policy import ExecutionPolicy, normalize_execution_policy
 from app.db.base import utc_now
 from app.models.agent import Agent
 from app.models.model import Model
@@ -45,6 +46,15 @@ class ChatService:
             if model is None:
                 raise ValueError("model is not available for this organization")
         selected_agent: Agent | RuntimeAgent | None = None
+        if user_role == "user":
+            # The `user` role only ever consumes the org's orchestrator-kind
+            # agent through chat; specialized worker agents are reachable
+            # only via the orchestrator's call_agent delegation, never
+            # directly. operator/org_admin/platform_admin are unrestricted.
+            target_agent = await self._load_agent(org_id, request.agent_id)
+            if getattr(target_agent, "kind", "worker") != "orchestrator":
+                raise ValueError("this role may only chat with the orchestrator agent")
+            selected_agent = target_agent
         if request.model_id:
             # Admin model changes publish a new agent release. Repin an
             # existing session only for that default-model path; a user model
@@ -68,15 +78,24 @@ class ChatService:
                     await self.db.refresh(session)
                 return session
         agent = selected_agent or await self._load_agent(org_id, request.agent_id)
+        agent = await AgentService(self.db).materialize_system_agent(org_id, agent)
         raw = " ".join(request.message.split())
         title = (raw[:72] + "…") if len(raw) > 72 else raw
         title = title[:1].upper() + title[1:] if title else "New session"
+        execution_policy = normalize_execution_policy(request.execution_policy)
+        if execution_policy is ExecutionPolicy.full_access and user_role not in {
+            "operator",
+            "org_admin",
+            "platform_admin",
+        }:
+            raise ValueError("full-access execution policy is not available for this role")
         session = Session(
             org_id=org_id,
             created_by_user_id=user_id,
-            agent_id=request.agent_id,
+            agent_id=agent.id,
             agent_release_id=getattr(agent, "active_release_id", None),
             title=title,
+            execution_policy=execution_policy.value,
         )
         self.db.add(session)
         await self.db.commit()
@@ -144,6 +163,12 @@ class ChatService:
             agent_id=agent.id,
             agent_release_id=getattr(agent, "active_release_id", None),
             triggered_by_user_id=user_id,
+            execution_principal={
+                "principal_type": "human" if user_id else "system",
+                "principal_id": user_id or "openagent:internal-runtime",
+                "user_id": user_id,
+                "role": user_role,
+            },
             goal=request.message,
             status="queued",
             progress={
@@ -176,11 +201,28 @@ class ChatService:
         if prepared:
             if not request.session_id:
                 raise ValueError("prepared chat run requires a session")
-            session_id = request.session_id
+            session_res = await self.db.execute(
+                select(Session).where(Session.id == request.session_id, Session.org_id == org_id)
+            )
+            session = session_res.scalar_one_or_none()
+            if session is None:
+                raise ValueError("chat session not found")
+            if request.execution_policy:
+                new_policy = normalize_execution_policy(request.execution_policy)
+                if new_policy is ExecutionPolicy.full_access and user_role not in {
+                    "operator",
+                    "org_admin",
+                    "platform_admin",
+                }:
+                    raise ValueError("full-access execution policy is not available for this role")
+                session.execution_policy = new_policy.value
+                await self.db.commit()
+                await self.db.refresh(session)
+            session_id = session.id
             agent = await self._load_agent(
                 org_id,
                 request.agent_id,
-                prepared_agent_release_id,
+                prepared_agent_release_id or session.agent_release_id,
             )
         else:
             session = await self.ensure_session(org_id, request, user_id, user_role)
@@ -198,4 +240,5 @@ class ChatService:
             user_role=user_role,
             approval_resume_id=approval_resume_id,
             timezone_name=request.timezone,
+            execution_policy=normalize_execution_policy(session.execution_policy),
         )

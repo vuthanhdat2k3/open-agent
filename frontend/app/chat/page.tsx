@@ -10,6 +10,7 @@ import {
   useCurrentRole,
   useSessions,
   useSessionMessages,
+  useUpdateSession,
   useDeleteSession,
   useModels,
   useChatRun,
@@ -21,16 +22,21 @@ import {
   type ChatMessage,
   type RunProjectionState,
   createRunProjection,
+  stopProjectionStreaming,
   applyChatEvent,
   messagesFromPersisted,
   type PersistedMessageRow,
 } from "@/lib/chat/projection";
+import { ChatSidebar } from "@/components/chat/chat-sidebar";
 import { ChatThread } from "@/components/chat/chat-thread";
 import { ChatInput } from "@/components/chat/chat-input";
 import { useTranslation } from "@/lib/i18n";
-import { isAdminRole, isOperator } from "@/lib/roles";
+import { isAdminRole, isEndUser, isOperator } from "@/lib/roles";
 import type { ConnectionState } from "@/components/chat/chat-connection-banner";
-import type { UploadedFile } from "@/types";
+import type { ExecutionPolicy, UploadedFile } from "@/types";
+
+import { ApprovalDock } from "@/components/chat/approval-dock";
+import type { ApprovalMessage } from "@/types";
 
 export default function ChatPage() {
   const { locale, tx } = useTranslation();
@@ -45,15 +51,20 @@ export default function ChatPage() {
     activeRunId,
     debug,
     pendingModelIdByAgent,
+    pendingExecutionPolicy,
     hydrated: chatHydrated,
     setAgent,
     setSession,
     setActiveRun,
     toggleDebug,
     setPendingModel,
+    setPendingExecutionPolicy,
   } = useChatStore();
 
   const pendingSessionModelId = (agentId && pendingModelIdByAgent[agentId]) || "";
+
+  const transitioningSessionRef = React.useRef<string | null | undefined>(undefined);
+  const transitioningAgentRef = React.useRef<string | null | undefined>(undefined);
 
   const buildChatUrl = React.useCallback(
     (agent: string | null, session: string | null, model: string | null) => {
@@ -77,6 +88,7 @@ export default function ChatPage() {
 
   const changeSession = React.useCallback(
     (id: string | null) => {
+      transitioningSessionRef.current = id;
       setSession(id);
       const model = agentId ? pendingModelIdByAgent[agentId] ?? null : null;
       router.replace(buildChatUrl(agentId, id, model), { scroll: false });
@@ -86,6 +98,8 @@ export default function ChatPage() {
 
   const changeAgent = React.useCallback(
     (nextAgentId: string | null) => {
+      transitioningAgentRef.current = nextAgentId;
+      transitioningSessionRef.current = null;
       setAgent(nextAgentId);
       setSession(null);
       router.replace(buildChatUrl(nextAgentId, null, null), { scroll: false });
@@ -94,12 +108,14 @@ export default function ChatPage() {
   );
   const chatRun = useChatRun(activeRunId);
   const { refetch: refetchChatRun } = chatRun;
-  const approvals = useApprovals(Boolean(activeRunId));
+  const approvals = useApprovals(Boolean(activeRunId), true, activeRunId);
   const sessions = useSessions();
+  const updateSession = useUpdateSession();
   const delSession = useDeleteSession();
   const updateAgent = useUpdateAgent();
   const [agentReady, setAgentReady] = React.useState(false);
   const selectedSession = sessions.data?.find((s) => s.id === sessionId);
+  const effectiveExecutionPolicy = selectedSession?.execution_policy ?? pendingExecutionPolicy;
   const [draft, setDraft] = React.useState("");
   const [attachments, setAttachments] = React.useState<UploadedFile[]>([]);
 
@@ -127,6 +143,10 @@ export default function ChatPage() {
   const lastEventSeqRef = React.useRef(0);
   const nearBottomRef = React.useRef(true);
   const scrollHostRef = React.useRef<HTMLDivElement>(null);
+  // Set to true immediately after the user decides an approval so that the
+  // stream-attachment effect can bypass its early-return on waiting_approval
+  // status and reconnect to the backend run that was just re-queued.
+  const approvalJustDecidedRef = React.useRef(false);
 
   const pendingSession = Boolean(
     agentReady && streaming && (!sessionId || !selectedSession),
@@ -188,6 +208,10 @@ export default function ChatPage() {
           return;
         }
 
+        if (persisted.length < projectionRef.current.messages.length) {
+          return;
+        }
+
         if (rafRef.current != null) {
           cancelAnimationFrame(rafRef.current);
           rafRef.current = null;
@@ -213,19 +237,52 @@ export default function ChatPage() {
 
   React.useEffect(() => {
     if (!chatHydrated || !agents.data?.length) return;
-    const resolvedAgent =
-      urlAgent && agents.data.some((a) => a.id === urlAgent)
-        ? urlAgent
-        : agentId && agents.data.some((a) => a.id === agentId)
-          ? agentId
-          : agents.data[0].id;
 
-    if (resolvedAgent !== agentId) {
+    // Check if in-flight agent transition has caught up to the URL
+    if (transitioningAgentRef.current !== undefined) {
+      if (urlAgent === transitioningAgentRef.current || (!urlAgent && !transitioningAgentRef.current)) {
+        transitioningAgentRef.current = undefined;
+      }
+    }
+
+    // Check if in-flight session transition has caught up to the URL
+    if (transitioningSessionRef.current !== undefined) {
+      if (urlSession === transitioningSessionRef.current || (!urlSession && !transitioningSessionRef.current)) {
+        transitioningSessionRef.current = undefined;
+      }
+    }
+
+    // The `user` role may only chat with the org's orchestrator-kind agent
+    // (enforced server-side in ChatService.ensure_session). Auto-selection
+    // must land on that agent instead of the first agent in the list, or the
+    // first message would be rejected by the backend.
+    const isEndUserRole = isEndUser(role);
+    const orchestratorAgent = agents.data.find((a) => a.kind === "orchestrator");
+    const fallbackAgent = (isEndUserRole && orchestratorAgent) || agents.data[0];
+    const resolvedAgent =
+      urlAgent &&
+      agents.data.some(
+        (a) => a.id === urlAgent && (!isEndUserRole || a.kind === "orchestrator"),
+      )
+        ? urlAgent
+        : agentId &&
+            agents.data.some(
+              (a) => a.id === agentId && (!isEndUserRole || a.kind === "orchestrator"),
+            )
+          ? agentId
+          : fallbackAgent.id;
+
+    if (transitioningAgentRef.current === undefined && resolvedAgent !== agentId) {
       setAgent(resolvedAgent);
       setAgentReady(true);
       return;
     }
     setAgentReady(true);
+
+    // If an in-app session transition is in flight, do not sync from URL until URL catches up
+    if (transitioningSessionRef.current !== undefined) {
+      return;
+    }
 
     if (urlSession && urlSession !== sessionId && sessions.isSuccess) {
       const session = sessions.data.find((s) => s.id === urlSession);
@@ -237,6 +294,13 @@ export default function ChatPage() {
       return;
     }
 
+    if (!urlSession && sessionId !== null) {
+      setSession(null);
+      projectionRef.current = createRunProjection("");
+      setMessages([]);
+      return;
+    }
+
     if (urlModel && urlModel !== pendingSessionModelId) {
       if (models.data?.some((m) => m.id === urlModel)) {
         setPendingModel(resolvedAgent, urlModel);
@@ -245,11 +309,11 @@ export default function ChatPage() {
     }
 
     if (!urlAgent && !urlSession) {
-      router.replace(buildChatUrl(resolvedAgent, sessionId, pendingSessionModelId || null), { scroll: false });
+      router.replace(buildChatUrl(resolvedAgent, null, pendingSessionModelId || null), { scroll: false });
     }
   }, [
     agentId, agents.data, buildChatUrl, chatHydrated, models.data,
-    pendingSessionModelId, router, searchParams, sessionId, sessions.data,
+    pendingSessionModelId, role, router, searchParams, sessionId, sessions.data,
     sessions.isSuccess, setAgent, setPendingModel, setSession, urlAgent,
     urlModel, urlSession,
   ]);
@@ -410,21 +474,37 @@ export default function ChatPage() {
     if (!run && !justStarted) return;
     const TERMINAL = ["succeeded", "failed", "diverged", "cancelled", "waiting_approval"];
     if (run && TERMINAL.includes(run.status)) {
-      if (terminalRunRef.current !== run.id) {
-        terminalRunRef.current = run.id;
-        setStreaming(false);
-        setPhase(run.status === "waiting_approval" ? "approval" : "");
-        if (run.status !== "waiting_approval") {
-          void syncPersistedMessages();
+      // If the user just decided an approval, the backend re-queues the root
+      // task and streams a new round of events.  The run status visible here
+      // may still read "waiting_approval" (stale cache) even though the task
+      // is already being processed again.  Bypass the early-return once so
+      // the follow-stream can reconnect and pick up the resumed run.
+      if (approvalJustDecidedRef.current && run.status === "waiting_approval") {
+        approvalJustDecidedRef.current = false;
+        // Fall through to attach the SSE stream below.
+      } else {
+        if (terminalRunRef.current !== run.id) {
+          terminalRunRef.current = run.id;
+          setStreaming(false);
+          setPhase(run.status === "waiting_approval" ? "approval" : "");
+          if (run.status !== "waiting_approval") {
+            void syncPersistedMessages();
+          }
+          if (run.status !== "succeeded" && run.error) toast.error(run.error);
         }
-        if (run.status !== "succeeded" && run.error) toast.error(run.error);
+        return;
       }
-      return;
     }
     attachedRunRef.current = activeRunId;
     setStreaming(true);
 
-    if (!justStarted) {
+    // Skip the full reset when we're reconnecting after the user decided an
+    // approval (approvalJustDecidedRef was true when we entered this effect).
+    // The existing projection already has all prior messages and the seq
+    // counter tells the SSE endpoint to stream only new events, so resetting
+    // either would cause messages to disappear or replay.
+    const isApprovalReconnect = !justStarted && lastEventSeqRef.current > 0 && projectionRef.current.messages.length > 0;
+    if (!justStarted && !isApprovalReconnect) {
       assistantIdRef.current = `a-${activeRunId}`;
       lastEventSeqRef.current = 0;
       projectionRef.current = createRunProjection(assistantIdRef.current);
@@ -487,8 +567,42 @@ export default function ChatPage() {
   ]);
 
   React.useEffect(() => {
-    const approval = approvals.data?.find((item) => item.run_id === activeRunId);
-    if (!approval || projectionRef.current.messages.some((item) => item.role === "approval" && item.approvalId === approval.id)) return;
+    // If run has finished or failed, remove any remaining pending approval messages
+    if (chatRun.data?.status === "succeeded" || chatRun.data?.status === "failed") {
+      if (projectionRef.current.messages.some((item) => item.role === "approval")) {
+        projectionRef.current = {
+          ...projectionRef.current,
+          messages: projectionRef.current.messages.filter((item) => item.role !== "approval"),
+        };
+        commit();
+      }
+      return;
+    }
+
+    if (approvals.isSuccess) {
+      const activePendingApprovalIds = new Set(
+        approvals.data?.filter((a) => a.status === "pending").map((a) => a.id) ?? []
+      );
+      // Remove any historical/stale approval messages replayed from event log that are no longer pending
+      const hasStaleApprovals = projectionRef.current.messages.some(
+        (m) => m.role === "approval" && !activePendingApprovalIds.has(m.approvalId)
+      );
+      if (hasStaleApprovals) {
+        projectionRef.current = {
+          ...projectionRef.current,
+          messages: projectionRef.current.messages.filter(
+            (m) => !(m.role === "approval" && !activePendingApprovalIds.has(m.approvalId))
+          ),
+        };
+        commit();
+      }
+    }
+
+    const approval = approvals.data?.find(
+      (item) => (activeRunId ? item.run_id === activeRunId : false) && item.status === "pending"
+    );
+    if (!approval) return;
+    if (projectionRef.current.messages.some((item) => item.role === "approval" && item.approvalId === approval.id)) return;
     const approvalMsg: ChatMessage = {
       id: `approval-${approval.id}`,
       role: "approval",
@@ -503,18 +617,24 @@ export default function ChatPage() {
     };
     commit();
     setPhase("approval");
-  }, [activeRunId, approvals.data, commit]);
+  }, [activeRunId, approvals.data, approvals.isSuccess, chatRun.data?.status, commit]);
 
   const handleApprovalDecision = React.useCallback(
-    async (messageId: string, decision: "approved" | "rejected") => {
-      const message = projectionRef.current.messages.find((item) => item.id === messageId);
-      if (!message || message.role !== "approval") return;
-      const approvalId = message.approvalId;
+    async (messageOrApprovalId: string, decision: "approved" | "rejected") => {
+      const message = projectionRef.current.messages.find(
+        (item) =>
+          item.id === messageOrApprovalId ||
+          (item.role === "approval" && (item.approvalId === messageOrApprovalId || item.id === `approval-${messageOrApprovalId}`)),
+      );
+      const approvalId = (message && message.role === "approval" ? message.approvalId : null) || messageOrApprovalId.replace(/^approval-/, "");
+      const targetId = message?.id || `approval-${approvalId}`;
 
       projectionRef.current = {
         ...projectionRef.current,
         messages: projectionRef.current.messages.map((item) =>
-          item.id === messageId && item.role === "approval" ? { ...item, status: decision } : item,
+          item.id === targetId || (item.role === "approval" && item.approvalId === approvalId)
+            ? { ...item, status: decision }
+            : item,
         ),
       };
       commit();
@@ -524,31 +644,37 @@ export default function ChatPage() {
           `/api/approvals/${approvalId}/decide`,
           { decision },
         );
-        const authoritative = decided.status === "expired" ? "rejected" : decided.status;
+        // Remove the decided approval message completely so it does not clutter the chat history
         projectionRef.current = {
           ...projectionRef.current,
-          messages: projectionRef.current.messages.map((item) =>
-            item.id === messageId && item.role === "approval" ? { ...item, status: authoritative } : item,
+          messages: projectionRef.current.messages.filter(
+            (item) => !(item.id === targetId || (item.role === "approval" && item.approvalId === approvalId)),
           ),
         };
         commit();
+        // Signal to the stream-attachment effect that it should reconnect
+        // even if the chatRun still shows waiting_approval in stale cache.
+        approvalJustDecidedRef.current = true;
         attachedRunRef.current = null;
         terminalRunRef.current = null;
         setStreaming(true);
         setPhase("thinking");
+        void approvals.refetch();
         await refetchChatRun();
       } catch (error) {
         projectionRef.current = {
           ...projectionRef.current,
           messages: projectionRef.current.messages.map((item) =>
-            item.id === messageId && item.role === "approval" ? { ...item, status: "pending" } : item,
+            item.id === targetId || (item.role === "approval" && item.approvalId === approvalId)
+              ? { ...item, status: "pending" }
+              : item,
           ),
         };
         commit();
         toast.error(error instanceof Error ? error.message : (tx("Không thể quyết định phê duyệt", "Could not decide approval")));
       }
     },
-    [commit, refetchChatRun, setStreaming],
+    [commit, refetchChatRun, setStreaming, tx],
   );
 
   const abortRef = React.useRef<AbortController | null>(null);
@@ -593,6 +719,7 @@ export default function ChatPage() {
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     };
     if (pendingSessionModelId) payload.model_id = pendingSessionModelId;
+    if (effectiveExecutionPolicy) payload.execution_policy = effectiveExecutionPolicy;
 
     attachedRunRef.current = null;
     setActiveRun(null);
@@ -644,6 +771,8 @@ export default function ChatPage() {
     const runId = activeRunId;
     abortRef.current?.abort();
     resetReattach();
+    projectionRef.current = stopProjectionStreaming(projectionRef.current);
+    commit();
     setStreaming(false);
     setPhase("");
     setActiveRun(null);
@@ -689,6 +818,19 @@ export default function ChatPage() {
     setPhase("");
   };
 
+  const handleExecutionPolicyChange = async (policy: ExecutionPolicy) => {
+    if (streaming || policy === effectiveExecutionPolicy) return;
+    setPendingExecutionPolicy(policy);
+    if (sessionId) {
+      try {
+        await updateSession.mutateAsync({ id: sessionId, execution_policy: policy });
+        toast.success(tx("Đã cập nhật quyền thực thi của phiên", "Session execution policy updated"));
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : tx("Không thể cập nhật quyền thực thi", "Could not update execution policy"));
+      }
+    }
+  };
+
   const setDefaultModel = async (modelId: string) => {
     if (!agentId) return;
     if (!isAdminRole(role) && !isOperator(role)) {
@@ -711,24 +853,10 @@ export default function ChatPage() {
   };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <ChatThread
-        messages={messages}
-        debug={debug}
-        streaming={streaming}
-        statusPhase={statusPhase}
-        agents={agents.data}
-        models={models.data}
-        sessions={sessions.data}
-        agentId={agentId}
-        sessionId={sessionId}
-        currentAgent={currentAgent}
-        currentAgentModel={currentAgentModel}
-        effectiveModel={effectiveModel}
-        pendingSessionModelId={pendingSessionModelId}
-        updateAgentPending={updateAgent.isPending}
-        onAgentChange={handleAgentChange}
-        onDefaultModelChange={(modelId: string) => void setDefaultModel(modelId)}
+    <div className="flex min-h-0 flex-1 flex-row">
+      <ChatSidebar
+        sessions={sessions.data ?? []}
+        activeSessionId={sessionId}
         onSessionChange={handleSessionChange}
         onNewSession={clearMessages}
         onDeleteSession={async (id: string) => {
@@ -740,34 +868,74 @@ export default function ChatPage() {
             toast.error(error instanceof Error ? error.message : (tx("Không thể xóa phiên", "Could not delete session")));
           }
         }}
-        onToggleDebug={toggleDebug}
-        onClearMessages={clearMessages}
-        onApprovalDecision={handleApprovalDecision}
-        draft={draft}
-        onDraftChange={setDraft}
-        onSubmit={send}
-        composerDisabled={!agentId || (!draft.trim() && attachments.length === 0)}
-        attachments={attachments}
-        onAttachmentsChange={setAttachments}
-        scrollHostRef={scrollHostRef}
-        bottomRef={bottomRef}
-        onThreadScroll={onThreadScroll}
       />
+      <div className="flex min-h-0 flex-1 flex-col">
+        <ChatThread
+          messages={messages}
+          debug={debug}
+          streaming={streaming}
+          statusPhase={statusPhase}
+          agents={agents.data}
+          models={models.data}
+          agentId={agentId}
+          sessionId={sessionId}
+          currentAgent={currentAgent}
+          currentAgentModel={currentAgentModel}
+          effectiveModel={effectiveModel}
+          pendingSessionModelId={pendingSessionModelId}
+          pendingExecutionPolicy={effectiveExecutionPolicy}
+          updateAgentPending={updateAgent.isPending}
+          onAgentChange={handleAgentChange}
+          onDefaultModelChange={(modelId: string) => void setDefaultModel(modelId)}
+          onExecutionPolicyChange={handleExecutionPolicyChange}
+          onNewSession={clearMessages}
+          onToggleDebug={toggleDebug}
+          onClearMessages={clearMessages}
+          onApprovalDecision={handleApprovalDecision}
+          draft={draft}
+          onDraftChange={setDraft}
+          onSubmit={send}
+          composerDisabled={!agentId || (!draft.trim() && attachments.length === 0)}
+          attachments={attachments}
+          onAttachmentsChange={setAttachments}
+          scrollHostRef={scrollHostRef}
+          bottomRef={bottomRef}
+          onThreadScroll={onThreadScroll}
+        />
 
-      {messages.length > 0 && (
-        <div className="mx-auto w-full max-w-[var(--dsh-chat-content-width,736px)] px-4 pb-4 sm:px-6">
-          <ChatInput
-            draft={draft}
-            onDraftChange={setDraft}
-            onSubmit={streaming ? stop : send}
-            disabled={!agentId || (!streaming && !draft.trim() && attachments.length === 0)}
-            streaming={streaming}
-            connectionState={connectionState}
-            attachments={attachments}
-            onAttachmentsChange={setAttachments}
-          />
-        </div>
-      )}
+        {messages.length > 0 && (
+          <div className="mx-auto w-full max-w-[var(--dsh-chat-content-width,736px)] px-4 pb-4 sm:px-6 space-y-3">
+            {/* DSH-style Dedicated Interactive Approval Dock */}
+            {messages.some((m) => m.role === "approval" && m.status === "pending") && (
+              <ApprovalDock
+                pendingApprovals={
+                  messages.filter((m) => m.role === "approval" && m.status === "pending") as ApprovalMessage[]
+                }
+                onApprovalDecision={handleApprovalDecision}
+              />
+            )}
+            <ChatInput
+              draft={draft}
+              onDraftChange={setDraft}
+              onSubmit={streaming ? stop : send}
+              disabled={
+                !agentId ||
+                (!streaming && !draft.trim() && attachments.length === 0) ||
+                messages.some((m) => m.role === "approval" && m.status === "pending")
+              }
+              streaming={streaming}
+              connectionState={connectionState}
+              attachments={attachments}
+              onAttachmentsChange={setAttachments}
+              models={models.data}
+              effectiveModel={effectiveModel}
+              onModelChange={(modelId: string) => void setDefaultModel(modelId)}
+              executionPolicy={effectiveExecutionPolicy}
+              onExecutionPolicyChange={handleExecutionPolicyChange}
+            />
+          </div>
+        )}
+      </div>
     </div>
   );
 }

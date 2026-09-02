@@ -110,8 +110,16 @@ class Settings(BaseSettings):
 
     # Docker-isolated code execution (run_code tool)
     sandbox_enabled: bool = True
-    sandbox_docker_image_python: str = "python:3.11-slim"
+    sandbox_docker_image_python: str = Field(
+        default="openagent-sandbox-python:local",
+        validation_alias=AliasChoices(
+            "OPENAGENT_SANDBOX_DOCKER_IMAGE_PYTHON",
+            "OPENAGENT_SANDBOX_PYTHON_IMAGE",
+            "SANDBOX_DOCKER_IMAGE_PYTHON",
+        ),
+    )
     sandbox_docker_image_bash: str = "bash:5"
+    sandbox_docker_image_node: str = "node:20-alpine"
     sandbox_memory: str = "256m"
     sandbox_cpus: float = 1.0
     sandbox_default_timeout: float = 30.0
@@ -129,6 +137,16 @@ class Settings(BaseSettings):
     rag_service_url: str = Field(
         default="http://rag-service:8100",
         validation_alias=AliasChoices("OPENAGENT_RAG_SERVICE_URL", "RAG_SERVICE_URL"),
+    )
+    # The rag-service exposes its REST admin API and its MCP-SSE endpoint on
+    # two different ports of the same container (see rag-service/rag_service/
+    # config.py: rest_port=8100, mcp_port=8101). `rag_service_url` above is
+    # the REST port; this is the MCP port every agent's `rag_*` tools connect
+    # through (registered per-org as an McpServer - see
+    # app/services/rag_mcp_bootstrap.py).
+    rag_mcp_url: str = Field(
+        default="http://rag-service:8101/sse",
+        validation_alias=AliasChoices("OPENAGENT_RAG_MCP_URL", "RAG_MCP_URL"),
     )
     rag_api_key: str = Field(
         default="",
@@ -251,6 +269,34 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "ZITADEL auth is enabled but configuration is missing: " + ", ".join(missing)
                 )
+        return self
+
+    @model_validator(mode="after")
+    def validate_production_secrets(self) -> "Settings":
+        """Fail closed on insecure defaults that are only safe for local dev.
+
+        These settings ship with permissive defaults so a fresh checkout runs
+        without any `.env` at all. That convenience becomes a real exposure
+        the moment `OPENAGENT_RUNTIME=production` — a deployment that forgets
+        to override them would otherwise sign JWTs with a public secret,
+        drop the `Secure` cookie flag, and/or talk to object storage with the
+        published MinIO default credentials.
+        """
+        if self.runtime.lower() not in {"production", "prod"}:
+            return self
+        errors: list[str] = []
+        if self.jwt_secret_key == "dev-secret-key-change-in-production" or len(self.jwt_secret_key) < 32:
+            errors.append(
+                "OPENAGENT_JWT_SECRET_KEY must be set to a random secret of at least 32 characters"
+            )
+        if not self.cookie_secure:
+            errors.append("OPENAGENT_COOKIE_SECURE must be true (cookies require HTTPS in production)")
+        if self.s3_access_key == "minioadmin" or self.s3_secret_key == "minioadmin":
+            errors.append(
+                "OPENAGENT_S3_ACCESS_KEY / OPENAGENT_S3_SECRET_KEY must not use the default MinIO credentials"
+            )
+        if errors:
+            raise ValueError("Production configuration is insecure: " + "; ".join(errors))
         return self
 
     @property

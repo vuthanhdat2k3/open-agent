@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { GraphEdge, GraphNode } from "@/types";
+import type { ExecutionPolicy, GraphEdge, GraphNode } from "@/types";
 
 interface AgentState {
   selectedAgentId: string | null;
@@ -67,6 +67,7 @@ interface ChatState {
   // reload between picking a model and sending silently reverted the next
   // message to the agent default.
   pendingModelIdByAgent: Record<string, string>;
+  pendingExecutionPolicy: ExecutionPolicy;
   hydrated: boolean;
   setAgent: (id: string | null) => void;
   setSession: (id: string | null) => void;
@@ -74,6 +75,7 @@ interface ChatState {
   setDebug: (debug: boolean) => void;
   toggleDebug: () => void;
   setPendingModel: (agentId: string | null, modelId: string | null) => void;
+  setPendingExecutionPolicy: (policy: ExecutionPolicy) => void;
   setHydrated: (hydrated: boolean) => void;
 }
 
@@ -85,6 +87,7 @@ export const useChatStore = create<ChatState>()(
       activeRunId: null,
       debug: false,
       pendingModelIdByAgent: {},
+      pendingExecutionPolicy: "manual",
       hydrated: false,
       setAgent: (id) => set({ agentId: id }),
       setSession: (id) => set({ sessionId: id }),
@@ -99,6 +102,7 @@ export const useChatStore = create<ChatState>()(
           else delete next[agentId];
           return { pendingModelIdByAgent: next };
         }),
+      setPendingExecutionPolicy: (policy) => set({ pendingExecutionPolicy: policy }),
       setHydrated: (hydrated) => set({ hydrated }),
     }),
     {
@@ -109,6 +113,7 @@ export const useChatStore = create<ChatState>()(
         activeRunId: state.activeRunId,
         debug: state.debug,
         pendingModelIdByAgent: state.pendingModelIdByAgent,
+        pendingExecutionPolicy: state.pendingExecutionPolicy,
       }),
       onRehydrateStorage: () => (state) => {
         state?.setHydrated(true);

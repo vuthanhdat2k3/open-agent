@@ -21,7 +21,16 @@ from app.core.observability import genai
 from app.core.observability.llm_trace import ObservabilityContext, build_trace_context
 from app.core.observability.metrics import workflow_run_duration_seconds
 from app.core.providers.factory import build_driver
+from app.core.tools.authorization import (
+    authorize_tool_call,
+    build_tool_authorization,
+    tool_args_hash,
+)
+from app.core.tools.authorization import (
+    requires_approval as tool_requires_approval,
+)
 from app.core.tools.registry import BUILTIN_TOOLS, execute_tool_call
+from app.core.tools.risk_tier import RiskTier
 from app.core.tools.types import ToolContext
 from app.core.workflow import resume
 from app.core.workflow.replay import ReplayCursor, record_tool_call
@@ -171,6 +180,7 @@ async def _run_agent_node(
     upstream_text: str,
     db: AsyncSession,
     actor_user_id: str | None,
+    actor_user_role: str | None,
 ) -> NodeOutput:
     """Execute an agent node in dual mode (custom inline or inherit+override).
 
@@ -272,6 +282,7 @@ async def _run_agent_node(
         depth=0,
         root_run_id=node.get("_run_id"),
         user_id=actor_user_id,
+        user_role=actor_user_role,
         model_id=model_id,
     )
     data: dict[str, Any] = {"content": loop.content}
@@ -291,7 +302,12 @@ async def _run_agent_node(
 
 
 async def _run_triager(
-    node: dict[str, Any], cfg: dict[str, Any], upstream_text: str, db: AsyncSession
+    node: dict[str, Any],
+    cfg: dict[str, Any],
+    upstream_text: str,
+    db: AsyncSession,
+    *,
+    trace_id: str | None = None,
 ) -> NodeOutput:
     """Route/classify upstream data via LLM or rules."""
     mode = cfg.get("mode")
@@ -336,7 +352,7 @@ async def _run_triager(
     org_id = node.get("_org_id", "")
     instruction = str(cfg.get("instruction") or "")
     result, _usage, _calls = await _llm_classify(
-        db, org_id, model_id, upstream_text, category_list, instruction
+        db, org_id, model_id, upstream_text, category_list, instruction, trace_id=trace_id
     )
     try:
         parsed = json.loads(result)
@@ -358,6 +374,8 @@ async def _llm_classify(
     text: str,
     categories: list[str],
     instruction: str,
+    *,
+    trace_id: str | None = None,
 ) -> tuple[str, dict, list]:
     """Call the org's model to classify text into one of ``categories``."""
     from app.models.model import Model
@@ -381,7 +399,11 @@ async def _llm_classify(
     observability = (
         ObservabilityContext(
             build_trace_context(
-                trace_id=f"workflow-triager-{node_id()}",
+                # Use the parent workflow run's trace id (when known) so this
+                # generation lands inside the same Langfuse trace as the rest
+                # of the run, instead of appearing as an orphaned trace with
+                # no link back to the workflow that triggered it.
+                trace_id=trace_id or f"workflow-triager-{node_id()}",
                 session_id=None,
                 org_id=org_id,
                 metadata={"run_type": "workflow_triager"},
@@ -660,6 +682,7 @@ async def create_workflow_run(
     db: AsyncSession,
     workflow_run_id: str | None = None,
     user_id: str | None = None,
+    user_role: str | None = None,
     timezone_name: str | None = None,
     trigger_node_id: str | None = None,
     trigger_type: str | None = None,
@@ -702,6 +725,12 @@ async def create_workflow_run(
         graph_hash=graph_hash,
         trigger_node_id=trigger_node_id,
         trigger_type=trigger_type,
+        execution_principal={
+            "principal_type": "human" if user_id else "system",
+            "principal_id": user_id or "openagent:internal-runtime",
+            "user_id": user_id,
+            "role": user_role,
+        },
     )
     db.add(run)
     await db.commit()
@@ -769,10 +798,12 @@ async def _run_workflow_events(
     force_inline: bool = False,
     replay_of_run_id: str | None = None,
     user_id: str | None = None,
+    user_role: str | None = None,
     timezone_name: str | None = None,
     trigger_node_id: str | None = None,
     trigger_type: str | None = None,
     subworkflow_depth: int = 0,
+    parent_trace_id: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     settings = get_settings()
     workflow_run = await create_workflow_run(
@@ -781,16 +812,29 @@ async def _run_workflow_events(
         db,
         workflow_run_id,
         user_id,
+        user_role,
         timezone_name,
         trigger_node_id,
         trigger_type,
     )
     timezone_name = (workflow_run.input or {}).get("timezone") or timezone_name
-    actor_user_id = workflow_run.triggered_by_user_id or user_id or workflow.created_by_user_id
+    principal_snapshot = workflow_run.execution_principal or {}
+    actor_user_id = (
+        principal_snapshot.get("user_id")
+        if principal_snapshot
+        else workflow_run.triggered_by_user_id or user_id
+    ) or workflow.created_by_user_id
+    # Never infer the execution role from the person deciding an approval. A
+    # missing snapshot on a legacy queued run fails closed at tool execution.
+    actor_user_role = principal_snapshot.get("role") if principal_snapshot else None
     workflow_observability = (
         ObservabilityContext(
             build_trace_context(
-                trace_id=workflow_run.id,
+                # A sub_workflow node passes its parent run's trace id so the
+                # child run's generations/tool calls land in the SAME
+                # Langfuse trace as the parent, instead of starting an
+                # unrelated trace that loses the parent-child relationship.
+                trace_id=parent_trace_id or workflow_run.id,
                 session_id=None,
                 org_id=workflow.org_id,
                 user_id=actor_user_id,
@@ -997,7 +1041,13 @@ async def _run_workflow_events(
                 },
             )
         if kind == "triager":
-            return await _run_triager(node, cfg, upstream_text, db)
+            # Reuse the same trace id as the rest of this run (which is
+            # already the parent's trace id for a nested sub_workflow), so a
+            # triager node never starts an orphaned trace disconnected from
+            # its own run's Langfuse trace.
+            return await _run_triager(
+                node, cfg, upstream_text, db, trace_id=parent_trace_id or workflow_run.id
+            )
         if kind == "integration":
             src = str(cfg.get("source") or "").lower()
             if src in {"gmail", "gmail_and_calendar", "gmail_calendar"}:
@@ -1082,12 +1132,83 @@ async def _run_workflow_events(
                     tool_observation.finish_success(result=replayed)
                 return NodeOutput(text=str(replayed), data={"result": replayed})
 
+            authorization = build_tool_authorization(
+                org_id=workflow.org_id,
+                user_id=actor_user_id,
+                user_role=actor_user_role,
+                agent_id=None,
+                allowed_risk_tiers=[tier.value for tier in RiskTier],
+                run_id=workflow_run.id,
+                principal_type=(
+                    (workflow_run.execution_principal or {}).get("principal_type")
+                    or ("human" if actor_user_id and actor_user_role else "system")
+                ),
+                principal_id=(workflow_run.execution_principal or {}).get("principal_id"),
+                replay=replay_cursor is not None,
+            )
+            # Check capability/RBAC before creating an approval. Approval is
+            # only a confirmation gate; it must never grant a principal a risk
+            # tier they were not authorized to use in the first place.
+            authorize_tool_call(
+                spec,
+                args,
+                context=authorization,
+                runtime_org_id=workflow.org_id,
+                check_approval=False,
+            )
+            if tool_requires_approval(spec):
+                expected_hash = tool_args_hash(args)
+                existing = (
+                    await db.execute(
+                        select(ApprovalRequest)
+                        .where(
+                            ApprovalRequest.org_id == workflow.org_id,
+                            ApprovalRequest.run_type == "workflow.tool",
+                            ApprovalRequest.run_id == workflow_run.id,
+                            ApprovalRequest.node_id == node["id"],
+                            ApprovalRequest.tool_name == tool_name,
+                        )
+                        .order_by(ApprovalRequest.created_at.desc())
+                    )
+                ).scalars().first()
+                if existing is None:
+                    existing = await request_approval(
+                        db,
+                        org_id=workflow.org_id,
+                        run_type="workflow.tool",
+                        run_id=workflow_run.id,
+                        tool_name=tool_name,
+                        node_id=node["id"],
+                        args_snapshot=args,
+                        requested_by=actor_user_id,
+                        idempotency_key=(
+                            f"workflow-tool:{workflow_run.id}:{node['id']}:{expected_hash}"
+                        ),
+                    )
+                if existing.status == "pending":
+                    raise WorkflowWaitingApproval(existing.id)
+                if existing.status != "approved":
+                    raise RuntimeError(f"tool approval {existing.id} was {existing.status}")
+                if (
+                    existing.payload_hash != expected_hash
+                    or tool_args_hash(existing.args_snapshot or {}) != expected_hash
+                ):
+                    raise RuntimeError("approved workflow tool arguments no longer match")
+                authorization = authorization.for_approved_call(
+                    approval_id=existing.id,
+                    approval_status=existing.status,
+                    tool_name=tool_name,
+                    args=args,
+                )
+
             ctx = ToolContext(
                 db=db,
                 depth=0,
                 workspace_dir=settings.workspace_dir,
                 org_id=workflow.org_id,
                 user_id=actor_user_id,
+                root_run_id=workflow_run.id,
+                authorization=authorization,
                 timezone_name=timezone_name,
             )
             started = time.monotonic()
@@ -1184,12 +1305,18 @@ async def _run_workflow_events(
                 stream=False,
                 force_inline=True,
                 user_id=actor_user_id,
+                user_role=actor_user_role,
                 timezone_name=timezone_name,
                 subworkflow_depth=subworkflow_depth + 1,
+                # Keep the child run's Langfuse trace nested inside the
+                # parent's trace instead of starting an unrelated one.
+                parent_trace_id=workflow_run.id,
             )
             return NodeOutput(text=str(child_output), data={"output": child_output})
         if kind == "agent":
-            return await _run_agent_node(node, cfg, node_run, upstream_text, db, actor_user_id)
+            return await _run_agent_node(
+                node, cfg, node_run, upstream_text, db, actor_user_id, actor_user_role
+            )
         raise RuntimeError(f"unknown node kind {kind}")
 
     async def run_node(node: dict[str, Any], db: AsyncSession) -> NodeOutput:
@@ -1287,7 +1414,11 @@ async def _run_workflow_events(
     for n in nodes:
         n["_org_id"] = workflow.org_id
         n["_user_id"] = actor_user_id
-        n["_run_id"] = workflow_run.id
+        # Agent nodes use this as their root_run_id (Langfuse trace id). Use
+        # the same trace id as workflow_observability/triager so a
+        # sub_workflow's agent nodes land in the parent's trace instead of
+        # starting an unrelated one.
+        n["_run_id"] = parent_trace_id or workflow_run.id
         n["_webhook_payload"] = (workflow_run.input or {}).get("webhook_payload") or {}
 
     concurrency_limit = max(1, int(getattr(settings, "workflow_max_concurrency", 8) or 8))
@@ -1464,10 +1595,12 @@ async def run_workflow_events(
     force_inline: bool = False,
     replay_of_run_id: str | None = None,
     user_id: str | None = None,
+    user_role: str | None = None,
     timezone_name: str | None = None,
     trigger_node_id: str | None = None,
     trigger_type: str | None = None,
     subworkflow_depth: int = 0,
+    parent_trace_id: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """Stream workflow events and release any executor lease on close."""
     run_id = workflow_run_id
@@ -1480,10 +1613,12 @@ async def run_workflow_events(
             force_inline=force_inline,
             replay_of_run_id=replay_of_run_id,
             user_id=user_id,
+            user_role=user_role,
             timezone_name=timezone_name,
             trigger_node_id=trigger_node_id,
             trigger_type=trigger_type,
             subworkflow_depth=subworkflow_depth,
+            parent_trace_id=parent_trace_id,
         ):
             if event.get("event") == "workflow_start":
                 run_id = event.get("data", {}).get("workflow_run_id") or run_id
@@ -1504,10 +1639,12 @@ async def run_workflow(
     force_inline: bool = False,
     replay_of_run_id: str | None = None,
     user_id: str | None = None,
+    user_role: str | None = None,
     timezone_name: str | None = None,
     trigger_node_id: str | None = None,
     trigger_type: str | None = None,
     subworkflow_depth: int = 0,
+    parent_trace_id: str | None = None,
 ) -> Any:
     """If stream=True, returns the async generator of events.
     Otherwise awaits and returns (final_output, event_log)."""
@@ -1520,10 +1657,12 @@ async def run_workflow(
             force_inline=force_inline,
             replay_of_run_id=replay_of_run_id,
             user_id=user_id,
+            user_role=user_role,
             timezone_name=timezone_name,
             trigger_node_id=trigger_node_id,
             trigger_type=trigger_type,
             subworkflow_depth=subworkflow_depth,
+            parent_trace_id=parent_trace_id,
         )
     final = ""
     log: list[dict[str, Any]] = []
@@ -1540,6 +1679,7 @@ async def run_workflow(
         trigger_node_id=trigger_node_id,
         trigger_type=trigger_type,
         subworkflow_depth=subworkflow_depth,
+        parent_trace_id=parent_trace_id,
     ):
         log.append(ev)
         if ev["event"] == "workflow_start":

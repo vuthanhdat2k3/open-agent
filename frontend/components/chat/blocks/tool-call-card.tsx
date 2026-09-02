@@ -14,12 +14,17 @@ import {
   Brain,
   Sparkles,
   Loader2,
+  Globe,
+  ExternalLink,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { WebArtifactPreviewDialog } from "@/components/shared";
 import type { ToolCallBlock } from "@/lib/chat/projection";
 import { useTranslation } from "@/lib/i18n";
+import { useUrlSearchParam } from "@/hooks";
 
 const LazyMarkdownRenderer = React.lazy(() =>
   import("@/components/markdown-renderer").then((m) => ({ default: m.MarkdownRenderer })),
@@ -67,7 +72,7 @@ interface ToolCallCardProps {
 export function ToolCallCard({ block, compact = false }: ToolCallCardProps) {
     const { locale, tx } = useTranslation();
   const isCodeTool = block.name === "run_code" || block.name === "write_file";
-  const isSubagent = block.name === "call_agent" || Boolean(block.subagent);
+  const isSubagent = block.name === "call_agent" || block.name.startsWith("delegate_to_") || Boolean(block.subagent);
   const isSvg =
     block.result != null &&
     (block.result.trim().startsWith("<svg") || block.result.includes("xmlns=\"http://www.w3.org/2000/svg\""));
@@ -85,9 +90,35 @@ export function ToolCallCard({ block, compact = false }: ToolCallCardProps) {
     // Keep argsText
   }
 
+  const [previewParam, setPreviewParam] = useUrlSearchParam("preview");
+  const [showWebPreview, setShowWebPreview] = React.useState(false);
+  const previewTitle = targetPath || block.name;
+  const lastClosedParamRef = React.useRef<string | null>(null);
+
+  React.useEffect(() => {
+    const isTarget = Boolean(
+      previewParam &&
+      previewParam !== lastClosedParamRef.current &&
+      (previewParam === previewTitle || (targetPath && previewParam.endsWith(targetPath)))
+    );
+    if (isTarget) {
+      setShowWebPreview(true);
+    } else if (!previewParam) {
+      setShowWebPreview(false);
+      lastClosedParamRef.current = null;
+    }
+  }, [previewParam, previewTitle, targetPath]);
+
   const isRunning = block.status === "running";
   const isError = block.status === "error";
   const subagent = block.subagent;
+  const subagentDisplayName = subagent?.agentName || (block.name.startsWith("delegate_to_") ? block.name.replace(/^delegate_to_/, "").replace(/_/g, " ") : null);
+
+  const isWebFile = Boolean(
+    block.name === "preview_web_artifact" ||
+    (targetPath && (targetPath.endsWith(".html") || targetPath.endsWith(".htm") || targetPath.endsWith(".svg") || targetPath.endsWith(".md"))) ||
+    (codeStr && (codeStr.includes("<!DOCTYPE html>") || codeStr.includes("<html") || (codeStr.includes("<svg") && codeStr.includes("</svg>"))))
+  );
 
   return (
     <div className={`w-full shrink-0 rounded-xl border border-border bg-card/80 backdrop-blur-md shadow-card overflow-hidden my-1.5 transition-all ${compact ? "border-primary/30" : ""}`}>
@@ -104,8 +135,8 @@ export function ToolCallCard({ block, compact = false }: ToolCallCardProps) {
           <span className="uppercase tracking-wider font-bold shrink-0">
             {isSubagent ? tx("Gọi subagent", "Subagent Call") : isCodeTool ? tx("Thực thi mã", "Code Execution") : tx("Gọi tool", "Tool Call")}
           </span>
-          <Badge variant="outline" className="font-mono text-[9px] bg-muted text-foreground border-border shrink-0">
-            {subagent?.agentName ? `${subagent.agentName}` : block.name}
+          <Badge variant="outline" className="font-mono text-[9px] bg-muted text-foreground border-border shrink-0 capitalize">
+            {subagentDisplayName || block.name}
           </Badge>
           {targetPath && (
             <span className="font-mono text-[10px] text-muted-foreground bg-muted/40 px-1.5 py-0.2 rounded border border-border/30 truncate max-w-[200px]">
@@ -143,7 +174,9 @@ export function ToolCallCard({ block, compact = false }: ToolCallCardProps) {
               <CollapsibleTrigger className="group flex w-full cursor-pointer items-center justify-between rounded bg-muted/30 px-2.5 py-1 text-[10px] font-medium text-indigo-300 hover:bg-muted/50">
                 <span className="flex items-center gap-1.5">
                   <Brain className="h-3 w-3 text-indigo-400" />
-                  {tx("Tư duy subagent", "Subagent Thinking")}{isRunning && <span className="inline-block h-1.5 w-1.5 rounded-full bg-indigo-400 animate-ping" />}
+                  {subagentDisplayName
+                    ? tx(`Tư duy của Subagent (${subagentDisplayName})`, `Subagent (${subagentDisplayName}) Thinking`)
+                    : tx("Tư duy subagent", "Subagent Thinking")}{isRunning && <span className="inline-block h-1.5 w-1.5 rounded-full bg-indigo-400 animate-ping" />}
                 </span>
                 <ChevronDown className="h-3 w-3 transition-transform duration-200 group-data-[state=closed]:-rotate-90" />
               </CollapsibleTrigger>
@@ -156,20 +189,85 @@ export function ToolCallCard({ block, compact = false }: ToolCallCardProps) {
             </Collapsible>
           )}
 
-          {/* Subagent Sub-tools */}
+          {/* Subagent Sub-tools Detailed Trace */}
           {subagent?.tools && subagent.tools.length > 0 && (
-            <div className="flex flex-wrap items-center gap-1.5 pt-1">
-              <span className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">{tx("Công cụ con:", "Sub-tools:")}</span>
-              {subagent.tools.map((t, i) => (
-                <Badge key={i} variant="outline" className="text-[10px] gap-1 font-mono py-0 px-2 bg-muted/40 border-border/60">
-                  {t.status === "running" ? (
-                    <Loader2 className="h-2.5 w-2.5 animate-spin text-primary" />
-                  ) : (
-                    <CheckCircle2 className="h-2.5 w-2.5 text-success" />
-                  )}
-                  {t.name}
-                </Badge>
-              ))}
+            <div className="space-y-1.5 pt-1">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">
+                  {tx("Công cụ con:", "Sub-tools:")}
+                </span>
+                {subagent.tools.map((t, i) => (
+                  <Badge
+                    key={i}
+                    variant="outline"
+                    className="text-[10px] gap-1 font-mono py-0 px-2 bg-muted/40 border-border/60"
+                  >
+                    {t.status === "running" ? (
+                      <Loader2 className="h-2.5 w-2.5 animate-spin text-primary" />
+                    ) : t.status === "error" ? (
+                      <XCircle className="h-2.5 w-2.5 text-destructive" />
+                    ) : (
+                      <CheckCircle2 className="h-2.5 w-2.5 text-success" />
+                    )}
+                    {t.name}
+                  </Badge>
+                ))}
+              </div>
+
+              {/* Expandable Sub-tool Executions */}
+              <div className="space-y-1.5 pt-1">
+                {subagent.tools.map((t, i) => {
+                  const hasDetails = Boolean(t.args || t.result);
+                  return (
+                    <Collapsible key={i} defaultOpen={t.status === "running" || Boolean(t.result)}>
+                      <CollapsibleTrigger className="group flex w-full cursor-pointer items-center justify-between rounded bg-muted/30 hover:bg-muted/50 px-2.5 py-1 text-[10px] font-mono text-foreground/90 border border-border/40">
+                        <div className="flex items-center gap-1.5 truncate">
+                          {t.status === "running" ? (
+                            <Loader2 className="h-2.5 w-2.5 animate-spin text-primary shrink-0" />
+                          ) : t.status === "error" ? (
+                            <XCircle className="h-2.5 w-2.5 text-destructive shrink-0" />
+                          ) : (
+                            <CheckCircle2 className="h-2.5 w-2.5 text-success shrink-0" />
+                          )}
+                          <span className="font-semibold text-primary/90">{t.name}</span>
+                          {t.status === "running" && (
+                            <span className="text-[9px] text-muted-foreground">({tx("đang chạy...", "running...")})</span>
+                          )}
+                        </div>
+                        {hasDetails && (
+                          <ChevronDown className="h-3 w-3 transition-transform duration-200 group-data-[state=closed]:-rotate-90 text-muted-foreground shrink-0" />
+                        )}
+                      </CollapsibleTrigger>
+                      {hasDetails && (
+                        <CollapsibleContent>
+                          <div className="mt-1 space-y-1.5 rounded-lg border border-border/40 bg-muted/20 p-2 text-[10.5px] font-mono leading-relaxed">
+                            {t.args && (
+                              <div className="space-y-0.5">
+                                <span className="text-[9px] uppercase tracking-wider text-muted-foreground/80 font-bold">
+                                  {tx("Tham số:", "Args:")}
+                                </span>
+                                <pre className="max-h-36 overflow-auto whitespace-pre-wrap break-all rounded bg-background/60 p-1.5 text-muted-foreground text-[10px] border border-border/20">
+                                  {t.args}
+                                </pre>
+                              </div>
+                            )}
+                            {t.result && (
+                              <div className="space-y-0.5">
+                                <span className="text-[9px] uppercase tracking-wider text-success/90 font-bold">
+                                  {tx("Kết quả:", "Result:")}
+                                </span>
+                                <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all rounded bg-background/80 p-1.5 text-foreground text-[10px] border border-border/30">
+                                  {t.result}
+                                </pre>
+                              </div>
+                            )}
+                          </div>
+                        </CollapsibleContent>
+                      )}
+                    </Collapsible>
+                  );
+                })}
+              </div>
             </div>
           )}
 
@@ -231,6 +329,48 @@ export function ToolCallCard({ block, compact = false }: ToolCallCardProps) {
             {block.result}
           </pre>
         </div>
+      )}
+
+      {/* Interactive Web Artifact Live Preview Banner */}
+      {isWebFile && codeStr && (
+        <div className="flex items-center justify-between p-2 px-3 bg-gradient-to-r from-primary/15 via-primary/5 to-transparent border-t border-border/60">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+            <Globe className="h-3.5 w-3.5 text-primary animate-pulse" />
+            <span className="font-mono text-[11px] truncate max-w-[240px]">
+              {targetPath || block.name}
+            </span>
+          </div>
+          <Button
+            size="sm"
+            variant="default"
+            className="h-6 text-[11px] px-2.5 gap-1 shadow-sm font-medium"
+            onClick={() => {
+              setShowWebPreview(true);
+              setPreviewParam(previewTitle);
+            }}
+          >
+            <Globe className="h-3 w-3" />
+            <span>{tx("Chạy trực tiếp", "Live Preview")}</span>
+          </Button>
+        </div>
+      )}
+
+      {showWebPreview && (
+        <WebArtifactPreviewDialog
+          open={showWebPreview}
+          onOpenChange={(open) => {
+            if (!open) {
+              lastClosedParamRef.current = previewParam;
+              setShowWebPreview(false);
+              setPreviewParam(null);
+            } else {
+              setShowWebPreview(true);
+            }
+          }}
+          title={previewTitle}
+          content={codeStr}
+          initialTab="preview"
+        />
       )}
     </div>
   );

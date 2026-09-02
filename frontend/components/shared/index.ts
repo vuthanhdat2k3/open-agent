@@ -7,3 +7,5 @@ export { SectionHeader } from "./section-header";
 export { StatusBadge } from "./status-badge";
 export { DataPagination } from "./data-pagination";
 export { PasswordComplexityIndicator } from "./password-complexity-indicator";
+export { WebArtifactPreviewDialog } from "./web-artifact-preview";
+

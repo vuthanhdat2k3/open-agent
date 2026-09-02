@@ -84,7 +84,7 @@ async def _run_shell(args: dict[str, Any], ctx: ToolContext) -> str:
             stderr=asyncio.subprocess.STDOUT,
         )
         if proc.stdin:
-            await proc.stdin.write(archive)
+            proc.stdin.write(archive)
             await proc.stdin.drain()
             proc.stdin.close()
 

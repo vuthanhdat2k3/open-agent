@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 
 from app.core.authz.scope import scope_to_owner
@@ -209,6 +209,7 @@ async def _workflow_run(args: dict[str, Any], ctx: ToolContext) -> str:
             db=ctx.db,
             stream=False,
             user_id=ctx.user_id,
+            user_role=(ctx.authorization.role if ctx.authorization and ctx.authorization.is_human else None),
             timezone_name=ctx.timezone_name,
         )
     except Exception as exc:
@@ -584,6 +585,7 @@ async def _workflow_catalog_list(args: dict[str, Any], ctx: ToolContext) -> str:
         WorkflowTemplateVersion.published_at.is_not(None),
         WorkflowTemplateVersion.template_id == latest_version.c.template_id,
         WorkflowTemplateVersion.version == latest_version.c.version,
+        or_(WorkflowTemplate.org_id.is_(None), WorkflowTemplate.org_id == ctx.org_id),
     ]
     if category:
         filters.append(WorkflowTemplateVersion.category == category)

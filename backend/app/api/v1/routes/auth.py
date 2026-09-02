@@ -49,6 +49,7 @@ from app.schemas.auth import (
     UserMembershipOut,
 )
 from app.services.quota_service import default_organization_quota
+from app.services.rag_mcp_bootstrap import ensure_rag_mcp_server
 from app.services.zitadel_service import ZitadelProvisioningService
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -357,6 +358,7 @@ async def register(
     db.add(org)
     await db.flush()
     db.add(default_organization_quota(org.id))
+    await ensure_rag_mcp_server(db, org.id)
 
     # Create Membership
     membership = Membership(org_id=org.id, user_id=user.id, role=Role.org_admin)
@@ -767,6 +769,7 @@ async def oauth_callback(
             db.add(org)
             await db.flush()
             db.add(default_organization_quota(org.id))
+            await ensure_rag_mcp_server(db, org.id)
 
             membership = Membership(org_id=org.id, user_id=user.id, role=Role.org_admin)
             db.add(membership)

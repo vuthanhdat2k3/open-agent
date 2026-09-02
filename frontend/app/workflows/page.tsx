@@ -26,7 +26,7 @@ import {
   type WorkflowCatalogItem,
 } from "@/lib/automations/api";
 import { workflowIcon } from "@/lib/automations/icons";
-import { useCurrentRole } from "@/hooks";
+import { useCurrentRole, useUrlSearchParam } from "@/hooks";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/shared";
 import {
@@ -172,8 +172,12 @@ export default function WorkflowEditor() {
   const role = useCurrentRole();
   const isOperator = role === "operator";
 
-  // Tab State: "editor" (My Workflows) vs "marketplace" (Workflow Marketplace)
-  const [activeTab, setActiveTab] = React.useState<"editor" | "marketplace">("editor");
+  // Tab State: "editor" (My Workflows) vs "marketplace" (Workflow Marketplace) with URL synchronization
+  const [tabParam, setTabParam] = useUrlSearchParam("tab");
+  const activeTab = (tabParam as "editor" | "marketplace") || "editor";
+  const setActiveTab = (tab: "editor" | "marketplace") => {
+    setTabParam(tab === "editor" ? null : tab);
+  };
 
   // Marketplace State
   const [marketSearch, setMarketSearch] = React.useState("");
@@ -197,16 +201,6 @@ export default function WorkflowEditor() {
   });
 
   const catalogItems = catalogQuery.data?.data ?? [];
-
-  // Synchronize Tab from URL
-  React.useEffect(() => {
-    if (typeof window === "undefined") return;
-    const url = new URL(window.location.href);
-    const tabParam = url.searchParams.get("tab");
-    if (tabParam === "marketplace") {
-      setActiveTab("marketplace");
-    }
-  }, []);
 
   const [publishDialogOpen, setPublishDialogOpen] = React.useState(false);
   const [publishCategory, setPublishCategory] = React.useState("custom");
@@ -1467,19 +1461,21 @@ export default function WorkflowEditor() {
                             >
                               <Edit className="h-3.5 w-3.5 text-primary" /> {tx("Chỉnh sửa", "Edit")}
                             </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-8 px-2.5 text-destructive hover:bg-destructive/10 text-xs font-semibold gap-1"
-                              onClick={() => handleUnpublish(template.key)}
-                              title={tx("Gỡ bỏ khỏi Marketplace", "Remove from Marketplace")}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" /> {tx("Gỡ bỏ", "Remove")}
-                            </Button>
+                            {template.capabilities?.can_delete && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 px-2.5 text-destructive hover:bg-destructive/10 text-xs font-semibold gap-1 shrink-0"
+                                onClick={() => handleUnpublish(template.key)}
+                                title={tx("Gỡ bỏ khỏi Marketplace", "Remove from Marketplace")}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" /> {tx("Gỡ bỏ", "Remove")}
+                              </Button>
+                            )}
                           </div>
                         ) : (
-                          /* User Action: Install to Personal Workflows */
-                          <div className="flex items-center justify-end gap-2 ml-auto w-full">
+                          /* User Action: Install to Personal Workflows + Optional Remove if Creator */
+                          <div className="flex items-center justify-between gap-2 w-full">
                             {template.installed ? (
                               <Button
                                 size="sm"
@@ -1504,6 +1500,17 @@ export default function WorkflowEditor() {
                                     {tx("Cài đặt", "Install")} <ArrowRight className="h-3.5 w-3.5" />
                                   </>
                                 )}
+                              </Button>
+                            )}
+                            {template.capabilities?.can_delete && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 px-2 text-destructive hover:bg-destructive/10 text-xs font-semibold gap-1 shrink-0"
+                                onClick={() => handleUnpublish(template.key)}
+                                title={tx("Gỡ bỏ khỏi Marketplace", "Remove from Marketplace")}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
                               </Button>
                             )}
                           </div>

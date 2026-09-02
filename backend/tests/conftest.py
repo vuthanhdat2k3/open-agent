@@ -9,7 +9,7 @@ import os
 # shell or parent .env.
 os.environ.setdefault("OPENAGENT_AUTH_PROVIDER", "local")
 os.environ["OPENAGENT_DB_URL"] = "sqlite+aiosqlite:///:memory:"
-os.environ["OPENAGENT_REDIS_URL"] = "redis://127.0.0.1:6379/15"
+os.environ["OPENAGENT_REDIS_URL"] = "redis://:695ddab0ea43f1fc2fbf57d3ee559620709b4d7405557c92f759f5fa4c8fa5fd@127.0.0.1:6379/15"
 os.environ["OPENAGENT_WORKFLOW_EXECUTION_MODE"] = "inline"
 os.environ["OPENAGENT_OTEL_ENABLED"] = "false"
 os.environ["OPENAI_API_KEY"] = ""
@@ -56,7 +56,15 @@ def _skip_lifespan_db_init(monkeypatch: pytest.MonkeyPatch) -> None:
     async def _noop_init_db() -> None:
         return None
 
+    async def _noop_sync_system_agents(_db):
+        return []
+
+    async def _noop_sync_system_workflows(_db):
+        return []
+
     monkeypatch.setattr(main, "init_db", _noop_init_db)
+    monkeypatch.setattr(main, "sync_system_agents_all_orgs", _noop_sync_system_agents)
+    monkeypatch.setattr(main, "sync_system_workflow_templates", _noop_sync_system_workflows)
     yield
 
 

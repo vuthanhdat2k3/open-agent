@@ -351,30 +351,33 @@ async def seed() -> None:
             active=True,
         )
 
-        # --- Agents ---
+        # --- Agents (1 Orchestrator + Specialized Workers) ---
         await _agent(
             db,
             org_id,
             user_id,
             "general",
-            description="General-purpose assistant",
+            description="Primary conversational orchestrator that delegates specialized work to worker agents",
             system_prompt=(
-                "You are a helpful assistant. Use the provided tools when they "
-                "help accomplish the user's request."
+                "You are the primary assistant for this organization. Understand the "
+                "user's goal, decide whether it needs specialized expertise (email, "
+                "calendar, files, code, research, workflows...), and delegate to the "
+                "right worker agent when it does. Synthesize sub-agent results into "
+                "one clear, concise final answer for the user. Handle simple "
+                "conversational requests yourself without delegating."
             ),
             model_id=(await _model_by_name(db, org_id, "gpt-4o-mini")).id,
             tools=[
-                "read_attachment",
-                "web_fetch",
-                "memory_store",
-                "memory_recall",
                 "call_agent",
                 "workflow_list",
-                "workflow_run",
+                "get_current_time",
+                "save_memory",
+                "call_memory",
             ],
-            allowed_risk_tiers=["safe", "read", "network"],
+            allowed_risk_tiers=["safe", "read", "network", "execute"],
             max_iterations=12,
             temperature=0.7,
+            kind="orchestrator",
         )
         await _agent(
             db,
@@ -407,50 +410,48 @@ async def seed() -> None:
                 "workflow_generate",
                 "workflow_catalog_list",
                 "workflow_catalog_install",
-                "read_attachment",
-                "web_fetch",
-                "memory_store",
-                "memory_recall",
-                "call_agent",
+                "get_current_time",
+                "save_memory",
+                "call_memory",
             ],
             allowed_risk_tiers=["safe", "read", "network"],
             max_iterations=20,
             temperature=0.2,
+            kind="worker",
         )
         researcher = await _agent(
             db,
             org_id,
             user_id,
-            "researcher",
+            "deep-researcher",
             description="Deep web research and synthesis",
             system_prompt=(
-                "You are a research agent. Break the question into sub-questions, "
-                "fetch authoritative sources, and synthesize a cited answer."
+                "You are a deep web research agent. Search the web, fetch authoritative "
+                "sources, analyze content, and synthesize cited answers."
             ),
             model_id=claude_sonnet.id,
-            tools=["web_fetch", "memory_store", "memory_recall", "read_attachment"],
+            tools=["web_search", "web_fetch", "youtube_search", "get_current_time", "save_memory", "call_memory"],
             allowed_risk_tiers=["safe", "read", "network"],
             max_iterations=20,
             temperature=0.3,
+            kind="worker",
         )
         coder = await _agent(
             db,
             org_id,
             user_id,
-            "Coder",
+            "coder",
             description="Code generation and file edits",
             system_prompt=(
-                "You are a coding agent. Read the relevant files, plan the change, "
-                "and implement it with clear, minimal diffs.\n\n"
-                "IMPORTANT: When responding with HTML, CSS, or JavaScript for preview/display purposes, "
-                "return it as a code block (```html, ```css, ```javascript) in your response. "
-                "Do NOT use write_file for this. Users can then preview it directly in the chat UI "
-                "using the Preview button or 'Mở tab mới' (open in new tab) feature."
+                "You are a software and data engineering specialist. Execute code in "
+                "isolated sandboxes, read/write workspace files, inspect project "
+                "structure, and process file attachments."
             ),
             model_id=agnes.id,
-            tools=["run_code", "read_attachment", "memory_store", "memory_recall"],
+            tools=["run_code", "write_file", "list_dir", "search_files", "read_attachment", "get_current_time", "save_memory", "call_memory"],
             max_iterations=16,
             temperature=0.2,
+            kind="worker",
         )
         summarizer = await _agent(
             db,

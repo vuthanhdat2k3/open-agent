@@ -23,6 +23,8 @@ import type {
   Message,
   Model,
   ModelTestResult,
+  OrgModelTierMatrixResponse,
+  OrgModelTierMatrixUpdate,
   OrganizationQuota,
   Organization,
   OrgMember,
@@ -36,6 +38,7 @@ import type {
   UsageSummary,
   Workflow,
   ChatRunDetail,
+  ExecutionPolicy,
   WorkflowRunDetail,
   WorkspaceArtifact,
   UserProfile,
@@ -359,6 +362,26 @@ export function useTestModel() {
   });
 }
 
+export function useModelTierMatrix(enabled: boolean = true) {
+  return useQuery({
+    queryKey: ["model-tier-matrix"],
+    queryFn: () => api.get<OrgModelTierMatrixResponse>("/api/models/tier-matrix"),
+    enabled,
+  });
+}
+
+export function useUpdateModelTierMatrix() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: OrgModelTierMatrixUpdate) => api.put<OrgModelTierMatrixResponse>("/api/models/tier-matrix", body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["model-tier-matrix"] });
+      qc.invalidateQueries({ queryKey: ["agents"] });
+    },
+  });
+}
+
+
 export function useAgents() {
   return useQuery({ queryKey: ["agents"], queryFn: () => api.get<Agent[]>("/api/agents") });
 }
@@ -557,6 +580,18 @@ export function useResetWorkflowTemplate() {
 
 export function useSessions() {
   return useQuery({ queryKey: ["sessions"], queryFn: () => api.get<Session[]>("/api/sessions") });
+}
+export function useUpdateSession() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...data }: { id: string; execution_policy?: ExecutionPolicy; title?: string }) =>
+      api.patch<Session>(`/api/sessions/${id}`, data),
+    onSuccess: (updated) => {
+      qc.setQueriesData<Session[]>({ queryKey: ["sessions"] }, (old) =>
+        old ? old.map((s) => (s.id === updated.id ? { ...s, ...updated } : s)) : [updated],
+      );
+    },
+  });
 }
 export function useDeleteSession() {
   const qc = useQueryClient();
@@ -843,12 +878,19 @@ export function useUpdateOrganizationQuota(orgId?: string) {
   });
 }
 
-export function useApprovals(enabled: boolean = true) {
+export function useApprovals(enabled: boolean = true, includeChat: boolean = false, runId?: string | null) {
   const orgId = getActiveOrgId();
+  const queryParams = new URLSearchParams();
+  if (includeChat) queryParams.set("include_chat", "true");
+  if (runId) queryParams.set("run_id", runId);
+  const qs = queryParams.toString() ? `?${queryParams.toString()}` : "";
+
   return useQuery({
-    queryKey: emailIntelligenceQueryKeys(orgId).approvals(),
-    queryFn: () => api.get<ApprovalRequest[]>("/api/approvals"),
-    refetchInterval: enabled ? 60000 : false,
+    queryKey: [...emailIntelligenceQueryKeys(orgId).approvals(), { includeChat, runId }],
+    queryFn: () => api.get<ApprovalRequest[]>(`/api/approvals${qs}`),
+    // Poll frequently while approval handling is active so the chat page
+    // and approvals dashboard discover new approval gates promptly.
+    refetchInterval: enabled ? 5000 : false,
     refetchIntervalInBackground: false,
     enabled,
   });
@@ -928,7 +970,13 @@ export function useChatRun(runId: string | null) {
     },
     refetchInterval: (query) => {
       const status = query.state.data?.status;
-      return status && ["succeeded", "failed", "diverged", "cancelled", "waiting_approval"].includes(status)
+      // Keep polling at a shorter cadence during waiting_approval so the
+      // frontend discovers when the root task transitions back to "queued" /
+      // "running" after the user decides an approval (whether inline or via
+      // the /approvals page). Without this the hook stops polling the moment
+      // it first sees waiting_approval and never learns about the resumed run.
+      if (status === "waiting_approval") return 3000;
+      return status && ["succeeded", "failed", "diverged", "cancelled"].includes(status)
         ? false
         : 2000;
     },

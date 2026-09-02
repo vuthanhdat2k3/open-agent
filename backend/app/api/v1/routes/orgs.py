@@ -9,6 +9,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
+from app.core.agents.sync import sync_system_agents_for_org
 from app.core.auth.api_key import generate_api_key
 from app.core.auth.password import hash_password
 from app.core.observability.audit import log_action
@@ -29,6 +30,7 @@ from app.schemas.auth import (
     UpdateMemberRoleRequest,
 )
 from app.services.quota_service import default_organization_quota
+from app.services.rag_mcp_bootstrap import ensure_rag_mcp_server
 from app.services.zitadel_service import ZitadelProvisioningService
 
 router = APIRouter(prefix="/api/orgs", tags=["orgs"])
@@ -122,6 +124,7 @@ async def create_org(
     db.add(org)
     await db.flush()
     db.add(default_organization_quota(org.id))
+    await ensure_rag_mcp_server(db, org.id)
 
     if body.admin_email and body.admin_email.strip().lower() != (current_user.email or "").lower():
         target_email = body.admin_email.strip().lower()
@@ -157,6 +160,7 @@ async def create_org(
             initial_password=initial_pass,
         )
 
+    await sync_system_agents_for_org(db, org.id)
     await db.commit()
     await db.refresh(org)
     return OrgOut(id=org.id, name=org.name, slug=org.slug, created_at=org.created_at)

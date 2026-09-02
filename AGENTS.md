@@ -95,10 +95,45 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 | Branch | Worktree path | Phạm vi/task | Agent/người phụ trách |
 |---|---|---|---|
 | `dev` | `G:\open-agent` | Nhánh tích hợp chính — không code trực tiếp ở đây | — |
-| `feat/i18n-hardcode-sweep-3` | `G:\open-agent\.worktrees\i18n-hardcode-sweep-3` | Quét + sửa toàn bộ hardcode UI text frontend sang i18n (tx()) | DeepSeek agent |
-| `feat/i18n-enen-tx-sweep` | `G:\open-agent\.worktrees\i18n-enen-tx-sweep` | Sửa các cặp tx(EN,EN) trùng lặp (dịch vi đúng) — stack trên sweep-3 | DeepSeek agent |
-| `feat/workflow-audit-fixes` | `G:\open-agent\.worktrees\workflow-audit-fixes` | Fix toàn bộ findings workflow audit: approval resume, pause/archive stop scheduler, sub_workflow depth cap, cancel run, webhook idempotency, default timeout, error codes, FE AbortSignal/JSON editor/cancel UX | DeepSeek agent |
-| `audit/profile-roles-visibility` | `G:\open-agent\.worktrees\audit-profile-roles-visibility` | Audit + sửa profile/role/visibility toàn diện (BE + FE): drop alias `admin`, PATCH đổi role, force-change-password, fix role-string checks, chuẩn hoá role FE | DeepSeek agent |
+| `feat/nondestructive-system-templates-sync` | `G:\open-agent-worktrees\nondestructive-system-templates-sync` | Tự động kiểm tra và sync providers, workflow templates, agent templates không làm mất bản đã chỉnh sửa, bảo vệ không bị xóa | Antigravity |
+
+> 2026-09-02: Đã xóa các nhánh remote đã merge vào `dev`: `origin/docs/demo-do-deploy-guide`, `origin/feat/system-agent-startup-sync`. Sửa luồng phê duyệt đa tầng sub-agent không bị treo, fix overlap nút fullscreen/close và hoàn thiện URL query parameter deep linking + backdrop close cho Web Artifact Preview Dialog.
+
+> 2026-09-01: Đã dọn dẹp worktree và branch `docs/demo-do-deploy-guide` (Viết docs/demo-digitalocean-deploy.md: hướng dẫn deploy demo full-stack lên DigitalOcean + phân tích chi phí) sau khi đã merge vào `dev`.
+
+> 2026-09-01: Đã dọn dẹp worktree và branch `feat/system-agent-startup-sync` (Đồng bộ System Agent Blueprints lúc startup) sau khi đã merge vào `dev`.
+
+> 2026-09-01: Đã merge trực tiếp vào `dev` và dọn dẹp worktree `feat/sandbox-isolation-and-operator-view` (Sandbox Isolation Zero-Trust & Live Run Output Panel Drawer, streaming real-time output, stop controls, creator deletion rights, Node.js/Python/Bash runner) theo yêu cầu người dùng.
+
+> 2026-09-01: Đã merge trực tiếp vào `dev` và dọn dẹp worktree `feat/workflow-marketplace-scoping` (Chuẩn hóa Marketplace workflow templates: User mới có danh sách workflow trống, System Templates thuộc Marketplace toàn cục không có người tạo và không thể xóa, Custom Templates theo Org hiển thị nút Xóa/Gỡ bỏ cho chính Creator hoặc Org Admin) theo yêu cầu người dùng.
+
+> 2026-09-01: Đã merge trực tiếp vào `dev` và dọn dẹp worktree/branch `fix/chat-session-sync-race` (Sửa triệt để race condition: dùng transitioningSessionRef/transitioningAgentRef ngăn URL watcher phục hồi session cũ trong render tick trung gian của Next.js router, tạo session mới chuẩn xác chỉ với 1 click) theo yêu cầu người dùng.
+
+> 2026-09-01: Đã merge trực tiếp vào `dev` và dọn dẹp worktree/branch `fix/new-session-click` (Sửa lỗi URL synchronization trong useEffect: reset session khi URL chuyển về clean /chat thay vì phục hồi session từ store, giúp 1-click tạo session mới ngay lập tức) theo yêu cầu người dùng.
+
+> 2026-09-01: Đã merge trực tiếp vào `dev` và dọn dẹp worktree/branch `fix/subagent-delegation-timeout` (Nâng ngân sách timeout_s cho call_agent và delegate_to_* lên 300s ngăn sub-agent deep reasoning timeout) theo yêu cầu người dùng.
+
+> 2026-09-01: Đã merge trực tiếp vào `dev` và dọn dẹp worktree/branch `fix/session-delete-events` (Sửa lỗi xóa session: bổ sung xóa cascade bảng session_events, trả về JSON chuẩn và cập nhật nút xóa/đóng session trên giao diện) theo yêu cầu người dùng.
+
+> 2026-09-01: Đã merge trực tiếp vào `dev` và dọn dẹp worktree/branch `feat/system-execution-policy` (Tinh gọn quyền thực thi Agent, chuyển giao quyền sang System/Session Policy Context chuẩn DSH) theo yêu cầu người dùng.
+
+> 2026-09-01: Đã merge trực tiếp vào `dev` và dọn dẹp worktree/branch `feat/companion-size-config` (Cho phép operator tùy chỉnh kích thước companion 3D avatar qua preset và thanh trượt) theo yêu cầu người dùng.
+
+> 2026-08-31: Đã merge trực tiếp vào `dev` và dọn dẹp worktree/branch `feat/org-model-tier-matrix` (Triển khai Org-wide Model Tier Matrix 3 tầng: Economy, Balanced, Frontier cho toàn bộ multi-agent network) theo yêu cầu người dùng.
+
+> 2026-08-31: Đã merge trực tiếp vào `dev` và dọn dẹp worktree/branch `fix/static-logo-render` (render logo sidebar tĩnh unoptimized + chặn và phân tách ranh giới công cụ Orchestrator vs Worker) và `feat/agent-orchestrator-redesign` (PR #231) theo yêu cầu người dùng.
+
+> 2026-08-31: Đã dọn dẹp worktree/branch `fix/langfuse-trace-coverage` (Sửa 3 lỗ hổng trace continuity
+> của Langfuse: triager node và sub_workflow node giờ kế thừa trace_id của workflow run cha thay vì tạo
+> trace mới độc lập; CI email classifier (`agent_classifier.py`) giờ được gắn `observability=` khi gọi
+> `build_driver`) sau khi merge trực tiếp vào `dev` (merge commit 541c886) theo yêu cầu người dùng.
+
+> 2026-08-30: Đã dọn dẹp toàn bộ worktree và các nhánh đã merge vào `dev` trên cả Local và Remote:
+> - `feat/deploy-readiness` (PR #229, merge commit 036f5b4)
+> - `feat/agent-orchestrator-redesign`, `fix/chat-500` (đã merge, chỉ có local branch, không có remote) — ghi chú lịch sử; worktree `feat/agent-orchestrator-redesign` hiện tại là phiên làm việc mới và vẫn đang hoạt động.
+> - `feat/i18n-hardcode-sweep-3`, `feat/i18n-enen-tx-sweep`, `feat/workflow-audit-fixes`,
+>   `audit/profile-roles-visibility` (đã merge, remote branch tồn tại nhưng không còn worktree local
+>   tương ứng — đã xóa remote)
 
 > 2026-08-27: Đã dọn dẹp toàn bộ worktree và các nhánh đã merge vào `dev` trên cả Local và Remote:
 > - `feat/workflow-node-config-fix` (PR #167, Deploy PR #168)

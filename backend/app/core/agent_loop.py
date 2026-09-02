@@ -11,12 +11,17 @@ from datetime import timedelta
 from typing import Any
 
 import structlog
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.core import session_log as slog
 from app.core.chat_events import ChatEventRecorder
+from app.core.execution_policy import (
+    ExecutionPolicy,
+    build_execution_policy_context,
+    policy_allows_tier,
+)
 from app.core.guardrails.approval import request_approval
 from app.core.guardrails.budget import BudgetTracker, RunBudget
 from app.core.guardrails.injection import wrap_untrusted_if_flagged
@@ -36,6 +41,13 @@ from app.core.observability.metrics import (
 from app.core.providers.factory import build_driver
 from app.core.runtime_context import build_runtime_context, normalize_timezone
 from app.core.session_surface import derive_messages
+from app.core.tools.authorization import (
+    build_tool_authorization,
+    tool_args_hash,
+)
+from app.core.tools.authorization import (
+    requires_approval as tool_requires_approval,
+)
 from app.core.tools.registry import BUILTIN_TOOLS, execute_tool_call
 from app.core.tools.risk_tier import RiskTier
 from app.core.tools.types import ToolContext, ToolSpec, tool_to_openai_schema
@@ -195,9 +207,14 @@ RAG_DIRECTIVE = (
 ORCHESTRATOR_SYSTEM_SUFFIX = (
     "Orchestrator behavior:\n"
     "- Break the user's goal into clear sub-tasks when delegation helps.\n"
-    "- Use `call_agent` to delegate work to suitable worker agents. You may call it "
-    "multiple times, including multiple tool calls in one turn when tasks can run independently.\n"
-    "- Synthesize subagent results into one concise final answer."
+    "- Use named delegate tools (delegate_to_*) to delegate work to the single most appropriate worker agent.\n"
+    "- For follow-up requests on files created in earlier turns (e.g., 'chạy luôn file đó cho tôi', 'preview it', 'run it'):\n"
+    "  * DO NOT ask the worker to regenerate, recreate, edit, or check if the file exists.\n"
+    "  * Instruct the worker ONLY to execute or preview the existing file directly: e.g. 'Chạy file add.py bằng run_code và trả về kết quả' or 'Xem trước file house.html bằng preview_web_artifact'.\n"
+    "  * NEVER say 'Tạo file nếu chưa có' or 'tạo file' for files already discussed or created in previous turns.\n"
+    "- Do NOT chain sub-agents redundantly (e.g. do not call another agent to search for a file that Software & Data Engineer just created).\n"
+    "- When a sub-agent completes its work, directly synthesize its output and present the final answer and usage guidance to the user.\n"
+    "- Synthesize all sub-agent results into one clear, concise final answer."
 )
 
 
@@ -248,9 +265,29 @@ async def _build_orchestrator_delegate_tools(
         capabilities = {key: list(value) for key, value in cached_capabilities.items()}
         return roster, specs, capabilities, {spec.name: spec for spec in specs}
     result = await db.execute(
-        select(Agent).where(Agent.org_id == org_id, Agent.id != exclude_agent_id)
+        select(Agent).where(
+            Agent.org_id == org_id,
+            Agent.id != exclude_agent_id,
+            Agent.kind == "worker",
+        )
     )
     agents = list(result.scalars().all())
+    if agents:
+        from app.models.org_agent_settings import OrgAgentSettings
+
+        disabled_res = await db.execute(
+            select(OrgAgentSettings.template_key).where(
+                OrgAgentSettings.org_id == org_id,
+                OrgAgentSettings.is_enabled.is_(False),
+            )
+        )
+        disabled_keys = set(disabled_res.scalars().all())
+        if disabled_keys:
+            agents = [
+                agent
+                for agent in agents
+                if getattr(agent, "template_key", None) not in disabled_keys
+            ]
     if not agents:
         return "", [], {}, {}
 
@@ -277,16 +314,17 @@ async def _build_orchestrator_delegate_tools(
             )
 
         spec = ToolSpec(
-                name=tool_name,
-                description=description,
-                input_schema={
-                    "type": "object",
-                    "properties": {"instruction": {"type": "string"}},
-                    "required": ["instruction"],
-                },
-                run=run_delegate,
-                risk_tier=RiskTier.execute,
-            )
+            name=tool_name,
+            description=description,
+            input_schema={
+                "type": "object",
+                "properties": {"instruction": {"type": "string"}},
+                "required": ["instruction"],
+            },
+            run=run_delegate,
+            risk_tier=RiskTier.safe,
+            timeout_s=300.0,
+        )
         delegate_specs.append(spec)
         delegate_by_agent_id[target.id] = spec
         lines.append(f"- {target.id}: {target.name} - {description}")
@@ -303,9 +341,11 @@ async def _build_orchestrator_delegate_tools(
 
 
 _ROUTING_SYNONYMS: dict[str, tuple[str, ...]] = {
-    "email": ("email", "gmail", "mail", "thư", "email"),
+    "email": ("email", "gmail", "mail", "thư"),
     "calendar": ("calendar", "lịch", "schedule", "meeting", "cuộc họp"),
-    "drive": ("drive", "tài liệu", "document", "documents", "file", "files"),
+    "drive": ("drive", "google drive", "gdrive"),
+    "write": ("write_file", "viết code", "tao file", "tạo file", "lưu file", "save file", "code html", "code python", "lập trình"),
+    "run": ("run_code", "chạy code", "execute", "thực thi", "sandbox"),
 }
 
 _GOOGLE_TOOL_PREFIXES = ("email_", "drive_", "calendar_")
@@ -679,6 +719,18 @@ async def _finish_task(
     task.cost_usd = cost_usd
     task.token_usage = token_usage or {}
     task.finished_at = utc_now()
+    if task.parent_task_id is None and status in {"succeeded", "failed", "cancelled"} and task.root_run_id:
+        try:
+            await db.execute(
+                update(ApprovalRequest)
+                .where(
+                    ApprovalRequest.run_id == task.root_run_id,
+                    ApprovalRequest.status == "pending",
+                )
+                .values(status="expired", decided_at=utc_now(), reason="run finished")
+            )
+        except Exception:
+            pass
     await db.commit()
 
 
@@ -706,7 +758,14 @@ async def _agent_stream(
     record_stream: bool = True,
     approval_resume_id: str | None = None,
     timezone_name: str | None = None,
+    execution_policy: ExecutionPolicy | None = None,
+    parent_session_id: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
+    def _allows_tier(tier: str) -> bool:
+        if execution_policy is not None:
+            return policy_allows_tier(execution_policy, tier)
+        return tier in (agent.allowed_risk_tiers or [])
+
     phase_started_at = time.monotonic()
     logger.info(
         "chat_latency_phase",
@@ -827,6 +886,19 @@ async def _agent_stream(
         model_id=selected_model_id,
         actor_agent_identity_id=actor_agent_identity_id,
         delegation_chain=delegation_chain,
+        parent_session_id=parent_session_id or session_id,
+        authorization=build_tool_authorization(
+            org_id=agent.org_id,
+            user_id=user_id or agent.created_by_user_id,
+            user_role=user_role,
+            agent_id=agent.id,
+            allowed_risk_tiers=agent.allowed_risk_tiers,
+            run_id=root_run_id or session_id or current_task_id,
+            principal_type="human" if user_id else "system",
+            principal_id=user_id or agent.created_by_user_id,
+            execution_policy=execution_policy,
+            replay=replay_cursor is not None,
+        ),
         timezone_name=normalize_timezone(timezone_name),
     )
 
@@ -882,6 +954,8 @@ async def _agent_stream(
     )
 
     system_parts = [build_runtime_context(timezone_name)]
+    if execution_policy is not None:
+        system_parts.append(build_execution_policy_context(execution_policy))
     if base_prompt:
         system_parts.append(base_prompt)
     system_parts.extend(directives)
@@ -894,20 +968,21 @@ async def _agent_stream(
     # session_events yet (safe backfill path for sessions created before
     # this feature shipped).
     messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
-    if session_id:
-        events = await slog.load_events(db, session_id)
+    effective_session_id = session_id or parent_session_id
+    if effective_session_id:
+        events = await slog.load_events(db, effective_session_id)
         if events:
-            messages.extend(derive_messages(events))
+            messages.extend(derive_messages(events, repair_crash_tail=not bool(approval_resume_id)))
         else:
             res = await db.execute(
-                select(Message).where(Message.session_id == session_id).order_by(Message.position)
+                select(Message).where(Message.session_id == effective_session_id).order_by(Message.position)
             )
             hist = res.scalars().all()
             if len(hist) > 20:
                 # Legacy sessions: still apply tiered compaction so old
                 # sessions don't blow the window until they earn events.
                 tiered = await compact_tiered_memory(
-                    session_id,
+                    effective_session_id,
                     db,
                     model,
                     provider,
@@ -979,15 +1054,18 @@ async def _agent_stream(
         else None
     )
     if rec is not None:
+        if approval_resume_id:
+            await rec.sync_seq_from_db(db)
         rec.start_liveness()
 
     start = time.monotonic()
-    if rec is not None:
+    if rec is not None and not approval_resume_id:
         await rec.record({"event": "message_start", "data": {}})
         asyncio.create_task(
             rec.flush_progress(phase="thinking", content_chars=0, reasoning_chars=0)
         )
-    yield {"event": "message_start", "data": {}}
+    if not approval_resume_id:
+        yield {"event": "message_start", "data": {}}
 
     tool_calls_log: list[dict[str, Any]] = []
     consecutive_failures = 0
@@ -1090,21 +1168,142 @@ async def _agent_stream(
                 current_task_id=next_hop.id,
                 root_run_id=root_run_id,
                 user_id=user_id,
+                user_role=user_role,
                 model_id=model_id or selected_model_id,
                 actor_agent_identity_id=actor_agent_identity_id,
                 delegation_chain=delegation_chain,
                 record_stream=False,
                 approval_resume_id=approval_resume_id,
+                execution_policy=execution_policy,
             ):
-                if nested_ev["event"] == "message_done":
-                    nested_result = nested_ev["data"]["content"]
-                elif nested_ev["event"] in {"approval_required", "error", "replay_diverged"}:
-                    # The nested run itself paused/failed further down the
-                    # tree (e.g. a third approval gate) - surface that
-                    # outcome as-is rather than pretending this level
-                    # finished.
+                ev_type = nested_ev.get("event")
+                ev_data = nested_ev.get("data", {})
+                if ev_type == "message_done":
+                    nested_result = ev_data.get("content", "")
+                elif ev_type == "approval_required":
+                    prog_ev = {
+                        "event": "tool_progress",
+                        "data": {
+                            "index": 0,
+                            "name": resume_tool_name,
+                            "stage": "subagent_approval_required",
+                            "agent_name": child_agent.name,
+                            "agent_id": child_agent.id,
+                            "approval_id": ev_data.get("approval_id"),
+                            "tool_name": ev_data.get("tool_name"),
+                            "line": f"\n[Subagent '{child_agent.name}' requires approval for {ev_data.get('tool_name')}]\n",
+                        },
+                    }
+                    if rec is not None:
+                        await rec.record(prog_ev)
+                        await rec.record(nested_ev)
+                        await rec.close()
+                    yield prog_ev
                     yield nested_ev
                     return
+                elif ev_type in {"error", "replay_diverged"}:
+                    if rec is not None:
+                        await rec.record(nested_ev)
+                        await rec.close()
+                    yield nested_ev
+                    return
+                elif ev_type == "reasoning":
+                    text = ev_data.get("content", "")
+                    prog_ev = {
+                        "event": "tool_progress",
+                        "data": {
+                            "index": 0,
+                            "name": resume_tool_name,
+                            "stage": "subagent_reasoning",
+                            "agent_name": child_agent.name,
+                            "agent_id": child_agent.id,
+                            "content": text,
+                            "line": text,
+                        },
+                    }
+                    if rec is not None:
+                        await rec.record(prog_ev)
+                    yield prog_ev
+                elif ev_type == "token":
+                    text = ev_data.get("content", "")
+                    prog_ev = {
+                        "event": "tool_progress",
+                        "data": {
+                            "index": 0,
+                            "name": resume_tool_name,
+                            "stage": "subagent_token",
+                            "agent_name": child_agent.name,
+                            "agent_id": child_agent.id,
+                            "content": text,
+                            "line": text,
+                        },
+                    }
+                    if rec is not None:
+                        await rec.record(prog_ev)
+                    yield prog_ev
+                elif ev_type == "tool_call":
+                    tool_name = ev_data.get("name", "")
+                    tool_args = ev_data.get("arguments", {})
+                    prog_ev = {
+                        "event": "tool_progress",
+                        "data": {
+                            "index": 0,
+                            "name": resume_tool_name,
+                            "stage": "subagent_tool_call",
+                            "agent_name": child_agent.name,
+                            "agent_id": child_agent.id,
+                            "tool_name": tool_name,
+                            "arguments": tool_args,
+                            "line": f"\n[Subagent '{child_agent.name}' calling tool: {tool_name}]\n",
+                        },
+                    }
+                    if rec is not None:
+                        await rec.record(prog_ev)
+                    yield prog_ev
+                elif ev_type == "tool_progress":
+                    prog_ev = {
+                        "event": "tool_progress",
+                        "data": {
+                            "index": 0,
+                            "name": resume_tool_name,
+                            "stage": "subagent_tool_progress",
+                            "agent_name": child_agent.name,
+                            "agent_id": child_agent.id,
+                            **ev_data,
+                        },
+                    }
+                    if rec is not None:
+                        await rec.record(prog_ev)
+                    yield prog_ev
+                elif ev_type == "tool_result":
+                    tool_name = ev_data.get("name", "")
+                    prog_ev = {
+                        "event": "tool_progress",
+                        "data": {
+                            "index": 0,
+                            "name": resume_tool_name,
+                            "stage": "subagent_tool_result",
+                            "agent_name": child_agent.name,
+                            "agent_id": child_agent.id,
+                            "tool_name": tool_name,
+                            "result": ev_data.get("result", ""),
+                            "line": f"[Subagent '{child_agent.name}' tool {tool_name} completed]\n",
+                        },
+                    }
+                    if rec is not None:
+                        await rec.record(prog_ev)
+                    yield prog_ev
+            res_ev = {
+                "event": "tool_result",
+                "data": {
+                    "index": 0,
+                    "name": resume_tool_name,
+                    "result": nested_result,
+                },
+            }
+            if rec is not None:
+                await rec.record(res_ev)
+            yield res_ev
             messages.append({
                 "role": "assistant",
                 "content": None,
@@ -1128,6 +1327,17 @@ async def _agent_stream(
                 "content": nested_result,
             })
             approved_resume_result = nested_result
+            tool_args = (
+                {"target_agent_id": child_agent.id, "instruction": next_hop.goal}
+                if resume_tool_name == "call_agent"
+                else {"instruction": next_hop.goal}
+            )
+            tool_calls_log.append({
+                "name": resume_tool_name,
+                "arguments": tool_args,
+                "result": nested_result,
+                "approval_id": approval.id,
+            })
             # The routing directive that forced this turn's tool_choice
             # already did its job (it is why this delegation happened at
             # all); forcing it again on the next model call - which is what
@@ -1164,7 +1374,7 @@ async def _agent_stream(
                 else None
             )
             budget_reason = budget.record_call(name, args)
-            if budget_reason or spec.risk_tier.value not in agent.allowed_risk_tiers:
+            if budget_reason or not _allows_tier(spec.risk_tier.value):
                 result = budget_reason or (
                     f"error: tool '{name}' requires risk tier '{spec.risk_tier.value}' "
                     "which is not enabled for this agent"
@@ -1186,8 +1396,15 @@ async def _agent_stream(
                 await rec.record(call_ev)
                 await rec.flush_progress(phase=f"tool:{name}")
             yield call_ev
+            approved_ctx = copy.copy(ctx)
+            approved_ctx.authorization = ctx.authorization.for_approved_call(
+                approval_id=approval.id,
+                approval_status=approval.status,
+                tool_name=name,
+                args=args,
+            ) if ctx.authorization is not None else None
             try:
-                result = await execute_tool_call(spec, args, ctx)
+                result = await execute_tool_call(spec, args, approved_ctx)
                 tool_status = "ok"
                 if tool_observation is not None:
                     tool_observation.finish_success(result=result)
@@ -1426,6 +1643,7 @@ async def _agent_stream(
                 openai_tcs = []
                 iter_failures = 0
                 iter_results: list[dict[str, str]] = []
+                batch_cached_results: dict[tuple[str, str], tuple[Any, str]] = {}
                 for entry in tc_map.values():
                     openai_tcs.append(
                         {
@@ -1437,7 +1655,7 @@ async def _agent_stream(
                             },
                         }
                     )
-                    messages.append({"role": "assistant", "content": None, "tool_calls": openai_tcs})
+                messages.append({"role": "assistant", "content": None, "tool_calls": openai_tcs})
                 for idx, entry in enumerate(tc_map.values()):
                     name = entry["name"]
                     try:
@@ -1446,6 +1664,7 @@ async def _agent_stream(
                         args = {}
                     spec = tool_by_name.get(name)
                     tool_index = idx
+                    call_sig = (name, json.dumps(args, sort_keys=True))
                     approved_replay = (
                         approved_resume_name == name
                         and approved_resume_args == args
@@ -1493,6 +1712,9 @@ async def _agent_stream(
                     if approved_replay:
                         result = approved_resume_result
                         tool_status = "approved_replay"
+                    elif call_sig in batch_cached_results:
+                        # Parallel duplicate tool call in the same turn: reuse cached result
+                        result, tool_status = batch_cached_results[call_sig]
                     elif spec is None:
                         result = f"error: tool '{name}' not available"
                         tool_status = "error"
@@ -1543,12 +1765,12 @@ async def _agent_stream(
                                 tool_observation.finish_error(RuntimeError(result), result=result)
                             return
                         # Layer 1: risk-tier capability gate
-                        if spec.risk_tier.value not in agent.allowed_risk_tiers:
+                        if not _allows_tier(spec.risk_tier.value):
                             tool_status = "denied"
                             result = (
                                 f"error: tool '{name}' requires risk tier "
-                                f"'{spec.risk_tier.value}' which is not enabled for this agent. "
-                                f"Allowed tiers: {agent.allowed_risk_tiers}"
+                                f"'{spec.risk_tier.value}' which is not allowed by the execution policy. "
+                                f"Policy: {execution_policy.value if execution_policy is not None else 'legacy-agent-tiers'}"
                             )
                             guardrail_events_total.labels(
                                 agent.org_id, "risk_tier_denied", "blocked"
@@ -1564,12 +1786,21 @@ async def _agent_stream(
                                 resource_id=name,
                                 metadata={
                                     "required_tier": spec.risk_tier.value,
-                                    "allowed_tiers": list(agent.allowed_risk_tiers or []),
+                                    "allowed_tiers": (
+                                        [tier for tier in (
+                                            ("safe", "read", "network")
+                                            if execution_policy is not None and execution_policy.value == "read-only"
+                                            else tuple(agent.allowed_risk_tiers or ())
+                                        )]
+                                    ),
+                                    "execution_policy": (
+                                        execution_policy.value if execution_policy is not None else None
+                                    ),
                                     "run_id": session_id,
                                 },
                                 commit=False,
                             )
-                        elif spec.requires_approval:
+                        elif tool_requires_approval(spec, execution_policy):
                             approval = await request_approval(
                                 db,
                                 org_id=agent.org_id,
@@ -1579,7 +1810,9 @@ async def _agent_stream(
                                 args_snapshot=args,
                                 requested_by=user_id or agent.created_by_user_id,
                                 owning_task_id=current_task_id,
+                                idempotency_key=f"{root_run_id}:{current_task_id or 'root'}:{name}:{tool_args_hash(args)}",
                             )
+                            await db.commit()
                             guardrail_events_total.labels(
                                 agent.org_id, "approval_required", "paused"
                             ).inc()
@@ -1895,6 +2128,7 @@ async def _agent_stream(
                         await rec.record(result_ev)
                         await rec.heartbeat(phase="thinking")
                     yield result_ev
+                    batch_cached_results[call_sig] = (result, tool_status)
                     log_entry: dict[str, Any] = {"name": name, "arguments": args, "result": result}
                     if secret_findings:
                         log_entry["redacted_secret_findings"] = [f.kind for f in secret_findings]
@@ -2224,6 +2458,8 @@ async def run_agent_loop(
     record_stream: bool = True,
     approval_resume_id: str | None = None,
     timezone_name: str | None = None,
+    execution_policy: ExecutionPolicy | None = None,
+    parent_session_id: str | None = None,
     on_event: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
 ) -> AgentLoopResult:
     content = ""
@@ -2249,6 +2485,8 @@ async def run_agent_loop(
         record_stream=record_stream,
         approval_resume_id=approval_resume_id,
         timezone_name=timezone_name,
+        execution_policy=execution_policy,
+        parent_session_id=parent_session_id,
     ):
         if on_event is not None:
             try:

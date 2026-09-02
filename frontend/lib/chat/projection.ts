@@ -25,13 +25,20 @@ export interface TextBlock {
   streaming: boolean;
 }
 
+export interface SubagentToolCall {
+  name: string;
+  status: "running" | "done" | "error";
+  args?: string;
+  result?: string;
+}
+
 export interface SubagentActivity {
   agentName?: string;
   agentId?: string;
   stage?: string;
   thinking?: string;
   response?: string;
-  tools?: { name: string; status: "running" | "done" }[];
+  tools?: SubagentToolCall[];
 }
 
 export interface ToolCallBlock {
@@ -138,6 +145,30 @@ export function createRunProjection(
 }
 
 /**
+ * Marks all in-flight streaming blocks (text, reasoning) as non-streaming
+ * without dropping any partial content. Used when user cancels or stops.
+ */
+export function stopProjectionStreaming(state: RunProjectionState): RunProjectionState {
+  const messages = state.messages.map((m) => {
+    if (m.role !== "assistant") return m;
+    const hasStreaming = m.blocks.some(
+      (b) => (b.kind === "text" || b.kind === "reasoning") && b.streaming,
+    );
+    if (!hasStreaming) return m;
+    return {
+      ...m,
+      blocks: m.blocks.map((b) => {
+        if (b.kind === "text" || b.kind === "reasoning") {
+          return { ...b, streaming: false };
+        }
+        return b;
+      }),
+    };
+  });
+  return { ...state, messages };
+}
+
+/**
  * Reduce one chat stream event into view nodes. Returns a new state object;
  * sibling messages keep their references so React.memo stays effective.
  * Unknown events return the SAME state reference (cheap bail-out).
@@ -201,6 +232,15 @@ export function applyChatEvent(
     return undefined;
   };
 
+  const resolvePriorApprovals = () => {
+    for (let i = 0; i < messages.length; i++) {
+      const m = messages[i];
+      if (m.role === "approval" && m.status === "pending") {
+        messages[i] = { ...m, status: "approved" };
+      }
+    }
+  };
+
   switch (ev.event) {
     case "message_start": {
       ensureMsg();
@@ -209,18 +249,21 @@ export function applyChatEvent(
     }
 
     case "reasoning": {
+      resolvePriorApprovals();
       appendToKind("reasoning", String(d.content ?? ""));
       side.phase = "thinking";
       break;
     }
 
     case "token": {
+      resolvePriorApprovals();
       appendToKind("text", String(d.delta ?? d.content ?? ""));
       side.phase = null;
       break;
     }
 
     case "tool_call_delta": {
+      resolvePriorApprovals();
       ensureMsg();
       const idx = typeof d.index === "number" ? d.index : 0;
       const existing = findTool(idx, true);
@@ -244,6 +287,7 @@ export function applyChatEvent(
     }
 
     case "tool_call": {
+      resolvePriorApprovals();
       ensureMsg();
       const idx = typeof d.index === "number" ? d.index : 0;
       const name = String(d.name || "tool");
@@ -261,6 +305,7 @@ export function applyChatEvent(
     }
 
     case "tool_progress": {
+      resolvePriorApprovals();
       const idx = typeof d.index === "number" ? d.index : 0;
       const target = findTool(idx, true) ?? findTool(idx, false);
       if (target) {
@@ -281,10 +326,12 @@ export function applyChatEvent(
             subagent.response = (subagent.response ?? "") + String(d.content);
           } else if (stage === "subagent_tool_call" && d.tool_name) {
             const currentTools = subagent.tools ?? [];
-            subagent.tools = [...currentTools, { name: String(d.tool_name), status: "running" }];
+            const argsStr = d.arguments ? (typeof d.arguments === "string" ? d.arguments : JSON.stringify(d.arguments, null, 2)) : undefined;
+            subagent.tools = [...currentTools, { name: String(d.tool_name), status: "running", args: argsStr }];
           } else if (stage === "subagent_tool_result" && d.tool_name) {
+            const resultStr = d.result != null ? (typeof d.result === "string" ? d.result : JSON.stringify(d.result, null, 2)) : undefined;
             const currentTools = (subagent.tools ?? []).map((t) =>
-              t.name === d.tool_name && t.status === "running" ? { ...t, status: "done" as const } : t,
+              t.name === d.tool_name && t.status === "running" ? { ...t, status: "done" as const, result: resultStr } : t,
             );
             subagent.tools = currentTools;
           }
@@ -299,6 +346,7 @@ export function applyChatEvent(
     }
 
     case "tool_result": {
+      resolvePriorApprovals();
       const idx = typeof d.index === "number" ? d.index : 0;
       const result = String(d.result ?? d.output ?? "");
       const target = findTool(idx, true) ?? findTool(idx, false);
@@ -310,6 +358,7 @@ export function applyChatEvent(
     }
 
     case "message_done": {
+      resolvePriorApprovals();
       // A run can die before emitting any content (crash after bootstrap);
       // still materialize the assistant so stats/noAnswer render.
       const assistant = ensureMsg();

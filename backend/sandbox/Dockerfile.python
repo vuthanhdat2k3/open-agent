@@ -1,0 +1,69 @@
+# OpenAgent High-Capability Python Sandbox Image
+# Equipped with comprehensive Data Science, Machine Learning, Office Documents,
+# PDF Generation (WeasyPrint, ReportLab, FPDF2), Charting, HTML/Text Parsing, and Utility packages.
+# Used by run_code in isolated Zero-Trust execution.
+
+FROM python:3.11-slim
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    MPLCONFIGDIR=/tmp/matplotlib
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    fonts-dejavu-core \
+    fonts-liberation \
+    pandoc \
+    libcairo2 \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libgdk-pixbuf-2.0-0 \
+    shared-mime-info \
+    ca-certificates \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install comprehensive suites for all common data & document workflows
+RUN pip install --upgrade pip && \
+    pip install \
+    numpy \
+    pandas \
+    scipy \
+    scikit-learn \
+    statsmodels \
+    duckdb \
+    pyarrow \
+    tabulate \
+    sympy \
+    matplotlib \
+    seaborn \
+    plotly \
+    Pillow \
+    qrcode \
+    fpdf2 \
+    reportlab \
+    weasyprint \
+    pypdf \
+    pdfplumber \
+    markdown \
+    markdown2 \
+    python-docx \
+    openpyxl \
+    xlsxwriter \
+    jinja2 \
+    beautifulsoup4 \
+    lxml \
+    html5lib \
+    pyyaml \
+    toml \
+    tomli \
+    tomli-w \
+    requests \
+    httpx \
+    python-dateutil \
+    pytz
+
+WORKDIR /workspace
+
+CMD ["python3"]

@@ -78,39 +78,47 @@ export function Companion3D({
     }
   }, []);
 
+  const baseWidth = 190;
+  const baseHeight = 185;
+  const scale = Math.max(0.5, Math.min(1.5, (config.avatarScale || 85) / 100));
+  const currentWidth = Math.round(baseWidth * scale);
+  const currentHeight = Math.round(baseHeight * scale);
+  const halfW = Math.round(currentWidth / 2);
+  const halfH = Math.round(currentHeight / 2);
+
   // Set default initial position based on config
   React.useEffect(() => {
     if (typeof window === "undefined" || isInitialized) return;
-    let initialX = window.innerWidth - 95;
-    let initialY = window.innerHeight - 95;
+    let initialX = window.innerWidth - (halfW + 15);
+    let initialY = window.innerHeight - (halfH + 15);
 
     if (config.defaultPosition === "top-right") {
-      initialX = window.innerWidth - 95;
-      initialY = 110;
+      initialX = window.innerWidth - (halfW + 15);
+      initialY = halfH + 20;
     } else if (config.defaultPosition === "middle-right") {
-      initialX = window.innerWidth - 95;
+      initialX = window.innerWidth - (halfW + 15);
       initialY = window.innerHeight * 0.5;
     } else if (config.defaultPosition === "bottom-left") {
       initialX = 280;
-      initialY = window.innerHeight - 95;
+      initialY = window.innerHeight - (halfH + 15);
     }
 
     setPos({ x: initialX, y: initialY });
     setIsInitialized(true);
-  }, [config.defaultPosition, isInitialized]);
+  }, [config.defaultPosition, isInitialized, halfW, halfH]);
 
   // Window resize handler to maintain relative position
   React.useEffect(() => {
     if (typeof window === "undefined") return;
     const handleResize = () => {
       setPos((prev) => ({
-        x: Math.max(90, Math.min(window.innerWidth - 90, prev.x)),
-        y: Math.max(90, Math.min(window.innerHeight - 90, prev.y)),
+        x: Math.max(halfW, Math.min(window.innerWidth - halfW, prev.x)),
+        y: Math.max(halfH, Math.min(window.innerHeight - halfH, prev.y)),
       }));
     };
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
-  }, []);
+  }, [halfW, halfH]);
 
   // Head look-at loop
   React.useEffect(() => {
@@ -167,16 +175,16 @@ export function Companion3D({
     const dy = e.clientY - dragStartRef.current.y;
     if (Math.hypot(dx, dy) > 6) dragStartRef.current.hasMoved = true;
 
-    const newX = Math.max(90, Math.min(window.innerWidth - 90, dragStartRef.current.startPosX + dx));
-    const newY = Math.max(90, Math.min(window.innerHeight - 90, dragStartRef.current.startPosY + dy));
+    const newX = Math.max(halfW, Math.min(window.innerWidth - halfW, dragStartRef.current.startPosX + dx));
+    const newY = Math.max(halfH, Math.min(window.innerHeight - halfH, dragStartRef.current.startPosY + dy));
     setPos({ x: newX, y: newY });
 
     // Check dock proximity
     const docks = [
-      { id: 0, x: window.innerWidth - 95, y: window.innerHeight - 95 },
-      { id: 1, x: window.innerWidth - 95, y: 110 },
-      { id: 2, x: window.innerWidth - 95, y: window.innerHeight * 0.5 },
-      { id: 3, x: 280, y: window.innerHeight - 95 },
+      { id: 0, x: window.innerWidth - (halfW + 15), y: window.innerHeight - (halfH + 15) },
+      { id: 1, x: window.innerWidth - (halfW + 15), y: halfH + 20 },
+      { id: 2, x: window.innerWidth - (halfW + 15), y: window.innerHeight * 0.5 },
+      { id: 3, x: Math.max(280, halfW + 40), y: window.innerHeight - (halfH + 15) },
     ];
     let foundDock: number | null = null;
     for (const d of docks) {
@@ -194,10 +202,10 @@ export function Companion3D({
 
     // Snap to active dock
     const docks = [
-      { id: 0, x: window.innerWidth - 95, y: window.innerHeight - 95 },
-      { id: 1, x: window.innerWidth - 95, y: 110 },
-      { id: 2, x: window.innerWidth - 95, y: window.innerHeight * 0.5 },
-      { id: 3, x: 280, y: window.innerHeight - 95 },
+      { id: 0, x: window.innerWidth - (halfW + 15), y: window.innerHeight - (halfH + 15) },
+      { id: 1, x: window.innerWidth - (halfW + 15), y: halfH + 20 },
+      { id: 2, x: window.innerWidth - (halfW + 15), y: window.innerHeight * 0.5 },
+      { id: 3, x: Math.max(280, halfW + 40), y: window.innerHeight - (halfH + 15) },
     ];
     if (activeDock !== null && docks[activeDock]) {
       setPos({ x: docks[activeDock].x, y: docks[activeDock].y });
@@ -261,10 +269,10 @@ export function Companion3D({
       {isDragging && (
         <div className="pointer-events-none fixed inset-0 z-30 transition-opacity duration-300">
           {[
-            { id: 0, label: tx("Dưới phải", "Bottom Right"), x: window.innerWidth - 110, y: window.innerHeight - 110 },
-            { id: 1, label: tx("Trên phải", "Top Right"), x: window.innerWidth - 110, y: 120 },
-            { id: 2, label: tx("Giữa phải", "Middle Right"), x: window.innerWidth - 110, y: window.innerHeight * 0.5 },
-            { id: 3, label: tx("Dưới trái", "Bottom Left"), x: 290, y: window.innerHeight - 110 },
+            { id: 0, label: tx("Dưới phải", "Bottom Right"), x: window.innerWidth - (halfW + 15), y: window.innerHeight - (halfH + 15) },
+            { id: 1, label: tx("Trên phải", "Top Right"), x: window.innerWidth - (halfW + 15), y: halfH + 20 },
+            { id: 2, label: tx("Giữa phải", "Middle Right"), x: window.innerWidth - (halfW + 15), y: window.innerHeight * 0.5 },
+            { id: 3, label: tx("Dưới trái", "Bottom Left"), x: Math.max(280, halfW + 40), y: window.innerHeight - (halfH + 15) },
           ].map((dock) => {
             const isTarget = activeDock === dock.id;
             return (
@@ -304,8 +312,8 @@ export function Companion3D({
           position: "fixed",
           left: `${pos.x}px`,
           top: `${pos.y}px`,
-          width: "190px",
-          height: "185px",
+          width: `${currentWidth}px`,
+          height: `${currentHeight}px`,
           transform: "translate(-50%, -50%)",
           zIndex: isDragging ? 45 : 35,
           cursor: isDragging ? "grabbing" : "grab",
@@ -409,7 +417,10 @@ export function Companion3D({
           </div>
 
           {/* Holographic Pedestal Glow */}
-          <div className="pointer-events-none absolute bottom-4 left-1/2 h-4 w-28 -translate-x-1/2 rounded-[100%] bg-primary/20 blur-md" />
+          <div
+            className="pointer-events-none absolute bottom-4 left-1/2 h-4 -translate-x-1/2 rounded-[100%] bg-primary/20 blur-md"
+            style={{ width: `${Math.round(112 * scale)}px` }}
+          />
 
           {/* Model Viewer Component */}
           <div className="h-full w-full">

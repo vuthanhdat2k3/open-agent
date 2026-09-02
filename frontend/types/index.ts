@@ -47,6 +47,17 @@ export interface ModelTestResult {
   model_name?: string | null;
 }
 
+export type ModelTier = "economy" | "balanced" | "frontier";
+
+export interface OrgModelTierMatrixResponse {
+  tiers: Record<ModelTier, Model | null>;
+}
+
+export interface OrgModelTierMatrixUpdate {
+  tier_mappings: Record<ModelTier, string | null>;
+}
+
+
 export interface Model {
   id: string;
   provider_id: string;
@@ -226,6 +237,8 @@ export interface AgentToolInfo {
   description: string;
   available: boolean;
   risk_tier?: "safe" | "read" | "write" | "execute" | "network" | "dangerous";
+  allowed_for_orchestrator?: boolean;
+  allowed_for_worker?: boolean;
 }
 
 export interface McpTool {
@@ -314,9 +327,12 @@ export interface Workflow {
   updated_at: string;
 }
 
+export type ExecutionPolicy = "read-only" | "manual" | "full-access";
+
 export interface Session {
   id: string;
   agent_id: string;
+  execution_policy: ExecutionPolicy;
   title: string;
   created_at: string;
   updated_at: string;
@@ -379,6 +395,9 @@ export interface WorkspaceArtifact {
   session_id: string | null;
   task_id: string | null;
   root_run_id: string | null;
+  created_by_user_id?: string | null;
+  creator_email?: string | null;
+  creator_name?: string | null;
   exists: boolean;
   created_at: string;
   updated_at: string;
@@ -398,6 +417,9 @@ export interface SandboxExecution {
   session_id: string | null;
   task_id: string | null;
   root_run_id: string | null;
+  created_by_user_id?: string | null;
+  creator_email?: string | null;
+  creator_name?: string | null;
   started_at: string;
   finished_at: string | null;
   created_at: string;
@@ -661,3 +683,11 @@ export interface EmailIntelligenceNavigationSummary {
   };
   meta: { server_time: string; reason_registry_version?: string; correlation_id?: string };
 }
+
+export type {
+  ChatMessage,
+  ApprovalMessage,
+  UserMessage,
+  AssistantMessage,
+  ErrorMessage,
+} from "@/lib/chat/projection";

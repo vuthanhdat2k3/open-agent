@@ -552,7 +552,11 @@ export default function CustomerIntelligencePage() {
   const remove = useDeleteCustomerIntelligenceCase();
   const manual = useCreateManualCustomerIntelligenceCase();
 
-  const [activeTab, setActiveTab] = useState<"cases" | "schedules">("cases");
+  const [tabParam, setTabParam] = useUrlSearchParam("tab");
+  const activeTab = (tabParam as "cases" | "schedules") || "cases";
+  const setActiveTab = (tab: "cases" | "schedules") => {
+    setTabParam(tab === "cases" ? null : tab);
+  };
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
   const [companyName, setCompanyName] = useState("");
   const [companyDomain, setCompanyDomain] = useState("");

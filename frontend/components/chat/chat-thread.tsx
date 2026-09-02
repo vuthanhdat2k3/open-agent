@@ -11,7 +11,7 @@ import { ChatEmptyState } from "@/components/chat/chat-empty-state";
 import { ChatStatusRow } from "@/components/chat/chat-status-row";
 import { ChatHeaderControls } from "@/components/chat/chat-header-controls";
 import type { ChatMessage } from "@/lib/chat/projection";
-import type { Agent, Model, Session, UploadedFile } from "@/types";
+import type { Agent, ExecutionPolicy, Model, Session, UploadedFile } from "@/types";
 import { useTranslation } from "@/lib/i18n";
 
 interface ChatThreadProps {
@@ -21,19 +21,18 @@ interface ChatThreadProps {
   statusPhase: string;
   agents?: Agent[];
   models?: Model[];
-  sessions?: Session[];
   agentId: string | null;
   sessionId: string | null;
   currentAgent?: Agent;
   currentAgentModel?: Model;
   effectiveModel?: Model;
   pendingSessionModelId: string;
+  pendingExecutionPolicy: ExecutionPolicy;
   updateAgentPending: boolean;
   onAgentChange: (agentId: string) => void;
   onDefaultModelChange: (modelId: string) => void;
-  onSessionChange: (sessionId: string) => void;
+  onExecutionPolicyChange: (policy: ExecutionPolicy) => void;
   onNewSession: () => void;
-  onDeleteSession: (sessionId: string) => Promise<void>;
   onToggleDebug: () => void;
   onClearMessages: () => void;
   onApprovalDecision: (messageId: string, decision: "approved" | "rejected") => void;
@@ -55,19 +54,18 @@ export function ChatThread({
   statusPhase,
   agents,
   models,
-  sessions,
   agentId,
   sessionId,
   currentAgent,
   currentAgentModel,
   effectiveModel,
   pendingSessionModelId,
+  pendingExecutionPolicy,
   updateAgentPending,
   onAgentChange,
   onDefaultModelChange,
-  onSessionChange,
+  onExecutionPolicyChange,
   onNewSession,
-  onDeleteSession,
   onToggleDebug,
   onClearMessages,
   onApprovalDecision,
@@ -100,29 +98,16 @@ export function ChatThread({
 
   const role = useCurrentRole();
   const canSwitchAgent = isAdminRole(role) || isOperator(role);
-  const canSwitchModel = Boolean(models?.some((model) => model.active));
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="sticky top-0 z-10 flex shrink-0 items-center gap-2 border-b border-border/60 bg-background px-2 py-1.5 sm:px-4">
         <ChatHeaderControls
           canSwitchAgent={canSwitchAgent}
-          canSwitchModel={canSwitchModel}
           agents={agents}
-          models={models}
-          sessions={sessions}
           agentId={agentId}
-          sessionId={sessionId}
           currentAgent={currentAgent}
-          currentAgentModel={currentAgentModel}
-          pendingSessionModelId={pendingSessionModelId}
-          streaming={streaming}
-          updateAgentPending={updateAgentPending}
           onAgentChange={onAgentChange}
-          onDefaultModelChange={onDefaultModelChange}
-          onSessionChange={onSessionChange}
-          onNewSession={onNewSession}
-          onDeleteSession={onDeleteSession}
         />
         <div className="ml-auto flex items-center gap-1">
           <Button
@@ -146,15 +131,15 @@ export function ChatThread({
             <span>{tx("Debug", "Debug")}</span>
             {debug && <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-hidden="true" />}
           </Button>
-          {messages.length > 0 && (
+          {sessionId && (
             <Button
               type="button"
               variant="ghost"
               size="icon"
               className="h-8 w-8 text-muted-foreground hover:text-destructive"
               onClick={onClearMessages}
-              aria-label={tx("Xóa hội thoại", "Clear conversation")}
-              title={tx("Xóa hội thoại", "Clear conversation")}
+              aria-label={tx("Đóng phiên hội thoại", "Close session")}
+              title={tx("Đóng phiên hội thoại", "Close session")}
             >
               <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
             </Button>
@@ -173,7 +158,11 @@ export function ChatThread({
         {messages.length === 0 ? (
           <ChatEmptyState
             currentAgent={currentAgent}
+            models={models}
             effectiveModel={effectiveModel}
+            onModelChange={onDefaultModelChange}
+            executionPolicy={pendingExecutionPolicy}
+            onExecutionPolicyChange={onExecutionPolicyChange}
             draft={draft}
             onDraftChange={onDraftChange}
             onSubmit={onSubmit}

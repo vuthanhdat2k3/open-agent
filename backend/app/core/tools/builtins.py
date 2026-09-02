@@ -1,3 +1,4 @@
+import asyncio
 from datetime import timezone
 from typing import Any
 
@@ -260,6 +261,16 @@ async def _call_agent(args: dict[str, Any], ctx: ToolContext) -> str:
         agent_id=agent.id,
         agent_release_id=agent.active_release_id,
         triggered_by_user_id=ctx.user_id,
+        execution_principal={
+            "principal_type": (
+                ctx.authorization.principal_type if ctx.authorization else "system"
+            ),
+            "principal_id": (
+                ctx.authorization.principal_id if ctx.authorization else "openagent:internal-runtime"
+            ),
+            "user_id": ctx.user_id,
+            "role": (ctx.authorization.role if ctx.authorization and ctx.authorization.is_human else None),
+        },
         goal=instruction,
         status="running",
         progress={"model_id": ctx.model_id},
@@ -293,6 +304,15 @@ async def _call_agent(args: dict[str, Any], ctx: ToolContext) -> str:
                 "content": text,
                 "line": text,
             })
+        elif ev_type == "approval_required":
+            await ctx.emit({
+                "stage": "subagent_approval_required",
+                "agent_name": agent.name,
+                "agent_id": agent.id,
+                "approval_id": ev_data.get("approval_id"),
+                "tool_name": ev_data.get("tool_name"),
+                "line": f"\n[Subagent '{agent.name}' requires approval for {ev_data.get('tool_name')}]\n",
+            })
         elif ev_type == "tool_call":
             tool_name = ev_data.get("name", "")
             tool_args = ev_data.get("arguments", {})
@@ -313,11 +333,13 @@ async def _call_agent(args: dict[str, Any], ctx: ToolContext) -> str:
             })
         elif ev_type == "tool_result":
             tool_name = ev_data.get("name", "")
+            tool_result_content = ev_data.get("result", "")
             await ctx.emit({
                 "stage": "subagent_tool_result",
                 "agent_name": agent.name,
                 "agent_id": agent.id,
                 "tool_name": tool_name,
+                "result": tool_result_content,
                 "line": f"[Subagent '{agent.name}' tool {tool_name} completed]\n",
             })
         elif ev_type == "message_done":
@@ -346,19 +368,26 @@ async def _call_agent(args: dict[str, Any], ctx: ToolContext) -> str:
                 "line": f"Starting subagent '{agent.name}'...\n",
             })
 
-        loop_result = await run_agent_loop(
-            agent,
-            instruction,
-            ctx.db,
-            depth=ctx.depth + 1,
-            current_task_id=task.id,
-            root_run_id=task.root_run_id,
-            user_id=ctx.user_id,
-            model_id=ctx.model_id,
-            timezone_name=ctx.timezone_name,
-            actor_agent_identity_id=ctx.actor_agent_identity_id,
-            delegation_chain=ctx.delegation_chain,
-            on_event=_handle_subagent_event,
+        loop_result = await asyncio.wait_for(
+            run_agent_loop(
+                agent,
+                instruction,
+                ctx.db,
+                depth=ctx.depth + 1,
+                session_id=None,
+                current_task_id=task.id,
+                root_run_id=task.root_run_id,
+                user_id=ctx.user_id,
+                user_role=(ctx.authorization.role if ctx.authorization and ctx.authorization.is_human else None),
+                model_id=ctx.model_id,
+                timezone_name=ctx.timezone_name,
+                actor_agent_identity_id=ctx.actor_agent_identity_id,
+                delegation_chain=ctx.delegation_chain,
+                execution_policy=(ctx.authorization.execution_policy if ctx.authorization else None),
+                parent_session_id=ctx.session_id or ctx.parent_session_id,
+                on_event=_handle_subagent_event,
+            ),
+            timeout=180.0,
         )
     except Exception as exc:  # noqa: BLE001
         task.status = "failed"
@@ -376,19 +405,8 @@ async def _call_agent(args: dict[str, Any], ctx: ToolContext) -> str:
     )
     approval = pending.scalar_one_or_none()
     if approval is not None:
-        # The root run (agent_loop._agent_stream) is the one the UI resumes
-        # via /api/approvals — it detects this same pending approval right
-        # after this call returns and puts itself into waiting_approval.
-        # This sub-task must NOT also claim waiting_approval: a decide-approval
-        # resume re-runs the *root* run from its original message, it never
-        # re-enters this delegated sub-task, so leaving it at waiting_approval
-        # would strand it there forever (and previously made the approval
-        # decision endpoint's `Task.status == "waiting_approval"` query
-        # ambiguous between this row and the root task, resuming whichever
-        # one the query happened to return first — often the wrong one).
-        task.status = "succeeded"
+        task.status = "waiting_approval"
         task.result = f"approval required for {approval.tool_name} (approval_id: {approval.id})"
-        task.finished_at = utc_now()
         await ctx.db.commit()
         return f"approval required for {approval.tool_name} (approval_id: {approval.id})"
 
@@ -476,7 +494,8 @@ register(
             "required": ["target_agent_id", "instruction"],
         },
         run=_call_agent,
-        risk_tier=RiskTier.execute,
+        risk_tier=RiskTier.safe,
+        timeout_s=300.0,
     )
 )
 

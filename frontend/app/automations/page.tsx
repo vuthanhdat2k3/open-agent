@@ -54,6 +54,7 @@ import {
   type WorkflowInstallation,
 } from "@/lib/automations/api";
 import { workflowIcon } from "@/lib/automations/icons";
+import { useUrlSearchParam } from "@/hooks";
 
 const categories = [
   { value: "", labelVi: "Tất cả quy trình", label: "All workflows" },
@@ -557,7 +558,11 @@ export default function AutomationsPage() {
   const { t, dict, locale, tx } = useTranslation();
   const queryClient = useQueryClient();
   const router = useRouter();
-  const [view, setView] = useState<"discover" | "active">("discover");
+  const [tabParam, setTabParam] = useUrlSearchParam("tab");
+  const view = (tabParam as "discover" | "active") || "discover";
+  const setView = (v: "discover" | "active") => {
+    setTabParam(v === "discover" ? null : v);
+  };
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("");
   const [selected, setSelected] = useState<WorkflowCatalogItem | null>(null);

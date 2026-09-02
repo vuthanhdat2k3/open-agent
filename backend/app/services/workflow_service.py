@@ -129,9 +129,14 @@ class WorkflowService:
         if "graph" in data:
             self.validate_graph(data["graph"])
             await self._validate_agent_ownership(data["graph"], org_id=org_id)
+        if getattr(wf, "template_key", None):
+            data["is_customized"] = True
         return await self.repo.update(wf, data)
 
     async def delete(self, org_id: str, id: str) -> bool:
+        wf = await self.repo.get(org_id, id)
+        if wf and getattr(wf, "template_key", None) in SYSTEM_WORKFLOW_BLUEPRINTS and not getattr(wf, "is_customized", True):
+            raise ValueError("System template workflows cannot be deleted. Reset or modify them instead.")
         return await self.repo.delete(org_id, id)
 
     async def reset_to_template(self, org_id: str, id: str) -> Workflow:
@@ -174,21 +179,7 @@ class WorkflowService:
         return self._build_virtual_workflow(org_id, matched_blueprint)
 
     async def list(self, org_id: str, created_by_user_id: str | None = None) -> list[Workflow]:
-        db_workflows = await self.repo.list(org_id, created_by_user_id=created_by_user_id)
-
-        covered_keys = {w.template_key for w in db_workflows if getattr(w, "template_key", None)}
-        covered_names = {w.name.strip().lower().replace(" ", "-") for w in db_workflows}
-
-        result: list[Workflow] = list(db_workflows)
-
-        for blueprint in SYSTEM_WORKFLOW_BLUEPRINTS.values():
-            norm_name = blueprint.name.strip().lower().replace(" ", "-")
-            if blueprint.key in covered_keys or norm_name in covered_names or blueprint.key in covered_names:
-                continue
-            v_wf = self._build_virtual_workflow(org_id, blueprint)
-            result.append(v_wf)
-
-        return result
+        return await self.repo.list(org_id, created_by_user_id=created_by_user_id)
 
     async def get(self, org_id: str, id: str) -> Workflow | None:
         # 1. Try DB lookup by exact ID
@@ -228,6 +219,46 @@ class WorkflowService:
             return by_name
 
         return None
+
+    async def ensure_persisted(self, org_id: str, id: str, user_id: str | None = None) -> Workflow | None:
+        """Ensure a workflow exists in the DB (materializing virtual blueprints on-demand if needed)."""
+        wf = await self.get(org_id, id)
+        if wf is None:
+            return None
+        # If it's already a real DB record
+        if not getattr(wf, "id", "").startswith("sys-wf-"):
+            return wf
+        # It's a virtual blueprint - find the blueprint definition
+        matched_blueprint = None
+        for bp in SYSTEM_WORKFLOW_BLUEPRINTS.values():
+            if (
+                bp.id == wf.id
+                or bp.key == wf.template_key
+                or bp.name.lower() == wf.name.lower()
+            ):
+                matched_blueprint = bp
+                break
+        if matched_blueprint is None:
+            return wf
+
+        # Check again if an override was created concurrently
+        override = await self.repo.db.scalar(
+            select(Workflow).where(
+                Workflow.org_id == org_id,
+                Workflow.template_key == matched_blueprint.key,
+            )
+        )
+        if override is not None:
+            return override
+
+        base_data = {
+            "name": matched_blueprint.name,
+            "description": matched_blueprint.description,
+            "graph": dict(matched_blueprint.graph),
+            "template_key": matched_blueprint.key,
+            "is_customized": False,
+        }
+        return await self.create(org_id, base_data, user_id)
 
     async def generate_graph(self, org_id: str, prompt: str, model_id: str) -> dict:
         agents = await AgentRepository(self.repo.db).list(org_id)

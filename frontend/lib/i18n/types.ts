@@ -242,6 +242,10 @@ export interface TranslationDictionary {
       emptyStateCapabilities: string;
       emptyStateCapabilitiesPrompt: string;
       enlargeSvg: string;
+      executionPolicy: string;
+      executionPolicyReadOnly: string;
+      executionPolicyManual: string;
+      executionPolicyFullAccess: string;
     };
     agents: {
       title: string;
@@ -275,6 +279,7 @@ export interface TranslationDictionary {
       description: string;
       tabProviders: string;
       tabModels: string;
+      tabTierMatrix: string;
       btnAddProvider: string;
       btnDiscoverModels: string;
       providerType: string;
@@ -283,6 +288,16 @@ export interface TranslationDictionary {
       testModel: string;
       statusConnected: string;
       statusUnreachable: string;
+      tierMatrixTitle: string;
+      tierMatrixDesc: string;
+      tierEconomy: string;
+      tierEconomyDesc: string;
+      tierBalanced: string;
+      tierBalancedDesc: string;
+      tierFrontier: string;
+      tierFrontierDesc: string;
+      tierSelectPlaceholder: string;
+      tierSaveSuccess: string;
     };
     workflows: {
       title: string;
@@ -591,7 +606,17 @@ export interface TranslationDictionary {
       tablePath: string;
       tableSize: string;
       tableTime: string;
+      tableCreator: string;
+      tableSession: string;
+      filterAllUsers: string;
+      filterUserPlaceholder: string;
       btnRunCode: string;
+      btnLivePreview: string;
+      runPanelTitle: string;
+      runPanelStop: string;
+      runPanelExitCode: string;
+      runPanelNoOutput: string;
+      runPanelConnecting: string;
     };
     organizations: {
       title: string;

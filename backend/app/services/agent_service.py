@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 
 from app.core.agents.templates import SYSTEM_AGENT_BLUEPRINTS, SystemAgentBlueprint
 from app.db.base import utc_now
@@ -15,6 +16,7 @@ from app.models.agent_release import AgentRelease
 from app.models.evaluation import EvaluationRun, EvaluationSuite
 from app.models.model import Model
 from app.models.org_agent_settings import OrgAgentSettings
+from app.models.org_model_tier_config import OrgModelTierConfig
 from app.repositories.agent_repo import AgentRepository
 from app.repositories.model_repo import ModelRepository
 
@@ -28,6 +30,39 @@ RELEASE_CONFIG_FIELDS = (
     "max_iterations",
     "temperature",
 )
+
+ALLOWED_ORCHESTRATOR_TOOLS: frozenset[str] = frozenset({
+    "call_agent",
+    "workflow_list",
+    "get_current_time",
+    "save_memory",
+    "call_memory",
+    "memory_store",
+    "memory_recall",
+    "call_external_agent",
+})
+
+PROHIBITED_WORKER_TOOLS: frozenset[str] = frozenset({"call_agent"})
+
+
+def _validate_agent_kind_tools(kind: str | None, tools: list[str] | None) -> None:
+    if not tools:
+        return
+    effective_kind = kind or "worker"
+    if effective_kind == "orchestrator":
+        disallowed = [t for t in tools if t not in ALLOWED_ORCHESTRATOR_TOOLS]
+        if disallowed:
+            raise ValueError(
+                f"Orchestrator agents cannot be directly assigned domain worker tools ({', '.join(disallowed)}). "
+                "Orchestrators delegate specialized tasks to worker agents via call_agent."
+            )
+    elif effective_kind == "worker":
+        prohibited = [t for t in tools if t in PROHIBITED_WORKER_TOOLS]
+        if prohibited:
+            raise ValueError(
+                f"Worker agents cannot be assigned {', '.join(prohibited)}. "
+                "Multi-agent delegation is governed exclusively by the orchestrator."
+            )
 
 
 class QualityGateBlocked(ValueError):
@@ -88,6 +123,7 @@ class AgentService:
         m = await self.model_repo.get(org_id, data["model_id"])
         if m is None or not m.active:
             raise ValueError("model not found or inactive")
+        _validate_agent_kind_tools(data.get("kind"), data.get("tools"))
         data["org_id"] = org_id
         if user_id:
             data["created_by_user_id"] = user_id
@@ -115,6 +151,82 @@ class AgentService:
         await self.repo.db.commit()
         await self.repo.db.refresh(agent)
         return agent
+
+    async def materialize_system_agent(self, org_id: str, agent: Agent) -> Agent:
+        """Persist a virtual system blueprint before it is referenced by a run.
+
+        System blueprints are intentionally zero-row read models, but sessions
+        and tasks keep a foreign key to ``agents``. Materializing only when a
+        chat actually starts preserves the zero-row blueprint behavior while
+        keeping those durable records referentially valid.
+        """
+        blueprint = SYSTEM_AGENT_BLUEPRINTS.get(getattr(agent, "template_key", ""))
+        if (
+            blueprint is None
+            or agent.id != blueprint.id
+            or agent.active_release_id is not None
+            or getattr(agent, "is_customized", True)
+        ):
+            return agent
+
+        existing = await self.repo.get(org_id, agent.id)
+        if existing is not None:
+            if not getattr(existing, "is_customized", True) and getattr(existing, "template_key", None) in SYSTEM_AGENT_BLUEPRINTS:
+                bp = SYSTEM_AGENT_BLUEPRINTS[existing.template_key]
+                existing.tools = list(bp.tools)
+                existing.allowed_risk_tiers = list(bp.allowed_risk_tiers)
+                existing.kind = bp.kind
+                existing.system_prompt = bp.system_prompt
+                existing.description = bp.description
+            return existing
+
+        persisted = Agent(
+            id=agent.id,
+            org_id=org_id,
+            created_by_user_id=None,
+            name=agent.name,
+            description=agent.description,
+            system_prompt=agent.system_prompt,
+            model_id=agent.model_id,
+            tools=list(agent.tools or []),
+            allowed_risk_tiers=list(agent.allowed_risk_tiers or []),
+            kind=agent.kind,
+            max_iterations=agent.max_iterations,
+            temperature=agent.temperature,
+            enable_thinking=agent.enable_thinking,
+            a2a_exposed=agent.a2a_exposed,
+            auto_rollback_enabled=agent.auto_rollback_enabled,
+            template_key=blueprint.key,
+            is_customized=False,
+        )
+        try:
+            async with self.repo.db.begin_nested():
+                self.repo.db.add(persisted)
+                await self.repo.db.flush()
+                release_config = _snapshot(persisted)
+                release = AgentRelease(
+                    org_id=org_id,
+                    agent_id=persisted.id,
+                    version=1,
+                    status="published",
+                    **release_config,
+                    change_note="Materialized system blueprint",
+                    config_hash=_config_hash(release_config),
+                    published_at=utc_now(),
+                )
+                self.repo.db.add(release)
+                await self.repo.db.flush()
+                persisted.active_release_id = release.id
+                persisted.latest_release_number = 1
+        except IntegrityError:
+            existing = await self.repo.get(org_id, agent.id)
+            if existing is None:
+                raise
+            return existing
+
+        await self.repo.db.commit()
+        await self.repo.db.refresh(persisted)
+        return persisted
 
     async def update(
         self, org_id: str, id: str, data: dict, user_id: str | None = None
@@ -172,6 +284,23 @@ class AgentService:
                 setattr(agent, field, data[field])
         if "enable_thinking" in data:
             agent.enable_thinking = data["enable_thinking"]
+        if (
+            config_changes
+            or any(
+                k in data
+                for k in (
+                    "name",
+                    "a2a_exposed",
+                    "auto_rollback_enabled",
+                    "enable_thinking",
+                    "system_prompt",
+                    "tools",
+                    "model_id",
+                    "temperature",
+                )
+            )
+        ) and getattr(agent, "template_key", None):
+            agent.is_customized = True
         if config_changes:
             await self._create_release_locked(
                 agent,
@@ -321,6 +450,30 @@ class AgentService:
     async def _resolve_model_for_tier(
         self, org_id: str, recommended_tier: str, active_models: list[Model] | None = None
     ) -> str | None:
+        # Normalize tier name: fast/economy -> economy, standard/balanced -> balanced, reasoning/frontier -> frontier
+        normalized_tier = {
+            "fast": "economy",
+            "economy": "economy",
+            "standard": "balanced",
+            "balanced": "balanced",
+            "reasoning": "frontier",
+            "frontier": "frontier",
+        }.get(recommended_tier, "balanced")
+
+        # 1. Check org_model_tier_config for this org & tier
+        tier_cfg = await self.repo.db.scalar(
+            select(OrgModelTierConfig).where(
+                OrgModelTierConfig.org_id == org_id,
+                OrgModelTierConfig.tier == normalized_tier,
+            )
+        )
+        if tier_cfg is not None and tier_cfg.model_id:
+            # Verify the configured model is active
+            target_model = await self.model_repo.get(org_id, tier_cfg.model_id)
+            if target_model and target_model.active:
+                return target_model.id
+
+        # 2. Lookup active models
         models = active_models
         if models is None:
             res = await self.repo.db.execute(
@@ -329,11 +482,14 @@ class AgentService:
             models = list(res.scalars().all())
         if not models:
             return None
-        # Try matching recommended tier
+
+        # 3. Match active model by normalized tier or legacy recommended_tier
         for m in models:
-            if getattr(m, "tier", None) == recommended_tier:
+            m_tier = getattr(m, "tier", None)
+            if m_tier in (normalized_tier, recommended_tier):
                 return m.id
-        # Fallback to first available active model
+
+        # 4. Fallback to first available active model
         return models[0].id
 
     def _build_virtual_agent(
@@ -425,6 +581,7 @@ class AgentService:
         publish: bool,
     ) -> AgentRelease:
         config = _snapshot(agent, overrides)
+        _validate_agent_kind_tools(config.get("kind"), config.get("tools"))
         agent.latest_release_number += 1
         release = AgentRelease(
             org_id=agent.org_id,
@@ -540,13 +697,20 @@ class AgentService:
         )
         active_models = list(models_res.scalars().all())
 
-        # Tag DB agents with is_pinned
+        # Tag DB agents with is_pinned and keep uncustomized system agents in sync with blueprints
         for a in db_agents:
             tpl_key = getattr(a, "template_key", None)
             if tpl_key and tpl_key in settings_by_key:
                 a.is_pinned = settings_by_key[tpl_key].is_pinned
             else:
                 a.is_pinned = True  # DB agents pinned by default
+            if not getattr(a, "is_customized", True) and tpl_key in SYSTEM_AGENT_BLUEPRINTS:
+                bp = SYSTEM_AGENT_BLUEPRINTS[tpl_key]
+                a.tools = list(bp.tools)
+                a.allowed_risk_tiers = list(bp.allowed_risk_tiers)
+                a.kind = bp.kind
+                a.system_prompt = bp.system_prompt
+                a.description = bp.description
 
         result_agents: list[Agent] = list(db_agents)
 
@@ -590,6 +754,14 @@ class AgentService:
                 )
             )
             agent.is_pinned = settings.is_pinned if settings else True
+            tpl_key = getattr(agent, "template_key", None)
+            if not getattr(agent, "is_customized", True) and tpl_key in SYSTEM_AGENT_BLUEPRINTS:
+                bp = SYSTEM_AGENT_BLUEPRINTS[tpl_key]
+                agent.tools = list(bp.tools)
+                agent.allowed_risk_tiers = list(bp.allowed_risk_tiers)
+                agent.kind = bp.kind
+                agent.system_prompt = bp.system_prompt
+                agent.description = bp.description
             return agent
 
         # 2. Check if ID matches a System Blueprint (sys-agent-* or template_key)
@@ -702,6 +874,8 @@ class AgentService:
                     "description": spec.description,
                     "available": tool_available(spec.name),
                     "risk_tier": spec.risk_tier.value,
+                    "allowed_for_orchestrator": spec.name in ALLOWED_ORCHESTRATOR_TOOLS,
+                    "allowed_for_worker": spec.name not in PROHIBITED_WORKER_TOOLS,
                 }
             )
         res = await self.repo.db.execute(
@@ -722,6 +896,8 @@ class AgentService:
                     "name": t.name,
                     "description": t.description,
                     "available": True,
+                    "allowed_for_orchestrator": t.name in ALLOWED_ORCHESTRATOR_TOOLS,
+                    "allowed_for_worker": t.name not in PROHIBITED_WORKER_TOOLS,
                 }
             )
         return out

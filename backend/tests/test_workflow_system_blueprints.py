@@ -5,11 +5,9 @@ import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
-from app.core.workflow.templates import SYSTEM_WORKFLOW_BLUEPRINTS
 from app.db.base import Base, gen_id
 from app.models.organization import Organization
 from app.models.user import User
-from app.schemas.workflow import WorkflowOut
 from app.services.workflow_service import WorkflowService
 
 
@@ -48,22 +46,14 @@ async def test_user(db_session: AsyncSession, test_org: Organization) -> User:
 
 
 @pytest.mark.asyncio
-async def test_zero_row_org_lists_all_7_workflow_blueprints(
+async def test_zero_row_org_lists_zero_db_workflows_initially(
     db_session: AsyncSession, test_org: Organization
 ):
-    """An organization with 0 DB workflows automatically sees all 7 system blueprints."""
+    """An organization with 0 DB workflows returns an empty list from WorkflowService.list (scoping cleanly)."""
     service = WorkflowService(db_session)
     workflows = await service.list(test_org.id)
 
-    assert len(workflows) == 7
-    for wf in workflows:
-        assert wf.template_key in SYSTEM_WORKFLOW_BLUEPRINTS
-        assert wf.is_customized is False
-        assert wf.id == f"sys-wf-{wf.template_key}"
-        # Validate Pydantic schema serialization
-        out = WorkflowOut.model_validate(wf)
-        assert out.template_key == wf.template_key
-        assert out.is_customized is False
+    assert len(workflows) == 0
 
 
 @pytest.mark.asyncio
@@ -121,9 +111,9 @@ async def test_workflow_fork_on_write_when_updating(
     assert updated.is_customized is True
     assert updated.name == "Customized Morning Command Center"
 
-    # List should still return 7 items total, with the forked one replacing the virtual one
+    # List should now return exactly 1 item (the forked DB row)
     workflows = await service.list(test_org.id)
-    assert len(workflows) == 7
+    assert len(workflows) == 1
 
     forked_in_list = [w for w in workflows if w.template_key == "morning-command-center"][0]
     assert forked_in_list.id == updated.id
@@ -201,9 +191,9 @@ async def test_repeated_update_on_forked_workflow_no_duplicate(
     assert wf3.id == first_id
     assert wf3.name == "Meeting Prep V3"
 
-    # Total workflows count remains exactly 7
+    # Total workflows count remains exactly 1
     workflows = await service.list(test_org.id)
-    assert len(workflows) == 7
+    assert len(workflows) == 1
 
 
 @pytest.mark.asyncio
@@ -230,6 +220,29 @@ async def test_reset_workflow_to_template(
 
     # Check DB: record is gone
     workflows = await service.list(test_org.id)
-    assert len(workflows) == 7
-    eod = [w for w in workflows if w.template_key == "end-of-day-client-digest"][0]
-    assert eod.is_customized is False
+    assert len(workflows) == 0
+
+
+@pytest.mark.asyncio
+async def test_ensure_persisted_materializes_virtual_blueprint(
+    db_session: AsyncSession, test_org: Organization, test_user: User
+):
+    """ensure_persisted materializes a virtual blueprint into a DB row for foreign-key safety."""
+    service = WorkflowService(db_session)
+
+    # 1. Virtual blueprint before materialization
+    wf = await service.get(test_org.id, "sys-wf-morning-command-center")
+    assert wf is not None
+    assert wf.id == "sys-wf-morning-command-center"
+
+    # 2. ensure_persisted creates a DB row with template_key
+    persisted = await service.ensure_persisted(test_org.id, "sys-wf-morning-command-center", user_id=test_user.id)
+    assert persisted is not None
+    assert persisted.id != "sys-wf-morning-command-center"
+    assert len(persisted.id) == 32
+    assert persisted.template_key == "morning-command-center"
+    assert persisted.is_customized is False
+
+    # 3. Calling ensure_persisted again returns the existing record
+    persisted2 = await service.ensure_persisted(test_org.id, "sys-wf-morning-command-center", user_id=test_user.id)
+    assert persisted2.id == persisted.id

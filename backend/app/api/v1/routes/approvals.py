@@ -57,6 +57,8 @@ class ApprovalDecision(BaseModel):
     response_model=list[ApprovalOut],
 )
 async def list_approvals(
+    include_chat: bool = False,
+    run_id: str | None = None,
     org_id: str = Depends(get_current_org_id),
     current_user: User = Depends(get_current_user),
     authz: PrincipalContext = Depends(require_permission("approvals:read")),
@@ -64,7 +66,8 @@ async def list_approvals(
 ):
     now = datetime.now()
     is_admin = authz.allows("approvals:manage")
-    approvals = await get_pending(db, org_id=org_id)
+    exclude_run_types = [] if include_chat else ["agent"]
+    approvals = await get_pending(db, org_id=org_id, exclude_run_types=exclude_run_types, run_id=run_id)
     result = []
     for approval in approvals:
         owner = is_admin or approval.requested_by == current_user.id
@@ -126,15 +129,9 @@ async def decide_approval(
     if requested_approval is None:
         raise HTTPException(status_code=404, detail="approval request not found")
 
-    # Fail closed for side-effecting approvals. Until every tool is migrated
-    # to the reviewed registry, a tool/case approval is treated as high risk;
-    # neither an admin nor the requester may self-approve it.
-    high_risk = bool(requested_approval.tool_name or requested_approval.case_id)
-    if high_risk and requested_approval.requested_by == current_user.id:
-        raise HTTPException(status_code=403, detail="APPROVAL_SEPARATION_REQUIRED")
-
-    # Users may decide only approvals they requested (for example, their own
-    # Gmail draft); admins retain organization-wide decision authority.
+    # Users may decide approvals they requested or that were triggered on their behalf
+    # (for example, their own chat tool executions / email drafts);
+    # admins with approvals:manage retain organization-wide decision authority.
     if not authz.allows("approvals:manage"):
         owner_res = await db.execute(
             select(ApprovalRequest).where(
@@ -172,7 +169,7 @@ async def decide_approval(
             select(Task).where(
                 Task.root_run_id == approval.run_id,
                 Task.org_id == org_id,
-                Task.status == "waiting_approval",
+                Task.status.in_(["waiting_approval", "running", "pending", "queued"]),
                 # `root_run_id` is shared by the root task and every nested
                 # delegated sub-task spawned under it (see agent_loop.py's
                 # nested-resume recursion), so this filter alone is
@@ -190,6 +187,12 @@ async def decide_approval(
         task = task_res.scalars().first()
         if task is not None:
             task.status = "queued"
+            # Reset finished_at so the task is treated as live again.
+            # When a sub-agent hits an approval gate, _finish_task() sets
+            # finished_at on the root task. Without clearing it here the
+            # resumed run looks "done" to any observer that relies on
+            # finished_at being NULL for in-progress tasks.
+            task.finished_at = None
             task.progress = {
                 **(task.progress or {}),
                 "phase": "queued",
@@ -197,6 +200,7 @@ async def decide_approval(
                 "approval_decision": approval.status,
             }
             await db.commit()
+            principal = task.execution_principal or {}
             payload = {
                 "agent_id": task.agent_id,
                 "message": task.goal,
@@ -218,7 +222,8 @@ async def decide_approval(
                 "root_run_id": approval.run_id,
                 "stream": True,
                 "org_id": org_id,
-                "user_id": current_user.id,
+                "user_id": principal.get("user_id") or task.triggered_by_user_id,
+                "user_role": principal.get("role"),
                 "approval_resume_id": approval.id,
                 "model_id": (task.progress or {}).get("model_id"),
                 "prepared": True,
@@ -228,7 +233,7 @@ async def decide_approval(
                 await enqueue_chat_run(payload)
             else:
                 background_tasks.add_task(run_chat_detached, payload)
-    if approval.run_type == "workflow" and approval.run_id:
+    if approval.run_type in {"workflow", "workflow.tool"} and approval.run_id:
         # A workflow approval node paused the run at `waiting_approval`.
         # Without this branch the decision is recorded but nothing ever drives
         # the run again — it stays waiting forever. Flip it back to a live

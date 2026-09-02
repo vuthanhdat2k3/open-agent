@@ -6,9 +6,12 @@ import asyncio
 
 import pytest
 
+from app.core.tools.authorization import build_tool_authorization
 from app.core.tools.registry import ToolTimeoutError, execute_tool_call
 from app.core.tools.risk_tier import RiskTier
 from app.core.tools.types import ToolContext, ToolSpec
+
+ORG_ID = "org-timeout-retry-tests"
 
 
 def _spec(name: str, run, *, timeout_s: float = 5.0, max_retries: int = 0) -> ToolSpec:
@@ -23,6 +26,28 @@ def _spec(name: str, run, *, timeout_s: float = 5.0, max_retries: int = 0) -> To
     )
 
 
+def _ctx() -> ToolContext:
+    """A minimal but authorization-valid context.
+
+    These tests exercise timeout/retry mechanics, not authorization, so they
+    need a context that clears authorize_tool_call rather than a bare
+    _ctx() which now fails closed by design.
+    """
+    return ToolContext(
+        db=None,  # type: ignore[arg-type]
+        org_id=ORG_ID,
+        authorization=build_tool_authorization(
+            org_id=ORG_ID,
+            user_id=None,
+            user_role=None,
+            agent_id=None,
+            allowed_risk_tiers=["safe"],
+            run_id="run-timeout-retry-tests",
+            principal_type="system",
+        ),
+    )
+
+
 @pytest.mark.asyncio
 async def test_timeout_returns_error_and_does_not_hang():
     async def slow(args, ctx):
@@ -30,7 +55,7 @@ async def test_timeout_returns_error_and_does_not_hang():
 
     spec = _spec("slow_tool", slow, timeout_s=0.05)
     with pytest.raises(ToolTimeoutError, match="timed out after"):
-        await execute_tool_call(spec, {}, ToolContext(db=None))
+        await execute_tool_call(spec, {}, _ctx())
 
 
 @pytest.mark.asyncio
@@ -44,7 +69,7 @@ async def test_retry_succeeds_after_transient_failures():
         return "ok"
 
     spec = _spec("flaky_tool", flaky, max_retries=2)
-    result = await execute_tool_call(spec, {}, ToolContext(db=None))
+    result = await execute_tool_call(spec, {}, _ctx())
     assert result == "ok"
     assert calls["n"] == 3
 
@@ -59,7 +84,7 @@ async def test_retry_exhaustion_returns_error_after_max_attempts():
 
     spec = _spec("failing_tool", always_fail, max_retries=2)
     with pytest.raises(RuntimeError, match="boom"):
-        await execute_tool_call(spec, {}, ToolContext(db=None))
+        await execute_tool_call(spec, {}, _ctx())
     assert calls["n"] == 3
 
 
@@ -72,7 +97,7 @@ async def test_error_string_result_is_not_retried():
         return "error: deliberate tool failure"
 
     spec = _spec("intentional_tool", intentional_error, max_retries=3)
-    result = await execute_tool_call(spec, {}, ToolContext(db=None))
+    result = await execute_tool_call(spec, {}, _ctx())
     assert result == "error: deliberate tool failure"
     assert calls["n"] == 1
 
@@ -83,7 +108,7 @@ async def test_zero_timeout_disables_deadline():
         return "done"
 
     spec = _spec("no_deadline", quick, timeout_s=0)
-    result = await execute_tool_call(spec, {}, ToolContext(db=None))
+    result = await execute_tool_call(spec, {}, _ctx())
     assert result == "done"
 
 
@@ -97,7 +122,7 @@ async def test_invalid_arguments_still_short_circuits_before_run():
 
     spec = _spec("validated_tool", never, max_retries=2)
     spec.input_schema = {"type": "object", "required": ["path"], "properties": {"path": {"type": "string"}}}
-    result = await execute_tool_call(spec, {}, ToolContext(db=None))
+    result = await execute_tool_call(spec, {}, _ctx())
     assert result.startswith("error: invalid arguments")
     assert calls["n"] == 0
 
@@ -108,7 +133,7 @@ async def test_cancellation_propagates_through_retry_loop():
         await asyncio.sleep(30)
 
     spec = _spec("cancelled_tool", cancellable, timeout_s=5.0)
-    task = asyncio.create_task(execute_tool_call(spec, {}, ToolContext(db=None)))
+    task = asyncio.create_task(execute_tool_call(spec, {}, _ctx()))
     await asyncio.sleep(0.05)
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
@@ -125,5 +150,5 @@ async def test_timeout_error_is_not_retried():
 
     spec = _spec("slow_no_retry", slow, timeout_s=0.05, max_retries=3)
     with pytest.raises(ToolTimeoutError, match="timed out after"):
-        await execute_tool_call(spec, {}, ToolContext(db=None))
+        await execute_tool_call(spec, {}, _ctx())
     assert calls["n"] == 1

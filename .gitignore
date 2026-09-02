@@ -65,7 +65,7 @@ yarn-error.log*
 .eslintcache
 
 # Runtime / tooling artifacts
-workspace/
+/workspace/
 .codegraph/
 .omo/
 .playwright-cli/

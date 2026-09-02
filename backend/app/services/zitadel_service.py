@@ -5,10 +5,9 @@ import os
 from typing import Any
 
 import httpx
+from fastapi import HTTPException
 
 from app.config import get_settings
-
-from fastapi import HTTPException
 
 logger = logging.getLogger(__name__)
 
