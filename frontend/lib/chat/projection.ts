@@ -201,6 +201,15 @@ export function applyChatEvent(
     return undefined;
   };
 
+  const resolvePriorApprovals = () => {
+    for (let i = 0; i < messages.length; i++) {
+      const m = messages[i];
+      if (m.role === "approval" && m.status === "pending") {
+        messages[i] = { ...m, status: "approved" };
+      }
+    }
+  };
+
   switch (ev.event) {
     case "message_start": {
       ensureMsg();
@@ -209,18 +218,21 @@ export function applyChatEvent(
     }
 
     case "reasoning": {
+      resolvePriorApprovals();
       appendToKind("reasoning", String(d.content ?? ""));
       side.phase = "thinking";
       break;
     }
 
     case "token": {
+      resolvePriorApprovals();
       appendToKind("text", String(d.delta ?? d.content ?? ""));
       side.phase = null;
       break;
     }
 
     case "tool_call_delta": {
+      resolvePriorApprovals();
       ensureMsg();
       const idx = typeof d.index === "number" ? d.index : 0;
       const existing = findTool(idx, true);
@@ -244,6 +256,7 @@ export function applyChatEvent(
     }
 
     case "tool_call": {
+      resolvePriorApprovals();
       ensureMsg();
       const idx = typeof d.index === "number" ? d.index : 0;
       const name = String(d.name || "tool");
@@ -261,6 +274,7 @@ export function applyChatEvent(
     }
 
     case "tool_progress": {
+      resolvePriorApprovals();
       const idx = typeof d.index === "number" ? d.index : 0;
       const target = findTool(idx, true) ?? findTool(idx, false);
       if (target) {
@@ -299,6 +313,7 @@ export function applyChatEvent(
     }
 
     case "tool_result": {
+      resolvePriorApprovals();
       const idx = typeof d.index === "number" ? d.index : 0;
       const result = String(d.result ?? d.output ?? "");
       const target = findTool(idx, true) ?? findTool(idx, false);
@@ -310,6 +325,7 @@ export function applyChatEvent(
     }
 
     case "message_done": {
+      resolvePriorApprovals();
       // A run can die before emitting any content (crash after bootstrap);
       // still materialize the assistant so stats/noAnswer render.
       const assistant = ensureMsg();
