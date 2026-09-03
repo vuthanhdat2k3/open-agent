@@ -111,6 +111,14 @@ async def process_channel_message(
                 message_type="text",
                 content=reply_text,
                 agent_id=agent.id,
+                metadata_json={
+                    "tools": result.tool_calls,
+                    "usage": result.usage,
+                    "latency_ms": result.latency_ms,
+                    "cost_usd": result.cost_usd,
+                    "error": result.error,
+                    "model": result.model or getattr(agent, "name", None),
+                },
             )
             db.add(outbound)
             await db.commit()
@@ -143,9 +151,21 @@ async def process_channel_message(
                         user_friendly_error = "⚠️ AI Provider chưa được cấu hình API key."
                     else:
                         user_friendly_error = f"⚠️ Không thể xử lý tin nhắn: {err_msg[:200]}"
-                    await driver.send_message(
+                    ext_err_id = await driver.send_message(
                         recipient=msg.conversation_id,
                         content=user_friendly_error,
                     )
+                    err_outbound = ChannelMessage(
+                        org_id=org_id,
+                        connection_id=connection_id,
+                        direction="outbound",
+                        external_message_id=ext_err_id or "",
+                        conversation_id=msg.conversation_id,
+                        message_type="error",
+                        content=user_friendly_error,
+                        metadata_json={"error": err_msg},
+                    )
+                    db.add(err_outbound)
+                    await db.commit()
             except Exception:
                 pass

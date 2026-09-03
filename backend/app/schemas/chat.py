@@ -63,3 +63,4 @@ class AgentLoopResult(BaseModel):
     latency_ms: int = 0
     cost_usd: float = 0.0
     error: str | None = None
+    model: str | None = None
