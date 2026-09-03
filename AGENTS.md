@@ -95,7 +95,8 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 | Branch | Worktree path | Phạm vi/task | Agent/người phụ trách |
 |---|---|---|---|
 | `dev` | `G:\open-agent` | Nhánh tích hợp chính — không code trực tiếp ở đây | — |
-| `feat/allow-user-role-full-access` | `/home/vutd/Documents/open-agent` | Cho phép role user được bật và sử dụng execution policy full-access | Antigravity |
+
+> 2026-09-03: Đã merge trực tiếp vào `dev` và dọn dẹp branch `feat/allow-user-role-full-access` (Cho phép role user được bật và sử dụng execution policy full-access) theo yêu cầu người dùng.
 
 > 2026-09-02: Đã merge PR #238 vào `dev` và dọn dẹp worktree `feat/operator-workflow-actions-fix` (Cho phép Operator cả Cài đặt và Chỉnh sửa trực tiếp trên Canvas các Marketplace templates, sửa backfill legacy custom templates).
 
