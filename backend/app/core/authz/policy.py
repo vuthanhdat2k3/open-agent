@@ -35,6 +35,7 @@ PERMISSIONS: dict[Role, set[str]] = {
     Role.operator: {
         "agents:*", "models:*", "providers:*", "workflows:*", "mcp:*", "files:*",
         "evaluations:*", "usage:*", "debug:*", "sessions:*", "approvals:*", "ci:*",
+        "channels:*",
         "tools:use:*", "quota:usage",
     },
     Role.user: {
@@ -60,6 +61,8 @@ PERMISSIONS: dict[Role, set[str]] = {
         "models:read",
         "ci:read",
         "ci:personal:manage",
+        "channels:read",
+        "channels:personal:manage",
     },
 }
 

@@ -178,6 +178,18 @@ export default function LoginPage() {
               </p>
           </div>
         </CardHeader>
+        <CardContent className="space-y-4">
+          <Button
+            type="button"
+            className="h-11 w-full gap-2 active-tactile"
+            onClick={() => {
+              window.location.href = "/api/auth/login";
+            }}
+          >
+            {tx("Tiếp tục qua SSO Doanh nghiệp", "Continue with organization SSO")}
+            <ArrowRight className="h-4 w-4" aria-hidden="true" />
+          </Button>
+        </CardContent>
       </Card>
     </div>
   );

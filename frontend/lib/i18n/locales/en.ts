@@ -15,6 +15,8 @@ export const en: TranslationDictionary = {
     automations: 'Automations',
     knowledgeBase: 'Knowledge Base',
     mcpServers: 'MCP Servers',
+    channels: 'Messaging Channels',
+    myChannels: 'My Channels',
     approvals: 'Approvals',
     evaluations: 'Evaluations',
     auditLogs: 'Audit Logs',

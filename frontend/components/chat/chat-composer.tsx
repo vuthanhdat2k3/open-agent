@@ -178,10 +178,16 @@ export function ChatComposer({
         </div>
 
         <div className="flex items-center gap-2">
-          {models && onModelChange && (
+          {onModelChange && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button type="button" variant="ghost" size="sm" disabled={streaming} className="h-7 gap-1.5 rounded-full px-2.5 text-xs font-medium text-muted-foreground hover:text-foreground">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={streaming || !models || models.length === 0}
+                  className="h-7 gap-1.5 rounded-full px-2.5 text-xs font-medium text-muted-foreground hover:text-foreground"
+                >
                   <Cpu className="h-3.5 w-3.5" aria-hidden="true" />
                   <span className="max-w-[9rem] truncate font-mono">
                     {effectiveModel?.display_name || effectiveModel?.name || tx("Mô hình", "Model")}

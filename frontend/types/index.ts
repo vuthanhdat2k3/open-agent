@@ -265,6 +265,34 @@ export interface McpServer {
   updated_at: string;
 }
 
+export interface ChannelConnection {
+  id: string;
+  org_id: string;
+  provider: "telegram" | "discord";
+  bot_username: string;
+  status: "active" | "inactive" | "error";
+  config: Record<string, any>;
+  created_by_user_id?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ChannelMessage {
+  id: string;
+  org_id: string;
+  connection_id: string;
+  direction: "inbound" | "outbound";
+  external_message_id: string;
+  sender_id: string;
+  sender_name: string;
+  conversation_id: string;
+  message_type: string;
+  content: string;
+  metadata: Record<string, any>;
+  agent_id?: string | null;
+  created_at: string;
+}
+
 export interface GraphNode {
   id: string;
   kind: "input" | "agent" | "tool" | "merge" | "output" | "approval" | "sub_workflow" | "scheduler" | "triager" | "integration";

@@ -184,7 +184,7 @@ def test_user_reads_only_owned_workspace_approvals_and_quota_usage(
     assert executions.status_code == 200, executions.text
     assert [item["command"] for item in executions.json()] == ["user"]
 
-    approvals = client.get("/api/approvals", headers=user_headers)
+    approvals = client.get("/api/approvals?include_chat=true", headers=user_headers)
     assert approvals.status_code == 200, approvals.text
     assert len(approvals.json()) == 1
     assert approvals.json()[0]["requested_by"] == user_id

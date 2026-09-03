@@ -5,6 +5,7 @@ from app.models.api_key import ApiKey
 from app.models.application_session import ApplicationSession
 from app.models.approval_request import ApprovalRequest
 from app.models.audit_log import AuditLog
+from app.models.channel import ChannelConnection, ChannelMessage
 from app.models.chat_run_event import ChatRunEvent
 from app.models.customer_intelligence import (
     BriefingReport,
@@ -77,6 +78,8 @@ __all__ = [
     "AuditLog",
     "BriefingReport",
     "CalendarConnection",
+    "ChannelConnection",
+    "ChannelMessage",
     "ChatRunEvent",
     "CiSchedule",
     "CiNotification",

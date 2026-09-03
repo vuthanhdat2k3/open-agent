@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.authz.policy import PrincipalContext
 from app.core.authz.scope import scope_to_owner
 from app.core.execution_policy import ExecutionPolicy, normalize_execution_policy
 from app.dependencies import get_current_org_id, get_current_user, get_db, require_permission
@@ -51,12 +52,13 @@ async def list_messages(
     return list(res.scalars().all())
 
 
-@router.patch("/{session_id}", response_model=SessionOut, dependencies=[Depends(require_permission("sessions:write"))])
+@router.patch("/{session_id}", response_model=SessionOut)
 async def update_session(
     session_id: str,
     payload: SessionUpdate,
     org_id: str = Depends(get_current_org_id),
     user: User = Depends(get_current_user),
+    authz: PrincipalContext = Depends(require_permission("sessions:write")),
     db: AsyncSession = Depends(get_db),
 ):
     res = await db.execute(
@@ -71,7 +73,11 @@ async def update_session(
         raise HTTPException(404, "session not found")
     if payload.execution_policy is not None:
         new_policy = normalize_execution_policy(payload.execution_policy)
-        if new_policy is ExecutionPolicy.full_access and getattr(user, "role", None) not in {
+        user_role = (
+            authz.role.value if hasattr(authz.role, "value") else str(authz.role)
+        ) if authz and authz.role else getattr(user, "role", None)
+        if new_policy is ExecutionPolicy.full_access and user_role not in {
+            "user",
             "operator",
             "org_admin",
             "platform_admin",

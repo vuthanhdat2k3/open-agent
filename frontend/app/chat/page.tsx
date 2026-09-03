@@ -141,7 +141,9 @@ export default function ChatPage() {
   const terminalSyncRef = React.useRef(false);
   const reattachAbortRef = React.useRef<AbortController | null>(null);
   const lastEventSeqRef = React.useRef(0);
-  const nearBottomRef = React.useRef(true);
+  const autoScrollRef = React.useRef(true);
+  const isProgrammaticScrollRef = React.useRef(false);
+  const [showScrollBottom, setShowScrollBottom] = React.useState(false);
   const scrollHostRef = React.useRef<HTMLDivElement>(null);
   // Set to true immediately after the user decides an approval so that the
   // stream-attachment effect can bypass its early-return on waiting_approval
@@ -153,7 +155,9 @@ export default function ChatPage() {
   );
   const sessionBelongsToAgent = Boolean(
     agentReady &&
-      ((selectedSession && selectedSession.agent_id === agentId) || pendingSession),
+      ((selectedSession && selectedSession.agent_id === agentId) ||
+        (!selectedSession && Boolean(sessionId)) ||
+        pendingSession),
   );
 
   React.useEffect(() => {
@@ -332,7 +336,12 @@ export default function ChatPage() {
 
   React.useEffect(() => {
     if (!agentReady || pendingSession || streamingRef.current) return;
-    if (!sessionId || !sessionBelongsToAgent) {
+    if (!sessionId) {
+      projectionRef.current = createRunProjection("");
+      setMessages([]);
+      return;
+    }
+    if (selectedSession && selectedSession.agent_id !== agentId) {
       projectionRef.current = createRunProjection("");
       setMessages([]);
       return;
@@ -354,11 +363,16 @@ export default function ChatPage() {
         projectionRef.current.messages.length > 0 &&
         initial.length < projectionRef.current.messages.length;
       if (!hasPendingApproval && !terminalSyncInFlight && !projectionHasMore) {
+        const initialHasAssistant = initial.some((m) => m.role === "assistant");
+        const liveHasAssistant = projectionRef.current.messages.some((m) => m.role === "assistant");
+        if (liveHasAssistant && !initialHasAssistant) {
+          return;
+        }
         projectionRef.current = createRunProjection(assistantIdRef.current, initial);
         setMessages(initial);
       }
     }
-  }, [agentReady, chatRun.data, messagesQuery.data, pendingSession, sessionBelongsToAgent, sessionId, streaming]);
+  }, [agentReady, chatRun.data, messagesQuery.data, pendingSession, sessionBelongsToAgent, sessionId, selectedSession, agentId, streaming]);
 
 
   React.useEffect(() => {
@@ -399,23 +413,94 @@ export default function ChatPage() {
     }
   }, [changeSession, chatRun.data, sessionId, setStreaming, syncPersistedMessages]);
 
+  const userScrolledUpRef = React.useRef(false);
+
+  const scrollToBottom = React.useCallback((behavior: ScrollBehavior = "smooth") => {
+    const el = scrollHostRef.current;
+    if (!el) return;
+    userScrolledUpRef.current = false;
+    autoScrollRef.current = true;
+    setShowScrollBottom(false);
+    isProgrammaticScrollRef.current = true;
+    el.scrollTo({ top: el.scrollHeight, behavior });
+  }, []);
+
   const prevMessageCountRef = React.useRef(0);
   React.useEffect(() => {
     const el = scrollHostRef.current;
-    if (!el || !nearBottomRef.current) return;
-    // Use el.scrollTo instead of scrollIntoView so we control the scroll container
-    // directly — scrollIntoView can fight the browser's "maintain scroll position"
-    // heuristic and cause the view to jump back/lock while the user is scrolling.
+    if (!el || !autoScrollRef.current || userScrolledUpRef.current) return;
+    isProgrammaticScrollRef.current = true;
     el.scrollTo({ top: el.scrollHeight, behavior: streaming ? "instant" : "smooth" });
     prevMessageCountRef.current = messages.length;
   }, [messages, streaming]);
 
-
   const onThreadScroll = React.useCallback(() => {
     const el = scrollHostRef.current;
     if (!el) return;
+    if (isProgrammaticScrollRef.current) {
+      isProgrammaticScrollRef.current = false;
+      return;
+    }
     const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
-    nearBottomRef.current = distance < 80;
+    if (distance > 25) {
+      userScrolledUpRef.current = true;
+      autoScrollRef.current = false;
+      setShowScrollBottom(true);
+    } else if (distance <= 10) {
+      userScrolledUpRef.current = false;
+      autoScrollRef.current = true;
+      setShowScrollBottom(false);
+    }
+  }, []);
+
+  const onThreadWheel = React.useCallback((e: React.WheelEvent<HTMLDivElement>) => {
+    if (e.deltaY < 0) {
+      // User is scrolling UP — immediately lock auto-scroll off
+      userScrolledUpRef.current = true;
+      autoScrollRef.current = false;
+      setShowScrollBottom(true);
+    } else if (e.deltaY > 0) {
+      // User is scrolling DOWN
+      const el = scrollHostRef.current;
+      if (el) {
+        const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+        if (distance <= 15) {
+          userScrolledUpRef.current = false;
+          autoScrollRef.current = true;
+          setShowScrollBottom(false);
+        }
+      }
+    }
+  }, []);
+
+  const touchStartYRef = React.useRef<number | null>(null);
+  const onThreadTouchStart = React.useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+    if (e.touches.length > 0) {
+      touchStartYRef.current = e.touches[0].clientY;
+    }
+  }, []);
+
+  const onThreadTouchMove = React.useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+    if (touchStartYRef.current !== null && e.touches.length > 0) {
+      const currentY = e.touches[0].clientY;
+      if (currentY > touchStartYRef.current + 5) {
+        // Swiping downwards = scroll UP
+        userScrolledUpRef.current = true;
+        autoScrollRef.current = false;
+        setShowScrollBottom(true);
+      } else if (currentY < touchStartYRef.current - 5) {
+        // Swiping upwards = scroll DOWN
+        const el = scrollHostRef.current;
+        if (el) {
+          const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+          if (distance <= 15) {
+            userScrolledUpRef.current = false;
+            autoScrollRef.current = true;
+            setShowScrollBottom(false);
+          }
+        }
+      }
+    }
   }, []);
 
   const currentAgent = agents.data?.find((a) => a.id === agentId);
@@ -540,6 +625,24 @@ export default function ChatPage() {
           setConnectionState("reconnecting");
         }
         if (stopped || ctrl.signal.aborted) break;
+
+        if (!terminalSeen) {
+          try {
+            const runStatus = await api.get<{ status: string; result?: string | null }>(`/api/chat/runs/${activeRunId}`);
+            if (runStatus && runStatus.status !== "running" && runStatus.status !== "queued") {
+              if (runStatus.status === "failed" && runStatus.result) {
+                toast.error(runStatus.result);
+              }
+              setStreaming(false);
+              setActiveRun(null);
+              void syncPersistedMessages();
+              break;
+            }
+          } catch {
+            // ignore poll errors during reconnection backoff
+          }
+        }
+
         await new Promise((resolve) => window.setTimeout(resolve, backoffMs));
         backoffMs = Math.min(backoffMs * 2, 5000);
       }
@@ -709,6 +812,9 @@ export default function ChatPage() {
     setDraft("");
     setAttachments([]);
     setStreaming(true);
+    autoScrollRef.current = true;
+    setShowScrollBottom(false);
+    scrollToBottom("instant");
 
     const payload: Record<string, any> = {
       agent_id: agentId,
@@ -725,6 +831,7 @@ export default function ChatPage() {
     setActiveRun(null);
 
     abortRef.current = new AbortController();
+    const runId = payload.run_id as string;
     try {
       await streamSSE(
         `/api/chat`,
@@ -758,6 +865,7 @@ export default function ChatPage() {
       justStartedRunRef.current = null;
     }
   };
+
 
   const resetReattach = () => {
     reattachAbortRef.current?.abort();
@@ -901,6 +1009,11 @@ export default function ChatPage() {
           scrollHostRef={scrollHostRef}
           bottomRef={bottomRef}
           onThreadScroll={onThreadScroll}
+          onThreadWheel={onThreadWheel}
+          onThreadTouchStart={onThreadTouchStart}
+          onThreadTouchMove={onThreadTouchMove}
+          showScrollBottom={showScrollBottom}
+          onScrollToBottom={() => scrollToBottom("smooth")}
         />
 
         {messages.length > 0 && (
