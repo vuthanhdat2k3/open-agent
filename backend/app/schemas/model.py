@@ -1,7 +1,7 @@
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 from app.core.providers.constants import DEFAULT_CONTEXT_WINDOW
 
@@ -19,6 +19,17 @@ class ModelBase(BaseModel):
     active: bool = True
     enabled: bool | None = None
 
+    @field_validator("tier", mode="before")
+    @classmethod
+    def normalize_tier(cls, v: Any) -> str:
+        if v == "fast":
+            return "economy"
+        if isinstance(v, str):
+            v_lower = v.lower()
+            if v_lower in {"frontier", "balanced", "economy"}:
+                return v_lower
+        return "balanced"
+
 
 class ModelCreate(ModelBase):
     pass
@@ -34,6 +45,19 @@ class ModelUpdate(BaseModel):
     output_cost_per_1k: float | None = None
     active: bool | None = None
     enabled: bool | None = None
+
+    @field_validator("tier", mode="before")
+    @classmethod
+    def normalize_tier(cls, v: Any) -> str | None:
+        if v is None:
+            return None
+        if v == "fast":
+            return "economy"
+        if isinstance(v, str):
+            v_lower = v.lower()
+            if v_lower in {"frontier", "balanced", "economy"}:
+                return v_lower
+        return "balanced"
 
 
 class ModelOut(BaseModel):
@@ -59,6 +83,17 @@ class ModelOut(BaseModel):
     supports_reasoning: bool | None = None
     supports_vision: bool | None = None
     created_at: datetime
+
+    @field_validator("tier", mode="before")
+    @classmethod
+    def normalize_tier(cls, v: Any) -> str:
+        if v == "fast":
+            return "economy"
+        if isinstance(v, str):
+            v_lower = v.lower()
+            if v_lower in {"frontier", "balanced", "economy"}:
+                return v_lower
+        return "balanced"
 
 
 class ModelTestResult(BaseModel):
