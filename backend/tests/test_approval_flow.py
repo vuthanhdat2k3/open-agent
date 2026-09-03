@@ -66,7 +66,7 @@ def test_approval_request_helper_and_decision_route(client: TestClient, async_se
     approval_id = anyio.run(_seed)
     headers = {"Authorization": f"Bearer {token}", "X-Org-Id": org_id}
 
-    pending = client.get("/api/approvals", headers=headers)
+    pending = client.get("/api/approvals?include_chat=true", headers=headers)
     assert pending.status_code == 200, pending.text
     assert pending.json()[0]["id"] == approval_id
 
