@@ -47,9 +47,21 @@ async def lifespan(app: FastAPI):
             # Observability must not take the API down when the optional SDK is
             # absent; production packaging can install it to enable the sink.
             await logger.awarning("langfuse_sdk_missing_observability_disabled")
+    # Start Discord bot gateway connections
+    discord_manager = None
+    try:
+        from app.channels.gateway import get_discord_manager
+        discord_manager = get_discord_manager()
+        await discord_manager.start()
+        await logger.ainfo("discord_gateway_started")
+    except Exception as e:
+        await logger.awarning("discord_gateway_start_failed", error=str(e))
+
     try:
         yield
     finally:
+        if discord_manager:
+            await discord_manager.shutdown()
         if sink:
             sink.flush(settings.langfuse_flush_timeout_seconds)
         set_default_sink(NoopSink())

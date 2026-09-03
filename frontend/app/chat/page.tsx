@@ -625,6 +625,24 @@ export default function ChatPage() {
           setConnectionState("reconnecting");
         }
         if (stopped || ctrl.signal.aborted) break;
+
+        if (!terminalSeen) {
+          try {
+            const runStatus = await api.get<{ status: string; result?: string | null }>(`/api/chat/runs/${activeRunId}`);
+            if (runStatus && runStatus.status !== "running" && runStatus.status !== "queued") {
+              if (runStatus.status === "failed" && runStatus.result) {
+                toast.error(runStatus.result);
+              }
+              setStreaming(false);
+              setActiveRun(null);
+              void syncPersistedMessages();
+              break;
+            }
+          } catch {
+            // ignore poll errors during reconnection backoff
+          }
+        }
+
         await new Promise((resolve) => window.setTimeout(resolve, backoffMs));
         backoffMs = Math.min(backoffMs * 2, 5000);
       }
@@ -836,26 +854,6 @@ export default function ChatPage() {
         },
         abortRef.current.signal,
       );
-      // If stream ended cleanly but streaming is still on, it means no terminal
-      // event (message_done / error) was received — the background task likely
-      // crashed without recording an error event. Fetch the run result and show
-      // the full provider error message to the user.
-      if (streamingRef.current && !pageUnloadingRef.current) {
-        try {
-          const runResult = await api.get<{ status: string; result?: string | null }>(`/api/chat/runs/${runId}`);
-          const taskResult = runResult?.result;
-          if (taskResult) {
-            toast.error(taskResult);
-          } else {
-            toast.error(tx("Phản hồi bị ngắt đột ngột. Vui lòng thử lại.", "Response ended unexpectedly. Please try again."));
-          }
-        } catch {
-          toast.error(tx("Phản hồi bị ngắt đột ngột. Vui lòng thử lại.", "Response ended unexpectedly. Please try again."));
-        }
-        setStreaming(false);
-        setActiveRun(null);
-        void syncPersistedMessages();
-      }
     } catch (e: any) {
       setStreaming(false);
       if (e.name !== "AbortError" && !pageUnloadingRef.current) {

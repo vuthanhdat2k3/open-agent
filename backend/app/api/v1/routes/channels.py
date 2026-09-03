@@ -111,6 +111,13 @@ async def create_connection(
             bot_username=body.bot_username or "",
             owner_user_id=owner_user_id,
         )
+        if connection.provider == "discord" and connection.status == "active":
+            try:
+                from app.channels.gateway import get_discord_manager
+                await get_discord_manager().add_bot(connection)
+            except Exception as e:
+                import structlog
+                await structlog.get_logger(__name__).awarning("discord_bot_auto_start_failed", error=str(e))
         return _connection_to_out(connection)
     except ValueError as e:
         raise HTTPException(409, str(e))
@@ -167,6 +174,20 @@ async def update_connection(
     conn = await service.update_connection(org_id, connection_id, **updates)
     if conn is None:
         raise HTTPException(404, "Channel connection not found")
+
+    if conn.provider == "discord":
+        try:
+            from app.channels.gateway import get_discord_manager
+            mgr = get_discord_manager()
+            if conn.status == "active":
+                await mgr.remove_bot(conn.id)
+                await mgr.add_bot(conn)
+            else:
+                await mgr.remove_bot(conn.id)
+        except Exception as e:
+            import structlog
+            await structlog.get_logger(__name__).awarning("discord_bot_update_gateway_failed", error=str(e))
+
     return _connection_to_out(conn)
 
 
@@ -189,6 +210,14 @@ async def delete_connection(
         raise HTTPException(404, "Channel connection not found")
     if not _can_manage_all(authz) and existing.created_by_user_id != authz.user_id:
         raise HTTPException(403, "Not your personal channel connection")
+
+    if existing.provider == "discord":
+        try:
+            from app.channels.gateway import get_discord_manager
+            await get_discord_manager().remove_bot(connection_id)
+        except Exception:
+            pass
+
     if not await service.delete_connection(org_id, connection_id):
         raise HTTPException(404, "Channel connection not found")
     return {"ok": True}
@@ -214,6 +243,49 @@ async def test_connection(
 
     result = await service.test_connection(org_id, connection_id)
     return ChannelTestResponse(**result)
+
+
+@router.post("/{connection_id}/start")
+async def start_bot(
+    connection_id: str,
+    org_id: str = Depends(get_current_org_id),
+    db: AsyncSession = Depends(get_db),
+    authz: PrincipalContext = Depends(require_permission("channels:read")),
+):
+    """Start the Discord bot gateway for this connection."""
+    service = ChannelService(db)
+    existing = await service.get_connection(org_id, connection_id)
+    if existing is None:
+        raise HTTPException(404, "Channel connection not found")
+    if not _can_manage_all(authz) and existing.created_by_user_id != authz.user_id:
+        raise HTTPException(403, "Not your personal channel connection")
+
+    if existing.provider != "discord":
+        raise HTTPException(400, "Gateway start only applies to Discord connections")
+
+    from app.channels.gateway import get_discord_manager
+    await get_discord_manager().add_bot(existing)
+    return {"ok": True, "message": "Discord bot starting"}
+
+
+@router.post("/{connection_id}/stop")
+async def stop_bot(
+    connection_id: str,
+    org_id: str = Depends(get_current_org_id),
+    db: AsyncSession = Depends(get_db),
+    authz: PrincipalContext = Depends(require_permission("channels:read")),
+):
+    """Stop the Discord bot gateway for this connection."""
+    service = ChannelService(db)
+    existing = await service.get_connection(org_id, connection_id)
+    if existing is None:
+        raise HTTPException(404, "Channel connection not found")
+    if not _can_manage_all(authz) and existing.created_by_user_id != authz.user_id:
+        raise HTTPException(403, "Not your personal channel connection")
+
+    from app.channels.gateway import get_discord_manager
+    await get_discord_manager().remove_bot(connection_id)
+    return {"ok": True, "message": "Discord bot stopped"}
 
 
 @router.get(
@@ -290,7 +362,7 @@ async def telegram_webhook(request: Request, db: AsyncSession = Depends(get_db))
         pool = await create_pool(_redis_settings())
         try:
             await pool.enqueue_job(
-                process_channel_message,
+                "process_channel_message",
                 str(connection.org_id),
                 str(connection.id),
                 str(msg.id),
@@ -358,7 +430,7 @@ async def discord_webhook(request: Request, db: AsyncSession = Depends(get_db)):
         pool = await create_pool(_redis_settings())
         try:
             await pool.enqueue_job(
-                process_channel_message,
+                "process_channel_message",
                 str(connection.org_id),
                 str(connection.id),
                 str(msg.id),

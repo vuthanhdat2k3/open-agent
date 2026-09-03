@@ -45,11 +45,13 @@ async def process_channel_message(
             if agent_id:
                 agent = await db.scalar(
                     select(Agent).where(
-                        Agent.id == agent_id,
-                        Agent.org_id == org_id,
+                        (Agent.id == agent_id) & ((Agent.org_id == org_id) | (Agent.org_id.isnot(None)))
                     )
                 )
             else:
+                agent = None
+
+            if agent is None:
                 # Fallback: use org's orchestrator agent
                 agent = await db.scalar(
                     select(Agent).where(
@@ -129,3 +131,21 @@ async def process_channel_message(
                 error=str(exc),
             )
             await db.rollback()
+            try:
+                connection = await db.get(ChannelConnection, connection_id)
+                msg = await db.get(ChannelMessage, message_id)
+                if connection and msg:
+                    driver = build_channel_driver(connection)
+                    err_msg = str(exc)
+                    if "insufficient_quota" in err_msg or "Free quota exhausted" in err_msg:
+                        user_friendly_error = "⚠️ Tài khoản AI provider đã hết quota miễn phí (Free quota exhausted). Vui lòng cấu hình API key hoặc nạp thêm token trên provider console."
+                    elif "has no API key configured" in err_msg:
+                        user_friendly_error = "⚠️ AI Provider chưa được cấu hình API key."
+                    else:
+                        user_friendly_error = f"⚠️ Không thể xử lý tin nhắn: {err_msg[:200]}"
+                    await driver.send_message(
+                        recipient=msg.conversation_id,
+                        content=user_friendly_error,
+                    )
+            except Exception:
+                pass

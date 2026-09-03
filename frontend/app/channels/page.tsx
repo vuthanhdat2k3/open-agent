@@ -2,7 +2,8 @@
 
 import * as React from "react";
 import { toast } from "sonner";
-import { MessageSquare, Plus, Pencil, Trash2, Plug, TestTube } from "lucide-react";
+import { MessageSquare, Plus, Pencil, Trash2, Plug, TestTube, Eye } from "lucide-react";
+import Link from "next/link";
 import {
   useChannelConnections,
   useCreateChannelConnection,
@@ -167,6 +168,16 @@ export default function ChannelsPage() {
                 </div>
 
                 <div className="mt-5 flex gap-2 border-t border-border/60 pt-4">
+                  <Link href={`/channels/${c.id}`}>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-8 w-8 text-muted-foreground hover:text-foreground active-tactile transition-transform"
+                      aria-label={tx(`Xem tin nhắn ${c.provider}`, `View ${c.provider} messages`)}
+                    >
+                      <Eye className="h-4 w-4" />
+                    </Button>
+                  </Link>
                   <Button
                     size="icon"
                     variant="ghost"
