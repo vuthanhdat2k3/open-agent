@@ -413,19 +413,22 @@ export default function ChatPage() {
     }
   }, [changeSession, chatRun.data, sessionId, setStreaming, syncPersistedMessages]);
 
+  const userScrolledUpRef = React.useRef(false);
+
   const scrollToBottom = React.useCallback((behavior: ScrollBehavior = "smooth") => {
     const el = scrollHostRef.current;
     if (!el) return;
-    isProgrammaticScrollRef.current = true;
-    el.scrollTo({ top: el.scrollHeight, behavior });
+    userScrolledUpRef.current = false;
     autoScrollRef.current = true;
     setShowScrollBottom(false);
+    isProgrammaticScrollRef.current = true;
+    el.scrollTo({ top: el.scrollHeight, behavior });
   }, []);
 
   const prevMessageCountRef = React.useRef(0);
   React.useEffect(() => {
     const el = scrollHostRef.current;
-    if (!el || !autoScrollRef.current) return;
+    if (!el || !autoScrollRef.current || userScrolledUpRef.current) return;
     isProgrammaticScrollRef.current = true;
     el.scrollTo({ top: el.scrollHeight, behavior: streaming ? "instant" : "smooth" });
     prevMessageCountRef.current = messages.length;
@@ -439,10 +442,12 @@ export default function ChatPage() {
       return;
     }
     const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
-    if (distance > 35) {
+    if (distance > 25) {
+      userScrolledUpRef.current = true;
       autoScrollRef.current = false;
       setShowScrollBottom(true);
-    } else {
+    } else if (distance <= 10) {
+      userScrolledUpRef.current = false;
       autoScrollRef.current = true;
       setShowScrollBottom(false);
     }
@@ -450,9 +455,21 @@ export default function ChatPage() {
 
   const onThreadWheel = React.useCallback((e: React.WheelEvent<HTMLDivElement>) => {
     if (e.deltaY < 0) {
-      // User is actively scrolling up — immediately pause auto-scroll
+      // User is scrolling UP — immediately lock auto-scroll off
+      userScrolledUpRef.current = true;
       autoScrollRef.current = false;
       setShowScrollBottom(true);
+    } else if (e.deltaY > 0) {
+      // User is scrolling DOWN
+      const el = scrollHostRef.current;
+      if (el) {
+        const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+        if (distance <= 15) {
+          userScrolledUpRef.current = false;
+          autoScrollRef.current = true;
+          setShowScrollBottom(false);
+        }
+      }
     }
   }, []);
 
@@ -466,10 +483,22 @@ export default function ChatPage() {
   const onThreadTouchMove = React.useCallback((e: React.TouchEvent<HTMLDivElement>) => {
     if (touchStartYRef.current !== null && e.touches.length > 0) {
       const currentY = e.touches[0].clientY;
-      if (currentY > touchStartYRef.current + 10) {
-        // Swiping downwards = scroll up — immediately pause auto-scroll
+      if (currentY > touchStartYRef.current + 5) {
+        // Swiping downwards = scroll UP
+        userScrolledUpRef.current = true;
         autoScrollRef.current = false;
         setShowScrollBottom(true);
+      } else if (currentY < touchStartYRef.current - 5) {
+        // Swiping upwards = scroll DOWN
+        const el = scrollHostRef.current;
+        if (el) {
+          const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+          if (distance <= 15) {
+            userScrolledUpRef.current = false;
+            autoScrollRef.current = true;
+            setShowScrollBottom(false);
+          }
+        }
       }
     }
   }, []);

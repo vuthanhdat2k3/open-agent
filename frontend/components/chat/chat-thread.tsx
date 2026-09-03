@@ -163,6 +163,7 @@ export function ChatThread({
         onWheel={onThreadWheel}
         onTouchStart={onThreadTouchStart}
         onTouchMove={onThreadTouchMove}
+        style={{ overflowAnchor: "none" }}
         role="log"
         aria-live="polite"
         aria-relevant="additions text"
