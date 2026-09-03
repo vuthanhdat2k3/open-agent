@@ -108,3 +108,25 @@ async def test_delete_session_removes_messages_and_session_memory(client, async_
         assert await db.scalar(select(Message).where(Message.session_id == session_id)) is None
         assert await db.scalar(select(SessionMemory).where(SessionMemory.session_id == session_id)) is None
         assert await db.scalar(select(SessionEvent).where(SessionEvent.session_id == session_id)) is None
+
+
+@pytest.mark.asyncio
+async def test_update_session_execution_policy_full_access(client, async_session_factory):
+    token, org_id = _register(client)
+    session_id = "session-update-policy"
+    agent_id = "agent-update-policy"
+
+    async with async_session_factory() as db:
+        db.add(Agent(id=agent_id, org_id=org_id, name="Policy test agent"))
+        db.add(Session(id=session_id, org_id=org_id, agent_id=agent_id, title="Policy me", execution_policy="manual"))
+        await db.commit()
+
+    response = client.patch(
+        f"/api/sessions/{session_id}",
+        json={"execution_policy": "full-access"},
+        headers={"Authorization": f"Bearer {token}", "X-Org-Id": org_id},
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["execution_policy"] == "full-access"
+

@@ -43,6 +43,7 @@ async def get_current_user(
         request.state.org_id = membership.org_id
         request.state.membership_id = membership.id
         request.state.session_id = session.id
+        user.role = getattr(membership.role, "value", str(membership.role))
         mark_chat_phase(request, "auth_done", auth_method="application_session")
         return user
 
@@ -261,6 +262,8 @@ def require_permission(permission: str):
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Permission denied: {permission}",
             )
+        user_role_val = getattr(membership.role, "value", str(membership.role))
+        current_user.role = user_role_val
         principal = PrincipalContext(
             user_id=current_user.id,
             principal_id=current_user.id,
