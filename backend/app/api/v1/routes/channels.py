@@ -357,7 +357,6 @@ async def telegram_webhook(request: Request, db: AsyncSession = Depends(get_db))
 
         from arq import create_pool
 
-        from app.core.channels.jobs import process_channel_message
 
         pool = await create_pool(_redis_settings())
         try:
@@ -425,7 +424,6 @@ async def discord_webhook(request: Request, db: AsyncSession = Depends(get_db)):
 
         from arq import create_pool
 
-        from app.core.channels.jobs import process_channel_message
 
         pool = await create_pool(_redis_settings())
         try:

@@ -3,11 +3,15 @@ from __future__ import annotations
 import secrets
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.channels.factory import build_channel_driver
 from app.core.credential_secrets import decrypt_string, encrypt_string
-from app.models.channel import ChannelConnection, ChannelMessage
+from app.core.execution_policy import ExecutionPolicy
+from app.models.agent import Agent
+from app.models.channel import ChannelConnection, ChannelConversation, ChannelMessage
+from app.models.session import Session
 from app.repositories.channel_repo import ChannelMessageRepository, ChannelRepository
 
 
@@ -207,3 +211,73 @@ class ChannelService:
         return await self.message_repo.list_by_connection(
             org_id, connection_id, limit, offset
         )
+
+    async def ensure_conversation_session(
+        self,
+        org_id: str,
+        connection: ChannelConnection,
+        conversation_id: str,
+        agent: Agent,
+        sender_name: str = "",
+        force_new: bool = False,
+    ) -> tuple[Session, bool]:
+        """Ensure a durable Session is mapped to this channel conversation.
+
+        Returns (session, is_new).
+        If an active session exists for this (connection_id, conversation_id)
+        and it is bound to the same agent, reuse it (preserving full history).
+        If not found, or agent changed, or force_new=True (e.g. /reset),
+        create a new Session and update the mapping.
+        """
+        stmt = select(ChannelConversation).where(
+            ChannelConversation.org_id == org_id,
+            ChannelConversation.connection_id == connection.id,
+            ChannelConversation.conversation_id == conversation_id,
+        )
+        res = await self.db.execute(stmt)
+        conv = res.scalar_one_or_none()
+
+        if conv and not force_new:
+            session_stmt = select(Session).where(
+                Session.id == conv.session_id,
+                Session.org_id == org_id,
+            )
+            session_res = await self.db.execute(session_stmt)
+            session = session_res.scalar_one_or_none()
+            if session and session.agent_id == agent.id:
+                return session, False
+
+        # Create new session
+        title = f"{connection.provider.capitalize()} #{conversation_id}"
+        if sender_name:
+            title += f" ({sender_name})"
+
+        exec_policy = (connection.config or {}).get(
+            "execution_policy", ExecutionPolicy.full_access.value
+        )
+        new_session = Session(
+            org_id=org_id,
+            agent_id=agent.id,
+            created_by_user_id=connection.created_by_user_id,
+            title=title[:256],
+            execution_policy=exec_policy,
+        )
+        self.db.add(new_session)
+        await self.db.flush()
+
+        if conv:
+            conv.session_id = new_session.id
+            conv.agent_id = agent.id
+        else:
+            conv = ChannelConversation(
+                org_id=org_id,
+                connection_id=connection.id,
+                conversation_id=conversation_id,
+                session_id=new_session.id,
+                agent_id=agent.id,
+            )
+            self.db.add(conv)
+
+        await self.db.commit()
+        await self.db.refresh(new_session)
+        return new_session, True

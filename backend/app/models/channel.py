@@ -33,6 +33,9 @@ class ChannelConnection(Base):
     messages: Mapped[list["ChannelMessage"]] = relationship(
         back_populates="connection", cascade="all, delete-orphan"
     )
+    conversations: Mapped[list["ChannelConversation"]] = relationship(
+        back_populates="connection", cascade="all, delete-orphan"
+    )
 
 
 class ChannelMessage(Base):
@@ -58,3 +61,30 @@ class ChannelMessage(Base):
     created_at: Mapped["utc_now"] = mapped_column(DateTime, default=utc_now)
 
     connection: Mapped["ChannelConnection"] = relationship(back_populates="messages")
+
+
+class ChannelConversation(Base):
+    __tablename__ = "channel_conversations"
+    __table_args__ = (
+        UniqueConstraint("connection_id", "conversation_id", name="uq_channel_conv_connection_conversation"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=gen_id)
+    org_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    connection_id: Mapped[str] = mapped_column(
+        ForeignKey("channel_connections.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    conversation_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    session_id: Mapped[str] = mapped_column(
+        ForeignKey("sessions.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    agent_id: Mapped[str] = mapped_column(
+        ForeignKey("agents.id", ondelete="CASCADE"), nullable=False
+    )
+
+    created_at: Mapped["utc_now"] = mapped_column(DateTime, default=utc_now)
+    updated_at: Mapped["utc_now"] = mapped_column(DateTime, default=utc_now, onupdate=utc_now)
+
+    connection: Mapped["ChannelConnection"] = relationship(back_populates="conversations")
