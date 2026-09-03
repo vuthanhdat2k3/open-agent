@@ -813,6 +813,7 @@ export default function ChatPage() {
     setActiveRun(null);
 
     abortRef.current = new AbortController();
+    const runId = payload.run_id as string;
     try {
       await streamSSE(
         `/api/chat`,
@@ -835,6 +836,26 @@ export default function ChatPage() {
         },
         abortRef.current.signal,
       );
+      // If stream ended cleanly but streaming is still on, it means no terminal
+      // event (message_done / error) was received — the background task likely
+      // crashed without recording an error event. Fetch the run result and show
+      // the full provider error message to the user.
+      if (streamingRef.current && !pageUnloadingRef.current) {
+        try {
+          const runResult = await api.get<{ status: string; result?: string | null }>(`/api/chat/runs/${runId}`);
+          const taskResult = runResult?.result;
+          if (taskResult) {
+            toast.error(taskResult);
+          } else {
+            toast.error(tx("Phản hồi bị ngắt đột ngột. Vui lòng thử lại.", "Response ended unexpectedly. Please try again."));
+          }
+        } catch {
+          toast.error(tx("Phản hồi bị ngắt đột ngột. Vui lòng thử lại.", "Response ended unexpectedly. Please try again."));
+        }
+        setStreaming(false);
+        setActiveRun(null);
+        void syncPersistedMessages();
+      }
     } catch (e: any) {
       setStreaming(false);
       if (e.name !== "AbortError" && !pageUnloadingRef.current) {
@@ -846,6 +867,7 @@ export default function ChatPage() {
       justStartedRunRef.current = null;
     }
   };
+
 
   const resetReattach = () => {
     reattachAbortRef.current?.abort();
