@@ -272,6 +272,7 @@ export interface ChannelConnection {
   bot_username: string;
   status: "active" | "inactive" | "error";
   config: Record<string, any>;
+  created_by_user_id?: string | null;
   created_at: string;
   updated_at: string;
 }

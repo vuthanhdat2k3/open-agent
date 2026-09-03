@@ -14,6 +14,12 @@ class ChannelConnection(Base):
     org_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
     )
+    # Owner of a personal connection. NULL means the connection is shared
+    # org-wide (operator/admin created for everyone). Set means only this user
+    # and admins can manage it.
+    created_by_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     provider: Mapped[str] = mapped_column(String(32), nullable=False)
     bot_token_enc: Mapped[str] = mapped_column(Text, nullable=False)
     bot_username: Mapped[str] = mapped_column(String(128), default="")

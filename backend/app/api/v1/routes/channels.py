@@ -6,7 +6,14 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.channels.factory import build_channel_driver
-from app.dependencies import get_current_org_id, get_db, require_permission
+from app.core.authz.policy import PrincipalContext
+from app.core.workflow.queue import _redis_settings
+from app.dependencies import (
+    get_current_org_id,
+    get_current_user,
+    get_db,
+    require_permission,
+)
 from app.schemas.channel import (
     ChannelConnectionCreate,
     ChannelConnectionOut,
@@ -19,6 +26,16 @@ from app.services.channel_service import ChannelService
 router = APIRouter(prefix="/api/channels", tags=["channels"])
 
 
+def _can_manage_all(authz: PrincipalContext) -> bool:
+    """Operators/admins manage org-wide connections; users only their own."""
+    return authz.allows("channels:manage")
+
+
+def _can_personal_manage(authz: PrincipalContext) -> bool:
+    """Personal management of one's own connections."""
+    return authz.allows("channels:personal:manage")
+
+
 def _connection_to_out(conn) -> dict[str, Any]:
     """Convert a ChannelConnection to API response dict (without sensitive data)."""
     return {
@@ -28,6 +45,7 @@ def _connection_to_out(conn) -> dict[str, Any]:
         "bot_username": conn.bot_username,
         "status": conn.status,
         "config": conn.config,
+        "created_by_user_id": conn.created_by_user_id,
         "created_at": conn.created_at,
         "updated_at": conn.updated_at,
     }
@@ -42,10 +60,19 @@ async def list_connections(
     provider: str | None = None,
     org_id: str = Depends(get_current_org_id),
     db: AsyncSession = Depends(get_db),
+    authz: PrincipalContext = Depends(require_permission("channels:read")),
 ):
-    """List all channel connections for the org."""
+    """List channel connections visible to the current user.
+
+    - Operators/admins (channels:manage) see shared org-wide connections
+      plus any personal ones.
+    - Users only see their own personal connections (owner == user_id).
+    """
     service = ChannelService(db)
-    connections = await service.list_connections(org_id, provider)
+    user_id = None if _can_manage_all(authz) else authz.user_id
+    connections = await service.list_connections(
+        org_id, provider, owner_user_id=user_id
+    )
     return [_connection_to_out(c) for c in connections]
 
 
@@ -53,14 +80,27 @@ async def list_connections(
     "",
     response_model=ChannelConnectionOut,
     status_code=201,
-    dependencies=[Depends(require_permission("channels:manage"))],
 )
 async def create_connection(
     body: ChannelConnectionCreate,
     org_id: str = Depends(get_current_org_id),
     db: AsyncSession = Depends(get_db),
+    authz: PrincipalContext = Depends(require_permission("channels:read")),
+    current_user=Depends(get_current_user),
 ):
-    """Create a new channel connection."""
+    """Create a new channel connection.
+
+    - Operators/admins (channels:manage) create shared org-wide connections
+      (owner = NULL).
+    - Users (channels:personal:manage) create a personal connection tied to
+      their own user_id.
+    """
+    if not (_can_manage_all(authz) or _can_personal_manage(authz)):
+        raise HTTPException(
+            403,
+            "Permission denied: requires channels:manage or channels:personal:manage",
+        )
+    owner_user_id = None if _can_manage_all(authz) else current_user.id
     service = ChannelService(db)
     try:
         connection = await service.create_connection(
@@ -69,6 +109,7 @@ async def create_connection(
             bot_token=body.bot_token,
             config=body.config,
             bot_username=body.bot_username or "",
+            owner_user_id=owner_user_id,
         )
         return _connection_to_out(connection)
     except ValueError as e:
@@ -84,28 +125,44 @@ async def get_connection(
     connection_id: str,
     org_id: str = Depends(get_current_org_id),
     db: AsyncSession = Depends(get_db),
+    authz: PrincipalContext = Depends(require_permission("channels:read")),
 ):
-    """Get a channel connection by ID."""
+    """Get a channel connection by ID.
+
+    Operators/admins can fetch any org connection; users can only fetch
+    connections they own.
+    """
     service = ChannelService(db)
     conn = await service.get_connection(org_id, connection_id)
     if conn is None:
         raise HTTPException(404, "Channel connection not found")
+    if not _can_manage_all(authz) and conn.created_by_user_id != authz.user_id:
+        raise HTTPException(403, "Not your personal channel connection")
     return _connection_to_out(conn)
 
 
 @router.patch(
     "/{connection_id}",
     response_model=ChannelConnectionOut,
-    dependencies=[Depends(require_permission("channels:manage"))],
 )
 async def update_connection(
     connection_id: str,
     body: ChannelConnectionUpdate,
     org_id: str = Depends(get_current_org_id),
     db: AsyncSession = Depends(get_db),
+    authz: PrincipalContext = Depends(require_permission("channels:read")),
 ):
-    """Update a channel connection."""
+    """Update a channel connection.
+
+    Same ownership rules as `GET /{connection_id}`.
+    """
     service = ChannelService(db)
+    existing = await service.get_connection(org_id, connection_id)
+    if existing is None:
+        raise HTTPException(404, "Channel connection not found")
+    if not _can_manage_all(authz) and existing.created_by_user_id != authz.user_id:
+        raise HTTPException(403, "Not your personal channel connection")
+
     updates = body.model_dump(exclude_unset=True)
     conn = await service.update_connection(org_id, connection_id, **updates)
     if conn is None:
@@ -115,15 +172,23 @@ async def update_connection(
 
 @router.delete(
     "/{connection_id}",
-    dependencies=[Depends(require_permission("channels:manage"))],
 )
 async def delete_connection(
     connection_id: str,
     org_id: str = Depends(get_current_org_id),
     db: AsyncSession = Depends(get_db),
+    authz: PrincipalContext = Depends(require_permission("channels:read")),
 ):
-    """Delete a channel connection."""
+    """Delete a channel connection.
+
+    Same ownership rules as `GET /{connection_id}`.
+    """
     service = ChannelService(db)
+    existing = await service.get_connection(org_id, connection_id)
+    if existing is None:
+        raise HTTPException(404, "Channel connection not found")
+    if not _can_manage_all(authz) and existing.created_by_user_id != authz.user_id:
+        raise HTTPException(403, "Not your personal channel connection")
     if not await service.delete_connection(org_id, connection_id):
         raise HTTPException(404, "Channel connection not found")
     return {"ok": True}
@@ -132,15 +197,21 @@ async def delete_connection(
 @router.post(
     "/{connection_id}/test",
     response_model=ChannelTestResponse,
-    dependencies=[Depends(require_permission("channels:manage"))],
 )
 async def test_connection(
     connection_id: str,
     org_id: str = Depends(get_current_org_id),
     db: AsyncSession = Depends(get_db),
+    authz: PrincipalContext = Depends(require_permission("channels:read")),
 ):
     """Test a channel connection."""
     service = ChannelService(db)
+    existing = await service.get_connection(org_id, connection_id)
+    if existing is None:
+        raise HTTPException(404, "Channel connection not found")
+    if not _can_manage_all(authz) and existing.created_by_user_id != authz.user_id:
+        raise HTTPException(403, "Not your personal channel connection")
+
     result = await service.test_connection(org_id, connection_id)
     return ChannelTestResponse(**result)
 
@@ -156,9 +227,16 @@ async def list_messages(
     offset: int = 0,
     org_id: str = Depends(get_current_org_id),
     db: AsyncSession = Depends(get_db),
+    authz: PrincipalContext = Depends(require_permission("channels:read")),
 ):
     """List messages for a channel connection."""
     service = ChannelService(db)
+    existing = await service.get_connection(org_id, connection_id)
+    if existing is None:
+        raise HTTPException(404, "Channel connection not found")
+    if not _can_manage_all(authz) and existing.created_by_user_id != authz.user_id:
+        raise HTTPException(403, "Not your personal channel connection")
+
     messages = await service.list_messages(org_id, connection_id, limit, offset)
     return [
         ChannelMessageOut(
@@ -189,7 +267,6 @@ async def telegram_webhook(request: Request, db: AsyncSession = Depends(get_db))
     """Receive Telegram webhook updates."""
     payload = await request.json()
 
-    # Get secret token from header
     secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
 
     service = ChannelService(db)
@@ -197,22 +274,18 @@ async def telegram_webhook(request: Request, db: AsyncSession = Depends(get_db))
     if connection is None:
         raise HTTPException(401, "Invalid webhook secret")
 
-    # Parse the update
     driver = build_channel_driver(connection)
     inbound = await driver.parse_webhook(payload)
 
     if inbound:
-        # Store inbound message
         msg = await service.handle_inbound_message(
             connection.org_id, connection.id, inbound
         )
         await db.commit()
 
-        # Trigger agent processing via ARQ
         from arq import create_pool
 
         from app.core.channels.jobs import process_channel_message
-        from app.core.workflow.queue import _redis_settings
 
         pool = await create_pool(_redis_settings())
         try:
@@ -240,11 +313,9 @@ async def discord_webhook(request: Request, db: AsyncSession = Depends(get_db)):
     import json
     data = json.loads(body_str)
 
-    # Handle PING (type 1) - Discord verifying the endpoint
     if data.get("type") == 1:
         return {"type": 1}  # PONG
 
-    # Find connection by guild ID to get public key for verification
     guild_id = data.get("guild_id")
     service = ChannelService(db)
 
@@ -259,7 +330,6 @@ async def discord_webhook(request: Request, db: AsyncSession = Depends(get_db)):
     public_key = connection.config.get("public_key", "")
 
     if public_key:
-        # Verify Ed25519 signature
         try:
             from cryptography.exceptions import InvalidSignature
             from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
@@ -272,7 +342,6 @@ async def discord_webhook(request: Request, db: AsyncSession = Depends(get_db)):
         except Exception as e:
             raise HTTPException(500, f"Signature verification error: {e}")
 
-    # Parse and process interaction
     driver = build_channel_driver(connection)
     inbound = await driver.parse_webhook(data)
 
@@ -282,11 +351,9 @@ async def discord_webhook(request: Request, db: AsyncSession = Depends(get_db)):
         )
         await db.commit()
 
-        # Trigger agent processing via ARQ
         from arq import create_pool
 
         from app.core.channels.jobs import process_channel_message
-        from app.core.workflow.queue import _redis_settings
 
         pool = await create_pool(_redis_settings())
         try:

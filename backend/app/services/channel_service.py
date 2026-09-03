@@ -24,13 +24,18 @@ class ChannelService:
         bot_token: str,
         config: dict[str, Any] | None = None,
         bot_username: str = "",
+        owner_user_id: str | None = None,
     ) -> ChannelConnection:
-        """Create a new channel connection."""
-        # Generate webhook secret for verification
+        """Create a new channel connection.
+
+        If `owner_user_id` is set, the connection is tied to that user
+        (personal). Otherwise it is shared org-wide.
+        """
         webhook_secret = secrets.token_hex(32)
 
         connection = ChannelConnection(
             org_id=org_id,
+            created_by_user_id=owner_user_id,
             provider=provider,
             bot_token_enc=encrypt_string(bot_token),
             bot_username=bot_username,
@@ -41,10 +46,19 @@ class ChannelService:
         return await self.repo.create(connection)
 
     async def list_connections(
-        self, org_id: str, provider: str | None = None
+        self,
+        org_id: str,
+        provider: str | None = None,
+        owner_user_id: str | None = None,
     ) -> list[ChannelConnection]:
-        """List all channel connections for an org."""
-        return await self.repo.list_by_provider(org_id, provider)
+        """List channel connections.
+
+        When `owner_user_id` is set, returns only personal connections owned
+        by that user. When None, returns shared org-wide connections.
+        """
+        return await self.repo.list_by_provider(
+            org_id, provider, owner_user_id=owner_user_id
+        )
 
     async def list_connections_by_guild(
         self, guild_id: str

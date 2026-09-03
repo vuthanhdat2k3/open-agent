@@ -65,7 +65,7 @@ export const navGroups: NavGroup[] = [
       { href: "/providers", label: "Providers", i18nKey: "nav.providers", icon: Server, roles: ["operator"], permission: "providers:read" },
       { href: "/workflows", label: "Workflows", i18nKey: "nav.workflows", icon: Workflow, roles: ["operator"], permission: "workflows:read" },
       { href: "/mcp", label: "MCP Servers", i18nKey: "nav.mcpServers", icon: Plug, roles: ["operator"], permission: "mcp:read" },
-      { href: "/channels", label: "Messaging Channels", i18nKey: "nav.channels", icon: MessageSquare, roles: ["operator"], permission: "channels:read" },
+      { href: "/channels", label: "Messaging Channels", i18nKey: "nav.channels", icon: MessageSquare, roles: ["operator", "user"], permission: "channels:read" },
       { href: "/files", label: "Knowledge Base", i18nKey: "nav.knowledgeBase", icon: FolderKanban, roles: ["operator"], permission: "files:read" },
     ],
   },

@@ -1,0 +1,12 @@
+- Prefers communicating in Vietnamese (tiếng Việt). Confidence: 0.9
+- Uses Protocol-based abstraction (typing.Protocol) over ABC for extensible driver/provider patterns. Confidence: 0.85
+- Uses httpx directly instead of heavy platform-specific SDKs for HTTP-based API integrations. Confidence: 0.85
+- Follows strict layered architecture: routes → services → repositories → models. Confidence: 0.9
+- Prefers self-built adapters over third-party multi-channel frameworks for full control over integration behavior. Confidence: 0.8
+- Scopes all data by org_id for multi-tenancy (org-level isolation on every query). Confidence: 0.9
+- Stores sensitive credentials encrypted (encrypted column pattern like bot_token_enc). Confidence: 0.85
+- Uses phased implementation approach with clearly numbered phases (Phase 1, 2, 3...). Confidence: 0.85
+- Uses ARQ with Redis for background task processing. Confidence: 0.85
+- Uses Alembic for database migrations with explicit upgrade/downgrade functions. Confidence: 0.85
+- Uses Pydantic schemas for API request/response validation. Confidence: 0.8
+- Asks clarifying questions before implementing complex features (platforms, use cases, approach). Confidence: 0.8

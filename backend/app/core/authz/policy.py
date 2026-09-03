@@ -61,6 +61,8 @@ PERMISSIONS: dict[Role, set[str]] = {
         "models:read",
         "ci:read",
         "ci:personal:manage",
+        "channels:read",
+        "channels:personal:manage",
     },
 }
 
