@@ -91,6 +91,7 @@ export const navGroups: NavGroup[] = [
       { href: "/chat", label: "Chat", i18nKey: "nav.chat", icon: MessageSquare, roles: ["user"] },
       { href: "/workflows", label: "Workflows", i18nKey: "nav.workflows", icon: Workflow, roles: ["user"], permission: "workflows:read" },
       { href: "/integrations", label: "Integrations", i18nKey: "nav.integrations", icon: Plug, roles: ["user"], permission: "ci:personal:manage" },
+      { href: "/channels", label: "My Channels", i18nKey: "nav.myChannels", icon: MessageSquare, roles: ["user"], permission: "channels:read" },
       { href: "/email-intelligence", label: "Email Intelligence", i18nKey: "nav.emailIntelligence", icon: Bell, roles: ["user"], permission: "ci:personal:manage" },
       { href: "/customer-intelligence", label: "Customer Intelligence", i18nKey: "nav.customerIntelligence", icon: Building2, roles: ["user"], permission: "ci:read" },
       { href: "/workspace", label: "Sandbox", i18nKey: "nav.sandbox", icon: FolderKanban, roles: ["user"], permission: "files:read" },

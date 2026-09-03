@@ -11,3 +11,6 @@
 - Uses Alembic for database migrations with explicit upgrade/downgrade functions. Confidence: 0.85
 - Uses Pydantic schemas for API request/response validation. Confidence: 0.8
 - Asks clarifying questions before implementing complex features (platforms, use cases, approach). Confidence: 0.8
+- Models resources with dual ownership: nullable `created_by_user_id` where NULL = shared/org-wide, set = personal/owned by that user. Mirrored across features (channels, customer intelligence, etc.). Confidence: 0.9
+- Uses paired permissions `*:manage` (full org) + `*:personal:manage` (own only) for resources that can be both shared and personal. Routes filter by owner unless caller has the full manage permission. Confidence: 0.9
+- Enforces resource ownership at the route layer by checking `existing.created_by_user_id != authz.user_id` after fetching, before mutating. Confidence: 0.85
