@@ -72,6 +72,7 @@ async def update_session(
     if payload.execution_policy is not None:
         new_policy = normalize_execution_policy(payload.execution_policy)
         if new_policy is ExecutionPolicy.full_access and getattr(user, "role", None) not in {
+            "user",
             "operator",
             "org_admin",
             "platform_admin",

@@ -84,6 +84,7 @@ class ChatService:
         title = title[:1].upper() + title[1:] if title else "New session"
         execution_policy = normalize_execution_policy(request.execution_policy)
         if execution_policy is ExecutionPolicy.full_access and user_role not in {
+            "user",
             "operator",
             "org_admin",
             "platform_admin",
@@ -210,6 +211,7 @@ class ChatService:
             if request.execution_policy:
                 new_policy = normalize_execution_policy(request.execution_policy)
                 if new_policy is ExecutionPolicy.full_access and user_role not in {
+                    "user",
                     "operator",
                     "org_admin",
                     "platform_admin",
