@@ -16,6 +16,7 @@ from app.core.authz.policy import PrincipalContext
 from app.core.authz.scope import scope_to_owner
 from app.core.chat_events import (
     TERMINAL_EVENTS,
+    ChatEventRecorder,
     iter_run_events,
     list_events,
     observe_delivery,
@@ -83,6 +84,19 @@ async def run_chat_detached(payload: dict) -> None:
             task = res.scalar_one_or_none()
             if task is not None:
                 await fail_chat_run(db, task, exc)
+                # Emit a durable error event so the SSE drain delivers the full
+                # provider error (e.g. quota exhausted, rate-limited) to the
+                # client instead of a silent stream close.
+                try:
+                    rec = ChatEventRecorder(
+                        org_id=payload["org_id"],
+                        run_id=request.run_id,
+                    )
+                    error_msg = str(exc)
+                    await rec.record({"event": "error", "data": {"message": error_msg}})
+                    await rec.close()
+                except Exception:  # noqa: BLE001
+                    pass
         finally:
             await await_deferred_user_write(request.run_id)
             if _ACTIVE_CHAT_TASKS.get(request.run_id) is active_task:
