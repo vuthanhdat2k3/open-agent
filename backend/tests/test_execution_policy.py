@@ -120,3 +120,32 @@ def test_build_execution_policy_context() -> None:
     ma = build_execution_policy_context(ExecutionPolicy.manual)
     assert "[Execution Policy: manual-approval]" in ma
     assert "require user confirmation" in ma
+
+
+def test_user_role_can_use_full_access_execution_policy() -> None:
+    from app.core.authz.policy import Role, has_permission
+
+    assert has_permission(Role.user, "tools:use:execute")
+    assert has_permission(Role.user, "tools:use:write")
+
+    spec = _spec(RiskTier.execute, requires_approval=True)
+    assert not policy_requires_approval(ExecutionPolicy.full_access, spec)
+
+    ctx = build_tool_authorization(
+        org_id=ORG_ID,
+        user_id="user-123",
+        user_role=Role.user.value,
+        agent_id="agent-policy-test",
+        allowed_risk_tiers=[RiskTier.safe.value, RiskTier.read.value, RiskTier.execute.value, RiskTier.write.value],
+        execution_policy=ExecutionPolicy.full_access,
+        run_id="run-policy-test",
+        principal_type="human",
+    )
+    authorize_tool_call(
+        spec,
+        {},
+        context=ctx,
+        runtime_org_id=ORG_ID,
+    )
+
+
