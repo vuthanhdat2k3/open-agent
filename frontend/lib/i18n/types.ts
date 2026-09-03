@@ -249,6 +249,20 @@ export interface TranslationDictionary {
       executionPolicyManual: string;
       executionPolicyFullAccess: string;
     };
+    channel: {
+      channelDetail: string;
+      noMessages: string;
+      debugMetadata: string;
+      senderId: string;
+      conversationId: string;
+      externalMessageId: string;
+      messageType: string;
+      agentId: string;
+      metadata: string;
+      refresh: string;
+      goBack: string;
+      messages: string;
+    };
     agents: {
       title: string;
       description: string;

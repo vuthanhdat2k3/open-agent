@@ -2500,6 +2500,7 @@ async def run_agent_loop(
             tool_calls = data.get("tools", [])
             latency_ms = data["latency_ms"]
             cost_usd = float(data.get("cost_usd", 0.0) or 0.0)
+            model_name = data.get("model")
         elif ev["event"] == "error":
             error = str(ev["data"].get("message") or "agent execution failed")
     return AgentLoopResult(
@@ -2509,4 +2510,5 @@ async def run_agent_loop(
         latency_ms=latency_ms,
         cost_usd=cost_usd,
         error=error,
+        model=model_name,
     )
