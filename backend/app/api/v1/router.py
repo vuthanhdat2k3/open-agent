@@ -5,6 +5,7 @@ from app.api.v1.routes import (
     agents,
     approvals,
     auth,
+    channels,
     chat,
     customer_intelligence,
     debug,
@@ -46,6 +47,7 @@ protected_router.include_router(workflows.router)
 protected_router.include_router(workflow_catalog.router)
 protected_router.include_router(workflow_installations.router)
 protected_router.include_router(chat.router)
+protected_router.include_router(channels.router)
 protected_router.include_router(debug.router)
 protected_router.include_router(evaluations.router)
 protected_router.include_router(files.router)
@@ -56,4 +58,5 @@ protected_router.include_router(a2a.router)
 api_router.include_router(customer_intelligence.oauth_router)
 api_router.include_router(customer_intelligence.webhook_router)
 api_router.include_router(workflow_webhooks.router)
+api_router.include_router(channels.webhook_router)
 api_router.include_router(protected_router)
