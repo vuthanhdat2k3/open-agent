@@ -21,6 +21,15 @@ from app.core.tools.paths import safe_resolve, safe_url
 from app.core.tools.registry import register
 from app.core.tools.risk_tier import RiskTier
 from app.core.tools.types import ToolContext, ToolSpec
+
+
+def _register_channel_tools_late() -> None:
+    """Lazy-register channel tools to avoid circular imports at module load."""
+    from app.channels.tools import register_channel_tools
+    register_channel_tools()
+
+_register_channel_tools_late()
+
 from app.customer_intelligence.tools import register_customer_intelligence_tools  # noqa: F401
 
 settings = get_settings()

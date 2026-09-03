@@ -51,6 +51,8 @@ import type {
   EmailIntelligenceNavigationSummary,
   NodeDefinition,
   NodeOption,
+  ChannelConnection,
+  ChannelMessage,
 } from "@/types";
 
 import { emailIntelligenceQueryKeys } from "@/lib/email-intelligence/query-keys";
@@ -497,6 +499,48 @@ export function useCreateEvaluationRun() {
       qc.invalidateQueries({ queryKey: ["evaluation-runs", run.suite_id] });
       qc.invalidateQueries({ queryKey: ["evaluation-suites"] });
     },
+  });
+}
+
+// Channel hooks
+export function useChannelConnections(enabled: boolean = true) {
+  return useQuery({ queryKey: ["channels"], queryFn: () => api.get<ChannelConnection[]>("/api/channels"), enabled });
+}
+export function useCreateChannelConnection() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { provider: "telegram" | "discord"; bot_token: string; bot_username?: string; config?: Record<string, any> }) =>
+      api.post<ChannelConnection>("/api/channels", body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["channels"] }),
+  });
+}
+export function useDeleteChannelConnection() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.delete<void>(`/api/channels/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["channels"] }),
+  });
+}
+export function useUpdateChannelConnection() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...body }: { id: string; bot_token?: string; bot_username?: string; config?: Record<string, any>; status?: string }) =>
+      api.patch<ChannelConnection>(`/api/channels/${id}`, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["channels"] }),
+  });
+}
+export function useTestChannelConnection() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.post<{ ok: boolean; message: string }>(`/api/channels/${id}/test`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["channels"] }),
+  });
+}
+export function useChannelMessages(connectionId: string | null, enabled = true) {
+  return useQuery({
+    queryKey: ["channel-messages", connectionId],
+    enabled: enabled && !!connectionId,
+    queryFn: () => api.get<ChannelMessage[]>(`/api/channels/${connectionId}/messages`),
   });
 }
 

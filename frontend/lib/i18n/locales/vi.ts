@@ -15,6 +15,7 @@ export const vi: TranslationDictionary = {
     automations: 'Tự động hóa',
     knowledgeBase: 'Kho tri thức',
     mcpServers: 'MCP Servers',
+    channels: 'Kênh tin nhắn',
     approvals: 'Phê duyệt',
     evaluations: 'Đánh giá',
     auditLogs: 'Nhật ký kiểm toán',
