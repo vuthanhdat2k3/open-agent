@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Bot, Bug, Trash2 } from "lucide-react";
+import { ArrowDown, Bot, Bug, Trash2 } from "lucide-react";
 import { useCurrentRole } from "@/hooks";
 import { isAdminRole, isOperator } from "@/lib/roles";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -45,6 +45,11 @@ interface ChatThreadProps {
   scrollHostRef: React.RefObject<HTMLDivElement | null>;
   bottomRef: React.RefObject<HTMLDivElement | null>;
   onThreadScroll: () => void;
+  onThreadWheel?: (e: React.WheelEvent<HTMLDivElement>) => void;
+  onThreadTouchStart?: (e: React.TouchEvent<HTMLDivElement>) => void;
+  onThreadTouchMove?: (e: React.TouchEvent<HTMLDivElement>) => void;
+  showScrollBottom?: boolean;
+  onScrollToBottom?: () => void;
 }
 
 export function ChatThread({
@@ -78,6 +83,11 @@ export function ChatThread({
   scrollHostRef,
   bottomRef,
   onThreadScroll,
+  onThreadWheel,
+  onThreadTouchStart,
+  onThreadTouchMove,
+  showScrollBottom,
+  onScrollToBottom,
 }: ChatThreadProps) {
     const { locale, tx } = useTranslation();
   const hasPendingApproval = messages.some((m) => m.role === "approval" && m.status === "pending");
@@ -100,7 +110,7 @@ export function ChatThread({
   const canSwitchAgent = isAdminRole(role) || isOperator(role);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="relative flex min-h-0 flex-1 flex-col">
       <div className="sticky top-0 z-10 flex shrink-0 items-center gap-2 border-b border-border/60 bg-background px-2 py-1.5 sm:px-4">
         <ChatHeaderControls
           canSwitchAgent={canSwitchAgent}
@@ -150,6 +160,9 @@ export function ChatThread({
       <div
         ref={scrollHostRef}
         onScroll={onThreadScroll}
+        onWheel={onThreadWheel}
+        onTouchStart={onThreadTouchStart}
+        onTouchMove={onThreadTouchMove}
         role="log"
         aria-live="polite"
         aria-relevant="additions text"
@@ -194,6 +207,20 @@ export function ChatThread({
           </div>
         )}
       </div>
+
+      {showScrollBottom && onScrollToBottom && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={onScrollToBottom}
+          className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 h-7 gap-1.5 rounded-full border border-border/80 bg-background/95 px-3 text-[11px] font-medium text-foreground shadow-md backdrop-blur transition-all hover:bg-muted active:scale-95"
+          aria-label={tx("Cuộn xuống dưới", "Scroll to bottom")}
+        >
+          <ArrowDown className="h-3 w-3 text-primary animate-bounce" aria-hidden="true" />
+          <span>{tx("Cuộn xuống dưới", "Scroll to bottom")}</span>
+        </Button>
+      )}
     </div>
   );
 }
