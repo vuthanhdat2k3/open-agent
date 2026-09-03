@@ -95,7 +95,8 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 | Branch | Worktree path | Phạm vi/task | Agent/người phụ trách |
 |---|---|---|---|
 | `dev` | `G:\open-agent` | Nhánh tích hợp chính — không code trực tiếp ở đây | — |
-| `feat/fix-chat-stream-scroll-and-flicker` | `/home/vutd/Documents/open-agent` | Sửa lỗi nội dung biến mất sau khi AI stream xong và cho phép scroll khi streaming | Antigravity |
+
+> 2026-09-03: Đã merge trực tiếp vào `dev` và dọn dẹp branch `feat/fix-chat-stream-scroll-and-flicker` (Sửa lỗi nội dung biến mất sau khi stream xong, cho phép scroll tự do khi đang sinh token và sửa lỗi 500 ResponseValidationError tier fast làm mất switch models trong chat).
 
 > 2026-09-03: Đã merge trực tiếp vào `dev` và dọn dẹp branch `feat/fix-session-update-user-role` (Sửa triệt để lỗi user.role None khi gọi PATCH /api/sessions/:id bằng cách inject authz context PrincipalContext và gán user.role từ membership).
 
