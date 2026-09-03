@@ -102,6 +102,12 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 
 > 2026-09-03: Đã merge trực tiếp vào `dev` và dọn dẹp branch `feat/allow-user-role-full-access` (Cho phép role user được bật và sử dụng execution policy full-access) theo yêu cầu người dùng.
 
+> 2026-09-03: Commit trực tiếp lên `dev` (db39a53): fix(chat): add userScrolledUp lock and disable overflowAnchor to allow free scrolling during streaming — Sửa triệt để lỗi giật về đáy và không cuộn được lên xem tin nhắn cũ khi AI đang sinh token.
+
+> 2026-09-03: Commit trực tiếp lên `dev` (dd27066): fix(auth): ensure SSO button is displayed when local auth is disabled — Thêm nút "Tiếp tục qua SSO Doanh nghiệp" khi màn hình login hiện "Local authentication is disabled", sửa API_INTERNAL_URL để Next.js rewrite proxy đúng sang container backend.
+
+> 2026-09-03: Commit trực tiếp lên `dev` (6cedb7e + 4b0cfd1): fix(chat): emit durable error event on uncaught provider exceptions + show full provider error message when stream ends without terminal event — Thay vì stream đóng im lặng khi quota hết hoặc lỗi provider, backend ghi event error vào durable log, frontend fetch task.result và hiển thị toast lỗi đầy đủ cho user.
+
 > 2026-09-02: Đã merge PR #238 vào `dev` và dọn dẹp worktree `feat/operator-workflow-actions-fix` (Cho phép Operator cả Cài đặt và Chỉnh sửa trực tiếp trên Canvas các Marketplace templates, sửa backfill legacy custom templates).
 
 > 2026-09-02: Đã merge PR #234 và #236 vào `dev`, deploy thành công lên `deploy/dev` (PR #237) và dọn dẹp worktree `feat/nondestructive-system-templates-sync` (Đồng bộ non-destructive cho providers, workflow templates, agent templates và xử lý triệt để đụng độ khóa chính multi-org).
