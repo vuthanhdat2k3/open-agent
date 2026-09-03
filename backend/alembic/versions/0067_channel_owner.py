@@ -8,6 +8,7 @@ Create Date: 2026-09-03
 from collections.abc import Sequence
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision: str = "0067_channel_owner"

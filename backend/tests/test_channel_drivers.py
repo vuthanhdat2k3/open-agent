@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import pytest
-
-from app.channels.telegram_driver import TelegramDriver
 from app.channels.discord_driver import DiscordDriver
+from app.channels.telegram_driver import TelegramDriver
 
 
 class TestTelegramDriver:

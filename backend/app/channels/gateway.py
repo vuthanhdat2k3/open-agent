@@ -112,8 +112,8 @@ class DiscordBotManager:
                     pass
 
                 from arq import create_pool
+
                 from app.channels.driver import InboundMessage
-                from app.core.channels.jobs import process_channel_message
                 from app.core.workflow.queue import _redis_settings
                 from app.db.session import SessionLocal
                 from app.services.channel_service import ChannelService

@@ -72,16 +72,73 @@ async def process_channel_message(
                 message=msg.content[:100],
             )
 
-            # Call agent loop
-            from app.core.agent_loop import run_agent_loop
+            # Handle conversation reset command (/reset, /new, /clear)
+            content_clean = (msg.content or "").strip().lower()
+            if content_clean in {"/reset", "/new", "/clear"}:
+                from app.services.channel_service import ChannelService
 
+                service = ChannelService(db)
+                session, _ = await service.ensure_conversation_session(
+                    org_id=org_id,
+                    connection=connection,
+                    conversation_id=msg.conversation_id,
+                    agent=agent,
+                    sender_name=msg.sender_name,
+                    force_new=True,
+                )
+                driver = build_channel_driver(connection)
+                reset_text = "🔄 Đã làm mới phiên hội thoại thành công! Tôi đã sẵn sàng cho chủ đề mới."
+                ext_id = await driver.send_message(
+                    recipient=msg.conversation_id,
+                    content=reset_text,
+                )
+                outbound = ChannelMessage(
+                    org_id=org_id,
+                    connection_id=connection_id,
+                    direction="outbound",
+                    external_message_id=ext_id or "",
+                    conversation_id=msg.conversation_id,
+                    message_type="text",
+                    content=reset_text,
+                    agent_id=agent.id,
+                    metadata_json={"session_id": session.id, "command": content_clean},
+                )
+                db.add(outbound)
+                await db.commit()
+                return
+
+            # Ensure durable conversation session mapping for multi-turn history & compaction
+            from app.core.agent_loop import run_agent_loop
+            from app.core.execution_policy import normalize_execution_policy
+            from app.services.channel_service import ChannelService
+
+            service = ChannelService(db)
+            session, _ = await service.ensure_conversation_session(
+                org_id=org_id,
+                connection=connection,
+                conversation_id=msg.conversation_id,
+                agent=agent,
+                sender_name=msg.sender_name,
+                force_new=False,
+            )
+
+            # Tag inbound message with session_id
+            inbound_meta = dict(msg.metadata_json or {})
+            inbound_meta["session_id"] = session.id
+            msg.metadata_json = inbound_meta
+            db.add(msg)
+            await db.commit()
+
+            # Call agent loop with session context
             result = await run_agent_loop(
                 agent=agent,
                 message=msg.content,
                 db=db,
-                user_id=None,  # System-triggered
-                user_role=None,
+                session_id=session.id,
+                user_id=connection.created_by_user_id,
+                user_role="user" if connection.created_by_user_id else None,
                 record_stream=False,
+                execution_policy=normalize_execution_policy(session.execution_policy),
             )
 
             if result.error:
@@ -101,7 +158,7 @@ async def process_channel_message(
                 content=reply_text,
             )
 
-            # Log outbound message
+            # Log outbound message with complete execution trace & session_id
             outbound = ChannelMessage(
                 org_id=org_id,
                 connection_id=connection_id,
@@ -112,6 +169,7 @@ async def process_channel_message(
                 content=reply_text,
                 agent_id=agent.id,
                 metadata_json={
+                    "session_id": session.id,
                     "tools": result.tool_calls,
                     "usage": result.usage,
                     "latency_ms": result.latency_ms,
