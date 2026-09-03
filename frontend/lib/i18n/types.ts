@@ -15,6 +15,7 @@ export interface TranslationDictionary {
     automations: string;
     knowledgeBase: string;
     mcpServers: string;
+    channels: string;
     approvals: string;
     evaluations: string;
     auditLogs: string;
