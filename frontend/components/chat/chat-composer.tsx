@@ -16,6 +16,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { FileAttachmentCard } from "./file-attachment-card";
 import type { UploadedFile, Model, ExecutionPolicy } from "@/types";
 
 interface ChatComposerProps {
@@ -134,19 +135,19 @@ export function ChatComposer({
   return (
     <div className={cn("relative rounded-xl border border-border bg-card shadow-card", variant === "floating" && "bg-card/80 backdrop-blur-md", className)}>
       {attachments.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 border-b border-border/60 p-2">
+        <div className="flex flex-wrap gap-2 border-b border-border/60 p-2">
           {attachments.map((file) => (
-            <span key={file.id} className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/60 py-1 pl-2.5 pr-1 text-[11px] text-muted-foreground">
-              <span className="max-w-[10rem] truncate">{file.original_name}</span>
-              <button
-                type="button"
-                onClick={() => onAttachmentsChange(attachments.filter((f) => f.id !== file.id))}
-                className="rounded-full p-0.5 hover:bg-destructive/15 hover:text-destructive"
-                aria-label={tx(`Xóa ${file.original_name}`, `Remove ${file.original_name}`)}
-              >
-                <X className="h-3 w-3" aria-hidden="true" />
-              </button>
-            </span>
+            <FileAttachmentCard
+              key={file.id}
+              attachment={{
+                id: file.id,
+                name: file.original_name,
+                size: file.size,
+                content_type: file.content_type,
+              }}
+              variant="composer"
+              onRemove={() => onAttachmentsChange(attachments.filter((f) => f.id !== file.id))}
+            />
           ))}
         </div>
       )}

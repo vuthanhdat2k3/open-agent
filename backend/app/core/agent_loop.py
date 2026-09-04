@@ -2517,7 +2517,7 @@ async def _agent_stream(
 
 async def run_agent_loop(
     agent: Agent,
-    message: str,
+    message: str | dict[str, Any],
     db: AsyncSession,
     depth: int = 0,
     session_id: str | None = None,
