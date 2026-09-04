@@ -4,6 +4,7 @@ import * as React from "react";
 import { Activity, Clock3, Coins } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import type { WorkflowRunDetail } from "@/types";
+import { dedupeLatestNodes } from "@/lib/automations/kpi";
 
 interface RunKpiStripProps {
   run: WorkflowRunDetail | undefined;
@@ -52,8 +53,9 @@ export function RunKpiStrip({ run }: RunKpiStripProps) {
   const { t } = useTranslation();
   if (!run) return null;
   const style = STATUS_STYLES[run.status] ?? STATUS_STYLES.queued;
-  const done = run.nodes?.filter((n) => n.status === "succeeded").length ?? 0;
-  const total = run.nodes?.length ?? 0;
+  const latest = dedupeLatestNodes(run.nodes);
+  const done = latest.filter((n) => n.status === "succeeded").length;
+  const total = latest.length;
   const progress = total ? Math.round((done / total) * 100) : 0;
 
   return (

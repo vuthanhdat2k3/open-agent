@@ -129,7 +129,8 @@ export function WorkflowConsole({
 
   const inspectedNode: WorkflowNodeRunDetail | undefined = React.useMemo(() => {
     if (!inspectedNodeId || !run?.nodes) return undefined;
-    return run.nodes.find((n) => n.node_id === inspectedNodeId);
+    const matches = run.nodes.filter((n) => n.node_id === inspectedNodeId);
+    return matches.length > 0 ? matches[matches.length - 1] : undefined;
   }, [inspectedNodeId, run?.nodes]);
 
   const inspectedTokens = React.useMemo(() => {
