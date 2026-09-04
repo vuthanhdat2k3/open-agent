@@ -168,14 +168,19 @@ def _build_code_html(lang: str, code: str) -> str:
 def _markdown_to_discord(text: str) -> str:
     """Convert markdown for Discord.
 
-    Discord supports most markdown natively but NOT tables.
-    Convert tables to code blocks for readability.
+    Discord supports: # (h1), ## (h2), ### (h3), bold, italic, blockquotes, code blocks.
+    Discord DOES NOT support:
+    - Tables: Convert to clean native bullet lists with bold headers (e.g. • **Header:** Value).
+    - Headings level 4+ (#### and #####): Convert to ### for proper rendering (Discord only supports 1 to 3 hashes).
     """
     if not text:
         return text
 
-    # Convert tables to code blocks (Discord doesn't render tables)
-    text = _convert_table_to_code_block(text)
+    # 1. Convert ####+ headings to ### (Discord doesn't parse ####, leaves raw text)
+    text = re.sub(r'^(#{4,6})\s+(.+)$', r'### \2', text, flags=re.MULTILINE)
+
+    # 2. Convert markdown tables to clean Discord bullet lists
+    text = _convert_tables_discord(text)
 
     return text
 
@@ -293,8 +298,51 @@ def _parse_table_row(line: str) -> list[str]:
     return [cell.strip() for cell in stripped.split('|') if cell.strip()]
 
 
-def _convert_table_to_code_block(text: str) -> str:
-    """Convert markdown tables to code blocks for Discord."""
+def _clean_discord_cell(c: str) -> str:
+    """Clean markdown artifacts from table cell content."""
+    c = c.strip()
+    if c.startswith("**") and c.endswith("**") and len(c) > 4:
+        c = c[2:-2].strip()
+    return c
+
+
+def _format_table_for_discord(table_lines: list[str]) -> list[str]:
+    """Convert table lines to clean native Discord markdown list."""
+    if len(table_lines) < 2:
+        return table_lines
+
+    header = [_clean_discord_cell(h) for h in _parse_table_row(table_lines[0])]
+    rows = [
+        [_clean_discord_cell(c) for c in _parse_table_row(line)]
+        for line in table_lines[2:]
+        if _parse_table_row(line)
+    ]
+
+    if not header:
+        return table_lines
+
+    result: list[str] = []
+    for row in rows:
+        if not row:
+            continue
+        if len(header) == 2 and len(row) >= 2:
+            # 2 columns (e.g. Tiêu chí | Nội dung or Cấp bậc | Mô tả)
+            result.append(f"• **{row[0]}:** {row[1]}")
+        elif len(header) == 1:
+            result.append(f"• {row[0]}")
+        else:
+            # 3+ columns (e.g. Cấp bậc | Mô tả | Chi tiết)
+            parts = []
+            for j in range(1, min(len(header), len(row))):
+                parts.append(f"{header[j]}: {row[j]}")
+            extra = " — ".join(parts)
+            result.append(f"• **{row[0]}:** {extra}")
+
+    return result
+
+
+def _convert_tables_discord(text: str) -> str:
+    """Convert markdown tables to clean bullet lists for Discord."""
     lines = text.split('\n')
     result: list[str] = []
     in_table = False
@@ -308,16 +356,12 @@ def _convert_table_to_code_block(text: str) -> str:
             table_lines.append(line)
         else:
             if in_table:
-                result.append('```')
-                result.extend(table_lines)
-                result.append('```')
+                result.extend(_format_table_for_discord(table_lines))
                 in_table = False
                 table_lines = []
             result.append(line)
 
     if in_table:
-        result.append('```')
-        result.extend(table_lines)
-        result.append('```')
+        result.extend(_format_table_for_discord(table_lines))
 
     return '\n'.join(result)
