@@ -69,10 +69,16 @@ export interface StatsBlock {
 
 export type AssistantBlock = ReasoningBlock | TextBlock | ToolCallBlock | StatsBlock;
 
+export interface UserAttachment {
+  id: string;
+  name: string;
+}
+
 export interface UserMessage {
   role: "user";
   id: string;
   content: string;
+  attachments?: UserAttachment[];
 }
 
 export interface AssistantMessage {
@@ -502,7 +508,11 @@ export interface PersistedMessageRow {
 export function messagesFromPersisted(rows: PersistedMessageRow[]): ChatMessage[] {
   return rows.map((row): ChatMessage => {
     if (row.role === "user") {
-      return { role: "user", id: row.id, content: row.content };
+      const rowMeta = (row.meta ?? {}) as Record<string, any>;
+      const attachments: UserAttachment[] | undefined = Array.isArray(rowMeta.attachments)
+        ? rowMeta.attachments
+        : undefined;
+      return { role: "user", id: row.id, content: row.content, ...(attachments?.length ? { attachments } : {}) };
     }
     const meta = (row.meta ?? {}) as Record<string, any>;
     let n = 0;

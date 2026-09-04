@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Copy, Check, ShieldCheck, ShieldX, ShieldAlert, Bot, XCircle, RefreshCw } from "lucide-react";
+import { Copy, Check, ShieldCheck, ShieldX, ShieldAlert, Bot, XCircle, RefreshCw, Paperclip } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -60,8 +60,23 @@ function ChatMessageItemBase({ message: m, debug, onApprovalDecision }: ChatMess
             {copied ? <Check className="h-3.5 w-3.5" aria-hidden="true" /> : <Copy className="h-3.5 w-3.5" aria-hidden="true" />}
           </button>
         </div>
-        <div className="max-w-[85%] rounded-2xl bg-primary px-4 py-2.5 text-sm text-primary-foreground shadow-sm">
-          <p className="whitespace-pre-wrap break-words select-text">{m.content}</p>
+        <div className="flex max-w-[85%] flex-col items-end gap-1.5">
+          {m.attachments?.length ? (
+            <div className="flex flex-wrap justify-end gap-1.5">
+              {m.attachments.map((a) => (
+                <span
+                  key={a.id}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-card px-2.5 py-1.5 text-xs text-foreground shadow-sm"
+                >
+                  <Paperclip className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                  <span className="max-w-[14rem] truncate">{a.name}</span>
+                </span>
+              ))}
+            </div>
+          ) : null}
+          <div className="rounded-2xl bg-primary px-4 py-2.5 text-sm text-primary-foreground shadow-sm">
+            <p className="whitespace-pre-wrap break-words select-text">{m.content}</p>
+          </div>
         </div>
       </div>
     );

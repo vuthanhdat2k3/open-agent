@@ -191,11 +191,17 @@ class ChatService:
 
     async def _inline_attachments(
         self, org_id: str, message: str, attachment_ids: list[str], user_id: str | None
-    ) -> str:
+    ) -> tuple[str, list[dict[str, str]]]:
         """Read each attachment's content and append it to the prompt for
-        this turn. Read-only against S3 — never calls the RAG ingest path."""
+        this turn. Read-only against S3 — never calls the RAG ingest path.
+
+        Returns the augmented prompt plus {id, name} for every attachment
+        that was actually read, so the caller can persist a file-card
+        reference instead of the raw extracted text as the visible message.
+        """
         files = FileService(self.db)
         blocks = []
+        attachments_meta: list[dict[str, str]] = []
         for file_id in attachment_ids:
             result = await files.download(org_id, file_id, owner_user_id=user_id)
             if result is None:
@@ -203,9 +209,10 @@ class ChatService:
             data, record = result
             text = await extract_text(data, record.original_name)
             blocks.append(f"--- Attached file: {record.original_name} ---\n{text}")
+            attachments_meta.append({"id": file_id, "name": record.original_name})
         if not blocks:
-            return message
-        return message + "\n\n" + "\n\n".join(blocks)
+            return message, attachments_meta
+        return message + "\n\n" + "\n\n".join(blocks), attachments_meta
 
     async def run(
         self,
@@ -251,8 +258,13 @@ class ChatService:
             session_id = session.id
             agent = await self._load_agent(org_id, request.agent_id, session.agent_release_id)
         message = request.message
+        message_meta: dict[str, object] | None = None
         if request.attachment_ids:
-            message = await self._inline_attachments(org_id, message, request.attachment_ids, user_id)
+            message, attachments_meta = await self._inline_attachments(
+                org_id, message, request.attachment_ids, user_id
+            )
+            if attachments_meta:
+                message_meta = {"attachments": attachments_meta}
         return await run_agent_loop(
             agent,
             message,
@@ -266,4 +278,6 @@ class ChatService:
             approval_resume_id=approval_resume_id,
             timezone_name=request.timezone,
             execution_policy=normalize_execution_policy(session.execution_policy),
+            display_message=request.message,
+            message_meta=message_meta,
         )

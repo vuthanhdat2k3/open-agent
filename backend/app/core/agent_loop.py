@@ -120,6 +120,7 @@ def defer_user_message(
     org_id: str,
     created_by_user_id: str | None,
     db: AsyncSession | None = None,
+    meta: dict[str, Any] | None = None,
 ) -> None:
     previous = _DEFERRED_USER_WRITES.pop(task_id, None)
     if previous is not None:
@@ -148,7 +149,7 @@ def defer_user_message(
         session_id=session_id,
         role="user",
         content=content,
-        meta={},
+        meta=meta or {},
         org_id=org_id,
         created_by_user_id=created_by_user_id,
         db=writer_db,
@@ -760,6 +761,8 @@ async def _agent_stream(
     timezone_name: str | None = None,
     execution_policy: ExecutionPolicy | None = None,
     parent_session_id: str | None = None,
+    display_message: str | None = None,
+    message_meta: dict[str, Any] | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     def _allows_tier(tier: str) -> bool:
         if execution_policy is not None:
@@ -1022,13 +1025,16 @@ async def _agent_stream(
         defer_user_message(
             root_task.id,
             session_id=session_id,
-            content=message,
+            content=display_message if display_message is not None else message,
             org_id=agent.org_id,
             created_by_user_id=user_id or agent.created_by_user_id,
             db=db,
+            meta=message_meta,
         )
-        # Mirror the user message into the append-only event log so later
-        # turns can derive the full conversation history with tool fidelity.
+        # Mirror the FULL prompt (with any inlined attachment text) into the
+        # append-only event log, never the display-only content above - this
+        # is what future turns replay as this turn's user message for the
+        # model, and it must keep seeing the attachment content it read.
         try:
             await slog.append_event(
                 db,
@@ -2461,6 +2467,8 @@ async def run_agent_loop(
     execution_policy: ExecutionPolicy | None = None,
     parent_session_id: str | None = None,
     on_event: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
+    display_message: str | None = None,
+    message_meta: dict[str, Any] | None = None,
 ) -> AgentLoopResult:
     content = ""
     usage: dict[str, Any] = {"input_tokens": 0, "output_tokens": 0}
@@ -2468,6 +2476,7 @@ async def run_agent_loop(
     latency_ms = 0
     cost_usd = 0.0
     error: str | None = None
+    model_name: str | None = None
     async for ev in _agent_stream(
         agent,
         message,
@@ -2487,6 +2496,8 @@ async def run_agent_loop(
         timezone_name=timezone_name,
         execution_policy=execution_policy,
         parent_session_id=parent_session_id,
+        display_message=display_message,
+        message_meta=message_meta,
     ):
         if on_event is not None:
             try:
