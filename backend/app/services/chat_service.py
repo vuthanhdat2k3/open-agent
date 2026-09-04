@@ -267,29 +267,23 @@ class ChatService:
                     )
                     attachments_meta.append({"id": file_id, "name": record.original_name})
             elif ext in _IMAGE_EXTS:
-                # Image attachment with a non-vision model: attempt best-effort OCR extraction
-                text = await extract_text(data, record.original_name)
-                meta_item = {"id": file_id, "name": record.original_name}
-                if is_extraction_error(text) or not text.strip():
-                    warn_msg = (
-                        f"[could not read '{record.original_name}': "
-                        f"Current model does not support visual image inputs (Vision), and OCR could not extract text. "
-                        f"Please switch to a Vision-capable model.]"
-                    )
-                    blocks.append(f"--- Attached image: {record.original_name} ---\n{warn_msg}")
-                    warnings.append(
-                        f"'{record.original_name}': Mô hình không hỗ trợ Vision và không tìm thấy văn bản trong ảnh."
-                    )
-                    meta_item["error"] = warn_msg
-                else:
-                    blocks.append(
-                        f"--- Attached image: {record.original_name} "
-                        f"(Text extracted via OCR — current model lacks direct vision support) ---\n{text}"
-                    )
-                    warnings.append(
-                        f"'{record.original_name}': Mô hình không hỗ trợ Vision; đã trích xuất văn bản từ ảnh qua OCR."
-                    )
-                attachments_meta.append(meta_item)
+                # Image attachment with a non-vision model: do not attempt text extraction or docling.
+                warn_msg = (
+                    f"[could not process '{record.original_name}': "
+                    f"Current model does not support visual image inputs (Vision). "
+                    f"Please inform the user and ask them to switch to a Vision-capable model.]"
+                )
+                blocks.append(f"--- Attached image: {record.original_name} ---\n{warn_msg}")
+                warnings.append(
+                    f"'{record.original_name}': Mô hình hiện tại không hỗ trợ đọc ảnh (Vision). Vui lòng chuyển sang mô hình có hỗ trợ Vision."
+                )
+                attachments_meta.append(
+                    {
+                        "id": file_id,
+                        "name": record.original_name,
+                        "error": "Model does not support vision",
+                    }
+                )
             else:
                 text = await extract_text(data, record.original_name)
                 blocks.append(f"--- Attached file: {record.original_name} ---\n{text}")
