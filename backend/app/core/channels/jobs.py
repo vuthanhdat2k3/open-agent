@@ -152,20 +152,76 @@ async def process_channel_message(
 
             typing_task = asyncio.create_task(_typing_heartbeat())
 
-            # Progressive streaming state
+            # Progressive streaming state: completely non-blocking background flusher
             streamed_msg_id: str | None = None
             accumulated_tokens: list[str] = []
             status_hint: str | None = None
+            flusher_stop = asyncio.Event()
+            flusher_dirty = asyncio.Event()
+            flusher_lock = asyncio.Lock()
+            # Telegram rate limit: ~1 edit per second; Discord ~0.8s
+            min_edit_interval = 1.2 if connection.provider == "telegram" else 0.8
             last_edit_ts = 0.0
-            edit_lock = asyncio.Lock()
+
+            async def _flusher_loop() -> None:
+                nonlocal streamed_msg_id, last_edit_ts
+                while not flusher_stop.is_set():
+                    try:
+                        await asyncio.wait_for(flusher_dirty.wait(), timeout=min_edit_interval)
+                        flusher_dirty.clear()
+                    except TimeoutError:
+                        pass
+
+                    if flusher_stop.is_set():
+                        break
+
+                    now = time.monotonic()
+                    elapsed = now - last_edit_ts
+                    if elapsed < min_edit_interval:
+                        await asyncio.sleep(min_edit_interval - elapsed)
+
+                    if flusher_stop.is_set():
+                        break
+
+                    if accumulated_tokens:
+                        partial = "".join(accumulated_tokens)
+                        preview = partial[:1800] + " ▌"
+                    elif status_hint:
+                        preview = f"_{status_hint}_ ▌"
+                    else:
+                        continue
+
+                    async with flusher_lock:
+                        try:
+                            if streamed_msg_id is None:
+                                streamed_msg_id = await driver.send_message(
+                                    recipient=msg.conversation_id,
+                                    content=preview,
+                                )
+                                last_edit_ts = time.monotonic()
+                            else:
+                                await driver.edit_message(
+                                    recipient=msg.conversation_id,
+                                    message_id=streamed_msg_id,
+                                    content=preview,
+                                )
+                                last_edit_ts = time.monotonic()
+                        except Exception:
+                            pass
+
+            flusher_task = asyncio.create_task(_flusher_loop())
 
             async def _on_channel_event(ev: dict[str, Any]) -> None:
-                nonlocal streamed_msg_id, last_edit_ts, status_hint
+                nonlocal status_hint
                 ev_type = ev.get("event")
-                now = time.monotonic()
 
-                # Tool activity indicator: let user know what sub-agent or tool is doing
-                if ev_type == "tool_call":
+                # Non-blocking event handler: updates buffer & signals flusher
+                if ev_type == "reasoning":
+                    if not status_hint and not accumulated_tokens:
+                        status_hint = "🤔 Đang suy nghĩ câu trả lời..."
+                        flusher_dirty.set()
+
+                elif ev_type == "tool_call":
                     tool_name = str(ev.get("data", {}).get("name", "")).lower()
                     if any(w in tool_name for w in ("search", "research", "browse", "crawl")):
                         status_hint = "🔍 Đang tìm kiếm và tra cứu thông tin..."
@@ -175,64 +231,13 @@ async def process_channel_message(
                         status_hint = "🤖 Đang phối hợp chuyên gia AI..."
                     else:
                         status_hint = "⚙️ Đang xử lý yêu cầu..."
-
-                    if streamed_msg_id is None:
-                        async with edit_lock:
-                            if streamed_msg_id is None:
-                                try:
-                                    streamed_msg_id = await driver.send_message(
-                                        recipient=msg.conversation_id,
-                                        content=f"*{status_hint}* ▌",
-                                    )
-                                    last_edit_ts = now
-                                except Exception:
-                                    pass
-                    elif (now - last_edit_ts) >= 0.8:
-                        async with edit_lock:
-                            try:
-                                await driver.edit_message(
-                                    recipient=msg.conversation_id,
-                                    message_id=streamed_msg_id,
-                                    content=f"*{status_hint}* ▌",
-                                )
-                                last_edit_ts = now
-                            except Exception:
-                                pass
+                    flusher_dirty.set()
 
                 elif ev_type == "token":
                     txt = ev.get("data", {}).get("content", "")
                     if txt:
                         accumulated_tokens.append(txt)
-
-                    total_len = sum(map(len, accumulated_tokens))
-                    # Fast-flush: appear immediately within ~200ms when first words arrive
-                    if streamed_msg_id is None and total_len >= 3:
-                        async with edit_lock:
-                            if streamed_msg_id is None:
-                                partial = "".join(accumulated_tokens)
-                                preview = partial[:1800] + " ▌"
-                                try:
-                                    streamed_msg_id = await driver.send_message(
-                                        recipient=msg.conversation_id,
-                                        content=preview,
-                                    )
-                                    last_edit_ts = now
-                                except Exception:
-                                    pass
-                    elif streamed_msg_id is not None and (now - last_edit_ts) >= 0.8:
-                        async with edit_lock:
-                            partial = "".join(accumulated_tokens)
-                            preview = partial[:1800] + " ▌"
-                            try:
-                                await driver.edit_message(
-                                    recipient=msg.conversation_id,
-                                    message_id=streamed_msg_id,
-                                    content=preview,
-                                )
-                                last_edit_ts = now
-                            except Exception:
-                                pass
-
+                        flusher_dirty.set()
 
             try:
                 # Call agent loop with session context and streaming event listener
@@ -250,9 +255,12 @@ async def process_channel_message(
             finally:
                 stop_typing.set()
                 typing_task.cancel()
+                flusher_stop.set()
+                flusher_dirty.set()
+                flusher_task.cancel()
                 try:
-                    await typing_task
-                except (asyncio.CancelledError, Exception):
+                    await asyncio.gather(typing_task, flusher_task, return_exceptions=True)
+                except Exception:
                     pass
 
             if result.error:
