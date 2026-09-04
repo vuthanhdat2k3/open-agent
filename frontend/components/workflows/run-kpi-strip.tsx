@@ -19,10 +19,17 @@ const STATUS_STYLES: Record<string, { labelKey: string; className: string; pulse
   cancelled: { labelKey: "pages.workflows.statusCancelled", className: "border-muted/40 bg-muted/10 text-muted-foreground" },
 };
 
+// Backend datetimes are naive UTC (no "Z"/offset suffix) - the Date
+// constructor would otherwise parse them as local time, throwing this off
+// by the browser's UTC offset (e.g. +7h shows as an extra "420m").
+function parseUtc(value: string): number {
+  return new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(value) ? value : `${value}Z`).getTime();
+}
+
 function fmtDuration(started?: string | null, finished?: string | null) {
   if (!started) return "—";
-  const start = new Date(started).getTime();
-  const end = finished ? new Date(finished).getTime() : Date.now();
+  const start = parseUtc(started);
+  const end = finished ? parseUtc(finished) : Date.now();
   const ms = Math.max(0, end - start);
   if (ms < 1000) return `${ms}ms`;
   if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
