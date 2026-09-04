@@ -15,6 +15,8 @@ from app.models.session import Session
 from app.models.task import Task
 from app.schemas.chat import AgentLoopResult, ChatRequest
 from app.services.agent_service import AgentService, RuntimeAgent
+from app.services.attachment_extract import extract_text
+from app.services.file_service import FileService
 
 logger = structlog.get_logger(__name__)
 
@@ -187,6 +189,24 @@ class ChatService:
         await self.db.refresh(task)
         return session, agent, task
 
+    async def _inline_attachments(
+        self, org_id: str, message: str, attachment_ids: list[str], user_id: str | None
+    ) -> str:
+        """Read each attachment's content and append it to the prompt for
+        this turn. Read-only against S3 — never calls the RAG ingest path."""
+        files = FileService(self.db)
+        blocks = []
+        for file_id in attachment_ids:
+            result = await files.download(org_id, file_id, owner_user_id=user_id)
+            if result is None:
+                continue
+            data, record = result
+            text = await extract_text(data, record.original_name)
+            blocks.append(f"--- Attached file: {record.original_name} ---\n{text}")
+        if not blocks:
+            return message
+        return message + "\n\n" + "\n\n".join(blocks)
+
     async def run(
         self,
         org_id: str,
@@ -230,9 +250,12 @@ class ChatService:
             session = await self.ensure_session(org_id, request, user_id, user_role)
             session_id = session.id
             agent = await self._load_agent(org_id, request.agent_id, session.agent_release_id)
+        message = request.message
+        if request.attachment_ids:
+            message = await self._inline_attachments(org_id, message, request.attachment_ids, user_id)
         return await run_agent_loop(
             agent,
-            request.message,
+            message,
             self.db,
             session_id=session_id,
             current_task_id=current_task_id,

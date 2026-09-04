@@ -154,6 +154,12 @@ class Settings(BaseSettings):
     )
     rag_ingest_connect_timeout_seconds: float = 10.0
     rag_ingest_read_timeout_seconds: float = 180.0
+    # Extracts text from a chat attachment (pdf/docx/pptx) for this turn only —
+    # never writes to the RAG index. Empty disables extraction for those types.
+    docling_service_url: str = Field(
+        default="http://docling-service:8080",
+        validation_alias=AliasChoices("OPENAGENT_DOCLING_SERVICE_URL", "DOCLING_SERVICE_URL"),
+    )
     file_ingest_max_attempts: int = 5
     file_ingest_lease_seconds: int = 300
     file_ingest_retry_base_seconds: int = 5

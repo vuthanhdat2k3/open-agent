@@ -14,6 +14,9 @@ class ChatRequest(BaseModel):
     # active status for user selections; it never changes the agent default.
     model_id: str | None = None
     message: str
+    # Ids from POST /api/files/upload. Their content is read and inlined into
+    # the prompt for this turn only — never auto-ingested into the RAG index.
+    attachment_ids: list[str] = []
     session_id: str | None = None
     run_id: str | None = None
     stream: bool = True

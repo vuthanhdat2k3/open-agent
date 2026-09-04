@@ -837,6 +837,7 @@ export default function ChatPage() {
       agent_id: agentId,
       run_id: randomId(),
       message: sentDraft,
+      attachment_ids: attachments.map((f) => f.id),
       session_id: sessionId || undefined,
       stream: true,
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
