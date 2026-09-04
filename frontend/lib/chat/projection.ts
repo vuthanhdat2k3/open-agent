@@ -112,6 +112,7 @@ export interface ProjectionSide {
   /** message_done seen — run reached its natural end. */
   terminal?: boolean;
   errorMessage?: string;
+  warningMessage?: string;
   budgetReason?: string;
   diverged?: boolean;
 }
@@ -137,6 +138,8 @@ const KNOWN_EVENTS = new Set([
   "tool_result",
   "message_done",
   "error",
+  "attachment_warning",
+  "warning",
   "approval_required",
   "approval_rejected",
   "budget_exceeded",
@@ -418,6 +421,15 @@ export function applyChatEvent(
       }
       side.errorMessage = message;
       side.phase = null;
+      break;
+    }
+
+    case "attachment_warning":
+    case "warning": {
+      const message = String(d.message ?? "");
+      if (message) {
+        side.warningMessage = message;
+      }
       break;
     }
 

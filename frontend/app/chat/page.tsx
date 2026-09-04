@@ -544,6 +544,9 @@ export default function ChatPage() {
         setStreaming(false);
         toast.error(side.errorMessage);
       }
+      if (side.warningMessage) {
+        toast.error(side.warningMessage);
+      }
       if (side.budgetReason) {
         toast.error(side.budgetReason);
       }
