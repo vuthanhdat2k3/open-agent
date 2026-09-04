@@ -96,6 +96,8 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 |---|---|---|---|
 | `dev` | `G:\open-agent` | Nhánh tích hợp chính — không code trực tiếp ở đây | — |
 
+> 2026-09-04: Đã merge PR #252 vào `dev` và deploy lên `deploy/dev` (Sửa lỗi "Organization context required" trên trang Tích hợp: giải mã application session cookie và tự động fallback về active membership trong `get_current_org_id`, đảo thứ tự dependency trong `start_ci_oauth`, tự động đồng bộ active org và đính kèm `X-Org-Id` trên mọi request frontend).
+
 > 2026-09-03: Đã merge trực tiếp vào `dev` và dọn dẹp branch `feat/fix-chat-stream-scroll-and-flicker` (Sửa lỗi nội dung biến mất sau khi stream xong, cho phép scroll tự do khi đang sinh token và sửa lỗi 500 ResponseValidationError tier fast làm mất switch models trong chat).
 
 > 2026-09-03: Đã merge trực tiếp vào `dev` và dọn dẹp branch `feat/fix-session-update-user-role` (Sửa triệt để lỗi user.role None khi gọi PATCH /api/sessions/:id bằng cách inject authz context PrincipalContext và gán user.role từ membership).
