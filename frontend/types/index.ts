@@ -273,6 +273,7 @@ export interface ChannelConnection {
   status: "active" | "inactive" | "error";
   config: Record<string, any>;
   created_by_user_id?: string | null;
+  latest_session_id?: string | null;
   created_at: string;
   updated_at: string;
 }

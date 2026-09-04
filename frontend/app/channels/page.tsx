@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { toast } from "sonner";
-import { MessageSquare, Plus, Pencil, Trash2, Plug, TestTube, Eye } from "lucide-react";
+import { MessageSquare, Plus, Pencil, Trash2, Plug, TestTube } from "lucide-react";
 import Link from "next/link";
 import {
   useChannelConnections,
@@ -167,15 +167,17 @@ export default function ChannelsPage() {
                   </div>
                 </div>
 
-                <div className="mt-5 flex gap-2 border-t border-border/60 pt-4">
-                  <Link href={`/channels/${c.id}`}>
+                <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-border/60 pt-4">
+                  <Link href={c.latest_session_id ? `/chat?session_id=${c.latest_session_id}` : "/chat"}>
                     <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-8 w-8 text-muted-foreground hover:text-foreground active-tactile transition-transform"
-                      aria-label={tx(`Xem tin nhắn ${c.provider}`, `View ${c.provider} messages`)}
+                      size="sm"
+                      variant="outline"
+                      className="gap-1.5 active-tactile transition-transform text-xs border-primary/30 hover:border-primary/60 hover:bg-primary/5"
+                      aria-label={tx(`Mở cuộc trò chuyện trong Chat`, `Open conversation in Chat`)}
+                      title={tx(`Mở cuộc trò chuyện trong Chat`, `Open conversation in Chat`)}
                     >
-                      <Eye className="h-4 w-4" />
+                      <MessageSquare className="h-3.5 w-3.5 text-primary" />
+                      <span>{tx("Vào Chat", "Open Chat")}</span>
                     </Button>
                   </Link>
                   <Button
