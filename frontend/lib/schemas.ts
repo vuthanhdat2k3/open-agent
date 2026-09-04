@@ -27,6 +27,7 @@ export const modelCreate = z.object({
   output_cost_per_1k: z.number().min(0),
   active: z.boolean().optional(),
   enabled: z.boolean().optional(),
+  supports_vision: z.boolean().nullable().optional(),
 });
 export type ModelCreate = z.infer<typeof modelCreate>;
 

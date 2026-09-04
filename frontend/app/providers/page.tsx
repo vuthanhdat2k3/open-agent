@@ -8,6 +8,7 @@ import {
   Check,
   CheckCircle2,
   Cpu,
+  Eye,
   Layers,
   Pencil,
   Play,
@@ -86,6 +87,7 @@ export default function ProvidersPage() {
   const [modelQuery, setModelQuery] = React.useState("");
   const [modelStatusFilter, setModelStatusFilter] = React.useState<string>("all");
   const [modelProviderFilter, setModelProviderFilter] = React.useState<string>("all");
+  const [modelVisionFilter, setModelVisionFilter] = React.useState<string>("all");
   const [testingModelId, setTestingModelId] = React.useState<string | null>(null);
 
   const activeOption = modelStatusFilter === "all" ? undefined : modelStatusFilter === "active";
@@ -188,6 +190,8 @@ export default function ProvidersPage() {
       if (modelStatusFilter === "active" && !m.enabled) return false;
       if (modelStatusFilter === "inactive" && m.enabled) return false;
       if (modelProviderFilter !== "all" && m.provider_id !== modelProviderFilter) return false;
+      if (modelVisionFilter === "vision" && !m.supports_vision) return false;
+      if (modelVisionFilter === "non-vision" && m.supports_vision) return false;
       if (modelQuery.trim()) {
         const q = modelQuery.toLowerCase();
         const matchName = m.name.toLowerCase().includes(q);
@@ -197,11 +201,11 @@ export default function ProvidersPage() {
       }
       return true;
     });
-  }, [models.data, modelStatusFilter, modelProviderFilter, modelQuery, providers.data]);
+  }, [models.data, modelStatusFilter, modelProviderFilter, modelVisionFilter, modelQuery, providers.data]);
 
   React.useEffect(() => {
     setModelPage(1);
-  }, [modelQuery, modelStatusFilter, modelProviderFilter]);
+  }, [modelQuery, modelStatusFilter, modelProviderFilter, modelVisionFilter]);
 
   const paginatedModels = React.useMemo(() => {
     const start = (modelPage - 1) * modelPageSize;
@@ -627,7 +631,7 @@ export default function ProvidersPage() {
               />
             </div>
 
-            <div className="flex items-center gap-2.5">
+            <div className="flex flex-wrap items-center gap-2.5">
               <select
                 value={modelStatusFilter}
                 onChange={(e) => setModelStatusFilter(e.target.value)}
@@ -649,6 +653,17 @@ export default function ProvidersPage() {
                 {(providers.data ?? []).map((p) => (
                   <option key={p.id} value={p.id}>{p.name}</option>
                 ))}
+              </select>
+
+              <select
+                value={modelVisionFilter}
+                onChange={(e) => setModelVisionFilter(e.target.value)}
+                className="flex h-9 cursor-pointer rounded-lg border border-border bg-background px-3 py-1 text-xs text-foreground shadow-sm hover:border-primary/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                aria-label={tx("Lọc theo khả năng thị giác (Vision)", "Filter by vision capability")}
+              >
+                <option value="all">{tx("Tất cả Khả năng", "All Capabilities")}</option>
+                <option value="vision">{tx("Hỗ trợ Vision (Đọc ảnh)", "Vision Supported")}</option>
+                <option value="non-vision">{tx("Chỉ Văn bản (No Vision)", "Text Only (No Vision)")}</option>
               </select>
             </div>
           </div>
@@ -694,7 +709,12 @@ export default function ProvidersPage() {
                       </div>
                       <div className="flex flex-wrap gap-1.5 pt-1 font-sans">
                         {model.supports_tools && <Badge variant="outline" className="text-[9.5px]">{tx("Công cụ", "Tools")}</Badge>}
-                        {model.supports_vision && <Badge variant="outline" className="text-[9.5px]">{tx("Thị giác", "Vision")}</Badge>}
+                        {model.supports_vision && (
+                          <Badge variant="outline" className="gap-1 border-primary/30 bg-primary/10 text-[9.5px] text-primary font-medium">
+                            <Eye className="h-2.5 w-2.5" />
+                            {tx("Thị giác", "Vision")}
+                          </Badge>
+                        )}
                         {model.supports_reasoning && <Badge variant="outline" className="text-[9.5px]">{tx("Suy luận", "Reasoning")}</Badge>}
                       </div>
                     </div>
@@ -758,6 +778,27 @@ export default function ProvidersPage() {
                 pageSizeOptions={[6, 12, 24, 48]}
               />
             </div>
+          ) : (models.data || []).length > 0 ? (
+            <EmptyState
+              icon={Cpu}
+              title={tx("Không tìm thấy mô hình phù hợp", "No matching models found")}
+              description={tx("Thử thay đổi bộ lọc trạng thái, provider, hoặc khả năng thị giác (Vision).", "Try adjusting your status, provider, or Vision capability filters.")}
+              action={
+                <Button
+                  variant="outline"
+                  className="gap-2"
+                  onClick={() => {
+                    setModelQuery("");
+                    setModelStatusFilter("all");
+                    setModelProviderFilter("all");
+                    setModelVisionFilter("all");
+                  }}
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  {tx("Đặt lại bộ lọc", "Reset Filters")}
+                </Button>
+              }
+            />
           ) : (
             <EmptyState
               icon={Cpu}
