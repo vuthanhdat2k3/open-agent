@@ -952,9 +952,14 @@ export function useDecideApproval() {
   return useMutation({
     mutationFn: ({ id, decision, reason = "", idempotencyKey }: { id: string; decision: "approved" | "rejected"; reason?: string; idempotencyKey: string }) =>
       api.post<ApprovalRequest>(`/api/approvals/${id}/decide`, { decision, reason }, { headers: { "Idempotency-Key": idempotencyKey } }),
-    onSuccess: () => {
+    onSuccess: (data) => {
+      void qc.invalidateQueries({ queryKey: ["approvals"] });
+      void qc.invalidateQueries({ queryKey: ["workflow-run"] });
       void qc.invalidateQueries({ queryKey: emailIntelligenceQueryKeys(orgId).approvals() });
       void qc.invalidateQueries({ queryKey: emailIntelligenceQueryKeys(orgId).navigation });
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("approval-decided", { detail: data }));
+      }
     },
   });
 }
@@ -974,7 +979,7 @@ export function useWorkflowRun(runId: string | null) {
     queryFn: () => api.get<WorkflowRunDetail>(`/api/workflows/runs/${runId}`),
     refetchInterval: (query) => {
       const status = query.state.data?.status;
-      return status && ["succeeded", "failed", "diverged", "cancelled", "waiting_approval"].includes(status)
+      return status && ["succeeded", "failed", "diverged", "cancelled"].includes(status)
         ? false
         : 2000;
     },
