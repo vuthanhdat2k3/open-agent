@@ -119,7 +119,10 @@ def derive_messages(
                 )
             continue  # node inside a shadowed range
         if ev.type == slog.USER_MESSAGE:
-            nodes.append({"seq": ev.seq, "msg": {"role": "user", "content": str(ev.data.get("content") or "")}})
+            user_content = ev.data.get("content")
+            if not isinstance(user_content, list):
+                user_content = str(user_content or "")
+            nodes.append({"seq": ev.seq, "msg": {"role": "user", "content": user_content}})
         elif ev.type == slog.ASSISTANT_MESSAGE:
             msg: dict[str, Any] = {"role": "assistant", "content": ev.data.get("content")}
             nodes.append({"seq": ev.seq, "msg": msg})

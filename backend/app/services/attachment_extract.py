@@ -1,16 +1,56 @@
 from __future__ import annotations
 
+import asyncio
 import os
 
 import httpx
+import pdf_inspector
+import structlog
 
 from app.config import get_settings
+
+logger = structlog.get_logger(__name__)
 
 # ponytail: hard char cap keeps one attachment from blowing the prompt
 # budget; raise if real usage needs longer documents inlined.
 MAX_ATTACHMENT_PROMPT_CHARS = 20_000
 
 _TEXT_EXTS = {".txt", ".md", ".csv", ".json", ".py", ".yaml", ".yml", ".html", ".htm"}
+
+
+def is_extraction_error(text: str) -> bool:
+    """Check if the extracted text indicates a failure message."""
+    stripped = text.strip()
+    return stripped.startswith("[could not read ") and stripped.endswith("]")
+
+
+def _extract_pdf_sync(data: bytes, filename: str) -> str:
+    """Synchronous CPU-bound PDF extraction using pdf-inspector (native and selective OCR)."""
+    try:
+        res = pdf_inspector.process_pdf_bytes(data)
+        text = res.markdown or ""
+        # If the PDF is classified as scanned/image_based or produced empty text,
+        # fallback to intelligent selective OCR within pdf-inspector.
+        if (not text.strip() or res.pdf_type in ("scanned", "image_based")) and hasattr(
+            pdf_inspector, "process_pdf_with_ocr_bytes"
+        ):
+            try:
+                ocr_res = pdf_inspector.process_pdf_with_ocr_bytes(data)
+                text = ocr_res.markdown or ""
+            except Exception as ocr_exc:
+                ocr_err = str(ocr_exc).strip() or type(ocr_exc).__name__
+                logger.warning(
+                    "pdf_ocr_extraction_failed",
+                    filename=filename,
+                    error=ocr_err,
+                )
+        if not text.strip():
+            return f"[could not read '{filename}': PDF contains no extractable text]"
+        return text
+    except Exception as exc:
+        err_msg = str(exc).strip() or type(exc).__name__
+        logger.error("pdf_extraction_failed", filename=filename, error=err_msg)
+        return f"[could not read '{filename}': {err_msg}]"
 
 
 async def extract_text(data: bytes, filename: str) -> str:
@@ -21,7 +61,12 @@ async def extract_text(data: bytes, filename: str) -> str:
     ext = os.path.splitext(filename)[1].lower()
     if ext in _TEXT_EXTS:
         text = data.decode("utf-8", errors="replace")
+    elif ext == ".pdf":
+        # PDFs are processed exclusively in-process using pdf-inspector (Rust/C++).
+        # Run in thread pool to avoid blocking the async event loop.
+        text = await asyncio.to_thread(_extract_pdf_sync, data, filename)
     else:
+        # Office and other document formats route to the external docling-service.
         settings = get_settings()
         if not settings.docling_service_url:
             return f"[could not read '{filename}': document extraction service is not configured]"
@@ -33,8 +78,18 @@ async def extract_text(data: bytes, filename: str) -> str:
                 )
                 resp.raise_for_status()
                 payload = resp.json()
+        except httpx.ReadTimeout:
+            logger.error("docling_read_timeout", filename=filename)
+            return f"[could not read '{filename}': conversion timed out after 90s]"
         except (httpx.HTTPError, ValueError) as exc:
-            return f"[could not read '{filename}': {exc}]"
+            err_msg = str(exc).strip() or type(exc).__name__
+            logger.error("docling_conversion_failed", filename=filename, error=err_msg)
+            return f"[could not read '{filename}': {err_msg}]"
+        except Exception as exc:
+            err_msg = str(exc).strip() or type(exc).__name__
+            logger.error("docling_unexpected_error", filename=filename, error=err_msg)
+            return f"[could not read '{filename}': {err_msg}]"
+
         text = payload.get("text")
         if not isinstance(text, str):
             return f"[could not read '{filename}': extraction service returned no text]"

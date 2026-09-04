@@ -214,6 +214,18 @@ describe("applyChatEvent", () => {
     expect(sides[1].phase).toBeNull();
     expect(sides[2]).toMatchObject({ terminal: true, sessionId: "s1", phase: null });
   });
+
+  it("routes attachment_warning to side.warningMessage without terminating stream", () => {
+    const { sides, state } = reduce([
+      ["message_start", {}],
+      ["attachment_warning", { message: "could not read 'bad.pdf': timed out" }],
+      ["token", { content: "I am answering..." }],
+    ]);
+    expect(sides[1].warningMessage).toBe("could not read 'bad.pdf': timed out");
+    expect(sides[1].terminal).toBeUndefined();
+    const a = assistantOf(state);
+    expect(a.blocks[0]).toMatchObject({ kind: "text", content: "I am answering...", streaming: true });
+  });
 });
 
 describe("messagesFromPersisted", () => {
