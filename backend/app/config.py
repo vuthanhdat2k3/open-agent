@@ -256,6 +256,11 @@ class Settings(BaseSettings):
         ".py",
         ".yaml",
         ".yml",
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".gif",
+        ".webp",
     ]
 
     log_level: str = "INFO"
