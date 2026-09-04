@@ -57,3 +57,63 @@ class ChannelDriver(Protocol):
     async def test_connection(self) -> TestResult:
         """Verify the connection credentials are valid."""
         ...
+
+
+def split_message(
+    content: str,
+    max_length: int = 1900,
+    fallback: str = "(Không có nội dung phản hồi)",
+) -> list[str]:
+    """Split a message into chunks within max_length, preserving natural boundaries.
+
+    Ensures no chunk exceeds max_length to avoid platform limits (e.g. Discord 2000 chars,
+    Telegram 4096 chars). Empty/whitespace content returns the fallback text.
+    """
+    if not content or not content.strip():
+        return [fallback]
+
+    if len(content) <= max_length:
+        return [content]
+
+    chunks: list[str] = []
+    remaining = content.strip()
+
+    while len(remaining) > max_length:
+        candidate = remaining[:max_length]
+
+        # 1. Double newline (paragraph break)
+        split_pos = candidate.rfind("\n\n")
+        if split_pos >= max_length // 2:
+            chunk = remaining[:split_pos].rstrip()
+            remaining = remaining[split_pos + 2 :].lstrip("\r\n")
+            if chunk:
+                chunks.append(chunk)
+            continue
+
+        # 2. Single newline (line break)
+        split_pos = candidate.rfind("\n")
+        if split_pos >= max_length // 3:
+            chunk = remaining[:split_pos].rstrip()
+            remaining = remaining[split_pos + 1 :].lstrip("\r\n")
+            if chunk:
+                chunks.append(chunk)
+            continue
+
+        # 3. Space (word boundary)
+        split_pos = candidate.rfind(" ")
+        if split_pos >= max_length // 3:
+            chunk = remaining[:split_pos].rstrip()
+            remaining = remaining[split_pos + 1 :].lstrip(" ")
+            if chunk:
+                chunks.append(chunk)
+            continue
+
+        # 4. Hard cut
+        chunks.append(candidate)
+        remaining = remaining[max_length:].lstrip()
+
+    if remaining:
+        chunks.append(remaining)
+
+    return chunks or [fallback]
+

@@ -5,7 +5,7 @@ from typing import Any
 
 import httpx
 
-from app.channels.driver import InboundMessage, TestResult
+from app.channels.driver import InboundMessage, TestResult, split_message
 
 logger = logging.getLogger(__name__)
 
@@ -33,25 +33,52 @@ class DiscordDriver:
         content: str,
         **opts: Any,
     ) -> str:
-        """Send a message to a Discord channel."""
-        payload: dict[str, Any] = {
-            "content": content,
-        }
-        if opts.get("embeds"):
-            payload["embeds"] = opts["embeds"]
-        if opts.get("components"):
-            payload["components"] = opts["components"]
+        """Send a message to a Discord channel.
+
+        Automatically splits messages longer than 1900 characters into sequential
+        chunks to prevent Discord HTTP 400 Bad Request (2000-character limit).
+        """
+        chunks = split_message(content, max_length=1900)
+        last_id = ""
 
         async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                f"{DISCORD_API_BASE}/channels/{recipient}/messages",
-                json=payload,
-                headers=self.headers,
-                timeout=30.0,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            return str(data["id"])
+            for i, chunk in enumerate(chunks):
+                payload: dict[str, Any] = {
+                    "content": chunk,
+                }
+                # Attach embeds/components to the last chunk
+                if i == len(chunks) - 1:
+                    if opts.get("embeds"):
+                        payload["embeds"] = opts["embeds"]
+                    if opts.get("components"):
+                        payload["components"] = opts["components"]
+
+                try:
+                    resp = await client.post(
+                        f"{DISCORD_API_BASE}/channels/{recipient}/messages",
+                        json=payload,
+                        headers=self.headers,
+                        timeout=30.0,
+                    )
+                    resp.raise_for_status()
+                    data = resp.json()
+                    last_id = str(data.get("id", ""))
+                except httpx.HTTPStatusError as exc:
+                    err_body = ""
+                    try:
+                        err_body = f" - Discord response: {exc.response.text}"
+                    except Exception:
+                        pass
+                    logger.error(
+                        "Discord send_message error (status %s)%s",
+                        exc.response.status_code,
+                        err_body,
+                    )
+                    raise RuntimeError(
+                        f"Discord API error {exc.response.status_code}{err_body}"
+                    ) from exc
+
+        return last_id
 
     async def parse_webhook(self, payload: dict[str, Any]) -> InboundMessage | None:
         """Parse a Discord interaction payload into an InboundMessage.
