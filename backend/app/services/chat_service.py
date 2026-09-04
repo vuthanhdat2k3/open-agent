@@ -254,7 +254,13 @@ class ChatService:
                     warnings.append(warn.strip("[]"))
                     blocks.append(f"--- Attached file: {record.original_name} ---\n{warn}")
                     attachments_meta.append(
-                        {"id": file_id, "name": record.original_name, "error": warn}
+                        {
+                            "id": file_id,
+                            "name": record.original_name,
+                            "size": getattr(record, "size", None),
+                            "content_type": getattr(record, "content_type", None),
+                            "error": warn,
+                        }
                     )
                 else:
                     b64_data = base64.b64encode(data).decode("utf-8")
@@ -265,7 +271,14 @@ class ChatService:
                             "name": record.original_name,
                         }
                     )
-                    attachments_meta.append({"id": file_id, "name": record.original_name})
+                    attachments_meta.append(
+                        {
+                            "id": file_id,
+                            "name": record.original_name,
+                            "size": getattr(record, "size", None),
+                            "content_type": getattr(record, "content_type", None),
+                        }
+                    )
             elif ext in _IMAGE_EXTS:
                 # Image attachment with a non-vision model: do not attempt text extraction or docling.
                 warn_msg = (
@@ -281,13 +294,20 @@ class ChatService:
                     {
                         "id": file_id,
                         "name": record.original_name,
+                        "size": getattr(record, "size", None),
+                        "content_type": getattr(record, "content_type", None),
                         "error": "Model does not support vision",
                     }
                 )
             else:
                 text = await extract_text(data, record.original_name)
                 blocks.append(f"--- Attached file: {record.original_name} ---\n{text}")
-                meta_item = {"id": file_id, "name": record.original_name}
+                meta_item = {
+                    "id": file_id,
+                    "name": record.original_name,
+                    "size": getattr(record, "size", None),
+                    "content_type": getattr(record, "content_type", None),
+                }
                 if is_extraction_error(text):
                     warnings.append(text.strip("[]"))
                     meta_item["error"] = text

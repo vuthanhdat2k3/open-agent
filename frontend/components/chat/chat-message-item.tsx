@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Copy, Check, ShieldCheck, ShieldX, ShieldAlert, Bot, XCircle, RefreshCw, Paperclip } from "lucide-react";
+import { Copy, Check, ShieldCheck, ShieldX, ShieldAlert, Bot, XCircle, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +11,7 @@ import { ReasoningRow } from "./blocks/reasoning-row";
 import { ToolCallCard } from "./blocks/tool-call-card";
 import { ToolCallChip } from "./blocks/tool-call-chip";
 import { StatsLine } from "./blocks/stats-line";
+import { FileAttachmentCard } from "./file-attachment-card";
 import { useTranslation } from "@/lib/i18n";
 
 export interface ChatMessageItemProps {
@@ -62,15 +63,13 @@ function ChatMessageItemBase({ message: m, debug, onApprovalDecision }: ChatMess
         </div>
         <div className="flex max-w-[85%] flex-col items-end gap-1.5">
           {m.attachments?.length ? (
-            <div className="flex flex-wrap justify-end gap-1.5">
+            <div className="flex flex-wrap justify-end gap-2">
               {m.attachments.map((a) => (
-                <span
+                <FileAttachmentCard
                   key={a.id}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-card px-2.5 py-1.5 text-xs text-foreground shadow-sm"
-                >
-                  <Paperclip className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-                  <span className="max-w-[14rem] truncate">{a.name}</span>
-                </span>
+                  attachment={a}
+                  variant="message"
+                />
               ))}
             </div>
           ) : null}

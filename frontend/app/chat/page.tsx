@@ -848,7 +848,7 @@ export default function ChatPage() {
       id: `u-${Date.now()}`,
       role: "user",
       content: sentDraft,
-      ...(attachments.length ? { attachments: attachments.map((f) => ({ id: f.id, name: f.original_name })) } : {}),
+      ...(attachments.length ? { attachments: attachments.map((f) => ({ id: f.id, name: f.original_name, size: f.size, content_type: f.content_type })) } : {}),
     };
     const assistantId = `a-${Date.now()}`;
     assistantIdRef.current = assistantId;

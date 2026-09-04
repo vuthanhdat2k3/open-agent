@@ -118,8 +118,29 @@ class DiscordBotManager:
                     .strip()
                 )
 
+            attachments: list[dict[str, Any]] = []
+            if getattr(message, "attachments", None):
+                for att in message.attachments:
+                    mime = getattr(att, "content_type", "") or ""
+                    filename = getattr(att, "filename", "attachment")
+                    is_img = mime.startswith("image/") or any(
+                        filename.lower().endswith(ext)
+                        for ext in (".png", ".jpg", ".jpeg", ".webp", ".gif")
+                    )
+                    attachments.append({
+                        "type": "image" if is_img else "document",
+                        "url": getattr(att, "url", ""),
+                        "name": filename,
+                        "size": getattr(att, "size", 0),
+                        "mime_type": mime or ("image/jpeg" if is_img else "application/octet-stream"),
+                    })
+
             if not text:
-                text = "Xin chào"
+                text = (
+                    "Vui lòng xem và phân tích (các) tệp đính kèm này."
+                    if attachments
+                    else "Xin chào"
+                )
 
             logger.info(
                 "discord_message_received",
@@ -127,6 +148,7 @@ class DiscordBotManager:
                 author=str(message.author),
                 channel_id=str(message.channel.id),
                 content=text[:60],
+                attachments_count=len(attachments),
             )
 
             try:
@@ -159,6 +181,7 @@ class DiscordBotManager:
                     metadata={
                         "message_id": str(message.id),
                         "guild_id": str(message.guild.id) if message.guild else "",
+                        "attachments": attachments,
                     },
                 )
 

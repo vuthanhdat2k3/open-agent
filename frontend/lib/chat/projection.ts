@@ -72,6 +72,9 @@ export type AssistantBlock = ReasoningBlock | TextBlock | ToolCallBlock | StatsB
 export interface UserAttachment {
   id: string;
   name: string;
+  size?: number;
+  content_type?: string;
+  error?: string;
 }
 
 export interface UserMessage {

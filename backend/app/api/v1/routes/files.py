@@ -68,6 +68,36 @@ async def delete_file(
     return {"ok": True}
 
 
+@router.get("/{id}/content")
+async def get_file_content(
+    id: str,
+    org_id: str = Depends(get_current_org_id),
+    current_user: User = Depends(get_current_user),
+    authz: PrincipalContext = Depends(require_permission("files:read")),
+    db: AsyncSession = Depends(get_db),
+):
+    import mimetypes
+
+    owner = authz.owner_user_id
+    result = await FileService(db).download(org_id, id, owner_user_id=owner)
+    if result is None:
+        raise HTTPException(404, "file not found")
+    data, record = result
+
+    content_type, _ = mimetypes.guess_type(record.original_name)
+    if not content_type:
+        content_type = "application/octet-stream"
+
+    return Response(
+        content=data,
+        media_type=content_type,
+        headers={
+            "Content-Disposition": f'inline; filename="{record.original_name}"',
+            "Cache-Control": "public, max-age=86400",
+        },
+    )
+
+
 @router.post("/{id}/ingest", response_model=IngestJobOut, status_code=202, dependencies=[Depends(require_permission("files:manage"))])
 async def ingest_file(
     id: str,
