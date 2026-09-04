@@ -18,6 +18,7 @@ class ModelBase(BaseModel):
     output_cost_per_1k: float = 0.0
     active: bool = True
     enabled: bool | None = None
+    supports_vision: bool | None = None
 
     @field_validator("tier", mode="before")
     @classmethod
@@ -45,6 +46,7 @@ class ModelUpdate(BaseModel):
     output_cost_per_1k: float | None = None
     active: bool | None = None
     enabled: bool | None = None
+    supports_vision: bool | None = None
 
     @field_validator("tier", mode="before")
     @classmethod

@@ -10,7 +10,17 @@ import { useTranslation } from "@/lib/i18n";
 
 export function ModelForm({ initial, providers, onSubmit }: { initial?: Partial<ModelCreate>; providers: Provider[]; onSubmit: (values: ModelCreate) => void }) {
     const { locale, tx } = useTranslation();
-  const [form, setForm] = React.useState<ModelCreate>({ provider_id: initial?.provider_id ?? "", name: initial?.name ?? "", display_name: initial?.display_name ?? "", tier: (initial?.tier as ModelCreate["tier"]) ?? "balanced", context_window: initial?.context_window ?? 8192, input_cost_per_1k: initial?.input_cost_per_1k ?? 0, output_cost_per_1k: initial?.output_cost_per_1k ?? 0, enabled: initial?.enabled ?? initial?.active ?? true });
+  const [form, setForm] = React.useState<ModelCreate>({
+    provider_id: initial?.provider_id ?? "",
+    name: initial?.name ?? "",
+    display_name: initial?.display_name ?? "",
+    tier: (initial?.tier as ModelCreate["tier"]) ?? "balanced",
+    context_window: initial?.context_window ?? 8192,
+    input_cost_per_1k: initial?.input_cost_per_1k ?? 0,
+    output_cost_per_1k: initial?.output_cost_per_1k ?? 0,
+    enabled: initial?.enabled ?? initial?.active ?? true,
+    supports_vision: initial?.supports_vision ?? false,
+  });
 
   React.useEffect(() => {
     if (!form.provider_id && providers[0]) setForm((current) => ({ ...current, provider_id: providers[0].id }));
@@ -24,7 +34,23 @@ export function ModelForm({ initial, providers, onSubmit }: { initial?: Partial<
       <div className="space-y-2"><Label htmlFor="model-name">{tx("Tên (API id)", "Name (API id)")}</Label><Input id="model-name" name="name" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required /></div>
       <div className="space-y-2"><Label htmlFor="model-display-name">{tx("Tên hiển thị", "Display name")}</Label><Input id="model-display-name" name="display_name" value={form.display_name} onChange={(event) => setForm({ ...form, display_name: event.target.value })} required /></div>
       <div className="space-y-2"><Label htmlFor="model-tier">{tx("Cấp độ", "Tier")}</Label><Select id="model-tier" value={form.tier} onChange={(event) => setForm({ ...form, tier: event.target.value as ModelCreate["tier"] })}><option value="frontier">{tx("Cao cấp", "frontier")}</option><option value="balanced">{tx("Cân bằng", "balanced")}</option><option value="economy">{tx("Tiết kiệm", "economy")}</option></Select></div>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2"><div className="space-y-2"><Label htmlFor="model-context">{tx("Cửa sổ ngữ cảnh", "Context window")}</Label><Input id="model-context" name="context_window" type="number" min="1" value={form.context_window} onChange={(event) => setForm({ ...form, context_window: +event.target.value })} /></div><div className="space-y-2"><Label htmlFor="model-enabled">{tx("Bật", "Enabled")}</Label><Select id="model-enabled" value={String(form.enabled)} onChange={(event) => setForm({ ...form, enabled: event.target.value === "true" })}><option value="true">{tx("có", "yes")}</option><option value="false">{tx("không", "no")}</option></Select></div></div>
+      <div className="space-y-2"><Label htmlFor="model-context">{tx("Cửa sổ ngữ cảnh", "Context window")}</Label><Input id="model-context" name="context_window" type="number" min="1" value={form.context_window} onChange={(event) => setForm({ ...form, context_window: +event.target.value })} /></div>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="space-y-2">
+          <Label htmlFor="model-enabled">{tx("Bật", "Enabled")}</Label>
+          <Select id="model-enabled" value={String(form.enabled)} onChange={(event) => setForm({ ...form, enabled: event.target.value === "true" })}>
+            <option value="true">{tx("Có", "Yes")}</option>
+            <option value="false">{tx("Không", "No")}</option>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="model-vision">{tx("Hỗ trợ Vision", "Vision Support")}</Label>
+          <Select id="model-vision" value={String(Boolean(form.supports_vision))} onChange={(event) => setForm({ ...form, supports_vision: event.target.value === "true" })}>
+            <option value="true">{tx("Có (Đọc ảnh)", "Yes (Vision supported)")}</option>
+            <option value="false">{tx("Không (Chỉ văn bản)", "No (Text only)")}</option>
+          </Select>
+        </div>
+      </div>
       <Button type="submit" className="w-full">{tx("Lưu", "Save")}</Button>
     </form>
   );
