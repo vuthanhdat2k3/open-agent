@@ -4,7 +4,7 @@ import * as React from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "@/lib/api";
-import { getAccessToken, getActiveOrgId } from "@/lib/auth";
+import { getAccessToken, getActiveOrgId, setActiveOrgId } from "@/lib/auth";
 import type {
   Agent,
   AgentRelease,
@@ -770,8 +770,15 @@ export function useDeleteSandboxExecution() {
 export function useMe(enabled: boolean = true) {
   return useQuery({
     queryKey: ["auth-me"],
-    queryFn: () =>
-      api.get<UserProfile>("/api/auth/me"),
+    queryFn: async () => {
+      const data = await api.get<UserProfile>("/api/auth/me");
+      if (data.active_org_id) {
+        setActiveOrgId(data.active_org_id);
+      } else if (data.memberships?.[0]?.org_id && !getActiveOrgId()) {
+        setActiveOrgId(data.memberships[0].org_id);
+      }
+      return data;
+    },
     enabled,
   });
 }

@@ -90,6 +90,14 @@ async def get_current_user(
                     user = res.scalar_one_or_none()
                     if user:
                         request.state.user_id = user.id
+                        if not org_id:
+                            m_res = await db.execute(
+                                select(Membership.org_id).where(
+                                    Membership.user_id == user.id,
+                                    Membership.lifecycle_status == "active",
+                                ).order_by(Membership.created_at.asc()).limit(1)
+                            )
+                            org_id = m_res.scalar_one_or_none()
                         if not org_id and get_settings().auth_provider != "zitadel":
                             org_id = DEFAULT_ORG_ID
                         if not org_id:
@@ -110,6 +118,14 @@ async def get_current_user(
                     user = res.scalar_one_or_none()
                     if user:
                         request.state.user_id = user.id
+                        if not org_id:
+                            m_res = await db.execute(
+                                select(Membership.org_id).where(
+                                    Membership.user_id == user.id,
+                                    Membership.lifecycle_status == "active",
+                                ).order_by(Membership.created_at.asc()).limit(1)
+                            )
+                            org_id = m_res.scalar_one_or_none()
                         if not org_id and get_settings().auth_provider != "zitadel":
                             org_id = DEFAULT_ORG_ID
                         if not org_id:
@@ -179,6 +195,25 @@ async def get_current_org_id(
     state_org = getattr(request.state, "org_id", None)
     user_id = getattr(request.state, "user_id", None)
 
+    # 1. If state_org is not yet populated, attempt to resolve via application session cookie
+    if not state_org:
+        raw_session = request.cookies.get(settings.application_session_cookie_name)
+        if raw_session:
+            try:
+                user, membership, session = await resolve_application_session(
+                    db, raw_token=raw_session, request=request
+                )
+                request.state.user_id = user.id
+                request.state.org_id = membership.org_id
+                request.state.membership_id = membership.id
+                request.state.session_id = session.id
+                user.role = getattr(membership.role, "value", str(membership.role))
+                state_org = membership.org_id
+                user_id = user.id
+            except Exception:
+                pass
+
+    # 2. If still not set, resolve via Authorization header or access_token cookie
     if not state_org:
         auth_header = request.headers.get("Authorization")
         token = None
@@ -191,7 +226,6 @@ async def get_current_org_id(
             try:
                 import jwt as pyjwt
 
-                settings = get_settings()
                 raw_payload = pyjwt.decode(
                     token,
                     settings.jwt_secret_key,
@@ -201,15 +235,20 @@ async def get_current_org_id(
                 if raw_payload.get("org_id"):
                     state_org = raw_payload.get("org_id")
                     request.state.org_id = state_org
+                if raw_payload.get("sub"):
+                    user_id = raw_payload.get("sub")
+                    request.state.user_id = user_id
             except Exception:
                 pass
 
+    # 3. If header_org is provided and user is authenticated, verify membership
     if user_id and header_org:
         if header_org != state_org:
             res = await db.execute(
                 select(Membership).where(
                     Membership.org_id == header_org,
                     Membership.user_id == user_id,
+                    Membership.lifecycle_status == "active",
                 )
             )
             membership = res.scalar_one_or_none()
@@ -218,10 +257,24 @@ async def get_current_org_id(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail=f"User does not belong to organization '{header_org}'",
                 )
+        request.state.org_id = header_org
         return header_org
 
     if state_org:
         return state_org
+
+    # 4. Fallback to user's first active membership if user is known
+    if user_id:
+        res = await db.execute(
+            select(Membership.org_id).where(
+                Membership.user_id == user_id,
+                Membership.lifecycle_status == "active",
+            ).order_by(Membership.created_at.asc()).limit(1)
+        )
+        fallback_org = res.scalar_one_or_none()
+        if fallback_org:
+            request.state.org_id = fallback_org
+            return fallback_org
 
     if header_org:
         return header_org
