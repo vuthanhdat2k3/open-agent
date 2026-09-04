@@ -99,6 +99,38 @@ export function ChatComposer({
     }
   };
 
+  const handleSend = React.useCallback(() => {
+    if (streaming) return;
+    if (hasImageAttachment && !modelSupportsVision) {
+      if (recommendedVisionModel && onModelChange) {
+        toast.error(
+          tx(
+            `Mô hình "${effectiveModel?.display_name || effectiveModel?.name || "hiện tại"}" không hỗ trợ đọc ảnh. Vui lòng bấm "Đổi sang ${recommendedVisionModel.display_name || recommendedVisionModel.name}" hoặc chọn mô hình có Vision.`,
+            `Model "${effectiveModel?.display_name || effectiveModel?.name || "selected"}" does not support images. Please click "Switch to ${recommendedVisionModel.display_name || recommendedVisionModel.name}" or select a Vision model.`
+          )
+        );
+      } else {
+        toast.error(
+          tx(
+            "Vui lòng chọn mô hình có hỗ trợ Vision (biểu tượng con mắt) hoặc gỡ ảnh đính kèm trước khi gửi.",
+            "Please select a Vision-capable model (Eye icon) or remove the image attachment before sending."
+          )
+        );
+      }
+      return;
+    }
+    onSubmit();
+  }, [
+    streaming,
+    hasImageAttachment,
+    modelSupportsVision,
+    recommendedVisionModel,
+    onModelChange,
+    effectiveModel,
+    onSubmit,
+    tx,
+  ]);
+
   return (
     <div className={cn("relative rounded-xl border border-border bg-card shadow-card", variant === "floating" && "bg-card/80 backdrop-blur-md", className)}>
       {attachments.length > 0 && (
@@ -125,8 +157,8 @@ export function ChatComposer({
             <AlertCircle className="h-4 w-4 shrink-0 text-amber-500" aria-hidden="true" />
             <span>
               {tx(
-                `Mô hình "${effectiveModel?.display_name || effectiveModel?.name || "hiện tại"}" không hỗ trợ thị giác (Vision) trực tiếp. Văn bản sẽ được trích xuất qua OCR.`,
-                `Current model "${effectiveModel?.display_name || effectiveModel?.name || "selected"}" lacks native Vision. Text will be extracted via OCR.`
+                `Mô hình "${effectiveModel?.display_name || effectiveModel?.name || "hiện tại"}" không hỗ trợ xử lý hình ảnh (Vision). Vui lòng chuyển sang mô hình có Vision để gửi ảnh.`,
+                `Current model "${effectiveModel?.display_name || effectiveModel?.name || "selected"}" does not support image analysis (Vision). Please switch to a Vision-capable model.`
               )}
             </span>
           </div>
@@ -160,7 +192,7 @@ export function ChatComposer({
         onKeyDown={(e) => {
           if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
-            if (!streaming) onSubmit();
+            if (!streaming) handleSend();
           }
         }}
         placeholder={activePlaceholder}
@@ -271,7 +303,7 @@ export function ChatComposer({
           <Button
             type="button"
             size="icon"
-            onClick={streaming ? onStop : onSubmit}
+            onClick={streaming ? onStop : handleSend}
             disabled={streaming ? false : disabled}
             variant={streaming ? "outline" : "default"}
             className="h-8 w-8 rounded-lg"
