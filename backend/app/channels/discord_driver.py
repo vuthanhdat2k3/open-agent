@@ -19,6 +19,8 @@ class DiscordDriver:
     Supports both bot token auth and webhook URL sending.
     """
 
+    _shared_client: httpx.AsyncClient | None = None
+
     def __init__(self, bot_token: str, config: dict[str, Any]) -> None:
         self.token = bot_token
         self.config = config
@@ -26,6 +28,23 @@ class DiscordDriver:
             "Authorization": f"Bot {bot_token}",
             "Content-Type": "application/json",
         }
+
+    @classmethod
+    def _get_http_client(cls) -> httpx.AsyncClient:
+        if cls._shared_client is None or cls._shared_client.is_closed:
+            cls._shared_client = httpx.AsyncClient(
+                timeout=30.0,
+                limits=httpx.Limits(
+                    max_keepalive_connections=10,
+                    max_connections=20,
+                    keepalive_expiry=30.0,
+                ),
+            )
+        return cls._shared_client
+
+    @property
+    def client(self) -> httpx.AsyncClient:
+        return self._get_http_client()
 
     async def send_message(
         self,
@@ -37,58 +56,63 @@ class DiscordDriver:
 
         Automatically splits messages longer than 1900 characters into sequential
         chunks to prevent Discord HTTP 400 Bad Request (2000-character limit).
+        Converts markdown tables to code blocks for Discord compatibility.
         """
+        from app.channels.formatters import convert_markdown
+
+        # Convert tables to code blocks for Discord
+        content = convert_markdown(content, "discord")
+
         chunks = split_message(content, max_length=1900)
         last_id = ""
 
-        async with httpx.AsyncClient() as client:
-            for i, chunk in enumerate(chunks):
-                payload: dict[str, Any] = {
-                    "content": chunk,
-                }
-                # Attach embeds/components to the last chunk
-                if i == len(chunks) - 1:
-                    if opts.get("embeds"):
-                        payload["embeds"] = opts["embeds"]
-                    if opts.get("components"):
-                        payload["components"] = opts["components"]
+        client = self.client
+        for i, chunk in enumerate(chunks):
+            payload: dict[str, Any] = {
+                "content": chunk,
+            }
+            # Attach embeds/components to the last chunk
+            if i == len(chunks) - 1:
+                if opts.get("embeds"):
+                    payload["embeds"] = opts["embeds"]
+                if opts.get("components"):
+                    payload["components"] = opts["components"]
 
+            try:
+                resp = await client.post(
+                    f"{DISCORD_API_BASE}/channels/{recipient}/messages",
+                    json=payload,
+                    headers=self.headers,
+                    timeout=30.0,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                last_id = str(data.get("id", ""))
+            except httpx.HTTPStatusError as exc:
+                err_body = ""
                 try:
-                    resp = await client.post(
-                        f"{DISCORD_API_BASE}/channels/{recipient}/messages",
-                        json=payload,
-                        headers=self.headers,
-                        timeout=30.0,
-                    )
-                    resp.raise_for_status()
-                    data = resp.json()
-                    last_id = str(data.get("id", ""))
-                except httpx.HTTPStatusError as exc:
-                    err_body = ""
-                    try:
-                        err_body = f" - Discord response: {exc.response.text}"
-                    except Exception:
-                        pass
-                    logger.error(
-                        "Discord send_message error (status %s)%s",
-                        exc.response.status_code,
-                        err_body,
-                    )
-                    raise RuntimeError(
-                        f"Discord API error {exc.response.status_code}{err_body}"
-                    ) from exc
+                    err_body = f" - Discord response: {exc.response.text}"
+                except Exception:
+                    pass
+                logger.error(
+                    "Discord send_message error (status %s)%s",
+                    exc.response.status_code,
+                    err_body,
+                )
+                raise RuntimeError(
+                    f"Discord API error {exc.response.status_code}{err_body}"
+                ) from exc
 
         return last_id
 
     async def trigger_typing(self, recipient: str) -> None:
         """Trigger typing indicator in a Discord channel (lasts ~8-10 seconds)."""
         try:
-            async with httpx.AsyncClient() as client:
-                await client.post(
-                    f"{DISCORD_API_BASE}/channels/{recipient}/typing",
-                    headers=self.headers,
-                    timeout=10.0,
-                )
+            await self.client.post(
+                f"{DISCORD_API_BASE}/channels/{recipient}/typing",
+                headers=self.headers,
+                timeout=10.0,
+            )
         except Exception as e:
             logger.debug("discord_trigger_typing_failed: %s", e)
 
@@ -108,14 +132,13 @@ class DiscordDriver:
             payload["embeds"] = opts["embeds"]
 
         try:
-            async with httpx.AsyncClient() as client:
-                resp = await client.patch(
-                    f"{DISCORD_API_BASE}/channels/{recipient}/messages/{message_id}",
-                    json=payload,
-                    headers=self.headers,
-                    timeout=15.0,
-                )
-                return resp.status_code == 200
+            resp = await self.client.patch(
+                f"{DISCORD_API_BASE}/channels/{recipient}/messages/{message_id}",
+                json=payload,
+                headers=self.headers,
+                timeout=15.0,
+            )
+            return resp.status_code == 200
         except Exception as e:
             logger.debug("discord_edit_message_failed: %s", e)
             return False
@@ -201,22 +224,21 @@ class DiscordDriver:
     async def test_connection(self) -> TestResult:
         """Verify the bot token is valid."""
         try:
-            async with httpx.AsyncClient() as client:
-                resp = await client.get(
-                    f"{DISCORD_API_BASE}/applications/@me",
-                    headers=self.headers,
-                    timeout=10.0,
-                )
-                if resp.status_code == 200:
-                    data = resp.json()
-                    return TestResult(
-                        ok=True,
-                        message=data.get("name", "Unknown"),
-                    )
+            resp = await self.client.get(
+                f"{DISCORD_API_BASE}/applications/@me",
+                headers=self.headers,
+                timeout=10.0,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
                 return TestResult(
-                    ok=False,
-                    message=f"HTTP {resp.status_code}: {resp.text[:200]}",
+                    ok=True,
+                    message=data.get("name", "Unknown"),
                 )
+            return TestResult(
+                ok=False,
+                message=f"HTTP {resp.status_code}: {resp.text[:200]}",
+            )
         except httpx.HTTPError as e:
             return TestResult(ok=False, message=f"HTTP error: {e}")
         except Exception as e:

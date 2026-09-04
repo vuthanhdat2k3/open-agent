@@ -4,7 +4,11 @@ import asyncio
 import os
 
 import httpx
-import pdf_inspector
+
+try:
+    import pdf_inspector
+except ImportError:
+    pdf_inspector = None
 import structlog
 
 from app.config import get_settings
@@ -78,6 +82,8 @@ _resolve_ocr_runtime_env()
 
 def _extract_pdf_sync(data: bytes, filename: str) -> str:
     """Synchronous CPU-bound PDF extraction using pdf-inspector (native and selective OCR)."""
+    if pdf_inspector is None:
+        return f"[could not read '{filename}': pdf-inspector library is not installed]"
     try:
         res = pdf_inspector.process_pdf_bytes(data)
         text = res.markdown or ""

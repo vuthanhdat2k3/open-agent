@@ -75,6 +75,9 @@ class Settings(BaseSettings):
     workflow_node_default_timeout_s: int = 900
     workflow_webhook_shared_token: str = ""
     redis_url: str = "redis://127.0.0.1:6379/0"
+    # Public URL for webhooks (e.g., https://your-domain.com or https://xxxx.ngrok.io)
+    # Required for Telegram/Discord webhook setup
+    public_url: str = ""
     quota_requests_per_minute: int = 600
     quota_agent_runs_per_minute: int = 60
     quota_max_concurrent_runs: int = 10
