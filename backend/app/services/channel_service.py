@@ -159,7 +159,10 @@ class ChannelService:
         connection_id: str,
         message: Any,
     ) -> ChannelMessage:
-        """Store an inbound message from a channel."""
+        meta = dict(message.raw or {}) if isinstance(message.raw, dict) else {}
+        if getattr(message, "metadata", None) and isinstance(message.metadata, dict):
+            meta.update(message.metadata)
+
         db_message = ChannelMessage(
             org_id=org_id,
             connection_id=connection_id,
@@ -170,7 +173,7 @@ class ChannelService:
             conversation_id=message.conversation_id,
             message_type=message.message_type,
             content=message.text,
-            metadata_json=message.raw,
+            metadata_json=meta,
         )
         return await self.message_repo.create(db_message)
 
