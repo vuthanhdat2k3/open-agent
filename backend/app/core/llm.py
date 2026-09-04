@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import time
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 
@@ -30,6 +31,13 @@ settings = get_settings()
 _TRANSIENT_LLM_ERRORS = (APIConnectionError, APITimeoutError, RateLimitError, InternalServerError)
 _STREAM_CONNECT_RETRIES = 2
 _STREAM_CONNECT_BACKOFF_SECONDS = 0.5
+# The 60s per-chunk timeout below only bounds the *gap* between two chunks -
+# a provider dribbling out chunks just under that gap, indefinitely, would
+# never trip it. Callers hold a checked-out DB connection for this whole
+# call (see chat.py::run_chat_detached), so an unbounded stream duration
+# means one stuck provider call can exhaust the entire pool for every other
+# request. This bounds total wall-clock time regardless of chunk cadence.
+_STREAM_TOTAL_TIMEOUT_SECONDS = 300.0
 
 
 def _thinking_tool_choice_error(exc: BadRequestError, tool_choice: Any | None) -> bool:
@@ -173,7 +181,10 @@ class LLMClient:
         usage: dict[str, int] | None = None
         finish_reasons: list[str] = []
         chunk_iter = aiter(stream)
+        stream_started_at = time.monotonic()
         while True:
+            if time.monotonic() - stream_started_at > _STREAM_TOTAL_TIMEOUT_SECONDS:
+                break
             try:
                 chunk = await asyncio.wait_for(anext(chunk_iter), timeout=60.0)
             except StopAsyncIteration:

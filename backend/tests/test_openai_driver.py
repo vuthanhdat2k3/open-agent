@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -7,6 +9,56 @@ from app.core.providers.driver import model_info_from_mapping
 from app.core.providers.openai_driver import OpenAICompatibleDriver
 from app.core.tools.registry import BUILTIN_TOOLS
 from app.core.tools.types import tool_to_openai_schema
+
+
+async def test_stream_bounds_total_duration_even_with_fast_chunks() -> None:
+    """Regression guard: a provider dribbling out chunks well under the
+    per-chunk gap timeout, indefinitely, must still be cut off by the
+    overall wall-clock cap - otherwise the caller's checked-out DB
+    connection (see chat.py::run_chat_detached) is held forever."""
+
+    def _chunk() -> SimpleNamespace:
+        return SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    delta=SimpleNamespace(content="x", tool_calls=None),
+                    finish_reason=None,
+                )
+            ],
+            usage=None,
+        )
+
+    async def _fake_chunks():
+        # Well under the 60s per-chunk gap timeout, but this generator never
+        # stops on its own - only the total-duration cap should end it.
+        for _ in range(1000):
+            await asyncio.sleep(0.01)
+            yield _chunk()
+
+    driver = OpenAICompatibleDriver(
+        "https://example.test/v1", "key", "openai-compatible-test"
+    )
+    with (
+        patch.object(
+            driver._client.chat.completions,
+            "create",
+            new=AsyncMock(return_value=_fake_chunks()),
+        ),
+        patch("app.core.llm._STREAM_TOTAL_TIMEOUT_SECONDS", 0.1),
+    ):
+        started = time.monotonic()
+        events = [ev async for ev in driver.stream([{"role": "user", "content": "hi"}])]
+        elapsed = time.monotonic() - started
+
+    assert elapsed < 5.0, "stream() did not respect the total-duration cap"
+    assert events[-1] == {
+        "type": "usage",
+        "usage": {"input_tokens": 0, "output_tokens": 0},
+        "estimated": True,
+        "finish_reasons": [],
+    }
+    # Cut off well before all 1000 fake chunks were consumed.
+    assert sum(1 for ev in events if ev["type"] == "content") < 100
 
 
 def test_model_info_from_mapping_detects_vision_by_name() -> None:

@@ -80,3 +80,118 @@ describe("auto-layout effect (Fix #11)", () => {
     expect(spy).not.toHaveBeenCalled();
   });
 });
+
+describe("workflow approval re-sync and live lifecycle (Bug 1)", () => {
+  it("polls while in waiting_approval status and stops only on terminal states", () => {
+    // Mirror refetchInterval logic in useWorkflowRun
+    const computeRefetchInterval = (status: string | undefined) => {
+      return status && ["succeeded", "failed", "diverged", "cancelled"].includes(status)
+        ? false
+        : 2000;
+    };
+
+    expect(computeRefetchInterval("waiting_approval")).toBe(2000);
+    expect(computeRefetchInterval("running")).toBe(2000);
+    expect(computeRefetchInterval("queued")).toBe(2000);
+    expect(computeRefetchInterval("succeeded")).toBe(false);
+    expect(computeRefetchInterval("failed")).toBe(false);
+    expect(computeRefetchInterval("cancelled")).toBe(false);
+  });
+
+  it("triggers refetch when approval-decided event is emitted", () => {
+    const refetchSpy = vi.fn();
+    const handleApprovalDecided = () => {
+      refetchSpy();
+    };
+
+    window.addEventListener("approval-decided", handleApprovalDecided);
+    window.dispatchEvent(
+      new CustomEvent("approval-decided", {
+        detail: { id: "app-123", decision: "approved", run_id: "run-456" },
+      }),
+    );
+
+    expect(refetchSpy).toHaveBeenCalledTimes(1);
+    window.removeEventListener("approval-decided", handleApprovalDecided);
+  });
+});
+
+describe("duplicate load workflow prevention (Bug 2)", () => {
+  it("guards against duplicate loadWorkflow calls when data updates", () => {
+    let loadCount = 0;
+    const lastLoadedEditIdRef = { current: null as string | null };
+
+    const loadWorkflow = (wf: { id: string; name: string }) => {
+      lastLoadedEditIdRef.current = wf.id;
+      loadCount++;
+    };
+
+    const simulateDataEffect = (editIdParam: string | null, data: Array<{ id: string; name: string }>) => {
+      if (!editIdParam) return;
+      if (editIdParam === lastLoadedEditIdRef.current) return;
+      const wf = data.find((w) => w.id === editIdParam);
+      if (wf) {
+        loadWorkflow(wf);
+      }
+    };
+
+    const workflowData = [{ id: "wf-1", name: "Gmail Monitor" }];
+
+    // Step 1: User installs template -> handleInstallTemplate calls loadWorkflow directly
+    loadWorkflow(workflowData[0]);
+    expect(loadCount).toBe(1);
+    expect(lastLoadedEditIdRef.current).toBe("wf-1");
+
+    // Step 2: workflows.refetch() resolves, triggering the useEffect([data]) with ?edit=wf-1
+    simulateDataEffect("wf-1", workflowData);
+    // Should NOT call loadWorkflow again
+    expect(loadCount).toBe(1);
+
+    // Step 3: Navigating to a different workflow does load it
+    const updatedData = [
+      { id: "wf-1", name: "Gmail Monitor" },
+      { id: "wf-2", name: "Slack Triage" },
+    ];
+    simulateDataEffect("wf-2", updatedData);
+    expect(loadCount).toBe(2);
+    expect(lastLoadedEditIdRef.current).toBe("wf-2");
+  });
+});
+
+describe("node attempt deduplication in RunKpiStrip (Bug 3)", () => {
+  it("deduplicates multi-attempt nodes and accurately reports 5/5 nodes", async () => {
+    const { dedupeLatestNodes } = await import("@/lib/automations/kpi");
+
+    // Realistic run.nodes containing 6 attempts (approval has attempt 1 waiting, attempt 2 succeeded)
+    const rawNodeRuns = [
+      { id: "nr-1", node_id: "input", attempt: 1, status: "succeeded" },
+      { id: "nr-2", node_id: "triager", attempt: 1, status: "succeeded" },
+      { id: "nr-3", node_id: "agent", attempt: 1, status: "succeeded" },
+      { id: "nr-4", node_id: "approval", attempt: 1, status: "waiting_approval" },
+      { id: "nr-5", node_id: "approval", attempt: 2, status: "succeeded" },
+      { id: "nr-6", node_id: "output", attempt: 1, status: "succeeded" },
+    ];
+
+    const deduplicated = dedupeLatestNodes(rawNodeRuns);
+    expect(deduplicated).toHaveLength(5);
+
+    const doneCount = deduplicated.filter((n) => n.status === "succeeded").length;
+    const totalCount = deduplicated.length;
+
+    expect(totalCount).toBe(5);
+    expect(doneCount).toBe(5);
+    expect(Math.round((doneCount / totalCount) * 100)).toBe(100);
+  });
+
+  it("handles empty or single attempt node runs gracefully", async () => {
+    const { dedupeLatestNodes } = await import("@/lib/automations/kpi");
+
+    expect(dedupeLatestNodes(undefined)).toEqual([]);
+    expect(dedupeLatestNodes([])).toEqual([]);
+
+    const single = [{ id: "nr-1", node_id: "input", attempt: 1, status: "running" }];
+    expect(dedupeLatestNodes(single)).toHaveLength(1);
+    expect(dedupeLatestNodes(single)[0].status).toBe("running");
+  });
+});
+

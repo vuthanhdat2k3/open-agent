@@ -4,6 +4,7 @@ import * as React from "react";
 import { Activity, Clock3, Coins } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import type { WorkflowRunDetail } from "@/types";
+import { dedupeLatestNodes } from "@/lib/automations/kpi";
 
 interface RunKpiStripProps {
   run: WorkflowRunDetail | undefined;
@@ -19,10 +20,17 @@ const STATUS_STYLES: Record<string, { labelKey: string; className: string; pulse
   cancelled: { labelKey: "pages.workflows.statusCancelled", className: "border-muted/40 bg-muted/10 text-muted-foreground" },
 };
 
+// Backend datetimes are naive UTC (no "Z"/offset suffix) - the Date
+// constructor would otherwise parse them as local time, throwing this off
+// by the browser's UTC offset (e.g. +7h shows as an extra "420m").
+function parseUtc(value: string): number {
+  return new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(value) ? value : `${value}Z`).getTime();
+}
+
 function fmtDuration(started?: string | null, finished?: string | null) {
   if (!started) return "—";
-  const start = new Date(started).getTime();
-  const end = finished ? new Date(finished).getTime() : Date.now();
+  const start = parseUtc(started);
+  const end = finished ? parseUtc(finished) : Date.now();
   const ms = Math.max(0, end - start);
   if (ms < 1000) return `${ms}ms`;
   if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
@@ -45,8 +53,9 @@ export function RunKpiStrip({ run }: RunKpiStripProps) {
   const { t } = useTranslation();
   if (!run) return null;
   const style = STATUS_STYLES[run.status] ?? STATUS_STYLES.queued;
-  const done = run.nodes?.filter((n) => n.status === "succeeded").length ?? 0;
-  const total = run.nodes?.length ?? 0;
+  const latest = dedupeLatestNodes(run.nodes);
+  const done = latest.filter((n) => n.status === "succeeded").length;
+  const total = latest.length;
   const progress = total ? Math.round((done / total) * 100) : 0;
 
   return (

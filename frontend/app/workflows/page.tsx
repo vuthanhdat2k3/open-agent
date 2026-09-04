@@ -160,6 +160,7 @@ export default function WorkflowEditor() {
     edges,
     selectedNodeId,
     activeRunId,
+    activeRunStatus,
     setGraph,
     setActiveWorkflow,
     setSelectedNode,
@@ -388,11 +389,13 @@ export default function WorkflowEditor() {
 
   // Load a workflow directly when opened with ?edit=<id> or sync with activeWorkflowId from store
   const didLoadEditRef = React.useRef(false);
+  const lastLoadedEditIdRef = React.useRef<string | null>(null);
   React.useEffect(() => {
     if (typeof window === "undefined" || !data) return;
     const url = new URL(window.location.href);
     const editIdParam = url.searchParams.get("edit");
     if (editIdParam) {
+      if (editIdParam === lastLoadedEditIdRef.current) return;
       const wf = data.find((w) => w.id === editIdParam);
       if (wf) {
         didLoadEditRef.current = true;
@@ -404,6 +407,7 @@ export default function WorkflowEditor() {
     } else if (!didLoadEditRef.current) {
       didLoadEditRef.current = true;
       if (activeWorkflowId) {
+        if (activeWorkflowId === lastLoadedEditIdRef.current) return;
         const wf = data.find((w) => w.id === activeWorkflowId);
         if (wf) {
           loadWorkflow(wf);
@@ -526,6 +530,7 @@ export default function WorkflowEditor() {
     setNodeStatus({});
     setActiveRun(null);
     setSelectedNode(null);
+    lastLoadedEditIdRef.current = null;
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
       url.searchParams.delete("edit");
@@ -537,6 +542,7 @@ export default function WorkflowEditor() {
 
   const loadWorkflow = (wf: any) => {
     if (!wf) return;
+    lastLoadedEditIdRef.current = wf.id;
     setWfName(wf.name);
     setEditId(wf.id);
     setActiveWorkflow(wf.id, wf.name);
@@ -603,7 +609,7 @@ export default function WorkflowEditor() {
   React.useEffect(() => {
     const run = workflowRun.data;
     if (!run) return;
-    if (activeRunId !== run.id) {
+    if (activeRunId !== run.id || activeRunStatus !== run.status) {
       setActiveRun(run.id, run.status);
     }
     // Auto-bind parent workflow when viewing run if not already bound
@@ -643,8 +649,23 @@ export default function WorkflowEditor() {
     });
     if (run.output?.text) setOutput(String(run.output.text));
     setRunning(!["succeeded", "failed", "diverged", "cancelled", "waiting_approval"].includes(run.status));
-    setLogs((previous) => (previous.length === 0 ? restoredLogs : previous));
-  }, [workflowRun.data, setActiveRun, activeRunId, editId, data, nodes.length, setGraph]);
+    setLogs((previous) => {
+      if (!sseActiveRef.current) {
+        return restoredLogs.length > 0 ? restoredLogs : previous;
+      }
+      return previous.length === 0 ? restoredLogs : previous;
+    });
+  }, [workflowRun.data, setActiveRun, activeRunId, activeRunStatus, editId, data, nodes.length, setGraph]);
+
+  // Synchronize immediately when an approval is resolved (e.g. via 3D companion or approvals drawer)
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleApprovalDecided = () => {
+      void workflowRun.refetch();
+    };
+    window.addEventListener("approval-decided", handleApprovalDecided);
+    return () => window.removeEventListener("approval-decided", handleApprovalDecided);
+  }, [workflowRun]);
 
   const runReplay = async (runId: string) => {
     try {
