@@ -5,6 +5,7 @@ import { ArrowUp, Loader2, Paperclip, Square, X, Cpu, ShieldCheck, ChevronDown }
 import { Textarea } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 import { useUploadFile } from "@/hooks";
 import { useTranslation } from "@/lib/i18n";
 import {
@@ -77,14 +78,17 @@ export function ChatComposer({
 
   const handleFiles = async (fileList: FileList | null) => {
     if (!fileList?.length) return;
+    const nextAttachments = [...attachments];
     for (const file of Array.from(fileList)) {
       try {
         const uploaded = await upload.mutateAsync(file);
-        onAttachmentsChange([...attachments, uploaded]);
-      } catch {
-        // useUploadFile's mutation error is surfaced via its own isError
-        // state where callers show it; nothing more to do per-file here.
+        nextAttachments.push(uploaded);
+      } catch (err: any) {
+        toast.error(err?.message || tx("Không thể tải lên tệp", "Could not upload file"));
       }
+    }
+    if (nextAttachments.length !== attachments.length) {
+      onAttachmentsChange(nextAttachments);
     }
   };
 
