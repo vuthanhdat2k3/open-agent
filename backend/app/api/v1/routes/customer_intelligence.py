@@ -163,8 +163,8 @@ async def start_ci_oauth(
     kind: str,
     provider: str,
     request: Request,
-    org_id: str = Depends(get_current_org_id),
     current_user: User = Depends(get_current_user),
+    org_id: str = Depends(get_current_org_id),
     _permission: None = Depends(require_any_permission("ci:manage", "ci:personal:manage")),
 ):
     _guard_enabled()

@@ -405,3 +405,23 @@ def test_update_profile_display_name_and_password(client: TestClient) -> None:
     )
     assert login_resp.status_code == 200
 
+
+def test_get_current_org_id_with_x_org_id_header(client: TestClient) -> None:
+    reg = client.post(
+        "/api/auth/register",
+        json={"email": "org_hdr_user@example.com", "password": "Password123!", "org_name": "Header Org"},
+    )
+    assert reg.status_code == 201
+    token = reg.json()["access_token"]
+    me_resp = client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert me_resp.status_code == 200
+    org_id = me_resp.json()["active_org_id"]
+
+    # Request with X-Org-Id matching membership should succeed
+    resp = client.get(
+        "/api/agents",
+        headers={"Authorization": f"Bearer {token}", "X-Org-Id": org_id},
+    )
+    assert resp.status_code == 200
+
+
