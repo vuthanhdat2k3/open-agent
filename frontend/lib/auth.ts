@@ -1,6 +1,7 @@
 "use client";
 
 let accessToken: string | null = null;
+let activeOrgId: string | null = null;
 let sessionAuthenticated = false;
 let refreshPromise: Promise<string | null> | null = null;
 const listeners = new Set<(token: string | null) => void>();
@@ -9,7 +10,26 @@ export function getAccessToken() {
   return accessToken;
 }
 
+export function setActiveOrgId(orgId: string | null) {
+  activeOrgId = orgId;
+  if (typeof window !== "undefined") {
+    if (orgId) {
+      localStorage.setItem("active_org_id", orgId);
+    } else {
+      localStorage.removeItem("active_org_id");
+    }
+  }
+}
+
 export function getActiveOrgId(): string | null {
+  if (activeOrgId) return activeOrgId;
+  if (typeof window !== "undefined") {
+    const stored = localStorage.getItem("active_org_id");
+    if (stored) {
+      activeOrgId = stored;
+      return stored;
+    }
+  }
   if (!accessToken) return null;
   try {
     const parts = accessToken.split(".");
