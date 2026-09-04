@@ -20,6 +20,30 @@ def _generate_test_pdf(text: str) -> bytes:
     return buf.getvalue()
 
 
+def _generate_scanned_pdf(text: str) -> bytes:
+    """A PDF with the given text baked into a raster image, no text layer -
+    same shape as a real scanned document, to exercise the real (unmocked)
+    PDFium + ONNX Runtime OCR path end to end."""
+    from PIL import Image, ImageDraw
+
+    img = Image.new("RGB", (500, 120), color="white")
+    ImageDraw.Draw(img).text((10, 40), text, fill="black")
+    buf = io.BytesIO()
+    img.save(buf, format="PDF")
+    return buf.getvalue()
+
+
+@pytest.mark.asyncio
+async def test_extract_text_pdf_real_ocr_end_to_end() -> None:
+    """No mocks: regression guard for the PDFium/ONNX Runtime shared-library
+    auto-resolution in attachment_extract.py - a scanned PDF must actually
+    OCR successfully, not silently degrade to "no extractable text"."""
+    pdf_bytes = _generate_scanned_pdf("HELLO OCR TEST 12345")
+    extracted = await extract_text(pdf_bytes, "scanned.pdf")
+    assert not is_extraction_error(extracted)
+    assert "HELLO OCR TEST 12345" in extracted
+
+
 @pytest.mark.asyncio
 async def test_extract_text_plain_formats() -> None:
     txt_data = b"Hello world, plain text!"
