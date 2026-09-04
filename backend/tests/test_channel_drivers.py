@@ -501,5 +501,36 @@ class TestTelegramBotManager:
         file_bytes = await driver.download_file_bytes("photos/file_1.jpg")
         assert file_bytes == b"\xff\xd8\xff\xe0"
 
+    def test_discord_markdown_table_and_heading_formatting(self):
+        from app.channels.formatters import convert_markdown
+
+        raw_text = (
+            "#### Thông tin cơ bản\n\n"
+            "| Tiêu chí | Nội dung |\n"
+            "|----------|----------|\n"
+            "| Tên văn bản | Sắc lệnh Số 109 |\n"
+            "| **Ngày ban hành** | 18 tháng 6 năm 1946 |\n\n"
+            "##### Cấp bậc & Chức danh\n\n"
+            "| Cấp bậc | Mô tả | Ghi chú |\n"
+            "|---|---|---|\n"
+            "| **Cấp 1-3** | Toàn màu vàng | Nhân viên |\n"
+        )
+
+        formatted = convert_markdown(raw_text, "discord")
+
+        # Headings level 4+ should be converted to ###
+        assert "####" not in formatted
+        assert "#####" not in formatted
+        assert "### Thông tin cơ bản" in formatted
+        assert "### Cấp bậc & Chức danh" in formatted
+
+        # Tables should be converted to clean bullet lists with bold keys, not raw pipes or code blocks
+        assert "|----------|" not in formatted
+        assert "• **Tên văn bản:** Sắc lệnh Số 109" in formatted
+        assert "• **Ngày ban hành:** 18 tháng 6 năm 1946" in formatted
+        # Multi-column table
+        assert "• **Cấp 1-3:** Mô tả: Toàn màu vàng — Ghi chú: Nhân viên" in formatted
+
+
 
 

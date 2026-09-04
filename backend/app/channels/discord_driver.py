@@ -123,7 +123,9 @@ class DiscordDriver:
         content: str,
         **opts: Any,
     ) -> bool:
-        """Edit an existing Discord message for progressive live streaming."""
+        from app.channels.formatters import convert_markdown
+
+        content = convert_markdown(content, "discord")
         chunks = split_message(content, max_length=1900)
         target_content = chunks[0] if chunks else content
 
