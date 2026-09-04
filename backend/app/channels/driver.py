@@ -58,6 +58,21 @@ class ChannelDriver(Protocol):
         """Verify the connection credentials are valid."""
         ...
 
+    async def trigger_typing(self, recipient: str) -> None:
+        """Trigger typing indicator in the channel."""
+        ...
+
+    async def edit_message(
+        self,
+        recipient: str,
+        message_id: str,
+        content: str,
+        **opts: Any,
+    ) -> bool:
+        """Edit an existing message for live progressive streaming."""
+        ...
+
+
 
 def split_message(
     content: str,

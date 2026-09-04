@@ -80,6 +80,46 @@ class DiscordDriver:
 
         return last_id
 
+    async def trigger_typing(self, recipient: str) -> None:
+        """Trigger typing indicator in a Discord channel (lasts ~8-10 seconds)."""
+        try:
+            async with httpx.AsyncClient() as client:
+                await client.post(
+                    f"{DISCORD_API_BASE}/channels/{recipient}/typing",
+                    headers=self.headers,
+                    timeout=10.0,
+                )
+        except Exception as e:
+            logger.debug("discord_trigger_typing_failed: %s", e)
+
+    async def edit_message(
+        self,
+        recipient: str,
+        message_id: str,
+        content: str,
+        **opts: Any,
+    ) -> bool:
+        """Edit an existing Discord message for progressive live streaming."""
+        chunks = split_message(content, max_length=1900)
+        target_content = chunks[0] if chunks else content
+
+        payload: dict[str, Any] = {"content": target_content}
+        if opts.get("embeds"):
+            payload["embeds"] = opts["embeds"]
+
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.patch(
+                    f"{DISCORD_API_BASE}/channels/{recipient}/messages/{message_id}",
+                    json=payload,
+                    headers=self.headers,
+                    timeout=15.0,
+                )
+                return resp.status_code == 200
+        except Exception as e:
+            logger.debug("discord_edit_message_failed: %s", e)
+            return False
+
     async def parse_webhook(self, payload: dict[str, Any]) -> InboundMessage | None:
         """Parse a Discord interaction payload into an InboundMessage.
 

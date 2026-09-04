@@ -76,6 +76,48 @@ class TelegramDriver:
 
         return last_id
 
+    async def trigger_typing(self, recipient: str) -> None:
+        """Trigger typing chat action in a Telegram chat."""
+        try:
+            async with httpx.AsyncClient() as client:
+                await client.post(
+                    f"{self.base_url}/sendChatAction",
+                    json={"chat_id": recipient, "action": "typing"},
+                    timeout=10.0,
+                )
+        except Exception as e:
+            logger.debug("telegram_trigger_typing_failed: %s", e)
+
+    async def edit_message(
+        self,
+        recipient: str,
+        message_id: str,
+        content: str,
+        **opts: Any,
+    ) -> bool:
+        """Edit an existing Telegram message for progressive live streaming."""
+        chunks = split_message(content, max_length=4000)
+        target_content = chunks[0] if chunks else content
+
+        payload = {
+            "chat_id": recipient,
+            "message_id": int(message_id) if str(message_id).isdigit() else message_id,
+            "text": target_content,
+            "parse_mode": opts.get("parse_mode", "HTML"),
+        }
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.post(
+                    f"{self.base_url}/editMessageText",
+                    json=payload,
+                    timeout=15.0,
+                )
+                data = resp.json()
+                return bool(data.get("ok"))
+        except Exception as e:
+            logger.debug("telegram_edit_message_failed: %s", e)
+            return False
+
     async def parse_webhook(self, payload: dict[str, Any]) -> InboundMessage | None:
         """Parse a Telegram Update into an InboundMessage."""
         # Handle callback queries
