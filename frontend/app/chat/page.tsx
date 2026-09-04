@@ -55,6 +55,7 @@ export default function ChatPage() {
     hydrated: chatHydrated,
     setAgent,
     setSession,
+    setAgentAndSession,
     setActiveRun,
     toggleDebug,
     setPendingModel,
@@ -236,7 +237,7 @@ export default function ChatPage() {
   // after validation. In-app changes go through the sync wrappers above,
   // which keep the url in sync themselves.
   const urlAgent = searchParams.get("agent");
-  const urlSession = searchParams.get("session");
+  const urlSession = searchParams.get("session") || searchParams.get("session_id");
   const urlModel = searchParams.get("model");
 
   React.useEffect(() => {
@@ -263,20 +264,34 @@ export default function ChatPage() {
     const isEndUserRole = isEndUser(role);
     const orchestratorAgent = agents.data.find((a) => a.kind === "orchestrator");
     const fallbackAgent = (isEndUserRole && orchestratorAgent) || agents.data[0];
+
+    // Check if urlSession points to an existing session
+    const targetSession = urlSession && sessions.isSuccess
+      ? sessions.data?.find((s) => s.id === urlSession)
+      : null;
+
     const resolvedAgent =
       urlAgent &&
       agents.data.some(
         (a) => a.id === urlAgent && (!isEndUserRole || a.kind === "orchestrator"),
       )
         ? urlAgent
-        : agentId &&
-            agents.data.some(
-              (a) => a.id === agentId && (!isEndUserRole || a.kind === "orchestrator"),
-            )
-          ? agentId
-          : fallbackAgent.id;
+        : targetSession &&
+            agents.data.some((a) => a.id === targetSession.agent_id)
+          ? targetSession.agent_id
+          : agentId &&
+              agents.data.some(
+                (a) => a.id === agentId && (!isEndUserRole || a.kind === "orchestrator"),
+              )
+            ? agentId
+            : fallbackAgent.id;
 
     if (transitioningAgentRef.current === undefined && resolvedAgent !== agentId) {
+      if (targetSession) {
+        setAgentAndSession(targetSession.agent_id, targetSession.id);
+        setAgentReady(true);
+        return;
+      }
       setAgent(resolvedAgent);
       setAgentReady(true);
       return;
@@ -288,11 +303,13 @@ export default function ChatPage() {
       return;
     }
 
-    if (urlSession && urlSession !== sessionId && sessions.isSuccess) {
+    if (urlSession && sessions.isSuccess) {
       const session = sessions.data.find((s) => s.id === urlSession);
-      if (session && session.agent_id === resolvedAgent) {
-        setSession(urlSession);
-      } else if (!session) {
+      if (session) {
+        if (session.id !== sessionId || session.agent_id !== agentId) {
+          setAgentAndSession(session.agent_id, session.id);
+        }
+      } else {
         router.replace(buildChatUrl(resolvedAgent, null, pendingSessionModelId || null), { scroll: false });
       }
       return;
@@ -318,7 +335,7 @@ export default function ChatPage() {
   }, [
     agentId, agents.data, buildChatUrl, chatHydrated, models.data,
     pendingSessionModelId, role, router, searchParams, sessionId, sessions.data,
-    sessions.isSuccess, setAgent, setPendingModel, setSession, urlAgent,
+    sessions.isSuccess, setAgent, setAgentAndSession, setPendingModel, setSession, urlAgent,
     urlModel, urlSession,
   ]);
 

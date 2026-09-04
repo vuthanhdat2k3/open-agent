@@ -71,6 +71,7 @@ interface ChatState {
   hydrated: boolean;
   setAgent: (id: string | null) => void;
   setSession: (id: string | null) => void;
+  setAgentAndSession: (agentId: string | null, sessionId: string | null) => void;
   setActiveRun: (id: string | null) => void;
   setDebug: (debug: boolean) => void;
   toggleDebug: () => void;
@@ -91,6 +92,7 @@ export const useChatStore = create<ChatState>()(
       hydrated: false,
       setAgent: (id) => set({ agentId: id }),
       setSession: (id) => set({ sessionId: id }),
+      setAgentAndSession: (agentId, sessionId) => set({ agentId, sessionId }),
       setActiveRun: (id) => set({ activeRunId: id }),
       setDebug: (debug) => set({ debug }),
       toggleDebug: () => set((state) => ({ debug: !state.debug })),
