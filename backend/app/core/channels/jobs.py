@@ -239,11 +239,64 @@ async def process_channel_message(
                         accumulated_tokens.append(txt)
                         flusher_dirty.set()
 
+            # Process channel attachments (images and documents)
+            attachments = (msg.metadata_json or {}).get("attachments", [])
+            channel_images: list[dict[str, Any]] = []
+            inlined_doc_blocks: list[str] = []
+
+            if attachments:
+                import base64
+
+                from app.services.attachment_extract import extract_text
+
+                for att in attachments:
+                    att_type = att.get("type", "document")
+                    att_name = att.get("name", "attachment")
+                    file_bytes: bytes | None = None
+
+                    try:
+                        if connection.provider == "telegram" and "file_id" in att:
+                            tg_file_info = await driver.get_file_info(att["file_id"])
+                            if tg_file_info and tg_file_info.get("file_path"):
+                                file_bytes = await driver.download_file_bytes(tg_file_info["file_path"])
+                        elif connection.provider == "discord" and "url" in att:
+                            resp = await driver.client.get(att["url"], timeout=30.0)
+                            if resp.status_code == 200:
+                                file_bytes = resp.content
+                    except Exception as dl_err:
+                        await logger.awarning("channel_attachment_download_failed", error=str(dl_err), file=att_name)
+
+                    if not file_bytes:
+                        continue
+
+                    if att_type == "image":
+                        mime = att.get("mime_type", "image/jpeg")
+                        b64_img = base64.b64encode(file_bytes).decode("utf-8")
+                        channel_images.append({
+                            "mime_type": mime,
+                            "data_b64": b64_img,
+                            "name": att_name,
+                        })
+                    else:
+                        extracted = await extract_text(file_bytes, att_name)
+                        inlined_doc_blocks.append(f"--- Attached file: {att_name} ---\n{extracted}")
+
+            # Construct message payload
+            prompt_text = msg.content or ""
+            if inlined_doc_blocks:
+                prompt_text = (prompt_text + "\n\n" + "\n\n".join(inlined_doc_blocks)).strip()
+
+            agent_input_message: str | dict[str, Any] = (
+                {"text": prompt_text, "images": channel_images}
+                if channel_images
+                else prompt_text
+            )
+
             try:
                 # Call agent loop with session context and streaming event listener
                 result = await run_agent_loop(
                     agent=agent,
-                    message=msg.content,
+                    message=agent_input_message,
                     db=db,
                     session_id=session.id,
                     user_id=connection.created_by_user_id,

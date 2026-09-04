@@ -179,6 +179,33 @@ class TelegramDriver:
             logger.debug("telegram_edit_message_failed: %s", e)
             return False
 
+    async def get_file_info(self, file_id: str) -> dict[str, Any] | None:
+        """Get file path and details from Telegram Bot API."""
+        try:
+            resp = await self.client.get(
+                f"{self.base_url}/getFile",
+                params={"file_id": file_id},
+                timeout=15.0,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                if data.get("ok"):
+                    return data.get("result")
+        except Exception as e:
+            logger.warning("telegram_get_file_info_failed: %s", e)
+        return None
+
+    async def download_file_bytes(self, file_path: str) -> bytes | None:
+        """Download raw binary content of a file from Telegram."""
+        try:
+            url = f"https://api.telegram.org/file/bot{self.token}/{file_path}"
+            resp = await self.client.get(url, timeout=45.0)
+            if resp.status_code == 200:
+                return resp.content
+        except Exception as e:
+            logger.warning("telegram_download_file_bytes_failed: %s", e)
+        return None
+
     async def parse_webhook(self, payload: dict[str, Any]) -> InboundMessage | None:
         """Parse a Telegram Update into an InboundMessage."""
         # Handle callback queries
@@ -201,8 +228,48 @@ class TelegramDriver:
         if message is None:
             return None
 
-        # Skip non-text messages for now
-        if "text" not in message:
+        # Extract text or caption
+        text = message.get("text") or message.get("caption") or ""
+
+        # Extract attachments (photos, documents, audio)
+        attachments: list[dict[str, Any]] = []
+
+        # Photos: Telegram sends an array of sizes, pick the highest resolution
+        if "photo" in message and isinstance(message["photo"], list) and message["photo"]:
+            best_photo = message["photo"][-1]
+            file_id = best_photo.get("file_id")
+            if file_id:
+                attachments.append({
+                    "id": file_id,
+                    "type": "image",
+                    "file_id": file_id,
+                    "name": f"telegram_photo_{file_id[-8:]}.jpg",
+                    "size": best_photo.get("file_size", 0),
+                    "mime_type": "image/jpeg",
+                    "content_type": "image/jpeg",
+                })
+
+        # Documents: PDF, DOCX, CSV, code, etc.
+        if "document" in message and isinstance(message["document"], dict):
+            doc = message["document"]
+            file_id = doc.get("file_id")
+            if file_id:
+                mime_type = doc.get("mime_type", "application/octet-stream")
+                is_img = mime_type.startswith("image/")
+                attachments.append({
+                    "id": file_id,
+                    "type": "image" if is_img else "document",
+                    "file_id": file_id,
+                    "name": doc.get("file_name", f"document_{file_id[-8:]}"),
+                    "size": doc.get("file_size", 0),
+                    "mime_type": mime_type,
+                    "content_type": mime_type,
+                })
+
+        if not text and attachments:
+            text = "Vui lòng xem và phân tích (các) tệp đính kèm này."
+
+        if not text and not attachments:
             return InboundMessage(
                 channel="telegram",
                 sender_id=str(message["from"]["id"]),
@@ -222,13 +289,14 @@ class TelegramDriver:
             sender_id=str(message["from"]["id"]),
             sender_name=message["from"].get("first_name", ""),
             conversation_id=str(message["chat"]["id"]),
-            text=message["text"],
+            text=text,
             raw=payload,
             message_type="text",
             reply_to=str(message.get("reply_to_message", {}).get("message_id")) if message.get("reply_to_message") else None,
             metadata={
                 "message_id": message.get("message_id"),
                 "chat_type": message["chat"].get("type"),
+                "attachments": attachments,
             },
         )
 

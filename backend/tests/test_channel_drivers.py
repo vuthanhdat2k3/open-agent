@@ -420,4 +420,86 @@ class TestTelegramBotManager:
         # Second attempt fell back without parse_mode
         assert "parse_mode" not in called_payloads[1]
 
+    @pytest.mark.asyncio
+    async def test_telegram_parse_webhook_photo_and_document(self):
+        driver = TelegramDriver("fake-token", {})
+
+        # 1. Photo message
+        photo_payload = {
+            "update_id": 200,
+            "message": {
+                "message_id": 99,
+                "from": {"id": 111, "first_name": "PhotoUser"},
+                "chat": {"id": 222, "type": "private"},
+                "date": 1234567890,
+                "caption": "Check this picture",
+                "photo": [
+                    {"file_id": "thumb-id", "file_size": 100},
+                    {"file_id": "highres-id", "file_size": 25000, "width": 800, "height": 600},
+                ],
+            },
+        }
+        res_photo = await driver.parse_webhook(photo_payload)
+        assert res_photo is not None
+        assert res_photo.text == "Check this picture"
+        assert len(res_photo.metadata["attachments"]) == 1
+        att_photo = res_photo.metadata["attachments"][0]
+        assert att_photo["id"] == "highres-id"
+        assert att_photo["content_type"] == "image/jpeg"
+        assert att_photo["size"] == 25000
+
+        # 2. Document message
+        doc_payload = {
+            "update_id": 201,
+            "message": {
+                "message_id": 100,
+                "from": {"id": 111, "first_name": "DocUser"},
+                "chat": {"id": 222, "type": "private"},
+                "date": 1234567890,
+                "caption": "Quarterly report",
+                "document": {
+                    "file_id": "doc-99",
+                    "file_name": "report.pdf",
+                    "mime_type": "application/pdf",
+                    "file_size": 1048576,
+                },
+            },
+        }
+        res_doc = await driver.parse_webhook(doc_payload)
+        assert res_doc is not None
+        assert res_doc.text == "Quarterly report"
+        assert len(res_doc.metadata["attachments"]) == 1
+        att_doc = res_doc.metadata["attachments"][0]
+        assert att_doc["id"] == "doc-99"
+        assert att_doc["name"] == "report.pdf"
+        assert att_doc["content_type"] == "application/pdf"
+        assert att_doc["size"] == 1048576
+
+    @pytest.mark.asyncio
+    async def test_telegram_get_file_info_and_download(self):
+        import httpx
+
+        driver = TelegramDriver("fake-token", {})
+
+        def custom_handler(request: httpx.Request):
+            if "getFile" in str(request.url):
+                return httpx.Response(
+                    200,
+                    json={"ok": True, "result": {"file_id": "highres-id", "file_path": "photos/file_1.jpg", "file_size": 4}},
+                )
+            if "file/botfake-token/photos/file_1.jpg" in str(request.url):
+                return httpx.Response(200, content=b"\xff\xd8\xff\xe0")
+            return httpx.Response(404)
+
+        transport = httpx.MockTransport(custom_handler)
+        mock_client = httpx.AsyncClient(transport=transport)
+        TelegramDriver._shared_clients[driver.base_url] = mock_client
+        info = await driver.get_file_info("highres-id")
+        assert info is not None
+        assert info["file_path"] == "photos/file_1.jpg"
+
+        file_bytes = await driver.download_file_bytes("photos/file_1.jpg")
+        assert file_bytes == b"\xff\xd8\xff\xe0"
+
+
 
