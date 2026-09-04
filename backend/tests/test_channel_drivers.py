@@ -101,6 +101,58 @@ class TestTelegramDriver:
         assert "reply_to_message_id" not in posted_payloads[1]
         assert last_id == "tg-2"
 
+    @pytest.mark.asyncio
+    async def test_trigger_typing(self):
+        driver = TelegramDriver("fake-token", {})
+        called_urls = []
+
+        class DummyResponse:
+            status_code = 200
+
+        async def fake_post(url, json=None, timeout=None):
+            called_urls.append((url, json))
+            return DummyResponse()
+
+        mock_client = MagicMock()
+        mock_client.post = fake_post
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            await driver.trigger_typing(recipient="tg-123")
+
+        assert len(called_urls) == 1
+        assert "sendChatAction" in called_urls[0][0]
+        assert called_urls[0][1] == {"chat_id": "tg-123", "action": "typing"}
+
+    @pytest.mark.asyncio
+    async def test_edit_message(self):
+        driver = TelegramDriver("fake-token", {})
+        called_urls = []
+
+        class DummyResponse:
+            status_code = 200
+            def json(self):
+                return {"ok": True}
+
+        async def fake_post(url, json=None, timeout=None):
+            called_urls.append((url, json))
+            return DummyResponse()
+
+        mock_client = MagicMock()
+        mock_client.post = fake_post
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            ok = await driver.edit_message(recipient="tg-123", message_id="456", content="Hello updated")
+
+        assert ok is True
+        assert len(called_urls) == 1
+        assert "editMessageText" in called_urls[0][0]
+        assert called_urls[0][1]["text"] == "Hello updated"
+
+
 
 
 class TestDiscordDriver:
@@ -223,6 +275,54 @@ class TestDiscordDriver:
 
             assert "400" in str(exc_info.value)
             assert "Must be 2000 or fewer in length." in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_trigger_typing(self):
+        driver = DiscordDriver("fake-token", {})
+        called_urls = []
+
+        class DummyResponse:
+            status_code = 204
+
+        async def fake_post(url, headers=None, timeout=None):
+            called_urls.append(url)
+            return DummyResponse()
+
+        mock_client = MagicMock()
+        mock_client.post = fake_post
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            await driver.trigger_typing(recipient="chan-123")
+
+        assert len(called_urls) == 1
+        assert called_urls[0] == "https://discord.com/api/v10/channels/chan-123/typing"
+
+    @pytest.mark.asyncio
+    async def test_edit_message(self):
+        driver = DiscordDriver("fake-token", {})
+        called_patches = []
+
+        class DummyResponse:
+            status_code = 200
+
+        async def fake_patch(url, json=None, headers=None, timeout=None):
+            called_patches.append((url, json))
+            return DummyResponse()
+
+        mock_client = MagicMock()
+        mock_client.patch = fake_patch
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            ok = await driver.edit_message(recipient="chan-123", message_id="msg-999", content="Streaming partial ▌")
+
+        assert ok is True
+        assert len(called_patches) == 1
+        assert called_patches[0][0] == "https://discord.com/api/v10/channels/chan-123/messages/msg-999"
+        assert called_patches[0][1] == {"content": "Streaming partial ▌"}
 
 
 class TestSplitMessage:

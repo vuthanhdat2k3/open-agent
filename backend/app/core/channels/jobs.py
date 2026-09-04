@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import asyncio
+import time
+from typing import Any
+
 import structlog
 from sqlalchemy import select
 
@@ -129,17 +133,88 @@ async def process_channel_message(
             db.add(msg)
             await db.commit()
 
-            # Call agent loop with session context
-            result = await run_agent_loop(
-                agent=agent,
-                message=msg.content,
-                db=db,
-                session_id=session.id,
-                user_id=connection.created_by_user_id,
-                user_role="user" if connection.created_by_user_id else None,
-                record_stream=False,
-                execution_policy=normalize_execution_policy(session.execution_policy),
-            )
+            # Build channel driver
+            driver = build_channel_driver(connection)
+
+            # Continuous typing heartbeat to keep Discord/Telegram typing indicator active
+            stop_typing = asyncio.Event()
+
+            async def _typing_heartbeat() -> None:
+                while not stop_typing.is_set():
+                    try:
+                        await driver.trigger_typing(msg.conversation_id)
+                    except Exception:
+                        pass
+                    try:
+                        await asyncio.wait_for(stop_typing.wait(), timeout=6.0)
+                    except TimeoutError:
+                        pass
+
+            typing_task = asyncio.create_task(_typing_heartbeat())
+
+            # Progressive streaming state
+            streamed_msg_id: str | None = None
+            accumulated_tokens: list[str] = []
+            last_edit_ts = 0.0
+            edit_lock = asyncio.Lock()
+
+            async def _on_channel_event(ev: dict[str, Any]) -> None:
+                nonlocal streamed_msg_id, last_edit_ts
+                ev_type = ev.get("event")
+                if ev_type == "token":
+                    txt = ev.get("data", {}).get("content", "")
+                    if txt:
+                        accumulated_tokens.append(txt)
+
+                    now = time.monotonic()
+                    total_len = sum(map(len, accumulated_tokens))
+                    if streamed_msg_id is None and total_len >= 15:
+                        async with edit_lock:
+                            if streamed_msg_id is None:
+                                partial = "".join(accumulated_tokens)
+                                preview = partial[:1800] + " ▌"
+                                try:
+                                    streamed_msg_id = await driver.send_message(
+                                        recipient=msg.conversation_id,
+                                        content=preview,
+                                    )
+                                    last_edit_ts = now
+                                except Exception:
+                                    pass
+                    elif streamed_msg_id is not None and (now - last_edit_ts) >= 1.5:
+                        async with edit_lock:
+                            partial = "".join(accumulated_tokens)
+                            preview = partial[:1800] + " ▌"
+                            try:
+                                await driver.edit_message(
+                                    recipient=msg.conversation_id,
+                                    message_id=streamed_msg_id,
+                                    content=preview,
+                                )
+                                last_edit_ts = now
+                            except Exception:
+                                pass
+
+            try:
+                # Call agent loop with session context and streaming event listener
+                result = await run_agent_loop(
+                    agent=agent,
+                    message=msg.content,
+                    db=db,
+                    session_id=session.id,
+                    user_id=connection.created_by_user_id,
+                    user_role="user" if connection.created_by_user_id else None,
+                    record_stream=False,
+                    execution_policy=normalize_execution_policy(session.execution_policy),
+                    on_event=_on_channel_event,
+                )
+            finally:
+                stop_typing.set()
+                typing_task.cancel()
+                try:
+                    await typing_task
+                except (asyncio.CancelledError, Exception):
+                    pass
 
             if result.error:
                 await logger.aerror(
@@ -151,12 +226,38 @@ async def process_channel_message(
             else:
                 reply_text = result.content
 
-            # Send reply via channel
-            driver = build_channel_driver(connection)
-            external_id = await driver.send_message(
-                recipient=msg.conversation_id,
-                content=reply_text,
+            # Finalize reply: edit streamed message or send new message
+            from app.channels.driver import split_message
+
+            chunks = split_message(
+                reply_text,
+                max_length=1900 if connection.provider == "discord" else 4000,
             )
+            first_chunk = chunks[0] if chunks else reply_text
+
+            external_id = streamed_msg_id
+            if streamed_msg_id:
+                edited = await driver.edit_message(
+                    recipient=msg.conversation_id,
+                    message_id=streamed_msg_id,
+                    content=first_chunk,
+                )
+                if not edited:
+                    external_id = await driver.send_message(
+                        recipient=msg.conversation_id,
+                        content=first_chunk,
+                    )
+                for next_chunk in chunks[1:]:
+                    await driver.send_message(
+                        recipient=msg.conversation_id,
+                        content=next_chunk,
+                    )
+            else:
+                external_id = await driver.send_message(
+                    recipient=msg.conversation_id,
+                    content=reply_text,
+                )
+
 
             # Log outbound message with complete execution trace & session_id
             outbound = ChannelMessage(

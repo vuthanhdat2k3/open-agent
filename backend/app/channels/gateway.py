@@ -23,6 +23,8 @@ class DiscordBotManager:
     def __init__(self) -> None:
         self._clients: dict[str, nextcord.Client] = {}
         self._tasks: dict[str, asyncio.Task] = {}
+        self._shutdown: bool = False
+
 
     async def start(self) -> None:
         """Start gateway clients for all active Discord connections."""
@@ -56,6 +58,17 @@ class DiscordBotManager:
 
         @client.event
         async def on_ready() -> None:
+            try:
+                await client.change_presence(
+                    status=nextcord.Status.online,
+                    activity=nextcord.Activity(
+                        type=nextcord.ActivityType.listening,
+                        name="tin nhắn / @open-agent",
+                    ),
+                )
+            except Exception as pe:
+                logger.warning("discord_change_presence_failed", error=str(pe))
+
             logger.info(
                 "discord_bot_online",
                 connection_id=conn.id,
@@ -169,16 +182,25 @@ class DiscordBotManager:
 
     async def _run_client(self, client: nextcord.Client, token: str, conn_id: str) -> None:
         """Run the Discord client with automatic reconnect."""
-        try:
-            await client.start(token)
-        except nextcord.LoginFailure:
-            logger.error("discord_login_failed", connection_id=conn_id)
-            await self._mark_error(conn_id)
-        except Exception as e:
-            logger.error("discord_client_error", connection_id=conn_id, error=str(e))
-        finally:
-            self._clients.pop(conn_id, None)
-            self._tasks.pop(conn_id, None)
+        backoff = 5.0
+        while not self._shutdown and conn_id in self._clients:
+            try:
+                await client.start(token)
+                break
+            except nextcord.LoginFailure:
+                logger.error("discord_login_failed", connection_id=conn_id)
+                await self._mark_error(conn_id)
+                break
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error("discord_client_error_reconnecting", connection_id=conn_id, error=str(e))
+                if self._shutdown or conn_id not in self._clients:
+                    break
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 1.5, 60.0)
+        self._clients.pop(conn_id, None)
+        self._tasks.pop(conn_id, None)
 
     async def remove_bot(self, conn_id: str) -> None:
         """Disconnect and remove a Discord bot."""
@@ -191,8 +213,10 @@ class DiscordBotManager:
 
     async def shutdown(self) -> None:
         """Disconnect all Discord bots."""
+        self._shutdown = True
         for conn_id in list(self._clients.keys()):
             await self.remove_bot(conn_id)
+
 
     async def _mark_error(self, conn_id: str) -> None:
         """Mark a connection as error in the database."""
