@@ -5,7 +5,7 @@ from typing import Any
 
 import httpx
 
-from app.channels.driver import InboundMessage, TestResult
+from app.channels.driver import InboundMessage, TestResult, split_message
 
 logger = logging.getLogger(__name__)
 
@@ -28,28 +28,53 @@ class TelegramDriver:
         content: str,
         **opts: Any,
     ) -> str:
-        """Send a message to a Telegram chat."""
-        payload = {
-            "chat_id": recipient,
-            "text": content,
-            "parse_mode": opts.get("parse_mode", "HTML"),
-        }
-        if opts.get("reply_to_message_id"):
-            payload["reply_to_message_id"] = opts["reply_to_message_id"]
-        if opts.get("disable_web_page_preview"):
-            payload["disable_web_page_preview"] = opts["disable_web_page_preview"]
+        """Send a message to a Telegram chat.
+
+        Automatically splits messages longer than 4000 characters into sequential
+        chunks to prevent Telegram HTTP 400 (4096-character limit).
+        """
+        chunks = split_message(content, max_length=4000)
+        last_id = ""
 
         async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                f"{self.base_url}/sendMessage",
-                json=payload,
-                timeout=30.0,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            if not data.get("ok"):
-                raise RuntimeError(f"Telegram API error: {data}")
-            return str(data["result"]["message_id"])
+            for i, chunk in enumerate(chunks):
+                payload = {
+                    "chat_id": recipient,
+                    "text": chunk,
+                    "parse_mode": opts.get("parse_mode", "HTML"),
+                }
+                if i == 0 and opts.get("reply_to_message_id"):
+                    payload["reply_to_message_id"] = opts["reply_to_message_id"]
+                if opts.get("disable_web_page_preview"):
+                    payload["disable_web_page_preview"] = opts["disable_web_page_preview"]
+
+                try:
+                    resp = await client.post(
+                        f"{self.base_url}/sendMessage",
+                        json=payload,
+                        timeout=30.0,
+                    )
+                    resp.raise_for_status()
+                    data = resp.json()
+                    if not data.get("ok"):
+                        raise RuntimeError(f"Telegram API error: {data}")
+                    last_id = str(data["result"]["message_id"])
+                except httpx.HTTPStatusError as exc:
+                    err_body = ""
+                    try:
+                        err_body = f" - Telegram response: {exc.response.text}"
+                    except Exception:
+                        pass
+                    logger.error(
+                        "Telegram send_message error (status %s)%s",
+                        exc.response.status_code,
+                        err_body,
+                    )
+                    raise RuntimeError(
+                        f"Telegram API error {exc.response.status_code}{err_body}"
+                    ) from exc
+
+        return last_id
 
     async def parse_webhook(self, payload: dict[str, Any]) -> InboundMessage | None:
         """Parse a Telegram Update into an InboundMessage."""
