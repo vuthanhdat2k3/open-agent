@@ -155,20 +155,58 @@ async def process_channel_message(
             # Progressive streaming state
             streamed_msg_id: str | None = None
             accumulated_tokens: list[str] = []
+            status_hint: str | None = None
             last_edit_ts = 0.0
             edit_lock = asyncio.Lock()
 
             async def _on_channel_event(ev: dict[str, Any]) -> None:
-                nonlocal streamed_msg_id, last_edit_ts
+                nonlocal streamed_msg_id, last_edit_ts, status_hint
                 ev_type = ev.get("event")
-                if ev_type == "token":
+                now = time.monotonic()
+
+                # Tool activity indicator: let user know what sub-agent or tool is doing
+                if ev_type == "tool_call":
+                    tool_name = str(ev.get("data", {}).get("name", "")).lower()
+                    if any(w in tool_name for w in ("search", "research", "browse", "crawl")):
+                        status_hint = "🔍 Đang tìm kiếm và tra cứu thông tin..."
+                    elif any(w in tool_name for w in ("code", "python", "bash", "sandbox")):
+                        status_hint = "💻 Đang chạy mã nguồn..."
+                    elif "delegate" in tool_name or "agent" in tool_name:
+                        status_hint = "🤖 Đang phối hợp chuyên gia AI..."
+                    else:
+                        status_hint = "⚙️ Đang xử lý yêu cầu..."
+
+                    if streamed_msg_id is None:
+                        async with edit_lock:
+                            if streamed_msg_id is None:
+                                try:
+                                    streamed_msg_id = await driver.send_message(
+                                        recipient=msg.conversation_id,
+                                        content=f"*{status_hint}* ▌",
+                                    )
+                                    last_edit_ts = now
+                                except Exception:
+                                    pass
+                    elif (now - last_edit_ts) >= 0.8:
+                        async with edit_lock:
+                            try:
+                                await driver.edit_message(
+                                    recipient=msg.conversation_id,
+                                    message_id=streamed_msg_id,
+                                    content=f"*{status_hint}* ▌",
+                                )
+                                last_edit_ts = now
+                            except Exception:
+                                pass
+
+                elif ev_type == "token":
                     txt = ev.get("data", {}).get("content", "")
                     if txt:
                         accumulated_tokens.append(txt)
 
-                    now = time.monotonic()
                     total_len = sum(map(len, accumulated_tokens))
-                    if streamed_msg_id is None and total_len >= 15:
+                    # Fast-flush: appear immediately within ~200ms when first words arrive
+                    if streamed_msg_id is None and total_len >= 3:
                         async with edit_lock:
                             if streamed_msg_id is None:
                                 partial = "".join(accumulated_tokens)
@@ -181,7 +219,7 @@ async def process_channel_message(
                                     last_edit_ts = now
                                 except Exception:
                                     pass
-                    elif streamed_msg_id is not None and (now - last_edit_ts) >= 1.5:
+                    elif streamed_msg_id is not None and (now - last_edit_ts) >= 0.8:
                         async with edit_lock:
                             partial = "".join(accumulated_tokens)
                             preview = partial[:1800] + " ▌"
@@ -194,6 +232,7 @@ async def process_channel_message(
                                 last_edit_ts = now
                             except Exception:
                                 pass
+
 
             try:
                 # Call agent loop with session context and streaming event listener
