@@ -52,6 +52,9 @@ class LLMDriver(Protocol):
     ) -> AsyncIterator[dict[str, Any]]: ...
 
 
+_VISION_NAME_MARKERS = ("vision", "-vl", "vl-", "_vl", "vl_", "vl2", "multimodal", "llava", "pixtral")
+
+
 def model_info_from_mapping(item: Mapping[str, Any]) -> ModelInfo:
     name = str(item.get("id") or item.get("name") or "").strip()
     lowered = name.lower()
@@ -59,4 +62,10 @@ def model_info_from_mapping(item: Mapping[str, Any]) -> ModelInfo:
         name=name,
         display_name=name.rsplit("/", 1)[-1].replace("-", " ").title(),
         supports_reasoning=(True if any(x in lowered for x in ("reason", "r1", "o1", "o3")) else None),
+        # Best-effort like the reasoning heuristic above: only catches models
+        # that self-identify vision support in their name (e.g. "qwen2.5-vl",
+        # "llava-1.6"). A vision-capable model with no such marker (e.g.
+        # Qwen3.5's natively-multimodal line) still needs Model.supports_vision
+        # set explicitly - this is a floor, not a source of truth.
+        supports_vision=(True if any(x in lowered for x in _VISION_NAME_MARKERS) else None),
     )
