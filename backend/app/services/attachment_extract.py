@@ -21,7 +21,7 @@ _TEXT_EXTS = {".txt", ".md", ".csv", ".json", ".py", ".yaml", ".yml", ".html", "
 def is_extraction_error(text: str) -> bool:
     """Check if the extracted text indicates a failure message."""
     stripped = text.strip()
-    return stripped.startswith("[could not read ") and stripped.endswith("]")
+    return (stripped.startswith("[could not read ") or stripped.startswith("[could not ")) and stripped.endswith("]")
 
 
 def _find_shared_lib(

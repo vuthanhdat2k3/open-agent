@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ArrowUp, Loader2, Paperclip, Square, X, Cpu, ShieldCheck, ChevronDown } from "lucide-react";
+import { ArrowUp, Loader2, Paperclip, Square, X, Cpu, ShieldCheck, ChevronDown, Eye, AlertCircle } from "lucide-react";
 import { Textarea } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -76,6 +76,13 @@ export function ChatComposer({
     el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
   }, []);
 
+  const isImageFile = (filename: string) => /\.(png|jpe?g|gif|webp)$/i.test(filename || "");
+  const hasImageAttachment = attachments.some((f) => isImageFile(f.original_name));
+  const modelSupportsVision = Boolean(effectiveModel?.supports_vision);
+  const recommendedVisionModel = React.useMemo(() => {
+    return models?.find((m) => m.active && m.supports_vision);
+  }, [models]);
+
   const handleFiles = async (fileList: FileList | null) => {
     if (!fileList?.length) return;
     const nextAttachments = [...attachments];
@@ -109,6 +116,35 @@ export function ChatComposer({
               </button>
             </span>
           ))}
+        </div>
+      )}
+
+      {hasImageAttachment && !modelSupportsVision && (
+        <div className="mx-2 mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-700 dark:text-amber-300">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 shrink-0 text-amber-500" aria-hidden="true" />
+            <span>
+              {tx(
+                `Mô hình "${effectiveModel?.display_name || effectiveModel?.name || "hiện tại"}" không hỗ trợ thị giác (Vision) trực tiếp. Văn bản sẽ được trích xuất qua OCR.`,
+                `Current model "${effectiveModel?.display_name || effectiveModel?.name || "selected"}" lacks native Vision. Text will be extracted via OCR.`
+              )}
+            </span>
+          </div>
+          {recommendedVisionModel && onModelChange && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-6 shrink-0 gap-1 border-amber-500/40 bg-amber-500/20 px-2 text-[11px] font-medium text-amber-900 hover:bg-amber-500/30 dark:text-amber-100"
+              onClick={() => onModelChange(recommendedVisionModel.id)}
+            >
+              <Eye className="h-3 w-3" aria-hidden="true" />
+              {tx(
+                `Đổi sang ${recommendedVisionModel.display_name || recommendedVisionModel.name}`,
+                `Switch to ${recommendedVisionModel.display_name || recommendedVisionModel.name}`
+              )}
+            </Button>
+          )}
         </div>
       )}
 
@@ -196,16 +232,36 @@ export function ChatComposer({
                   <span className="max-w-[9rem] truncate font-mono">
                     {effectiveModel?.display_name || effectiveModel?.name || tx("Mô hình", "Model")}
                   </span>
+                  {effectiveModel?.supports_vision && (
+                    <span title={tx("Hỗ trợ Vision", "Vision supported")} className="flex items-center">
+                      <Eye className="h-3 w-3 text-primary shrink-0" aria-hidden="true" />
+                    </span>
+                  )}
                   <ChevronDown className="h-3 w-3 opacity-60" aria-hidden="true" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-64">
+              <DropdownMenuContent align="end" className="w-72">
                 <DropdownMenuLabel>{tx("Mô hình AI", "Model")}</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 {models?.filter((m) => m.active).map((m) => (
-                  <DropdownMenuItem key={m.id} onSelect={() => onModelChange(m.id)} className={m.id === effectiveModel?.id ? "font-semibold text-foreground" : undefined}>
+                  <DropdownMenuItem
+                    key={m.id}
+                    onSelect={() => onModelChange(m.id)}
+                    className={cn(
+                      "flex items-center justify-between gap-2 py-1.5",
+                      m.id === effectiveModel?.id && "font-semibold text-foreground bg-accent/40"
+                    )}
+                  >
                     <span className="flex-1 truncate">{m.display_name || m.name}</span>
-                    <span className="ml-2 shrink-0 text-[9px] uppercase tracking-wider text-muted-foreground/60">{m.tier}</span>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {m.supports_vision && (
+                        <span className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[9px] font-medium bg-primary/10 text-primary border border-primary/20">
+                          <Eye className="h-2.5 w-2.5" />
+                          Vision
+                        </span>
+                      )}
+                      <span className="text-[9px] uppercase tracking-wider text-muted-foreground/60">{m.tier}</span>
+                    </div>
                   </DropdownMenuItem>
                 ))}
               </DropdownMenuContent>
