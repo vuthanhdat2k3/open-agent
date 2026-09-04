@@ -43,12 +43,15 @@ export default function MembersAndAccessPage() {
   const activeTab = (tabParam as "members" | "keys") || "members";
 
   const me = useMe();
-  const orgId = me.data?.active_org_id || getActiveOrgId() || me.data?.memberships?.[0]?.org_id;
+  const canManage = useCan("orgs:manage");
+  // Members/keys are org_admin-only data (backend 403s otherwise) - only fetch
+  // when allowed, so a restricted role sees the "read-only access" state
+  // instead of failed-fetch data rendering as misleading zero counts.
+  const orgId = canManage ? me.data?.active_org_id || getActiveOrgId() || me.data?.memberships?.[0]?.org_id : undefined;
   const members = useMembers(orgId);
   const invite = useInviteMember(orgId);
   const remove = useRemoveMember(orgId);
   const updateRole = useUpdateMemberRole(orgId);
-  const canManage = useCan("orgs:manage");
 
   // API Keys state
   const keys = useApiKeys(orgId);
@@ -158,7 +161,8 @@ export default function MembersAndAccessPage() {
         description={tx("Quản lý thành viên tổ chức, phân quyền theo vai trò và key tích hợp API.", "Manage organization team members, role-based access, and API integration keys.")}
       />
 
-      {/* 1. Metrics Ribbon */}
+      {/* 1. Metrics Ribbon (org_admin only - members/keys data isn't fetched otherwise) */}
+      {canManage && (
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Card className="flex items-center gap-3.5 p-4 shadow-card">
           <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
@@ -200,6 +204,7 @@ export default function MembersAndAccessPage() {
           </div>
         </Card>
       </div>
+      )}
 
       {/* 2. Navigation Segmented Tabs */}
       <div className="flex gap-2 border-b border-border/70 pb-2">
@@ -210,9 +215,9 @@ export default function MembersAndAccessPage() {
           className="gap-2 font-medium"
         >
           <Users className="h-4 w-4" />
-          {tx("Thành viên", "Members")}<Badge variant="outline" className="ml-1 text-[10px] font-mono">
+          {tx("Thành viên", "Members")}{canManage && <Badge variant="outline" className="ml-1 text-[10px] font-mono">
             {totalMembers}
-          </Badge>
+          </Badge>}
         </Button>
 
         <Button
@@ -222,9 +227,9 @@ export default function MembersAndAccessPage() {
           className="gap-2 font-medium"
         >
           <KeyRound className="h-4 w-4" />
-          {tx("API Key", "API Keys")}<Badge variant="outline" className="ml-1 text-[10px] font-mono">
+          {tx("API Key", "API Keys")}{canManage && <Badge variant="outline" className="ml-1 text-[10px] font-mono">
             {totalKeys}
-          </Badge>
+          </Badge>}
         </Button>
       </div>
 
