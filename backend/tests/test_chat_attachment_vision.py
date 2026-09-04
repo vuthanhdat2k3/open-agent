@@ -136,9 +136,46 @@ async def test_inline_attachments_vision_unsupported_falls_back_to_ocr() -> None
 
         mock_extract.assert_called_once_with(fake_png_data, "screenshot.png")
         assert len(images) == 0
-        assert "--- Attached file: screenshot.png ---\nOCR detected text in screenshot" in prompt
+        assert "--- Attached image: screenshot.png (Text extracted via OCR — current model lacks direct vision support) ---\nOCR detected text in screenshot" in prompt
         assert meta == [{"id": "file-ocr", "name": "screenshot.png"}]
-        assert warnings == []
+        assert len(warnings) == 1
+        assert "OCR" in warnings[0]
+
+
+@pytest.mark.asyncio
+async def test_inline_attachments_vision_unsupported_ocr_empty() -> None:
+    fake_db = AsyncMock()
+    service = ChatService(fake_db)
+
+    file_record = MagicMock()
+    file_record.original_name = "diagram.png"
+    fake_png_data = b"\x89PNG..."
+
+    with (
+        patch(
+            "app.services.file_service.FileService.download",
+            return_value=(fake_png_data, file_record),
+        ),
+        patch(
+            "app.services.chat_service.extract_text",
+            return_value="[could not extract text: no text found]",
+        ) as mock_extract,
+    ):
+        prompt, meta, images, warnings = await service._inline_attachments(
+            org_id="org-1",
+            message="What is this diagram?",
+            attachment_ids=["file-diagram"],
+            user_id="user-1",
+            supports_vision=False,
+        )
+
+        mock_extract.assert_called_once_with(fake_png_data, "diagram.png")
+        assert len(images) == 0
+        assert "Current model does not support visual image inputs (Vision)" in prompt
+        assert meta[0]["id"] == "file-diagram"
+        assert "error" in meta[0]
+        assert len(warnings) == 1
+        assert "không hỗ trợ Vision" in warnings[0]
 
 
 def test_derive_messages_preserves_multimodal_list_content() -> None:
