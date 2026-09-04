@@ -96,6 +96,8 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 |---|---|---|---|
 | `dev` | `G:\open-agent` | Nhánh tích hợp chính — không code trực tiếp ở đây | — |
 
+> 2026-09-05: Đã merge PR #262 vào `dev` và deploy lên `deploy/dev` (Bổ sung hỗ trợ tệp đính kèm gồm ảnh multimodal vision và trích xuất text tài liệu trên Telegram/Discord, thêm GET /api/files/:id/content phục vụ inline render và tải file, nâng cấp giao diện Web Chat với FileAttachmentCard hỗ trợ thumbnail preview trực quan và lightbox phóng to ảnh).
+
 > 2026-09-05: Đã merge PR #261 vào `dev` và deploy lên `deploy/dev` (Bổ sung Telegram real-time long-polling TelegramBotManager không cần webhook/domain công khai, tối ưu HTTP keep-alive connection pooling cho Telegram & Discord drivers, tách streaming progressive flusher chạy nền non-blocking giúp giảm độ trễ phản hồi từ 19.2s xuống 2s, bổ sung Markdown-to-HTML converter và tinh chỉnh auto-scroll stream).
 
 > 2026-09-05: Đã merge PR #260 vào `dev` và deploy lên `deploy/dev` (Sửa lỗi cuộn tự do trên trang Chat khi đang stream: thay thế isProgrammaticScrollRef bằng isSmoothScrollingRef, cho phép kéo scrollbar, lăn chuột và vuốt trackpad mượt mà không bị giật về đáy).
