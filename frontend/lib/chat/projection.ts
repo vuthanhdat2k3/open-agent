@@ -69,10 +69,16 @@ export interface StatsBlock {
 
 export type AssistantBlock = ReasoningBlock | TextBlock | ToolCallBlock | StatsBlock;
 
+export interface UserAttachment {
+  id: string;
+  name: string;
+}
+
 export interface UserMessage {
   role: "user";
   id: string;
   content: string;
+  attachments?: UserAttachment[];
 }
 
 export interface AssistantMessage {
@@ -106,6 +112,7 @@ export interface ProjectionSide {
   /** message_done seen — run reached its natural end. */
   terminal?: boolean;
   errorMessage?: string;
+  warningMessage?: string;
   budgetReason?: string;
   diverged?: boolean;
 }
@@ -131,6 +138,8 @@ const KNOWN_EVENTS = new Set([
   "tool_result",
   "message_done",
   "error",
+  "attachment_warning",
+  "warning",
   "approval_required",
   "approval_rejected",
   "budget_exceeded",
@@ -415,6 +424,15 @@ export function applyChatEvent(
       break;
     }
 
+    case "attachment_warning":
+    case "warning": {
+      const message = String(d.message ?? "");
+      if (message) {
+        side.warningMessage = message;
+      }
+      break;
+    }
+
     case "approval_required": {
       const approvalId = String(d.approval_id ?? "");
       if (approvalId && !messages.some((m) => m.role === "approval" && m.approvalId === approvalId)) {
@@ -502,7 +520,11 @@ export interface PersistedMessageRow {
 export function messagesFromPersisted(rows: PersistedMessageRow[]): ChatMessage[] {
   return rows.map((row): ChatMessage => {
     if (row.role === "user") {
-      return { role: "user", id: row.id, content: row.content };
+      const rowMeta = (row.meta ?? {}) as Record<string, any>;
+      const attachments: UserAttachment[] | undefined = Array.isArray(rowMeta.attachments)
+        ? rowMeta.attachments
+        : undefined;
+      return { role: "user", id: row.id, content: row.content, ...(attachments?.length ? { attachments } : {}) };
     }
     const meta = (row.meta ?? {}) as Record<string, any>;
     let n = 0;

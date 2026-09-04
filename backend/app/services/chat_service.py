@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import base64
+import os
 from time import monotonic
+from typing import Any
 
 import structlog
 from sqlalchemy import select
@@ -8,17 +11,28 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.agent_loop import run_agent_loop
 from app.core.execution_policy import ExecutionPolicy, normalize_execution_policy
+from app.core.providers.templates import get_template
 from app.db.base import utc_now
 from app.models.agent import Agent
 from app.models.model import Model
+from app.models.provider import Provider
 from app.models.session import Session
 from app.models.task import Task
 from app.schemas.chat import AgentLoopResult, ChatRequest
 from app.services.agent_service import AgentService, RuntimeAgent
-from app.services.attachment_extract import extract_text
+from app.services.attachment_extract import extract_text, is_extraction_error
 from app.services.file_service import FileService
 
 logger = structlog.get_logger(__name__)
+
+_IMAGE_EXTS: dict[str, str] = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+}
+MAX_IMAGE_BYTES = 5 * 1024 * 1024  # 5MB per image
 
 
 class ChatService:
@@ -189,23 +203,81 @@ class ChatService:
         await self.db.refresh(task)
         return session, agent, task
 
+    async def _model_supports_vision(self, org_id: str, model_id: str | None) -> bool:
+        if not model_id:
+            return False
+        res = await self.db.execute(
+            select(Model, Provider.template_key)
+            .join(Provider, Model.provider_id == Provider.id, isouter=True)
+            .where(Model.id == model_id, Model.org_id == org_id)
+        )
+        row = res.first()
+        if not row:
+            return False
+        model, template_key = row
+        if model.supports_vision is not None:
+            return bool(model.supports_vision)
+        template = get_template(template_key or "")
+        return bool(template.supports_vision) if template else False
+
     async def _inline_attachments(
-        self, org_id: str, message: str, attachment_ids: list[str], user_id: str | None
-    ) -> str:
+        self,
+        org_id: str,
+        message: str,
+        attachment_ids: list[str],
+        user_id: str | None,
+        supports_vision: bool = False,
+    ) -> tuple[str, list[dict[str, str]], list[dict[str, str]], list[str]]:
         """Read each attachment's content and append it to the prompt for
-        this turn. Read-only against S3 — never calls the RAG ingest path."""
+        this turn. Read-only against S3 — never calls the RAG ingest path.
+
+        When supports_vision is True and the attachment is an image, retains
+        the base64-encoded image instead of forcing OCR via Docling.
+        """
         files = FileService(self.db)
         blocks = []
+        attachments_meta: list[dict[str, str]] = []
+        images: list[dict[str, str]] = []
+        warnings: list[str] = []
         for file_id in attachment_ids:
             result = await files.download(org_id, file_id, owner_user_id=user_id)
             if result is None:
                 continue
             data, record = result
-            text = await extract_text(data, record.original_name)
-            blocks.append(f"--- Attached file: {record.original_name} ---\n{text}")
+            ext = os.path.splitext(record.original_name)[1].lower()
+            if supports_vision and ext in _IMAGE_EXTS:
+                if len(data) > MAX_IMAGE_BYTES:
+                    warn = (
+                        f"[could not read '{record.original_name}': "
+                        f"image size exceeds 5MB limit]"
+                    )
+                    warnings.append(warn.strip("[]"))
+                    blocks.append(f"--- Attached file: {record.original_name} ---\n{warn}")
+                    attachments_meta.append(
+                        {"id": file_id, "name": record.original_name, "error": warn}
+                    )
+                else:
+                    b64_data = base64.b64encode(data).decode("utf-8")
+                    images.append(
+                        {
+                            "mime_type": _IMAGE_EXTS[ext],
+                            "data_b64": b64_data,
+                            "name": record.original_name,
+                        }
+                    )
+                    attachments_meta.append({"id": file_id, "name": record.original_name})
+            else:
+                text = await extract_text(data, record.original_name)
+                blocks.append(f"--- Attached file: {record.original_name} ---\n{text}")
+                meta_item = {"id": file_id, "name": record.original_name}
+                if is_extraction_error(text):
+                    warnings.append(text.strip("[]"))
+                    meta_item["error"] = text
+                attachments_meta.append(meta_item)
+
         if not blocks:
-            return message
-        return message + "\n\n" + "\n\n".join(blocks)
+            return message, attachments_meta, images, warnings
+        return message + "\n\n" + "\n\n".join(blocks), attachments_meta, images, warnings
 
     async def run(
         self,
@@ -250,12 +322,34 @@ class ChatService:
             session = await self.ensure_session(org_id, request, user_id, user_role)
             session_id = session.id
             agent = await self._load_agent(org_id, request.agent_id, session.agent_release_id)
+
+        effective_model_id = request.model_id or getattr(agent, "model_id", None)
+        supports_vision = await self._model_supports_vision(org_id, effective_model_id)
+
         message = request.message
+        message_meta: dict[str, object] | None = None
+        attachment_warnings: list[str] = []
+        message_images: list[dict[str, str]] = []
         if request.attachment_ids:
-            message = await self._inline_attachments(org_id, message, request.attachment_ids, user_id)
+            message, attachments_meta, message_images, attachment_warnings = (
+                await self._inline_attachments(
+                    org_id,
+                    message,
+                    request.attachment_ids,
+                    user_id,
+                    supports_vision=supports_vision,
+                )
+            )
+            if attachments_meta:
+                message_meta = {"attachments": attachments_meta}
+
+        message_payload: str | dict[str, Any] = (
+            {"text": message, "images": message_images} if message_images else message
+        )
+
         return await run_agent_loop(
             agent,
-            message,
+            message_payload,
             self.db,
             session_id=session_id,
             current_task_id=current_task_id,
@@ -266,4 +360,8 @@ class ChatService:
             approval_resume_id=approval_resume_id,
             timezone_name=request.timezone,
             execution_policy=normalize_execution_policy(session.execution_policy),
+            display_message=request.message,
+            message_meta=message_meta,
+            attachment_warnings=attachment_warnings,
         )
+

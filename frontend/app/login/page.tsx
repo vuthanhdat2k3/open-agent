@@ -171,24 +171,56 @@ export default function LoginPage() {
           </div>
           <div>
             <CardTitle className="text-xl">
-              {tx("Đăng nhập nội bộ đã tắt", "Local authentication is disabled")}
+              {tx("Đăng nhập OpenAgent", "Sign in to OpenAgent")}
             </CardTitle>
-              <p className="mt-2 text-sm text-muted-foreground">
-                {t("pages.login.useOrgProviderDesc", "Vui lòng sử dụng nhà cung cấp danh tính tổ chức để đăng nhập.")}
-              </p>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Button
-            type="button"
-            className="h-11 w-full gap-2 active-tactile"
-            onClick={() => {
-              window.location.href = "/api/auth/login";
-            }}
-          >
-            {tx("Tiếp tục qua SSO Doanh nghiệp", "Continue with organization SSO")}
-            <ArrowRight className="h-4 w-4" aria-hidden="true" />
-          </Button>
+          {errorInfo && (
+            <Alert variant="destructive" className="border-destructive/40 bg-destructive/10 text-left">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle className="text-sm font-semibold">
+                {errorKey ? t(`pages.login.${errorKey}Title`, errorInfo.title) : errorInfo.title}
+              </AlertTitle>
+              <AlertDescription className="mt-1 text-xs leading-relaxed text-destructive/90">
+                {errorKey ? t(`pages.login.${errorKey}Desc`, errorInfo.desc) : errorInfo.desc}
+              </AlertDescription>
+            </Alert>
+          )}
+          <form onSubmit={submit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="login-email">{tx("Email", "Email")}</Label>
+              <Input
+                id="login-email"
+                type="email"
+                autoComplete="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="login-password">{tx("Mật khẩu", "Password")}</Label>
+              <Input
+                id="login-password"
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                required
+              />
+            </div>
+            <Button type="submit" className="h-11 w-full gap-2 active-tactile" loading={loading} disabled={!email || !password}>
+              {tx("Đăng nhập", "Sign in")}
+              {!loading && <ArrowRight className="h-4 w-4" aria-hidden="true" />}
+            </Button>
+          </form>
+          <p className="text-center text-sm text-muted-foreground">
+            {tx("Chưa có tài khoản?", "Don't have an account?")}{" "}
+            <Link className="font-semibold text-primary underline-offset-4 hover:underline" href="/register">
+              {tx("Tạo tài khoản", "Create account")}
+            </Link>
+          </p>
         </CardContent>
       </Card>
     </div>

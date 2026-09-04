@@ -544,6 +544,9 @@ export default function ChatPage() {
         setStreaming(false);
         toast.error(side.errorMessage);
       }
+      if (side.warningMessage) {
+        toast.error(side.warningMessage);
+      }
       if (side.budgetReason) {
         toast.error(side.budgetReason);
       }
@@ -810,11 +813,13 @@ export default function ChatPage() {
 
   const send = async () => {
     if ((!draft.trim() && attachments.length === 0) || !agentId) return;
-    const attachmentNote = attachments.length
-      ? tx(`\n\n[Tệp đính kèm: ${attachments.map((f) => f.original_name).join(", ")}]`, `\n\n[Attached file${attachments.length > 1 ? "s" : ""}: ${attachments.map((f) => f.original_name).join(", ")}]`)
-      : "";
-    const sentDraft = (draft.trim() ? draft : (tx("Vui lòng xem lại (các) tệp đính kèm.", "Please review the attached file(s)."))) + attachmentNote;
-    const userMsg: ChatMessage = { id: `u-${Date.now()}`, role: "user", content: sentDraft };
+    const sentDraft = draft.trim() ? draft : tx("Vui lòng xem lại (các) tệp đính kèm.", "Please review the attached file(s).");
+    const userMsg: ChatMessage = {
+      id: `u-${Date.now()}`,
+      role: "user",
+      content: sentDraft,
+      ...(attachments.length ? { attachments: attachments.map((f) => ({ id: f.id, name: f.original_name })) } : {}),
+    };
     const assistantId = `a-${Date.now()}`;
     assistantIdRef.current = assistantId;
     lastEventSeqRef.current = 0;

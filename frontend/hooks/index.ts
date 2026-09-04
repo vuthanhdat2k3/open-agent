@@ -4,7 +4,7 @@ import * as React from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "@/lib/api";
-import { getAccessToken, getActiveOrgId, setActiveOrgId } from "@/lib/auth";
+import { getAccessToken, getActiveOrgId, getCsrfToken, setActiveOrgId } from "@/lib/auth";
 import type {
   Agent,
   AgentRelease,
@@ -686,10 +686,16 @@ export function useUploadFile() {
       const form = new FormData();
       form.append("file", file);
       const token = getAccessToken();
+      const csrf = getCsrfToken();
+      const orgId = getActiveOrgId();
       const res = await fetch("/api/files/upload", {
         method: "POST",
         body: form,
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(csrf ? { "X-CSRF-Token": csrf } : {}),
+          ...(orgId ? { "X-Org-Id": orgId } : {}),
+        },
         credentials: "include",
       });
       if (!res.ok) {

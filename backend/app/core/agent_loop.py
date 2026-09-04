@@ -39,6 +39,7 @@ from app.core.observability.metrics import (
     tool_calls_total,
 )
 from app.core.providers.factory import build_driver
+from app.core.providers.templates import get_template
 from app.core.runtime_context import build_runtime_context, normalize_timezone
 from app.core.session_surface import derive_messages
 from app.core.tools.authorization import (
@@ -120,6 +121,7 @@ def defer_user_message(
     org_id: str,
     created_by_user_id: str | None,
     db: AsyncSession | None = None,
+    meta: dict[str, Any] | None = None,
 ) -> None:
     previous = _DEFERRED_USER_WRITES.pop(task_id, None)
     if previous is not None:
@@ -148,7 +150,7 @@ def defer_user_message(
         session_id=session_id,
         role="user",
         content=content,
-        meta={},
+        meta=meta or {},
         org_id=org_id,
         created_by_user_id=created_by_user_id,
         db=writer_db,
@@ -741,9 +743,55 @@ async def _is_cancelled(db: AsyncSession, task: Task | None) -> bool:
     return task.status == "cancelled"
 
 
+def format_multimodal_user_content(
+    text: str,
+    images: list[dict[str, str]],
+    driver_family: str = "openai_compatible",
+) -> list[dict[str, Any]]:
+    """Format user text and attached images into provider-specific content blocks."""
+    if driver_family == "anthropic":
+        blocks: list[dict[str, Any]] = [{"type": "text", "text": text}]
+        for img in images:
+            blocks.append(
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": img["mime_type"],
+                        "data": img["data_b64"],
+                    },
+                }
+            )
+        return blocks
+    elif driver_family == "gemini":
+        blocks = [{"text": text}]
+        for img in images:
+            blocks.append(
+                {
+                    "inline_data": {
+                        "mime_type": img["mime_type"],
+                        "data": img["data_b64"],
+                    }
+                }
+            )
+        return blocks
+    else:  # openai_compatible and default
+        blocks = [{"type": "text", "text": text}]
+        for img in images:
+            blocks.append(
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:{img['mime_type']};base64,{img['data_b64']}"
+                    },
+                }
+            )
+        return blocks
+
+
 async def _agent_stream(
     agent: Agent,
-    message: str,
+    message: str | dict[str, Any],
     db: AsyncSession,
     depth: int,
     session_id: str | None,
@@ -760,11 +808,21 @@ async def _agent_stream(
     timezone_name: str | None = None,
     execution_policy: ExecutionPolicy | None = None,
     parent_session_id: str | None = None,
+    display_message: str | None = None,
+    message_meta: dict[str, Any] | None = None,
+    attachment_warnings: list[str] | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     def _allows_tier(tier: str) -> bool:
         if execution_policy is not None:
             return policy_allows_tier(execution_policy, tier)
         return tier in (agent.allowed_risk_tiers or [])
+
+    if isinstance(message, dict):
+        raw_message_text = str(message.get("text") or "")
+        message_images = list(message.get("images") or [])
+    else:
+        raw_message_text = str(message or "")
+        message_images = []
 
     phase_started_at = time.monotonic()
     logger.info(
@@ -804,7 +862,7 @@ async def _agent_stream(
             agent_id=agent.id,
             agent_release_id=getattr(agent, "active_release_id", None),
             triggered_by_user_id=user_id or agent.created_by_user_id,
-            goal=message,
+            goal=raw_message_text,
             status="running",
             depth=depth,
             started_at=utc_now(),
@@ -932,7 +990,7 @@ async def _agent_stream(
             db, agent.org_id, root_run_id, agent.id, session_id
         )
         forced_tool_choice, route_directive = _route_orchestrator_turn(
-            message,
+            raw_message_text,
             delegate_specs,
             capability_index,
             delegate_by_agent_id,
@@ -941,7 +999,7 @@ async def _agent_stream(
         if route_directive:
             directives.append(route_directive)
     elif agent.kind != "orchestrator":
-        forced_tool_choice = _route_google_worker_tool(message, tool_by_name)
+        forced_tool_choice = _route_google_worker_tool(raw_message_text, tool_by_name)
 
     tool_schemas = [tool_to_openai_schema(s) for s in specs] if specs else None
     logger.info(
@@ -996,8 +1054,17 @@ async def _agent_stream(
             else:
                 for m in hist:
                     messages.append(_to_openai_message(m))
+    if message_images:
+        template = get_template(getattr(provider, "template_key", "") or "")
+        driver_family = template.driver if template else "openai_compatible"
+        user_content: Any = format_multimodal_user_content(
+            raw_message_text, message_images, driver_family
+        )
+    else:
+        user_content = raw_message_text
+
     if not approval_resume_id:
-        messages.append({"role": "user", "content": message})
+        messages.append({"role": "user", "content": user_content})
     elif not any(m.get("role") == "user" for m in messages):
         # A freshly-created delegated sub-agent (this nested resume's
         # current_task_id did not exist before this call) has no prior turn
@@ -1007,7 +1074,7 @@ async def _agent_stream(
         # which every provider tested rejects (a tool_calls turn with no
         # preceding user turn to be responding to). Restate the goal as
         # that user turn so the conversation shape is well-formed.
-        messages.append({"role": "user", "content": message})
+        messages.append({"role": "user", "content": user_content})
 
     logger.info(
         "chat_latency_phase",
@@ -1022,20 +1089,23 @@ async def _agent_stream(
         defer_user_message(
             root_task.id,
             session_id=session_id,
-            content=message,
+            content=display_message if display_message is not None else raw_message_text,
             org_id=agent.org_id,
             created_by_user_id=user_id or agent.created_by_user_id,
             db=db,
+            meta=message_meta,
         )
-        # Mirror the user message into the append-only event log so later
-        # turns can derive the full conversation history with tool fidelity.
+        # Mirror the FULL prompt (with any inlined attachment text) into the
+        # append-only event log, never the display-only content above - this
+        # is what future turns replay as this turn's user message for the
+        # model, and it must keep seeing the attachment content it read.
         try:
             await slog.append_event(
                 db,
                 session_id=session_id,
                 org_id=agent.org_id,
                 type_=slog.USER_MESSAGE,
-                data={"content": message},
+                data={"content": user_content},
             )
         except slog.SessionEventError:
             # Malformed payload: don't poison the run, just log and proceed.
@@ -1061,11 +1131,15 @@ async def _agent_stream(
     start = time.monotonic()
     if rec is not None and not approval_resume_id:
         await rec.record({"event": "message_start", "data": {}})
+        for warning_msg in (attachment_warnings or []):
+            await rec.record({"event": "attachment_warning", "data": {"message": warning_msg}})
         asyncio.create_task(
             rec.flush_progress(phase="thinking", content_chars=0, reasoning_chars=0)
         )
     if not approval_resume_id:
         yield {"event": "message_start", "data": {}}
+        for warning_msg in (attachment_warnings or []):
+            yield {"event": "attachment_warning", "data": {"message": warning_msg}}
 
     tool_calls_log: list[dict[str, Any]] = []
     consecutive_failures = 0
@@ -2461,6 +2535,9 @@ async def run_agent_loop(
     execution_policy: ExecutionPolicy | None = None,
     parent_session_id: str | None = None,
     on_event: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
+    display_message: str | None = None,
+    message_meta: dict[str, Any] | None = None,
+    attachment_warnings: list[str] | None = None,
 ) -> AgentLoopResult:
     content = ""
     usage: dict[str, Any] = {"input_tokens": 0, "output_tokens": 0}
@@ -2468,6 +2545,7 @@ async def run_agent_loop(
     latency_ms = 0
     cost_usd = 0.0
     error: str | None = None
+    model_name: str | None = None
     async for ev in _agent_stream(
         agent,
         message,
@@ -2487,6 +2565,9 @@ async def run_agent_loop(
         timezone_name=timezone_name,
         execution_policy=execution_policy,
         parent_session_id=parent_session_id,
+        display_message=display_message,
+        message_meta=message_meta,
+        attachment_warnings=attachment_warnings,
     ):
         if on_event is not None:
             try:

@@ -55,29 +55,35 @@ export const navGroups: NavGroup[] = [
   },
 
   // --- Operator (AI Engineer / AI Operations Stack) ---
+  // org_admin gets every operator capability plus admin-only ones (see
+  // docs/superpowers/specs/2026-08-15-enterprise-rbac-zitadel-design.md
+  // §5.2/§6.1) so it's included here too - otherwise a freshly registered
+  // user (always org_admin, see backend app/api/v1/routes/auth.py::register)
+  // would have no sidebar path to Chat/Agents/Workflows/Providers at all.
   {
     title: "AI Studio",
     i18nKey: "nav.groups.agenticWorkflows",
-    roles: ["operator"],
+    roles: ["operator", "org_admin"],
     items: [
-      { href: "/", label: "Studio Overview", i18nKey: "nav.studioOverview", icon: LayoutDashboard, roles: ["operator"] },
-      { href: "/agents", label: "Agents", i18nKey: "nav.agents", icon: Bot, roles: ["operator"], permission: "agents:read" },
-      { href: "/providers", label: "Providers", i18nKey: "nav.providers", icon: Server, roles: ["operator"], permission: "providers:read" },
-      { href: "/workflows", label: "Workflows", i18nKey: "nav.workflows", icon: Workflow, roles: ["operator"], permission: "workflows:read" },
-      { href: "/mcp", label: "MCP Servers", i18nKey: "nav.mcpServers", icon: Plug, roles: ["operator"], permission: "mcp:read" },
-      { href: "/channels", label: "Messaging Channels", i18nKey: "nav.channels", icon: MessageSquare, roles: ["operator", "user"], permission: "channels:read" },
-      { href: "/files", label: "Knowledge Base", i18nKey: "nav.knowledgeBase", icon: FolderKanban, roles: ["operator"], permission: "files:read" },
+      { href: "/", label: "Studio Overview", i18nKey: "nav.studioOverview", icon: LayoutDashboard, roles: ["operator", "org_admin"] },
+      { href: "/chat", label: "Chat", i18nKey: "nav.chat", icon: MessageSquare, roles: ["operator", "org_admin"] },
+      { href: "/agents", label: "Agents", i18nKey: "nav.agents", icon: Bot, roles: ["operator", "org_admin"], permission: "agents:read" },
+      { href: "/providers", label: "Providers", i18nKey: "nav.providers", icon: Server, roles: ["operator", "org_admin"], permission: "providers:read" },
+      { href: "/workflows", label: "Workflows", i18nKey: "nav.workflows", icon: Workflow, roles: ["operator", "org_admin"], permission: "workflows:read" },
+      { href: "/mcp", label: "MCP Servers", i18nKey: "nav.mcpServers", icon: Plug, roles: ["operator", "org_admin"], permission: "mcp:read" },
+      { href: "/channels", label: "Messaging Channels", i18nKey: "nav.channels", icon: MessageSquare, roles: ["operator", "user", "org_admin"], permission: "channels:read" },
+      { href: "/files", label: "Knowledge Base", i18nKey: "nav.knowledgeBase", icon: FolderKanban, roles: ["operator", "org_admin"], permission: "files:read" },
     ],
   },
   {
     title: "Observability",
     i18nKey: "nav.groups.governanceAudit",
-    roles: ["operator"],
+    roles: ["operator", "org_admin"],
     items: [
       { href: "/debug", label: "Audit Logs", i18nKey: "nav.auditLogs", icon: Bug, roles: ["operator"], permission: "usage:read" },
-      { href: "/workspace", label: "Sandbox", i18nKey: "nav.sandbox", icon: FolderKanban, roles: ["operator"], permission: "files:read" },
-      { href: "/evaluations", label: "Evaluations", i18nKey: "nav.evaluations", icon: FlaskConical, roles: ["operator"], permission: "evaluations:read" },
-      { href: "/approvals", label: "Approvals", i18nKey: "nav.approvals", icon: ShieldCheck, roles: ["operator"], permission: "approvals:read" },
+      { href: "/workspace", label: "Sandbox", i18nKey: "nav.sandbox", icon: FolderKanban, roles: ["operator", "org_admin"], permission: "files:read" },
+      { href: "/evaluations", label: "Evaluations", i18nKey: "nav.evaluations", icon: FlaskConical, roles: ["operator", "org_admin"], permission: "evaluations:read" },
+      { href: "/approvals", label: "Approvals", i18nKey: "nav.approvals", icon: ShieldCheck, roles: ["operator", "org_admin"], permission: "approvals:read" },
     ],
   },
 
