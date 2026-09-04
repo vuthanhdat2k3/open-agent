@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.channels.factory import build_channel_driver
@@ -14,6 +15,7 @@ from app.dependencies import (
     get_db,
     require_permission,
 )
+from app.models.channel import ChannelConversation
 from app.schemas.channel import (
     ChannelConnectionCreate,
     ChannelConnectionOut,
@@ -36,7 +38,7 @@ def _can_personal_manage(authz: PrincipalContext) -> bool:
     return authz.allows("channels:personal:manage")
 
 
-def _connection_to_out(conn) -> dict[str, Any]:
+def _connection_to_out(conn, latest_session_id: str | None = None) -> dict[str, Any]:
     """Convert a ChannelConnection to API response dict (without sensitive data)."""
     return {
         "id": conn.id,
@@ -46,9 +48,32 @@ def _connection_to_out(conn) -> dict[str, Any]:
         "status": conn.status,
         "config": conn.config,
         "created_by_user_id": conn.created_by_user_id,
+        "latest_session_id": latest_session_id,
         "created_at": conn.created_at,
         "updated_at": conn.updated_at,
     }
+
+
+async def _get_latest_session_ids(
+    db: AsyncSession, org_id: str, connection_ids: list[str]
+) -> dict[str, str]:
+    if not connection_ids:
+        return {}
+
+    stmt = (
+        select(ChannelConversation.connection_id, ChannelConversation.session_id)
+        .where(
+            ChannelConversation.org_id == org_id,
+            ChannelConversation.connection_id.in_(connection_ids),
+        )
+        .order_by(ChannelConversation.updated_at.desc())
+    )
+    res = await db.execute(stmt)
+    result: dict[str, str] = {}
+    for conn_id, sess_id in res.all():
+        if conn_id not in result:
+            result[conn_id] = sess_id
+    return result
 
 
 @router.get(
@@ -73,7 +98,13 @@ async def list_connections(
     connections = await service.list_connections(
         org_id, provider, owner_user_id=user_id
     )
-    return [_connection_to_out(c) for c in connections]
+    session_map = await _get_latest_session_ids(
+        db, org_id, [c.id for c in connections]
+    )
+    return [
+        _connection_to_out(c, latest_session_id=session_map.get(c.id))
+        for c in connections
+    ]
 
 
 @router.post(
@@ -145,7 +176,8 @@ async def get_connection(
         raise HTTPException(404, "Channel connection not found")
     if not _can_manage_all(authz) and conn.created_by_user_id != authz.user_id:
         raise HTTPException(403, "Not your personal channel connection")
-    return _connection_to_out(conn)
+    session_map = await _get_latest_session_ids(db, org_id, [conn.id])
+    return _connection_to_out(conn, latest_session_id=session_map.get(conn.id))
 
 
 @router.patch(

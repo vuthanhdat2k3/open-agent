@@ -536,14 +536,6 @@ export function useTestChannelConnection() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["channels"] }),
   });
 }
-export function useChannelMessages(connectionId: string | null, enabled = true, refetchIntervalMs: number | false = 5000) {
-  return useQuery({
-    queryKey: ["channel-messages", connectionId],
-    enabled: enabled && !!connectionId,
-    queryFn: () => api.get<ChannelMessage[]>(`/api/channels/${connectionId}/messages`),
-    refetchInterval: refetchIntervalMs,
-  });
-}
 
 export function useMcpServers(enabled: boolean = true) {
   return useQuery({ queryKey: ["mcp"], queryFn: () => api.get<McpServer[]>("/api/mcp/servers"), enabled });
