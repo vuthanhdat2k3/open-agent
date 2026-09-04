@@ -149,6 +149,13 @@ async def create_connection(
             except Exception as e:
                 import structlog
                 await structlog.get_logger(__name__).awarning("discord_bot_auto_start_failed", error=str(e))
+        elif connection.provider == "telegram" and connection.status == "active":
+            try:
+                from app.channels.gateway import get_telegram_manager
+                await get_telegram_manager().add_bot(connection)
+            except Exception as e:
+                import structlog
+                await structlog.get_logger(__name__).awarning("telegram_bot_auto_start_failed", error=str(e))
         return _connection_to_out(connection)
     except ValueError as e:
         raise HTTPException(409, str(e))
@@ -219,6 +226,18 @@ async def update_connection(
         except Exception as e:
             import structlog
             await structlog.get_logger(__name__).awarning("discord_bot_update_gateway_failed", error=str(e))
+    elif conn.provider == "telegram":
+        try:
+            from app.channels.gateway import get_telegram_manager
+            tg_mgr = get_telegram_manager()
+            if conn.status == "active":
+                await tg_mgr.remove_bot(conn.id)
+                await tg_mgr.add_bot(conn)
+            else:
+                await tg_mgr.remove_bot(conn.id)
+        except Exception as e:
+            import structlog
+            await structlog.get_logger(__name__).awarning("telegram_bot_update_gateway_failed", error=str(e))
 
     return _connection_to_out(conn)
 
@@ -249,10 +268,53 @@ async def delete_connection(
             await get_discord_manager().remove_bot(connection_id)
         except Exception:
             pass
+    elif existing.provider == "telegram":
+        try:
+            from app.channels.gateway import get_telegram_manager
+            await get_telegram_manager().remove_bot(connection_id)
+        except Exception:
+            pass
 
     if not await service.delete_connection(org_id, connection_id):
         raise HTTPException(404, "Channel connection not found")
     return {"ok": True}
+
+
+@router.post("/{connection_id}/setup-webhook")
+async def setup_webhook(
+    connection_id: str,
+    org_id: str = Depends(get_current_org_id),
+    db: AsyncSession = Depends(get_db),
+    authz: PrincipalContext = Depends(require_permission("channels:read")),
+):
+    """Set up webhook URL for a Telegram bot.
+
+    Requires OPENAGENT_PUBLIC_URL to be set in .env (e.g., https://your-domain.com).
+    """
+    from app.config import get_settings
+
+    service = ChannelService(db)
+    existing = await service.get_connection(org_id, connection_id)
+    if existing is None:
+        raise HTTPException(404, "Channel connection not found")
+    if not _can_manage_all(authz) and existing.created_by_user_id != authz.user_id:
+        raise HTTPException(403, "Not your personal channel connection")
+
+    if existing.provider != "telegram":
+        raise HTTPException(400, "Webhook setup only applies to Telegram connections")
+
+    settings = get_settings()
+    public_url = getattr(settings, "public_url", None)
+    if not public_url:
+        raise HTTPException(
+            400,
+            "OPENAGENT_PUBLIC_URL not configured. Set it in .env to your public domain.",
+        )
+
+    driver = build_channel_driver(existing)
+    webhook_url = f"{public_url.rstrip('/')}/webhooks/telegram"
+    await driver.setup_webhook(webhook_url, secret_token=existing.webhook_secret)
+    return {"ok": True, "webhook_url": webhook_url}
 
 
 @router.post(

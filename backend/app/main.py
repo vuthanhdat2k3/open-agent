@@ -57,11 +57,23 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         await logger.awarning("discord_gateway_start_failed", error=str(e))
 
+    # Start Telegram bot long-polling runners
+    telegram_manager = None
+    try:
+        from app.channels.gateway import get_telegram_manager
+        telegram_manager = get_telegram_manager()
+        await telegram_manager.start()
+        await logger.ainfo("telegram_gateway_started")
+    except Exception as e:
+        await logger.awarning("telegram_gateway_start_failed", error=str(e))
+
     try:
         yield
     finally:
         if discord_manager:
             await discord_manager.shutdown()
+        if telegram_manager:
+            await telegram_manager.shutdown()
         if sink:
             sink.flush(settings.langfuse_flush_timeout_seconds)
         set_default_sink(NoopSink())

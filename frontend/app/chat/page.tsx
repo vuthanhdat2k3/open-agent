@@ -519,23 +519,14 @@ export default function ChatPage() {
   }, []);
 
   const onThreadWheel = React.useCallback((e: React.WheelEvent<HTMLDivElement>) => {
+    // Re-enabling is left to onThreadScroll (real position) only — a raw
+    // deltaY>0 tick can fire mid upward-scroll (rebound) and was re-locking
+    // auto-scroll instantly while distance-from-bottom was still near 0.
     if (e.deltaY < 0) {
-      // User is scrolling UP — immediately lock auto-scroll off
       isSmoothScrollingRef.current = false;
       userScrolledUpRef.current = true;
       autoScrollRef.current = false;
       setShowScrollBottom(true);
-    } else if (e.deltaY > 0) {
-      // User is scrolling DOWN
-      const el = scrollHostRef.current;
-      if (el) {
-        const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
-        if (distance <= 15) {
-          userScrolledUpRef.current = false;
-          autoScrollRef.current = true;
-          setShowScrollBottom(false);
-        }
-      }
     }
   }, []);
 
@@ -555,17 +546,6 @@ export default function ChatPage() {
         userScrolledUpRef.current = true;
         autoScrollRef.current = false;
         setShowScrollBottom(true);
-      } else if (currentY < touchStartYRef.current - 5) {
-        // Swiping upwards = scroll DOWN
-        const el = scrollHostRef.current;
-        if (el) {
-          const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
-          if (distance <= 15) {
-            userScrolledUpRef.current = false;
-            autoScrollRef.current = true;
-            setShowScrollBottom(false);
-          }
-        }
       }
     }
   }, []);

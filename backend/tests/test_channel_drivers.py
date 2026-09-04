@@ -356,3 +356,68 @@ class TestSplitMessage:
         assert all(len(c) <= 1900 for c in chunks)
         assert "".join(chunks) == text
 
+
+class TestTelegramBotManager:
+    @pytest.mark.asyncio
+    async def test_telegram_manager_singleton(self):
+        from app.channels.gateway import TelegramBotManager, get_telegram_manager
+
+        mgr1 = get_telegram_manager()
+        mgr2 = get_telegram_manager()
+        assert isinstance(mgr1, TelegramBotManager)
+        assert mgr1 is mgr2
+
+    @pytest.mark.asyncio
+    async def test_telegram_bot_manager_lifecycle(self):
+        from app.channels.gateway import TelegramBotManager
+        from app.models.channel import ChannelConnection
+
+        mgr = TelegramBotManager()
+        fake_conn = MagicMock(spec=ChannelConnection)
+        fake_conn.id = "tg-conn-1"
+        fake_conn.bot_username = "test_bot"
+        fake_conn.bot_token_enc = "fake_enc"
+
+        with patch("app.channels.gateway.decrypt_string", return_value="fake_token"), \
+             patch.object(mgr, "_run_bot", return_value=None):
+            await mgr.add_bot(fake_conn)
+            assert "tg-conn-1" in mgr._tasks
+
+            # Adding again should be idempotent
+            await mgr.add_bot(fake_conn)
+            assert len(mgr._tasks) == 1
+
+            await mgr.remove_bot("tg-conn-1")
+            assert "tg-conn-1" not in mgr._tasks
+
+            await mgr.shutdown()
+            assert mgr._shutdown is True
+
+    @pytest.mark.asyncio
+    async def test_telegram_send_message_parse_mode_fallback(self):
+        import httpx
+
+        driver = TelegramDriver("fake-token", {})
+
+        called_payloads = []
+
+        def custom_handler(request: httpx.Request):
+            import json
+            data = json.loads(request.content.decode("utf-8"))
+            called_payloads.append(data)
+            if "parse_mode" in data:
+                return httpx.Response(400, json={"ok": False, "description": "Bad Request: can't parse entities in message"})
+            return httpx.Response(200, json={"ok": True, "result": {"message_id": 888}})
+
+        transport = httpx.MockTransport(custom_handler)
+        with patch("httpx.AsyncClient", return_value=httpx.AsyncClient(transport=transport)):
+            msg_id = await driver.send_message("12345", "Raw **invalid <markdown>", parse_mode="HTML")
+
+        assert msg_id == "888"
+        assert len(called_payloads) == 2
+        # First attempt had parse_mode
+        assert called_payloads[0].get("parse_mode") == "HTML"
+        # Second attempt fell back without parse_mode
+        assert "parse_mode" not in called_payloads[1]
+
+
