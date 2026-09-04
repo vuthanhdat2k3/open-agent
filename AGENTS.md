@@ -96,6 +96,8 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 |---|---|---|---|
 | `dev` | `G:\open-agent` | Nhánh tích hợp chính — không code trực tiếp ở đây | — |
 
+> 2026-09-05: Đã merge PR #261 vào `dev` và deploy lên `deploy/dev` (Bổ sung Telegram real-time long-polling TelegramBotManager không cần webhook/domain công khai, tối ưu HTTP keep-alive connection pooling cho Telegram & Discord drivers, tách streaming progressive flusher chạy nền non-blocking giúp giảm độ trễ phản hồi từ 19.2s xuống 2s, bổ sung Markdown-to-HTML converter và tinh chỉnh auto-scroll stream).
+
 > 2026-09-05: Đã merge PR #260 vào `dev` và deploy lên `deploy/dev` (Sửa lỗi cuộn tự do trên trang Chat khi đang stream: thay thế isProgrammaticScrollRef bằng isSmoothScrollingRef, cho phép kéo scrollbar, lăn chuột và vuốt trackpad mượt mà không bị giật về đáy).
 
 > 2026-09-04: Đã merge PR #252 vào `dev` và deploy lên `deploy/dev` (Sửa lỗi "Organization context required" trên trang Tích hợp: giải mã application session cookie và tự động fallback về active membership trong `get_current_org_id`, đảo thứ tự dependency trong `start_ci_oauth`, tự động đồng bộ active org và đính kèm `X-Org-Id` trên mọi request frontend).
