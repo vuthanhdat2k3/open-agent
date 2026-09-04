@@ -168,18 +168,28 @@ export default function ChannelsPage() {
                 </div>
 
                 <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-border/60 pt-4">
-                  <Link href={c.latest_session_id ? `/chat?session_id=${c.latest_session_id}` : "/chat"}>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="gap-1.5 active-tactile transition-transform text-xs border-primary/30 hover:border-primary/60 hover:bg-primary/5"
-                      aria-label={tx(`Mở cuộc trò chuyện trong Chat`, `Open conversation in Chat`)}
-                      title={tx(`Mở cuộc trò chuyện trong Chat`, `Open conversation in Chat`)}
-                    >
-                      <MessageSquare className="h-3.5 w-3.5 text-primary" />
-                      <span>{tx("Vào Chat", "Open Chat")}</span>
-                    </Button>
-                  </Link>
+                  {(() => {
+                    const agentId = c.config?.default_agent_id || c.config?.agent_id;
+                    const chatHref = c.latest_session_id
+                      ? `/chat?session=${c.latest_session_id}${agentId ? `&agent=${agentId}` : ""}`
+                      : agentId
+                        ? `/chat?agent=${agentId}`
+                        : "/chat";
+                    return (
+                      <Link href={chatHref}>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="gap-1.5 active-tactile transition-transform text-xs border-primary/30 hover:border-primary/60 hover:bg-primary/5"
+                          aria-label={tx(`Mở cuộc trò chuyện trong Chat`, `Open conversation in Chat`)}
+                          title={tx(`Mở cuộc trò chuyện trong Chat`, `Open conversation in Chat`)}
+                        >
+                          <MessageSquare className="h-3.5 w-3.5 text-primary" />
+                          <span>{tx("Vào Chat", "Open Chat")}</span>
+                        </Button>
+                      </Link>
+                    );
+                  })()}
                   <Button
                     size="icon"
                     variant="ghost"
