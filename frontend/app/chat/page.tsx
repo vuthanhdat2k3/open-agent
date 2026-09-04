@@ -143,7 +143,6 @@ export default function ChatPage() {
   const reattachAbortRef = React.useRef<AbortController | null>(null);
   const lastEventSeqRef = React.useRef(0);
   const autoScrollRef = React.useRef(true);
-  const isProgrammaticScrollRef = React.useRef(false);
   const [showScrollBottom, setShowScrollBottom] = React.useState(false);
   const scrollHostRef = React.useRef<HTMLDivElement>(null);
   // Set to true immediately after the user decides an approval so that the
@@ -431,35 +430,84 @@ export default function ChatPage() {
   }, [changeSession, chatRun.data, sessionId, setStreaming, syncPersistedMessages]);
 
   const userScrolledUpRef = React.useRef(false);
+  const isSmoothScrollingRef = React.useRef(false);
+  const smoothScrollTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastScrollTopRef = React.useRef(0);
 
-  const scrollToBottom = React.useCallback((behavior: ScrollBehavior = "smooth") => {
-    const el = scrollHostRef.current;
-    if (!el) return;
+  const scrollToBottom = React.useCallback(
+    (behavior?: ScrollBehavior) => {
+      const el = scrollHostRef.current;
+      if (!el) return;
+      userScrolledUpRef.current = false;
+      autoScrollRef.current = true;
+      setShowScrollBottom(false);
+
+      const effectiveBehavior = behavior ?? (streaming ? "instant" : "smooth");
+      if (effectiveBehavior === "smooth") {
+        isSmoothScrollingRef.current = true;
+        if (smoothScrollTimeoutRef.current) clearTimeout(smoothScrollTimeoutRef.current);
+        smoothScrollTimeoutRef.current = setTimeout(() => {
+          isSmoothScrollingRef.current = false;
+        }, 800);
+      } else {
+        isSmoothScrollingRef.current = false;
+      }
+
+      el.scrollTo({ top: el.scrollHeight, behavior: effectiveBehavior });
+    },
+    [streaming],
+  );
+
+  React.useEffect(() => {
     userScrolledUpRef.current = false;
     autoScrollRef.current = true;
     setShowScrollBottom(false);
-    isProgrammaticScrollRef.current = true;
-    el.scrollTo({ top: el.scrollHeight, behavior });
-  }, []);
+  }, [sessionId]);
 
   const prevMessageCountRef = React.useRef(0);
   React.useEffect(() => {
     const el = scrollHostRef.current;
     if (!el || !autoScrollRef.current || userScrolledUpRef.current) return;
-    isProgrammaticScrollRef.current = true;
-    el.scrollTo({ top: el.scrollHeight, behavior: streaming ? "instant" : "smooth" });
+    const behavior = streaming ? "instant" : "smooth";
+    if (behavior === "smooth") {
+      isSmoothScrollingRef.current = true;
+      if (smoothScrollTimeoutRef.current) clearTimeout(smoothScrollTimeoutRef.current);
+      smoothScrollTimeoutRef.current = setTimeout(() => {
+        isSmoothScrollingRef.current = false;
+      }, 800);
+    }
+    el.scrollTo({ top: el.scrollHeight, behavior });
     prevMessageCountRef.current = messages.length;
   }, [messages, streaming]);
 
   const onThreadScroll = React.useCallback(() => {
     const el = scrollHostRef.current;
     if (!el) return;
-    if (isProgrammaticScrollRef.current) {
-      isProgrammaticScrollRef.current = false;
+
+    const currentScrollTop = el.scrollTop;
+    const distance = el.scrollHeight - currentScrollTop - el.clientHeight;
+
+    if (isSmoothScrollingRef.current) {
+      if (distance <= 10) {
+        // Smooth scroll reached bottom
+        isSmoothScrollingRef.current = false;
+        userScrolledUpRef.current = false;
+        autoScrollRef.current = true;
+        setShowScrollBottom(false);
+      } else if (currentScrollTop < lastScrollTopRef.current) {
+        // User interrupted smooth scroll by scrolling UP
+        isSmoothScrollingRef.current = false;
+        userScrolledUpRef.current = true;
+        autoScrollRef.current = false;
+        setShowScrollBottom(true);
+      }
+      lastScrollTopRef.current = currentScrollTop;
       return;
     }
-    const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
-    if (distance > 25) {
+
+    lastScrollTopRef.current = currentScrollTop;
+
+    if (distance > 20) {
       userScrolledUpRef.current = true;
       autoScrollRef.current = false;
       setShowScrollBottom(true);
@@ -473,6 +521,7 @@ export default function ChatPage() {
   const onThreadWheel = React.useCallback((e: React.WheelEvent<HTMLDivElement>) => {
     if (e.deltaY < 0) {
       // User is scrolling UP — immediately lock auto-scroll off
+      isSmoothScrollingRef.current = false;
       userScrolledUpRef.current = true;
       autoScrollRef.current = false;
       setShowScrollBottom(true);
@@ -502,6 +551,7 @@ export default function ChatPage() {
       const currentY = e.touches[0].clientY;
       if (currentY > touchStartYRef.current + 5) {
         // Swiping downwards = scroll UP
+        isSmoothScrollingRef.current = false;
         userScrolledUpRef.current = true;
         autoScrollRef.current = false;
         setShowScrollBottom(true);
@@ -835,6 +885,7 @@ export default function ChatPage() {
     setAttachments([]);
     setStreaming(true);
     autoScrollRef.current = true;
+    userScrolledUpRef.current = false;
     setShowScrollBottom(false);
     scrollToBottom("instant");
 
@@ -1036,7 +1087,7 @@ export default function ChatPage() {
           onThreadTouchStart={onThreadTouchStart}
           onThreadTouchMove={onThreadTouchMove}
           showScrollBottom={showScrollBottom}
-          onScrollToBottom={() => scrollToBottom("smooth")}
+          onScrollToBottom={() => scrollToBottom()}
         />
 
         {messages.length > 0 && (
