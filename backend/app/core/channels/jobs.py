@@ -240,7 +240,31 @@ async def process_channel_message(
                         flusher_dirty.set()
 
             # Process channel attachments (images and documents)
-            attachments = (msg.metadata_json or {}).get("attachments", [])
+            attachments = list((msg.metadata_json or {}).get("attachments", []))
+            if not attachments and connection.provider == "telegram":
+                raw_msg = (msg.metadata_json or {}).get("message", {})
+                if isinstance(raw_msg, dict):
+                    if "document" in raw_msg and isinstance(raw_msg["document"], dict):
+                        doc = raw_msg["document"]
+                        attachments.append({
+                            "id": doc.get("file_id"),
+                            "file_id": doc.get("file_id"),
+                            "type": "document",
+                            "name": doc.get("file_name", "document.pdf"),
+                            "size": doc.get("file_size", 0),
+                            "mime_type": doc.get("mime_type", "application/pdf"),
+                        })
+                    elif "photo" in raw_msg and isinstance(raw_msg["photo"], list) and raw_msg["photo"]:
+                        best = raw_msg["photo"][-1]
+                        attachments.append({
+                            "id": best.get("file_id"),
+                            "file_id": best.get("file_id"),
+                            "type": "image",
+                            "name": f"telegram_photo_{str(best.get('file_id', ''))[-8:]}.jpg",
+                            "size": best.get("file_size", 0),
+                            "mime_type": "image/jpeg",
+                        })
+
             channel_images: list[dict[str, Any]] = []
             inlined_doc_blocks: list[str] = []
 
@@ -255,8 +279,9 @@ async def process_channel_message(
                     file_bytes: bytes | None = None
 
                     try:
-                        if connection.provider == "telegram" and "file_id" in att:
-                            tg_file_info = await driver.get_file_info(att["file_id"])
+                        file_id = att.get("file_id") or att.get("id")
+                        if connection.provider == "telegram" and file_id:
+                            tg_file_info = await driver.get_file_info(file_id)
                             if tg_file_info and tg_file_info.get("file_path"):
                                 file_bytes = await driver.download_file_bytes(tg_file_info["file_path"])
                         elif connection.provider == "discord" and "url" in att:
