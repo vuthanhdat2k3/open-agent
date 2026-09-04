@@ -190,7 +190,10 @@ async def ci_oauth_callback(kind: str, provider: str, request: Request, db: Asyn
     from app.customer_intelligence.security import encrypt_credentials
 
     state = request.query_params.get("state", "")
-    if not state or not hmac.compare_digest(state, request.cookies.get("ci_oauth_state", "")):
+    if not state:
+        raise HTTPException(400, "invalid OAuth state")
+    cookie_state = request.cookies.get("ci_oauth_state")
+    if cookie_state and not hmac.compare_digest(state, cookie_state):
         raise HTTPException(400, "invalid OAuth state")
     try:
         payload = verify_oauth_state(state)
