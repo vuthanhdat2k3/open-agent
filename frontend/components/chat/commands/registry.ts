@@ -1,3 +1,4 @@
+import type { Model } from "@/types";
 import type { SlashCommand, SlashCommandContext, SlashCommandOption } from "./types";
 
 /** Compact prompt sent to the agent when the user runs /compact */
@@ -44,6 +45,28 @@ export const SLASH_COMMANDS: SlashCommand[] = [
         return true;
       }
       ctx.notify(ctx.tx("Không tìm thấy mô hình", "Model not found"), "error");
+      return false;
+    },
+  },
+  {
+    name: "select-model",
+    description: "Chọn mô hình AI (hiển thị danh sách)",
+    usage: "/select-model",
+    getOptions: (ctx: SlashCommandContext): SlashCommandOption[] => {
+      return ctx.models
+        .filter((m: Model) => m.active)
+        .map((m: Model) => ({
+          id: m.id,
+          label: m.display_name || m.name,
+          detail: m.supports_vision ? "Vision" : undefined,
+        }));
+    },
+    execute: (args: string, ctx: SlashCommandContext): boolean => {
+      // When called with option id, switch to that model
+      if (args) {
+        ctx.onModelChange(args);
+        return true;
+      }
       return false;
     },
   },
