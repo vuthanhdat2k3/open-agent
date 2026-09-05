@@ -26,6 +26,13 @@ settings = get_settings()
 
 MAX_SANDBOX_OUTPUT = 50_000
 MAX_WORKSPACE_ARCHIVE_BYTES = 10 * 1024 * 1024
+# Hard ceiling on a model/user-supplied `timeout` arg. Without this, a
+# request for e.g. timeout=300 would still get killed at the tool-call
+# wrapper's default 30s (ToolSpec.timeout_s) well before this cooperative
+# deadline ever fired - and that external cancellation didn't kill the
+# underlying Docker subprocess, leaking a running container. run_code's
+# ToolSpec.timeout_s is set above this ceiling so the wrapper never wins.
+MAX_SANDBOX_TIMEOUT_SECONDS = 300.0
 SKIP_WORKSPACE_DIRS = {".git", "__pycache__", ".venv", "node_modules", ".codegraph", ".omo"}
 
 _LANG_IMAGES = {
@@ -436,6 +443,7 @@ async def _run_code(args: dict[str, Any], ctx: ToolContext) -> str:
         timeout = float(args.get("timeout", settings.sandbox_default_timeout))
     except (TypeError, ValueError):
         timeout = settings.sandbox_default_timeout
+    timeout = min(max(timeout, 0.1), MAX_SANDBOX_TIMEOUT_SECONDS)
 
     if not _docker_available():
         sandbox_executions_total.labels("docker_unavailable").inc()
@@ -476,37 +484,50 @@ async def _run_code(args: dict[str, Any], ctx: ToolContext) -> str:
         total_chars = 0
         lines: list[str] = []
         if proc.stdout:
-            while True:
-                remaining = deadline - loop.time()
-                if remaining <= 0:
-                    timed_out = True
-                    break
-                try:
-                    line_bytes = await asyncio.wait_for(
-                        proc.stdout.readline(),
-                        timeout=max(0.1, remaining),
-                    )
-                except TimeoutError:
-                    timed_out = True
-                    break
-                if not line_bytes:
-                    break
-                line = line_bytes.decode("utf-8", errors="replace")
-                total_chars += len(line)
-                if total_chars > MAX_SANDBOX_OUTPUT:
-                    truncated = True
-                    overflow = total_chars - MAX_SANDBOX_OUTPUT
-                    if overflow < len(line):
-                        line = line[:-overflow] + "\n...[truncated output limit reached]"
-                    else:
-                        line = "\n...[truncated output limit reached]"
+            try:
+                while True:
+                    remaining = deadline - loop.time()
+                    if remaining <= 0:
+                        timed_out = True
+                        break
+                    try:
+                        line_bytes = await asyncio.wait_for(
+                            proc.stdout.readline(),
+                            timeout=max(0.1, remaining),
+                        )
+                    except TimeoutError:
+                        timed_out = True
+                        break
+                    if not line_bytes:
+                        break
+                    line = line_bytes.decode("utf-8", errors="replace")
+                    total_chars += len(line)
+                    if total_chars > MAX_SANDBOX_OUTPUT:
+                        truncated = True
+                        overflow = total_chars - MAX_SANDBOX_OUTPUT
+                        if overflow < len(line):
+                            line = line[:-overflow] + "\n...[truncated output limit reached]"
+                        else:
+                            line = "\n...[truncated output limit reached]"
+                        lines.append(line)
+                        if ctx.emit:
+                            await ctx.emit({"kind": "stdout", "line": line})
+                        break
                     lines.append(line)
                     if ctx.emit:
                         await ctx.emit({"kind": "stdout", "line": line})
-                    break
-                lines.append(line)
-                if ctx.emit:
-                    await ctx.emit({"kind": "stdout", "line": line})
+            except asyncio.CancelledError:
+                # The outer tool-call wrapper (ToolSpec.timeout_s) or a run
+                # cancellation cut in while we were mid-read. Without this,
+                # the container keeps running with nothing left to reap it -
+                # a leaked sandbox. Kill it, then let the cancellation
+                # propagate as normal.
+                try:
+                    proc.kill()
+                    await proc.wait()
+                except Exception:  # noqa: BLE001
+                    pass
+                raise
 
         if timed_out:
             try:
@@ -628,5 +649,6 @@ register(
             "required": ["language"],
         },
         run=_run_code,
+        timeout_s=MAX_SANDBOX_TIMEOUT_SECONDS + 15.0,
     )
 )

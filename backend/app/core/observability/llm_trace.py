@@ -68,6 +68,7 @@ class GenerationRecord:
     output_tokens: int | None = None
     total_tokens: int | None = None
     cost_usd: float | None = None
+    estimated: bool | None = None
     latency_ms: int = 0
     status: GenerationStatus = "started"
     error: dict[str, Any] | None = None

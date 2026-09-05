@@ -133,6 +133,7 @@ export default function ChatPage() {
 
   const transitioningSessionRef = React.useRef<string | null | undefined>(undefined);
   const transitioningAgentRef = React.useRef<string | null | undefined>(undefined);
+  const blockedWorkerAgentToastRef = React.useRef<string | null>(null);
 
   const buildChatUrl = React.useCallback(
     (agent: string | null, session: string | null, model: string | null) => {
@@ -351,6 +352,26 @@ export default function ChatPage() {
               )
             ? agentId
             : fallbackAgent.id;
+
+    // urlAgent points at a real agent but was rejected by the role check
+    // above (isEndUserRole restricts direct chat to the orchestrator) — the
+    // resolver silently falls back to the last session/orchestrator instead,
+    // which otherwise looks like the link is just broken. Say why once.
+    if (
+      urlAgent &&
+      urlAgent !== resolvedAgent &&
+      isEndUserRole &&
+      blockedWorkerAgentToastRef.current !== urlAgent &&
+      agents.data.some((a) => a.id === urlAgent && a.kind !== "orchestrator")
+    ) {
+      blockedWorkerAgentToastRef.current = urlAgent;
+      toast.error(
+        tx(
+          "Chỉ có thể trò chuyện trực tiếp với Trợ lý chung — agent này chỉ hoạt động qua ủy quyền.",
+          "Only the general assistant can be chatted with directly — this agent is only reachable via delegation.",
+        ),
+      );
+    }
 
     if (transitioningAgentRef.current === undefined && resolvedAgent !== agentId) {
       if (targetSession) {
@@ -691,6 +712,27 @@ export default function ChatPage() {
           setPhase(run.status === "waiting_approval" ? "approval" : "");
           if (run.status !== "waiting_approval") {
             void syncPersistedMessages();
+          }
+          // A run that died before persisting any turn (e.g. an orphaned
+          // mid-flight worker) leaves nothing for syncPersistedMessages to
+          // find. Replay the durable per-event log once so the
+          // reasoning/tool-call trace that already happened isn't silently
+          // discarded, leaving only the terminal error banner behind.
+          if (
+            ["failed", "diverged", "cancelled"].includes(run.status) &&
+            projectionRef.current.messages.length === 0
+          ) {
+            api
+              .get<{ events: { seq: number; event: string; data: unknown }[] }>(
+                `/api/chat/runs/${run.id}/events?follow=false&after_seq=0`,
+              )
+              .then((snapshot) => {
+                for (const raw of snapshot.events || []) {
+                  if (typeof raw.seq === "number") lastEventSeqRef.current = raw.seq;
+                  handleChatEvent({ event: raw.event, data: raw.data });
+                }
+              })
+              .catch(() => {});
           }
           if (run.status !== "succeeded" && run.error) toast.error(run.error);
         }
@@ -1191,6 +1233,16 @@ export default function ChatPage() {
               onModelChange={(modelId: string) => void setDefaultModel(modelId)}
               executionPolicy={effectiveExecutionPolicy}
               onExecutionPolicyChange={handleExecutionPolicyChange}
+              onClear={() => {
+                setMessages([]);
+                setDraft("");
+              }}
+              onReset={() => {
+                setMessages([]);
+                setDraft("");
+                setAttachments([]);
+                window.location.href = "/chat";
+              }}
             />
           </div>
         )}

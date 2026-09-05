@@ -56,6 +56,7 @@ async def _run_shell(args: dict[str, Any], ctx: ToolContext) -> str:
         timeout = float(args.get("timeout", DEFAULT_TIMEOUT))
     except (TypeError, ValueError):
         timeout = DEFAULT_TIMEOUT
+    timeout = min(max(timeout, 0.1), sandbox.MAX_SANDBOX_TIMEOUT_SECONDS)
 
     if not sandbox._docker_available():
         msg = (
@@ -94,41 +95,52 @@ async def _run_shell(args: dict[str, Any], ctx: ToolContext) -> str:
         total_chars = 0
         lines: list[str] = []
         if proc.stdout:
-            while True:
-                remaining = deadline - loop.time()
-                if remaining <= 0:
-                    timed_out = True
-                    break
-                try:
-                    line_bytes = await asyncio.wait_for(
-                        proc.stdout.readline(),
-                        timeout=max(0.1, remaining),
-                    )
-                except TimeoutError:
-                    timed_out = True
-                    break
-                if not line_bytes:
-                    break
-                line = line_bytes.decode("utf-8", errors="replace")
-                total_chars += len(line)
-                if total_chars > MAX_SHELL_OUTPUT:
-                    overflow = total_chars - MAX_SHELL_OUTPUT
-                    if overflow < len(line):
-                        line = line[:-overflow] + "\n...[truncated]"
-                    else:
-                        line = "\n...[truncated]"
+            try:
+                while True:
+                    remaining = deadline - loop.time()
+                    if remaining <= 0:
+                        timed_out = True
+                        break
+                    try:
+                        line_bytes = await asyncio.wait_for(
+                            proc.stdout.readline(),
+                            timeout=max(0.1, remaining),
+                        )
+                    except TimeoutError:
+                        timed_out = True
+                        break
+                    if not line_bytes:
+                        break
+                    line = line_bytes.decode("utf-8", errors="replace")
+                    total_chars += len(line)
+                    if total_chars > MAX_SHELL_OUTPUT:
+                        overflow = total_chars - MAX_SHELL_OUTPUT
+                        if overflow < len(line):
+                            line = line[:-overflow] + "\n...[truncated]"
+                        else:
+                            line = "\n...[truncated]"
+                        lines.append(line)
+                        if ctx.emit:
+                            await ctx.emit({"kind": "stdout", "line": line})
+                        try:
+                            proc.kill()
+                            await proc.wait()
+                        except Exception:  # noqa: BLE001
+                            pass
+                        break
                     lines.append(line)
                     if ctx.emit:
                         await ctx.emit({"kind": "stdout", "line": line})
-                    try:
-                        proc.kill()
-                        await proc.wait()
-                    except Exception:  # noqa: BLE001
-                        pass
-                    break
-                lines.append(line)
-                if ctx.emit:
-                    await ctx.emit({"kind": "stdout", "line": line})
+            except asyncio.CancelledError:
+                # See sandbox._run_code's identical guard: an external
+                # cancellation (tool-call wrapper timeout, run cancel) must
+                # still reap the container instead of leaking it.
+                try:
+                    proc.kill()
+                    await proc.wait()
+                except Exception:  # noqa: BLE001
+                    pass
+                raise
 
         if timed_out:
             try:
@@ -205,5 +217,6 @@ register(
         run=_run_shell,
         risk_tier=RiskTier.dangerous,
         requires_approval=True,
+        timeout_s=sandbox.MAX_SANDBOX_TIMEOUT_SECONDS + 15.0,
     )
 )

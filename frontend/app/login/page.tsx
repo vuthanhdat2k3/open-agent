@@ -100,7 +100,14 @@ export default function LoginPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
-      if (!response.ok) throw new Error(tx("Email hoặc mật khẩu không đúng", "Invalid email or password"));
+      if (!response.ok) {
+        const fallback = tx("Email hoặc mật khẩu không đúng", "Invalid email or password");
+        const detail = await response
+          .json()
+          .then((body: { detail?: string }) => body.detail)
+          .catch(() => undefined);
+        throw new Error(detail || fallback);
+      }
       const data = (await response.json()) as { access_token: string };
       setAccessToken(data.access_token);
       window.location.replace("/");
