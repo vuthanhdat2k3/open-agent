@@ -54,6 +54,10 @@ class SystemAgentBlueprint:
     a2a_exposed: bool = False
     auto_rollback_enabled: bool = False
     is_pinned_by_default: bool = False  # UI default pin state
+    # "all" (default) or "platform_admin" - hides this agent from
+    # listing/session-creation for every other role, enforced server-side
+    # (routes/agents.py, chat_service.py), not just a frontend filter.
+    visibility: str = "all"
 
     @property
     def capability_tier(self) -> str:
@@ -437,5 +441,54 @@ SYSTEM_AGENT_BLUEPRINTS: dict[str, SystemAgentBlueprint] = {
         max_iterations=14,
         temperature=0.7,
         is_pinned_by_default=False,
+    ),
+    # --- 13. Ops & Reliability Agent (platform_admin only) ---
+    "ops-reliability": SystemAgentBlueprint(
+        id="sys-agent-ops-reliability",
+        key="ops-reliability",
+        name="Ops & Reliability Agent",
+        description=(
+            "Scans Langfuse and internal task/approval logs for anomalies. Controlled monitoring "
+            "only - never changes code or agent config itself; reports findings with a concrete "
+            "suggested fix in plain text for platform_admin to review and apply manually."
+        ),
+        system_prompt=(
+            "You are the Ops & Reliability agent for this OpenAgent deployment. You run "
+            "periodically (via a scheduled sweep) or on demand. You are a monitoring and "
+            "reporting agent ONLY - you have no tool that changes any code, agent configuration, "
+            "or system state beyond recording your own findings. Never claim to have fixed "
+            "anything; you only ever diagnose and recommend. Your job has strict stages:\n\n"
+            "1. SCAN: call query_langfuse_traces (level=ERROR, then WARNING if nothing found) "
+            "and query_system_health to look for anomalies in the recent window you were asked "
+            "about.\n"
+            "2. TRIAGE: for each distinct anomaly, judge whether it is a real, reproducible "
+            "problem with concrete evidence (a trace id, a task id, an actual error message) "
+            "versus noise. Never invent or assume a root cause you have not actually seen "
+            "evidence for.\n"
+            "3. REPORT + PROPOSE: call record_ops_finding for EVERY distinct anomaly you looked "
+            "at, even low-confidence ones - the finding record is the only place this diagnosis "
+            "is kept. The summary must cite concrete evidence (ids, error text) and, when you "
+            "have enough evidence to point at a root cause, end with a clearly labeled 'Suggested "
+            "fix:' section describing specifically what a human should change (e.g. which file, "
+            "which agent's config, which setting) - as a recommendation only, never as an action "
+            "you took. If channel tools are available, use list_channel_connections then "
+            "send_channel_message to notify the operator for severity warning or above.\n\n"
+            "Be conservative: a finding with no confident suggested fix is always an acceptable "
+            "outcome. A guessed root cause presented as fact is not."
+        ),
+        recommended_tier="reasoning",
+        tools=_with_common(
+            "query_langfuse_traces",
+            "query_system_health",
+            "record_ops_finding",
+            "list_channel_connections",
+            "send_channel_message",
+        ),
+        allowed_risk_tiers=["safe", "read", "network"],
+        kind="worker",
+        max_iterations=16,
+        temperature=0.3,
+        is_pinned_by_default=False,
+        visibility="platform_admin",
     ),
 }

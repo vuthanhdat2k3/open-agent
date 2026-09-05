@@ -36,6 +36,11 @@ class Agent(Base):
         JSON, default=lambda: ["safe", "read"]
     )
     kind: Mapped[str] = mapped_column(String(32), default="worker", nullable=False)
+    # "all" (default, current behavior - every role that can chat sees it) or
+    # "platform_admin" (hidden from listing/session-creation for every other
+    # role, enforced server-side, not just a frontend filter - see
+    # dependencies.py's require_agent_visible / routes/agents.py).
+    visibility: Mapped[str] = mapped_column(String(16), default="all", nullable=False)
     max_iterations: Mapped[int] = mapped_column(Integer, default=12)
     temperature: Mapped[float] = mapped_column(Float, default=0.7)
     enable_thinking: Mapped[bool | None] = mapped_column(nullable=True)
