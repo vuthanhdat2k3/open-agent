@@ -123,3 +123,31 @@ export const useChatStore = create<ChatState>()(
     },
   ),
 );
+
+export interface CanvasItem {
+  title: string;
+  code?: string;
+  contentUrl?: string;
+  downloadUrl?: string;
+  language?: string;
+  initialTab?: "code" | "preview";
+}
+
+interface CanvasState {
+  isOpen: boolean;
+  activeItem: CanvasItem | null;
+  isFullscreen: boolean;
+  openCanvas: (item: CanvasItem) => void;
+  closeCanvas: () => void;
+  toggleFullscreen: () => void;
+}
+
+export const useCanvasStore = create<CanvasState>((set) => ({
+  isOpen: false,
+  activeItem: null,
+  isFullscreen: false,
+  openCanvas: (item) => set({ isOpen: true, activeItem: item }),
+  closeCanvas: () => set({ isOpen: false, activeItem: null, isFullscreen: false }),
+  toggleFullscreen: () => set((state) => ({ isFullscreen: !state.isFullscreen })),
+}));
+
