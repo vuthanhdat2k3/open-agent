@@ -23,6 +23,8 @@ export interface AttachmentItem {
   size?: number;
   content_type?: string;
   error?: string;
+  download_url?: string;
+  content_url?: string;
 }
 
 export interface FileAttachmentCardProps {
@@ -102,7 +104,8 @@ export function FileAttachmentCard({
   const [imgError, setImgError] = React.useState(false);
 
   const isImg = isImageAttachment(attachment);
-  const contentUrl = `/api/files/${attachment.id}/content`;
+  const contentUrl = attachment.content_url || `/api/files/${attachment.id}/content`;
+  const downloadUrl = attachment.download_url || contentUrl;
   const formattedSize = formatFileSize(attachment.size);
   const fileMeta = getFileMeta(attachment.name);
   const Icon = fileMeta.icon;
@@ -259,7 +262,7 @@ export function FileAttachmentCard({
               </div>
               <div className="flex items-center justify-end gap-2 pt-1">
                 <a
-                  href={contentUrl}
+                  href={downloadUrl}
                   download={attachment.name}
                   target="_blank"
                   rel="noreferrer"
@@ -307,7 +310,7 @@ export function FileAttachmentCard({
         </div>
       </div>
       <a
-        href={contentUrl}
+        href={downloadUrl}
         download={attachment.name}
         target="_blank"
         rel="noreferrer"
