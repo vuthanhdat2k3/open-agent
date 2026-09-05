@@ -12,7 +12,7 @@
 
 | Role | Đối tượng | Nhiệm vụ cốt lõi | Cách cấp quyền |
 |---|---|---|---|
-| `platform_admin` | **Platform Super Admin** | **Chỉ quản lý danh sách Tổ chức (Tenants)**: Tạo Org, gán `org_admin` ban đầu, kích hoạt/khóa Org. Không quản lý Providers hay Logs của Org. | Cấu hình qua `OPENAGENT_PLATFORM_ADMIN_EMAILS` / Zitadel platform seed |
+| `platform_admin` | **Platform Super Admin** | **Break-glass, gần như chỉ đọc**: quản lý danh sách Tổ chức (Tenants), tạo Org, gán `org_admin` ban đầu, kích hoạt/khóa Org. Không quản lý Providers hay Logs của Org. Ngoại lệ hẹp duy nhất: được `agents:run` + `tools:use:{safe,read,network}` + `approvals:manage`, nhưng chỉ áp dụng khi chat với agent có `visibility="platform_admin"` (hiện tại chỉ có Ops & Reliability Agent — agent giám sát hệ thống, chỉ báo cáo và đề xuất, không tự sửa code/config) — không mở quyền chat với agent thường của bất kỳ Org nào. | Cấu hình qua `OPENAGENT_PLATFORM_ADMIN_EMAILS` / Zitadel platform seed |
 | `org_admin` (`admin`) | **Organization Administrator** | **Quản trị toàn diện công ty**: Quản lý nhân viên (`Members & Roles`), cấu hình API Keys & Models, phân bổ Quotas & Budgets, quản lý kho tri thức **Knowledge Base**, theo dõi **Usage & Audit Logs**, cấu hình hòm thư chung. | `platform_admin` mời khi tạo Org, hoặc `org_admin` khác mời |
 | `operator` | **AI Engineer / Builder / Ops** | **Chế tạo & Đánh giá giải pháp AI**: Thiết kế Agent Studio & Prompts, xây dựng visual Workflows, cấu hình MCP Servers, nạp tri thức vào **Knowledge Base**, kiểm thử Sandbox, chạy Evaluations và duyệt Technical Approvals. | `org_admin` mời và phân quyền trong Org |
 | `user` | **End-User / Business Worker** | **Sử dụng AI nghiệp vụ hàng ngày**: Trò chuyện với Trợ lý AI (`Chat` kèm nút đính kèm file 📎 tức thời), chạy `Run Workflow`, nhận tóm tắt từ `Smart Inbox & Rules`, tra cứu `Research Cases`. | `org_admin` mời vào Org |
@@ -42,12 +42,14 @@ Legend:
 | **Workspace & Sandbox** | `/workspace` | `files:read` / `files:write` | ❌ Ẩn | ❌ Ẩn | 🟢 Hiện | ❌ Ẩn |
 | **Evaluations** | `/evaluations` | `evaluations:read` | ❌ Ẩn | ❌ Ẩn | 🟢 Hiện | ❌ Ẩn |
 | **Technical Approvals** | `/approvals` | `approvals:read` / `approvals:manage` | ❌ Ẩn | ❌ Ẩn | 🟢 Hiện | ❌ Ẩn |
-| **Chat Assistant** *(📎 đính kèm)* | `/chat` | `agents:run` | ❌ Ẩn | ❌ Ẩn | ❌ Ẩn | 🟢 Hiện |
+| **Chat Assistant** *(📎 đính kèm)* | `/chat` | `agents:run` | 🟡 Chỉ Ops Agent¹ | ❌ Ẩn | ❌ Ẩn | 🟢 Hiện |
 | **Run Workflow** | `/run-workflow` | `workflows:run` | ❌ Ẩn | ❌ Ẩn | ❌ Ẩn | 🟢 Hiện |
 | **Smart Inbox & Rules** | `/email-intelligence` | `ci:personal:manage` | ❌ Ẩn | ❌ Ẩn | ❌ Ẩn | 🟢 Hiện |
 | **Automations Catalog** | `/automations` | `workflows:read` | ❌ Ẩn | ❌ Ẩn | ❌ Ẩn | 🟢 Hiện |
 | **Research Cases** | `/customer-intelligence` | `ci:read` | ❌ Ẩn | ❌ Ẩn | ❌ Ẩn | 🟢 Hiện |
 | **My Approvals & Quota** | `/approvals` | `approvals:read` / `quota:usage` | ❌ Ẩn | ❌ Ẩn | ❌ Ẩn | 🟢 Hiện |
+
+¹ `platform_admin` không thấy `/chat` như một trang chung. Chỉ khi Org đã sync agent hệ thống **Ops & Reliability Agent** (`visibility="platform_admin"`), `platform_admin` mới chat được — và chỉ với đúng agent đó, không phải agent nào khác của Org. Agent này chỉ giám sát/báo cáo (Langfuse traces, task/approval health), không có tool nào tự sửa code hay cấu hình.
 
 ---
 
