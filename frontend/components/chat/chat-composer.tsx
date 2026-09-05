@@ -18,9 +18,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { FileAttachmentCard } from "./file-attachment-card";
 import { SlashCommandMenu } from "./slash-command-menu";
-import { SLASH_COMMANDS, filterCommands, getCommand } from "./commands/registry";
-import type { SlashCommand, SlashCommandOption } from "./commands/types";
-import type { UploadedFile, Model, ExecutionPolicy } from "@/types";
+import { filterCommands, getCommand } from "./commands/registry";
+import type { SlashCommand, SlashCommandOption, SlashCommandContext } from "./commands/types";
+import type { UploadedFile, Model, ExecutionPolicy, Agent, UsageSummary } from "@/types";
 
 interface ChatComposerProps {
   draft: string;
@@ -45,6 +45,16 @@ interface ChatComposerProps {
   onClear?: () => void;
   /** Callback to reset session (new conversation) */
   onReset?: () => void;
+  /** Available agents (for /agents command) */
+  agents?: Agent[];
+  /** Current agent id (for /context command) */
+  currentAgentId?: string;
+  /** Callback to switch agent (for /agents command) */
+  onAgentChange?: (agentId: string) => void;
+  /** Usage summary rows (for /usage command) */
+  usage?: UsageSummary[];
+  /** Callback to send a message programmatically (for /compact command) */
+  onSendMessage?: (message: string) => void;
 }
 
 // Shared by ChatEmptyState (centered, empty thread) and the docked composer
@@ -71,6 +81,11 @@ export function ChatComposer({
   onExecutionPolicyChange,
   onClear,
   onReset,
+  agents,
+  currentAgentId,
+  onAgentChange,
+  usage,
+  onSendMessage,
 }: ChatComposerProps) {
   const { t, locale, tx } = useTranslation();
   const defaultPlaceholder = tx("Nhập tin nhắn… (Enter để gửi, Shift+Enter để xuống dòng). Gõ / để xem lệnh.", "Type a message… (Enter to send, Shift+Enter for newline). Type / for commands.");
@@ -125,55 +140,60 @@ export function ChatComposer({
     setSlashActiveIndex(0);
   }, []);
 
+  /** Build the full SlashCommandContext for command handlers */
+  const buildContext = React.useCallback((): SlashCommandContext => {
+    return {
+      draft,
+      models: models || [],
+      effectiveModel,
+      executionPolicy,
+      agents: agents || [],
+      currentAgentId,
+      usage: usage || [],
+      onModelChange: onModelChange || (() => {}),
+      onExecutionPolicyChange: onExecutionPolicyChange || (() => {}),
+      onClear: onClear || (() => {}),
+      onReset: onReset || (() => {}),
+      onAgentChange: onAgentChange || (() => {}),
+      onSend: (message: string) => {
+        onDraftChange("");
+        onSendMessage?.(message);
+      },
+      onDraftChange,
+      notify: (message: string, kind?: "success" | "error" | "info") => {
+        if (kind === "error") toast.error(message);
+        else if (kind === "success") toast.success(message);
+        else toast.info(message);
+      },
+      tx,
+    };
+  }, [draft, models, effectiveModel, executionPolicy, agents, currentAgentId, usage, onModelChange, onExecutionPolicyChange, onClear, onReset, onAgentChange, onSendMessage, onDraftChange, tx]);
+
   const executeCommand = React.useCallback(
     async (cmd: SlashCommand, args: string) => {
-      const context = {
-        draft,
-        models: models || [],
-        effectiveModel,
-        executionPolicy,
-        onModelChange: onModelChange || (() => {}),
-        onExecutionPolicyChange: onExecutionPolicyChange || (() => {}),
-        onClear: onClear || (() => {}),
-        onReset: onReset || (() => {}),
-        onDraftChange,
-        tx,
-      };
       try {
-        await cmd.execute(args, context);
+        await cmd.execute(args, buildContext());
       } catch (err) {
         console.error(`[slash-command] /${cmd.name} failed:`, err);
       }
       closeSlashMenu();
     },
-    [draft, models, effectiveModel, executionPolicy, onModelChange, onExecutionPolicyChange, onClear, onReset, onDraftChange, tx, closeSlashMenu]
+    [buildContext, closeSlashMenu]
   );
 
   const handleSelectCommand = React.useCallback(
     (cmd: SlashCommand) => {
       // If command has options, show them
       if (cmd.getOptions) {
-        const options = cmd.getOptions({
-          draft,
-          models: models || [],
-          effectiveModel,
-          executionPolicy,
-          onModelChange: onModelChange || (() => {}),
-          onExecutionPolicyChange: onExecutionPolicyChange || (() => {}),
-          onClear: onClear || (() => {}),
-          onReset: onReset || (() => {}),
-          onDraftChange,
-          tx,
-        });
         setSlashCommand(cmd);
-        setSlashOptions(options);
+        setSlashOptions(cmd.getOptions(buildContext()));
         setSlashActiveIndex(0);
       } else {
         // Execute immediately
         executeCommand(cmd, "");
       }
     },
-    [draft, models, effectiveModel, executionPolicy, onModelChange, onExecutionPolicyChange, onClear, onReset, onDraftChange, tx, executeCommand]
+    [buildContext, executeCommand]
   );
 
   const handleSelectOption = React.useCallback(
@@ -329,23 +349,11 @@ export function ChatComposer({
                   const cmdName = query.slice(0, spaceIdx);
                   const cmd = getCommand(cmdName);
                   if (cmd) {
-                    const args = query.slice(spaceIdx + 1);
                     setSlashQuery(cmdName);
                     setSlashCommand(cmd);
                     setSlashActiveIndex(0);
                     if (cmd.getOptions) {
-                      setSlashOptions(cmd.getOptions({
-                        draft,
-                        models: models || [],
-                        effectiveModel,
-                        executionPolicy,
-                        onModelChange: onModelChange || (() => {}),
-                        onExecutionPolicyChange: onExecutionPolicyChange || (() => {}),
-                        onClear: onClear || (() => {}),
-                        onReset: onReset || (() => {}),
-                        onDraftChange,
-                        tx,
-                      }));
+                      setSlashOptions(cmd.getOptions(buildContext()));
                     } else {
                       setSlashOptions([]);
                     }
