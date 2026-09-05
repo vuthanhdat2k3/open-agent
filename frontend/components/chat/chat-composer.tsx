@@ -298,37 +298,41 @@ export function ChatComposer({
             onDraftChange(value);
             adjustHeight();
 
-            // Detect slash command
+            // Detect slash command: find the word at cursor position
             const textarea = textareaRef.current;
             if (textarea) {
               const cursorPos = textarea.selectionStart || 0;
               const textBeforeCursor = value.slice(0, cursorPos);
               const lastSlashIndex = textBeforeCursor.lastIndexOf("/");
               const lastSpaceIndex = textBeforeCursor.lastIndexOf(" ");
+              const lastNewlineIndex = textBeforeCursor.lastIndexOf("\n");
 
-              const trimOffset = textBeforeCursor.length - textBeforeCursor.trimStart().length;
-              if (lastSlashIndex > lastSpaceIndex && lastSlashIndex === trimOffset) {
-                // User just typed / at start of line or after space
-                setShowSlashMenu(true);
-                setSlashQuery("");
-                setSlashCommand(null);
-                setSlashOptions([]);
-                setSlashActiveIndex(0);
-              } else if (showSlashMenu && lastSlashIndex >= 0) {
-                // Update query
+              // The token start is the char right after the last space/newline
+              const tokenBoundary = Math.max(lastSpaceIndex, lastNewlineIndex);
+              const inSlashToken = lastSlashIndex > tokenBoundary && textBeforeCursor.startsWith("/", lastSlashIndex);
+
+              if (inSlashToken) {
+                // We're inside a /token — keep the menu open and update the query
                 const query = textBeforeCursor.slice(lastSlashIndex + 1);
                 if (!query.includes(" ")) {
+                  // Still typing the command name
+                  if (!showSlashMenu) {
+                    setShowSlashMenu(true);
+                    setSlashActiveIndex(0);
+                  }
                   setSlashQuery(query);
-                  setSlashActiveIndex(0);
                   setSlashCommand(null);
                   setSlashOptions([]);
                 } else {
-                  // User typed space, close menu unless command has args
-                  const cmdName = query.split(" ")[0];
+                  // Command name typed, possibly entering args
+                  const spaceIdx = query.indexOf(" ");
+                  const cmdName = query.slice(0, spaceIdx);
                   const cmd = getCommand(cmdName);
-                  if (cmd?.requiresArgs) {
+                  if (cmd) {
+                    const args = query.slice(spaceIdx + 1);
+                    setSlashQuery(cmdName);
                     setSlashCommand(cmd);
-                    setSlashQuery(query.slice(cmdName.length + 1));
+                    setSlashActiveIndex(0);
                     if (cmd.getOptions) {
                       setSlashOptions(cmd.getOptions({
                         draft,
@@ -342,12 +346,15 @@ export function ChatComposer({
                         onDraftChange,
                         tx,
                       }));
+                    } else {
+                      setSlashOptions([]);
                     }
                   } else {
                     closeSlashMenu();
                   }
                 }
               } else if (showSlashMenu) {
+                // Cursor moved outside any slash token
                 closeSlashMenu();
               }
             }
