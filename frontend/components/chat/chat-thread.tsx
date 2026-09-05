@@ -10,7 +10,7 @@ import { ChatEmptyState } from "@/components/chat/chat-empty-state";
 import { ChatStatusRow } from "@/components/chat/chat-status-row";
 import { ChatHeaderControls } from "@/components/chat/chat-header-controls";
 import type { ChatMessage } from "@/lib/chat/projection";
-import type { Agent, ExecutionPolicy, Model, Session, UploadedFile } from "@/types";
+import type { Agent, ExecutionPolicy, Model, Session, UploadedFile, UsageSummary } from "@/types";
 import { useTranslation } from "@/lib/i18n";
 
 interface ChatThreadProps {
@@ -41,6 +41,10 @@ interface ChatThreadProps {
   composerDisabled: boolean;
   attachments: UploadedFile[];
   onAttachmentsChange: (files: UploadedFile[]) => void;
+  /** Usage summary rows (for /usage slash command in the empty-state composer) */
+  usage?: UsageSummary[];
+  /** Send a message programmatically (for /compact slash command) */
+  onSendMessage?: (message: string) => void;
   scrollHostRef: React.RefObject<HTMLDivElement | null>;
   bottomRef: React.RefObject<HTMLDivElement | null>;
   onThreadScroll: () => void;
@@ -79,6 +83,8 @@ export function ChatThread({
   composerDisabled,
   attachments,
   onAttachmentsChange,
+  usage,
+  onSendMessage,
   scrollHostRef,
   bottomRef,
   onThreadScroll,
@@ -182,6 +188,10 @@ export function ChatThread({
             disabled={composerDisabled}
             attachments={attachments}
             onAttachmentsChange={onAttachmentsChange}
+            agents={agents}
+            onAgentChange={onAgentChange}
+            usage={usage}
+            onSendMessage={onSendMessage}
           />
         ) : (
           <div className="mx-auto flex w-full max-w-[var(--dsh-chat-content-width,736px)] flex-1 flex-col gap-4">
