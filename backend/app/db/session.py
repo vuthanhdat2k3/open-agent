@@ -26,6 +26,7 @@ if "postgresql" in settings.db_url:
     engine_kwargs["pool_size"] = settings.db_pool_size
     engine_kwargs["max_overflow"] = settings.db_max_overflow
     engine_kwargs["pool_recycle"] = settings.db_pool_recycle_seconds
+    engine_kwargs["pool_timeout"] = settings.db_pool_timeout_seconds
     engine_kwargs["pool_pre_ping"] = True
 
 engine = create_async_engine(settings.db_url, **engine_kwargs)

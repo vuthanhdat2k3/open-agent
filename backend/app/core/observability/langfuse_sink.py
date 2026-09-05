@@ -73,6 +73,11 @@ class LangfuseSink:
             metadata["error"] = record.error
         if record.fallback_from:
             metadata["fallback_from"] = record.fallback_from
+        if record.estimated is not None:
+            # Langfuse has no native "is this a guess" field - surface it in
+            # metadata so a real vs. provider-estimated token/cost figure
+            # isn't presented as an authoritative measurement.
+            metadata["usage_estimated"] = record.estimated
         usage = {
             key: value
             for key, value in {

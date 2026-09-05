@@ -108,8 +108,25 @@ class ModelService:
         if prov is None:
             raise ValueError("provider not found")
 
+        from app.config import get_settings
+        from app.core.observability.llm_trace import ObservabilityContext, build_trace_context
+        from app.db.base import gen_id
+
+        settings = get_settings()
+        observability = (
+            ObservabilityContext(
+                build_trace_context(
+                    trace_id=gen_id(),
+                    session_id=None,
+                    org_id=org_id,
+                    metadata={"run_type": "model_test_chat", "model_id": id},
+                )
+            )
+            if settings.observability_enabled
+            else None
+        )
         try:
-            driver = build_driver(prov, model)
+            driver = build_driver(prov, model, observability=observability, generation_name="model-test-chat")
         except Exception as exc:
             return ModelTestResult(
                 ok=False,

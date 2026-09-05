@@ -49,6 +49,12 @@ class Settings(BaseSettings):
     # disconnect surfaces as a clean reconnect instead of a stale-connection
     # error under load.
     db_pool_recycle_seconds: int = 1800
+    # Bound how long a checkout waits for a free connection when the pool is
+    # exhausted. SQLAlchemy's own default (30s) let a starved checkout inside
+    # a long-running chat/tool call block silently for a long time with no
+    # error — indistinguishable from a genuine hang. Fail fast and loud
+    # instead so callers (agent loop, approval gate) surface a clear error.
+    db_pool_timeout_seconds: int = 10
 
     # Auth / JWT / OAuth configuration
     jwt_secret_key: str = "dev-secret-key-change-in-production"

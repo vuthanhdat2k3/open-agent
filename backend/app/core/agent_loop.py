@@ -1842,15 +1842,6 @@ async def _agent_stream(
                                 tool_observation.finish_error(RuntimeError(result), result=result)
                             return
                         # Layer 1: risk-tier capability gate
-                        logger.warning(
-                            "DEBUG_approval_gate_check",
-                            tool=name,
-                            risk_tier=spec.risk_tier.value,
-                            execution_policy=repr(execution_policy),
-                            allows_tier=_allows_tier(spec.risk_tier.value),
-                            requires_approval=tool_requires_approval(spec, execution_policy),
-                            depth=depth,
-                        )
                         if not _allows_tier(spec.risk_tier.value):
                             tool_status = "denied"
                             result = (
