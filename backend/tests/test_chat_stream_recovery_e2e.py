@@ -130,7 +130,7 @@ async def test_chat_stream_recovery_e2e(client, async_session_factory, test_user
     )
 
     async with async_session_factory() as db:
-        mem = Membership(org_id="org-chat", user_id="user-chat", role="operator")
+        mem = Membership(org_id="org-chat", user_id="user-chat", role="user")
         prov = Provider(
             id="p-chat", org_id="org-chat", key="t", name="t", base_url="http://test", api_key="sk-fake"
         )

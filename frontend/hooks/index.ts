@@ -947,7 +947,7 @@ export function useUpdateOrganizationQuota(orgId?: string) {
   });
 }
 
-export function useApprovals(enabled: boolean = true, includeChat: boolean = false, runId?: string | null) {
+export function useApprovals(enabled: boolean = true, includeChat: boolean = true, runId?: string | null) {
   const orgId = getActiveOrgId();
   const queryParams = new URLSearchParams();
   if (includeChat) queryParams.set("include_chat", "true");

@@ -70,11 +70,18 @@ export default function ChannelsPage() {
     <div className="space-y-6">
       <PageHeader
         icon={MessageSquare}
-        title={tx("Kênh tin nhắn", "Messaging Channels")}
-        description={tx(
-          "Kết nối bot Telegram và Discord để nhận và phản hồi tin nhắn qua agent.",
-          "Connect Telegram and Discord bots to receive and respond to messages via agent."
-        )}
+        title={isOperator ? tx("Quản lý kênh tin nhắn", "Channel Connections") : tx("Kênh tin nhắn", "Messaging Channels")}
+        description={
+          isOperator
+            ? tx(
+                "Xem và quản lý các kết nối Telegram/Discord dùng chung và của từng thành viên trong tổ chức.",
+                "View and manage shared and per-member Telegram/Discord connections across the organization."
+              )
+            : tx(
+                "Kết nối bot Telegram và Discord để nhận và phản hồi tin nhắn qua agent.",
+                "Connect Telegram and Discord bots to receive and respond to messages via agent."
+              )
+        }
         actions={
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
@@ -278,10 +285,17 @@ export default function ChannelsPage() {
                       </Button>
                     }
                     title={tx(`Xóa kênh ${c.provider}?`, `Delete ${c.provider} channel?`)}
-                    description={tx(
-                      "Kết nối kênh này sẽ bị xóa vĩnh viễn.",
-                      "This channel connection will be permanently removed."
-                    )}
+                    description={
+                      isOperator && c.created_by_user_id && c.created_by_user_id !== currentUserId
+                        ? tx(
+                            `Đây là kênh CÁ NHÂN của ${c.creator_email || c.creator_name || "một thành viên khác"}, không phải của bạn. Kênh sẽ bị xóa vĩnh viễn.`,
+                            `This is a PERSONAL channel belonging to ${c.creator_email || c.creator_name || "another member"}, not you. It will be permanently removed.`
+                          )
+                        : tx(
+                            "Kết nối kênh này sẽ bị xóa vĩnh viễn.",
+                            "This channel connection will be permanently removed."
+                          )
+                    }
                     confirmLabel={tx("Xóa kênh", "Delete channel")}
                     destructive
                     onConfirm={() => del.mutateAsync(c.id).then(() => undefined)}
@@ -294,11 +308,22 @@ export default function ChannelsPage() {
       ) : (
         <EmptyState
           icon={MessageSquare}
-          title={tx("Chưa có kênh tin nhắn nào", "No messaging channels yet")}
-          description={tx(
-            "Thêm bot Telegram hoặc Discord để bắt đầu nhận tin nhắn.",
-            "Add a Telegram or Discord bot to start receiving messages."
-          )}
+          title={
+            isOperator
+              ? tx("Chưa có ai kết nối kênh nào", "No one has connected a channel yet")
+              : tx("Chưa có kênh tin nhắn nào", "No messaging channels yet")
+          }
+          description={
+            isOperator
+              ? tx(
+                  "Chưa có thành viên nào trong tổ chức kết nối bot Telegram/Discord. Bạn có thể tự thêm 1 kênh dùng chung nếu cần.",
+                  "No org member has connected a Telegram/Discord bot yet. You can add a shared channel if needed."
+                )
+              : tx(
+                  "Thêm bot Telegram hoặc Discord để bắt đầu nhận tin nhắn.",
+                  "Add a Telegram or Discord bot to start receiving messages."
+                )
+          }
           action={
             <Button className="gap-2 active-tactile transition-transform" onClick={() => setOpen(true)}>
               <Plus className="h-4 w-4" /> {tx("Kênh mới", "New Channel")}

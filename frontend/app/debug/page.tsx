@@ -20,6 +20,7 @@ import {
   useTaskTree,
   useWorkflowRun,
   useUrlSearchParam,
+  useCurrentRoles,
 } from "@/hooks";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
@@ -44,12 +45,34 @@ export default function DebugPage() {
 
   const sessions = useDebugSessions();
   const usage = useUsageSummary();
+  const roles = useCurrentRoles();
+  const isOperator = roles.includes("operator");
   const [selSession, setSelSession] = useUrlSearchParam("session");
   const [rootRunParam, setRootRunParam] = useUrlSearchParam("root_run");
   const [runParam, setRunParam] = useUrlSearchParam("run");
   const [rootRunDraft, setRootRunDraft] = React.useState(rootRunParam ?? "");
   const [workflowRunDraft, setWorkflowRunDraft] = React.useState(runParam ?? "");
   const [usageSearch, setUsageSearch] = React.useState("");
+  const [sessionCreatorFilter, setSessionCreatorFilter] = React.useState<string>("all");
+
+  const sessionCreators = React.useMemo(() => {
+    const map = new Map<string, { id: string; label: string }>();
+    (sessions.data || []).forEach((s: any) => {
+      if (s.created_by_user_id) {
+        map.set(s.created_by_user_id, {
+          id: s.created_by_user_id,
+          label: s.creator_email || s.creator_name || s.created_by_user_id.slice(0, 8),
+        });
+      }
+    });
+    return Array.from(map.values());
+  }, [sessions.data]);
+
+  const filteredSessions = React.useMemo(() => {
+    const all = sessions.data || [];
+    if (sessionCreatorFilter === "all") return all;
+    return all.filter((s: any) => s.created_by_user_id === sessionCreatorFilter);
+  }, [sessions.data, sessionCreatorFilter]);
 
   React.useEffect(() => setRootRunDraft(rootRunParam ?? ""), [rootRunParam]);
   React.useEffect(() => setWorkflowRunDraft(runParam ?? ""), [runParam]);
@@ -90,8 +113,8 @@ export default function DebugPage() {
   const [sessionPageSize, setSessionPageSize] = React.useState(8);
   const paginatedSessions = React.useMemo(() => {
     const start = (sessionPage - 1) * sessionPageSize;
-    return (sessions.data ?? []).slice(start, start + sessionPageSize);
-  }, [sessions.data, sessionPage, sessionPageSize]);
+    return filteredSessions.slice(start, start + sessionPageSize);
+  }, [filteredSessions, sessionPage, sessionPageSize]);
 
   return (
     <div className="space-y-6">
@@ -327,8 +350,23 @@ export default function DebugPage() {
                 />
               ) : sessions.data?.length ? (
                 <div className="space-y-3">
+                  {isOperator && sessionCreators.length > 0 && (
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="text-muted-foreground">{tx("Lọc theo người tạo", "Filter by creator")}:</span>
+                      <select
+                        value={sessionCreatorFilter}
+                        onChange={(e) => { setSessionCreatorFilter(e.target.value); setSessionPage(1); }}
+                        className="rounded-md border border-input bg-background/80 px-2 py-1 text-xs"
+                      >
+                        <option value="all">{tx("Tất cả", "All")}</option>
+                        {sessionCreators.map((c) => (
+                          <option key={c.id} value={c.id}>{c.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                   <div className="space-y-1.5 max-h-[50vh] overflow-y-auto pr-1">
-                    {paginatedSessions.map((s) => {
+                    {paginatedSessions.map((s: any) => {
                       const isSelected = selSession === s.id;
                       return (
                         <button
@@ -347,6 +385,11 @@ export default function DebugPage() {
                           <p className="font-mono text-[10px] text-muted-foreground truncate">
                             {tx("ID:", "ID:")}{s.id}
                           </p>
+                          {isOperator && (
+                            <p className="text-[10px] text-muted-foreground/80">
+                              {tx("Người tạo", "Creator")}: {s.creator_email || s.creator_name || s.created_by_user_id?.slice(0, 8) || tx("Không rõ", "Unknown")}
+                            </p>
+                          )}
                         </button>
                       );
                     })}
@@ -354,7 +397,7 @@ export default function DebugPage() {
                   <DataPagination
                     page={sessionPage}
                     pageSize={sessionPageSize}
-                    totalItems={sessions.data.length}
+                    totalItems={filteredSessions.length}
                     onPageChange={setSessionPage}
                     onPageSizeChange={setSessionPageSize}
                     pageSizeOptions={[5, 10, 20]}
@@ -489,6 +532,14 @@ export default function DebugPage() {
             />
           ) : taskTree.data?.tasks?.length ? (
             <div className="space-y-3">
+              {isOperator && (taskTree.data.triggered_by_email || taskTree.data.triggered_by_name || taskTree.data.triggered_by_user_id) && (
+                <div className="text-xs text-muted-foreground">
+                  {tx("Được kích hoạt bởi", "Triggered by")}:{" "}
+                  <span className="font-medium text-foreground">
+                    {taskTree.data.triggered_by_email || taskTree.data.triggered_by_name || taskTree.data.triggered_by_user_id?.slice(0, 8)}
+                  </span>
+                </div>
+              )}
               {taskTree.data.tasks.map((node) => (
                 <Card key={node.id} className="shadow-card border-border/80 p-4">
                   <div className="flex items-center justify-between gap-2">
