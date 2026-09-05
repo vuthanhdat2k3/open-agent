@@ -74,7 +74,7 @@ async def _run_shell(args: dict[str, Any], ctx: ToolContext) -> str:
         return msg
 
     cname = f"oa-sandbox-{uuid.uuid4().hex[:12]}"
-    docker_args = sandbox.build_docker_args("bash", "run_shell.sh", stdin_mode="archive", name=cname)
+    docker_args = sandbox.build_docker_args("bash", "run_shell.sh", stdin_mode="archive", name=cname, rm=False)
 
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -120,7 +120,6 @@ async def _run_shell(args: dict[str, Any], ctx: ToolContext) -> str:
                     lines.append(line)
                     if ctx.emit:
                         await ctx.emit({"kind": "stdout", "line": line})
-                    await sandbox._kill_container(cname)
                     try:
                         proc.kill()
                         await proc.wait()
@@ -132,7 +131,6 @@ async def _run_shell(args: dict[str, Any], ctx: ToolContext) -> str:
                     await ctx.emit({"kind": "stdout", "line": line})
 
         if timed_out:
-            await sandbox._kill_container(cname)
             try:
                 proc.kill()
                 await proc.wait()
@@ -147,6 +145,18 @@ async def _run_shell(args: dict[str, Any], ctx: ToolContext) -> str:
         if len(text) > MAX_SHELL_OUTPUT:
             text = text[:MAX_SHELL_OUTPUT] + "\n...[truncated]"
         text += f"\n[exit code: {proc.returncode}]"
+
+        if proc.returncode == 0:
+            synced = await sandbox.sync_sandbox_artifacts(
+                cname,
+                ctx.workspace_dir,
+                script_filename="run_shell.sh",
+                ctx=ctx,
+                source_tool="run_shell",
+            )
+            if synced:
+                text += f"\n[artifacts synced to workspace: {', '.join(synced)}]"
+
         await finish_execution_record(
             ctx.db,
             execution,
@@ -156,15 +166,15 @@ async def _run_shell(args: dict[str, Any], ctx: ToolContext) -> str:
         )
         return text
     except FileNotFoundError:
-        await sandbox._kill_container(cname)
         msg = "error: docker CLI not found on the backend host"
         await finish_execution_record(ctx.db, execution, status="failed", output=msg, error=msg)
         return msg
     except Exception as e:  # noqa: BLE001
-        await sandbox._kill_container(cname)
         msg = f"error executing command: {e}"
         await finish_execution_record(ctx.db, execution, status="failed", output=msg, error=str(e))
         return msg
+    finally:
+        await sandbox._kill_container(cname)
 
 register(
     ToolSpec(
