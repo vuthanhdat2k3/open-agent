@@ -17,6 +17,8 @@ interface ChatEmptyStateProps {
   disabled: boolean;
   attachments: UploadedFile[];
   onAttachmentsChange: (files: UploadedFile[]) => void;
+  onClear?: () => void;
+  onReset?: () => void;
 }
 
 // Adapted from RuixenMoonChat (21st.dev / ruixen.ui): a moon-glow backdrop, a
@@ -26,9 +28,9 @@ interface ChatEmptyStateProps {
 // active, so attach/send behave identically in both states.
 import { useTranslation } from "@/lib/i18n";
 
-export function ChatEmptyState({ 
+export function ChatEmptyState({
   currentAgent, models, effectiveModel, onModelChange, executionPolicy, onExecutionPolicyChange,
-  draft, onDraftChange, onSubmit, disabled, attachments, onAttachmentsChange 
+  draft, onDraftChange, onSubmit, disabled, attachments, onAttachmentsChange, onClear, onReset
 }: ChatEmptyStateProps) {
   const { t, locale, tx } = useTranslation();
 
@@ -79,12 +81,14 @@ export function ChatEmptyState({
           attachments={attachments}
           onAttachmentsChange={onAttachmentsChange}
           variant="floating"
-          placeholder={tx("Nhập yêu cầu của bạn…", "Type your request…")}
+          placeholder={tx("Nhập yêu cầu của bạn… (gõ / để xem lệnh)", "Type your request… (type / for commands)")}
           models={models}
           effectiveModel={effectiveModel}
           onModelChange={onModelChange}
           executionPolicy={executionPolicy}
           onExecutionPolicyChange={onExecutionPolicyChange}
+          onClear={onClear}
+          onReset={onReset}
         />
 
         <div className="mt-5 flex flex-wrap items-center justify-center gap-2">

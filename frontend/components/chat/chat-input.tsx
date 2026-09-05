@@ -18,15 +18,17 @@ interface ChatInputProps {
   onModelChange: (modelId: string) => void;
   executionPolicy: ExecutionPolicy;
   onExecutionPolicyChange: (policy: ExecutionPolicy) => void;
+  onClear?: () => void;
+  onReset?: () => void;
 }
 
 // Docked composer for an active conversation. `onSubmit` arrives already
 // resolved by the page (stop while streaming, send otherwise) — passed
 // through as both onSubmit/onStop since ChatComposer just picks the right
 // one based on `streaming`.
-export function ChatInput({ 
+export function ChatInput({
   draft, onDraftChange, onSubmit, streaming, disabled, connectionState, attachments, onAttachmentsChange,
-  models, effectiveModel, onModelChange, executionPolicy, onExecutionPolicyChange
+  models, effectiveModel, onModelChange, executionPolicy, onExecutionPolicyChange, onClear, onReset
 }: ChatInputProps) {
   return (
     <div className="mt-3">
@@ -46,6 +48,8 @@ export function ChatInput({
         onModelChange={onModelChange}
         executionPolicy={executionPolicy}
         onExecutionPolicyChange={onExecutionPolicyChange}
+        onClear={onClear}
+        onReset={onReset}
       />
     </div>
   );
