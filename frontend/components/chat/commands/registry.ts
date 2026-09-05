@@ -1,4 +1,4 @@
-import type { Model } from "@/types";
+﻿import type { Model } from "@/types";
 import type { SlashCommand, SlashCommandContext, SlashCommandOption } from "./types";
 
 /** Compact prompt sent to the agent when the user runs /compact */
@@ -22,6 +22,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     name: "model",
     description: "Đổi mô hình AI",
     usage: "/model <tên-mô-hình>",
+    icon: "cpu",
     requiresArgs: true,
     getOptions: (ctx: SlashCommandContext): SlashCommandOption[] =>
       ctx.models
@@ -52,6 +53,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     name: "select-model",
     description: "Chọn mô hình AI (hiển thị danh sách)",
     usage: "/select-model",
+    icon: "sliders",
     getOptions: (ctx: SlashCommandContext): SlashCommandOption[] => {
       return ctx.models
         .filter((m: Model) => m.active)
@@ -62,9 +64,12 @@ export const SLASH_COMMANDS: SlashCommand[] = [
         }));
     },
     execute: (args: string, ctx: SlashCommandContext): boolean => {
-      // When called with option id, switch to that model
       if (args) {
         ctx.onModelChange(args);
+        const model = ctx.models.find((m) => m.id === args);
+        if (model) {
+          ctx.notify(ctx.tx(`Đã chuyển sang ${model.display_name || model.name}`, `Switched to ${model.display_name || model.name}`), "success");
+        }
         return true;
       }
       return false;
@@ -74,11 +79,12 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     name: "policy",
     description: "Đổi quyền thực thi hệ thống",
     usage: "/policy <read-only|manual|full-access>",
+    icon: "shield",
     requiresArgs: true,
     getOptions: (_ctx: SlashCommandContext): SlashCommandOption[] => [
-      { id: "read-only", label: "Chỉ đọc", detail: "Chỉ truy vấn an toàn" },
-      { id: "manual", label: "Cần phê duyệt", detail: "Duyệt trước khi thực thi" },
-      { id: "full-access", label: "Toàn quyền", detail: "Tự động thực thi" },
+      { id: "read-only", label: "Chỉ đọc", detail: "Chỉ truy vấn an toàn, chặn thao tác ghi" },
+      { id: "manual", label: "Cần phê duyệt", detail: "Yêu cầu duyệt trước khi ghi hoặc chạy mã" },
+      { id: "full-access", label: "Toàn quyền", detail: "Tự động chạy mọi công cụ được phép" },
     ],
     execute: (args: string, ctx: SlashCommandContext): boolean => {
       const valid = ["read-only", "manual", "full-access"] as const;
@@ -101,6 +107,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     name: "agents",
     description: "Chuyển sang agent khác",
     usage: "/agents <tên-agent>",
+    icon: "bot",
     getOptions: (ctx: SlashCommandContext): SlashCommandOption[] =>
       ctx.agents.map((a) => ({
         id: a.id,
@@ -123,6 +130,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   {
     name: "compact",
     description: "Tóm tắt hội thoại để tiết kiệm context",
+    icon: "sparkles",
     execute: (_args: string, ctx: SlashCommandContext): boolean => {
       ctx.onDraftChange("");
       ctx.onSend(COMPACT_PROMPT);
@@ -131,8 +139,13 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   },
   {
     name: "context",
-    description: "Xem ngữ cảnh phiên hiện tại",
+    description: "Xem chi tiết ngữ cảnh phiên hiện tại",
+    icon: "info",
     execute: (_args: string, ctx: SlashCommandContext): boolean => {
+      if (ctx.openDialog) {
+        ctx.openDialog("context");
+        return true;
+      }
       const model = ctx.effectiveModel ? ctx.effectiveModel.display_name || ctx.effectiveModel.name : "—";
       const agent = ctx.agents.find((a) => a.id === ctx.currentAgentId);
       const policyLabels: Record<string, string> = {
@@ -151,8 +164,13 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   },
   {
     name: "usage",
-    description: "Xem hạn mức và chi phí sử dụng",
+    description: "Xem chi phí và thống kê tokens",
+    icon: "chart",
     execute: (_args: string, ctx: SlashCommandContext): boolean => {
+      if (ctx.openDialog) {
+        ctx.openDialog("usage");
+        return true;
+      }
       if (!ctx.usage.length) {
         ctx.notify(ctx.tx("Chưa có dữ liệu sử dụng.", "No usage data yet."), "info");
         return true;
@@ -177,7 +195,8 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   },
   {
     name: "clear",
-    description: "Xóa lịch sử hội thoại",
+    description: "Xóa lịch sử hội thoại hiện tại",
+    icon: "trash",
     execute: (_args: string, ctx: SlashCommandContext): boolean => {
       ctx.onDraftChange("");
       ctx.onClear();
@@ -187,7 +206,8 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   },
   {
     name: "reset",
-    description: "Tạo phiên hội thoại mới",
+    description: "Bắt đầu phiên làm việc mới",
+    icon: "rotate",
     execute: (_args: string, ctx: SlashCommandContext): boolean => {
       ctx.onDraftChange("");
       ctx.onReset();
@@ -196,8 +216,13 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   },
   {
     name: "help",
-    description: "Hiển thị danh sách lệnh",
+    description: "Bảng trợ giúp và danh sách lệnh",
+    icon: "help",
     execute: (_args: string, ctx: SlashCommandContext): boolean => {
+      if (ctx.openDialog) {
+        ctx.openDialog("help");
+        return true;
+      }
       const lines = SLASH_COMMANDS.map((c) => `/${c.name} — ${c.description}`);
       ctx.notify(lines.join("\n"), "info");
       return true;

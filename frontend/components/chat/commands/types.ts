@@ -1,4 +1,6 @@
-import type { Agent, ExecutionPolicy, Model, UsageSummary } from "@/types";
+﻿import type { Agent, ExecutionPolicy, Model, UsageSummary } from "@/types";
+
+export type CommandDialogType = "context" | "usage" | "help";
 
 /** Context passed to slash command handlers */
 export interface SlashCommandContext {
@@ -14,6 +16,8 @@ export interface SlashCommandContext {
   agents: Agent[];
   /** Current agent id */
   currentAgentId: string | undefined;
+  /** Current session id (if available) */
+  sessionId?: string;
   /** Usage summary rows (per agent/model) */
   usage: UsageSummary[];
   /** Callback to switch model */
@@ -30,7 +34,9 @@ export interface SlashCommandContext {
   onSend: (message: string) => void;
   /** Callback to set draft text */
   onDraftChange: (draft: string) => void;
-  /** Toast-like notification */
+  /** Open command info dialog (modal) for rich view */
+  openDialog?: (type: CommandDialogType) => void;
+  /** Toast-like notification fallback */
   notify: (message: string, kind?: "success" | "error" | "info") => void;
   /** Translation function */
   tx: (vietnamese: string, english: string) => string;
@@ -44,6 +50,8 @@ export interface SlashCommand {
   readonly description: string;
   /** Optional usage hint */
   readonly usage?: string;
+  /** Optional icon identifier for menu rendering */
+  readonly icon?: string;
   /** Whether this command needs arguments */
   readonly requiresArgs?: boolean;
   /** Get autocomplete options for this command (optional) */
