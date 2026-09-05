@@ -267,7 +267,7 @@ export function Companion3D({
     <>
       {/* Visual Magnetic Docking Target Guides (Active during drag) */}
       {isDragging && (
-        <div className="pointer-events-none fixed inset-0 z-30 transition-opacity duration-300">
+        <div className="pointer-events-none fixed inset-0 z-30 transition-opacity duration-300 hidden md:block">
           {[
             { id: 0, label: tx("Dưới phải", "Bottom Right"), x: window.innerWidth - (halfW + 15), y: window.innerHeight - (halfH + 15) },
             { id: 1, label: tx("Trên phải", "Top Right"), x: window.innerWidth - (halfW + 15), y: halfH + 20 },

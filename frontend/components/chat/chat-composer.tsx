@@ -262,7 +262,7 @@ export function ChatComposer({
                   className="h-7 gap-1.5 rounded-full px-2.5 text-xs font-medium text-muted-foreground hover:text-foreground"
                 >
                   <Cpu className="h-3.5 w-3.5" aria-hidden="true" />
-                  <span className="max-w-[9rem] truncate font-mono">
+                  <span className="max-w-[4.5rem] sm:max-w-[8rem] md:max-w-[10rem] truncate font-mono">
                     {effectiveModel?.display_name || effectiveModel?.name || tx("Mô hình", "Model")}
                   </span>
                   {effectiveModel?.supports_vision && (

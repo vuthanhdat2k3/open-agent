@@ -735,7 +735,7 @@ export default function WorkspacePage() {
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 text-xs">
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <div>
                 <span className="font-semibold text-muted-foreground">{tx("Nguồn:", "Source:")}</span>{" "}
                 <span className="font-mono">{viewExecution?.source}</span>
