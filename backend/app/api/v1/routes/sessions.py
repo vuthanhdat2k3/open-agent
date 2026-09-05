@@ -1,4 +1,6 @@
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import delete, select
@@ -65,41 +67,73 @@ async def list_messages(
     if not artifacts:
         return messages
 
-    # Backfill artifacts for historical messages where meta does not already track them
-    assigned_art_ids = set()
-    for m in messages:
-        if m.meta and isinstance(m.meta.get("artifacts"), list):
-            for a in m.meta["artifacts"]:
-                if isinstance(a, dict) and a.get("id"):
-                    assigned_art_ids.add(a["id"])
-
-    unassigned = [a for a in artifacts if a.id not in assigned_art_ids]
-    if not unassigned:
+    assistant_indices = [i for i, m in enumerate(messages) if m.role == "assistant"]
+    if not assistant_indices:
         return messages
 
-    last_assistant_idx = -1
-    for i in range(len(messages) - 1, -1, -1):
-        if messages[i].role == "assistant":
-            last_assistant_idx = i
-            break
+    def _to_utc(dt: datetime | None) -> datetime | None:
+        if dt is None:
+            return None
+        if dt.tzinfo is None:
+            return dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+
+    # Map each artifact to the assistant message of the turn that created or updated it
+    art_by_msg_idx: dict[int, list[dict[str, Any]]] = {}
+
+    for art in artifacts:
+        a_created = _to_utc(art.created_at)
+        a_updated = _to_utc(art.updated_at) or a_created
+        a_latest = max(a_created, a_updated) if (a_created and a_updated) else (a_created or a_updated)
+
+        matched_idx = None
+        for pos, a_idx in enumerate(assistant_indices):
+            m_dt = _to_utc(messages[a_idx].created_at)
+            prev_m_dt = _to_utc(messages[assistant_indices[pos - 1]].created_at) if pos > 0 else None
+
+            # Check if artifact was created or modified during this turn:
+            # - After previous turn's assistant message (or from start if pos == 0)
+            # - Created on or before this assistant message (+ 2s grace window)
+            is_after_prev = prev_m_dt is None or (a_latest is not None and a_latest >= prev_m_dt)
+            is_before_current = m_dt is not None and a_created is not None and (
+                a_created <= (m_dt + timedelta(seconds=2))
+            )
+
+            if is_after_prev and is_before_current:
+                matched_idx = a_idx
+                break
+
+        if matched_idx is None:
+            # Fallback: assign to the earliest assistant message created after artifact creation
+            for a_idx in assistant_indices:
+                m_dt = _to_utc(messages[a_idx].created_at)
+                if m_dt and a_created and m_dt >= a_created:
+                    matched_idx = a_idx
+                    break
+
+        if matched_idx is None:
+            matched_idx = assistant_indices[-1]
+
+        art_entry = {
+            "id": art.id,
+            "path": art.path,
+            "filename": Path(art.path).name,
+            "content_type": art.content_type,
+            "size": art.size,
+            "download_url": f"/api/workspace/artifacts/{art.id}/download",
+            "content_url": f"/api/workspace/artifacts/{art.id}/download?inline=true",
+            "source_tool": art.source_tool,
+        }
+        art_by_msg_idx.setdefault(matched_idx, []).append(art_entry)
 
     out: list[ChatMessageOut] = []
     for idx, m in enumerate(messages):
         meta = dict(m.meta or {})
-        if idx == last_assistant_idx and unassigned:
-            existing = list(meta.get("artifacts") or [])
-            for art in unassigned:
-                existing.append({
-                    "id": art.id,
-                    "path": art.path,
-                    "filename": Path(art.path).name,
-                    "content_type": art.content_type,
-                    "size": art.size,
-                    "download_url": f"/api/workspace/artifacts/{art.id}/download",
-                    "content_url": f"/api/workspace/artifacts/{art.id}/download?inline=true",
-                    "source_tool": art.source_tool,
-                })
-            meta["artifacts"] = existing
+        if m.role == "assistant":
+            # Assign scoped artifacts belonging to this turn
+            turn_artifacts = art_by_msg_idx.get(idx, [])
+            if turn_artifacts or "artifacts" in meta:
+                meta["artifacts"] = turn_artifacts
         out.append(
             ChatMessageOut(
                 id=m.id,
