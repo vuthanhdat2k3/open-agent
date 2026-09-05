@@ -43,6 +43,9 @@ class SessionOut(BaseModel):
     agent_id: str
     execution_policy: ExecutionPolicy
     title: str
+    created_by_user_id: str | None = None
+    creator_email: str | None = None
+    creator_name: str | None = None
     created_at: datetime
     updated_at: datetime
 

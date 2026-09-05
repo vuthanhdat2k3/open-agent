@@ -98,6 +98,9 @@ export interface Agent {
   template_key?: string | null;
   is_customized?: boolean;
   is_pinned?: boolean;
+  created_by_user_id?: string | null;
+  creator_email?: string | null;
+  creator_name?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -147,6 +150,8 @@ export interface EvaluationSuite {
   agent_id: string;
   dataset_version: number;
   created_by_user_id: string | null;
+  creator_email?: string | null;
+  creator_name?: string | null;
   created_at: string;
   updated_at: string;
   cases: EvaluationCase[];
@@ -352,6 +357,9 @@ export interface Workflow {
   graph: { nodes: GraphNode[]; edges: GraphEdge[] };
   template_key?: string;
   is_customized?: boolean;
+  created_by_user_id?: string | null;
+  creator_email?: string | null;
+  creator_name?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -363,6 +371,9 @@ export interface Session {
   agent_id: string;
   execution_policy: ExecutionPolicy;
   title: string;
+  created_by_user_id?: string | null;
+  creator_email?: string | null;
+  creator_name?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -490,6 +501,8 @@ export interface ApprovalRequest {
   action?: string | null;
   status: "pending" | "approved" | "rejected" | "expired";
   requested_by: string | null;
+  requester_email?: string | null;
+  requester_name?: string | null;
   decided_by: string | null;
   reason: string;
   created_at: string;

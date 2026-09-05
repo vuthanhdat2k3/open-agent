@@ -8,6 +8,7 @@ import {
   useAgents,
   useCreateEvaluationRun,
   useCreateEvaluationSuite,
+  useCurrentRoles,
   useEvaluationRuns,
   useEvaluationSuites,
   useUrlSearchParam,
@@ -38,6 +39,8 @@ const EMPTY_SUITE = {
 
 export default function EvaluationsPage() {
   const { t, dict, locale, tx } = useTranslation();
+  const roles = useCurrentRoles();
+  const isOperator = roles.includes("operator");
   const suites = useEvaluationSuites();
   const agents = useAgents();
   const createSuite = useCreateEvaluationSuite();
@@ -170,6 +173,11 @@ export default function EvaluationsPage() {
                       <p className="mt-1 text-xs text-muted-foreground">
                         {suite.description || tx("Chưa có mô tả", "No description")} · <span className="font-medium text-foreground">{agent?.name ?? tx("Agent không xác định", "Unknown agent")}</span>
                       </p>
+                      {isOperator && suite.created_by_user_id && (
+                        <p className="mt-0.5 text-[10px] text-muted-foreground/60">
+                          {tx("Tạo bởi", "Created by")}: {suite.creator_email || suite.creator_name || suite.created_by_user_id.slice(0, 8)}
+                        </p>
+                      )}
                     </div>
                     <div className="flex gap-2">
                       <Button

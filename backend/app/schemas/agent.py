@@ -56,6 +56,9 @@ class AgentOut(AgentBase):
     template_key: str | None = None
     is_customized: bool = True
     is_pinned: bool = False
+    created_by_user_id: str | None = None
+    creator_email: str | None = None
+    creator_name: str | None = None
     created_at: datetime
     updated_at: datetime
 
