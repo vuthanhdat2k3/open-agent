@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import re
 from typing import Any
 
@@ -267,10 +266,11 @@ def _make_mcp_run(server_id: str, tool_name: str):
                 personal_collection = resolve_rag_collection(
                     base_collection, ctx.org_id, personal_user_id=ctx.user_id
                 )
-                shared_result, personal_result = await asyncio.gather(
-                    _call({**args, "collection": shared_collection}, ctx),
-                    _call({**args, "collection": personal_collection}, ctx),
-                )
+                # Sequential, not asyncio.gather: both calls share ctx.db (one
+                # AsyncSession per request), and SQLAlchemy's AsyncSession
+                # forbids concurrent operations on the same session.
+                shared_result = await _call({**args, "collection": shared_collection}, ctx)
+                personal_result = await _call({**args, "collection": personal_collection}, ctx)
                 return _merge_rag_search_results(shared_result, personal_result)
 
             target_collection = resolve_rag_collection(
