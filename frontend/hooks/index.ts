@@ -802,6 +802,18 @@ export function useCurrentRole(): Role {
   return normalizeRole(membership?.role);
 }
 
+// The full set of roles held in the active org - a user can hold more than
+// one (e.g. a self-registered founder gets both org_admin and operator).
+// Use this (not useCurrentRole) for "is any of my roles X" gating; a single
+// primary role can't tell a founder apart from a plain org_admin.
+export function useCurrentRoles(): Role[] {
+  const me = useMe();
+  const orgId = me.data?.active_org_id || getActiveOrgId();
+  const membership = me.data?.memberships?.find((m) => m.org_id === orgId) ?? me.data?.memberships?.[0];
+  const roles = membership?.roles?.length ? membership.roles : membership?.role ? [membership.role] : [];
+  return roles.map(normalizeRole);
+}
+
 export function useCurrentPermissions(): string[] {
   const me = useMe();
   const orgId = me.data?.active_org_id || getActiveOrgId() || me.data?.memberships?.[0]?.org_id;

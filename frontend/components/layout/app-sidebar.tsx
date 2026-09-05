@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { QueryClient } from "@tanstack/react-query";
-import { hasUiPermission, useCurrentPermissions, useCurrentRole, useEmailIntelligenceNavigationSummary } from "@/hooks";
+import { hasUiPermission, useCurrentPermissions, useCurrentRole, useCurrentRoles, useEmailIntelligenceNavigationSummary } from "@/hooks";
 import { OrgSwitcher } from "@/components/org-switcher";
 import { UserNav } from "@/components/user-nav";
 import {
@@ -32,11 +32,15 @@ export function AppSidebar({ queryClient }: { queryClient: QueryClient }) {
   const pending = summary.data?.user_workspace.approvals.pending ?? 0;
   const urgent = summary.data?.user_workspace.approvals.urgent ?? 0;
   const role = useCurrentRole();
+  const roles = useCurrentRoles();
   const permissions = useCurrentPermissions();
 
+  // Checks ALL of the user's roles, not just the primary display one - a
+  // self-registered founder holds both org_admin and operator, and must
+  // pass an operator-only gate even though `role` displays as org_admin.
   const isRoleAllowed = (allowedRoles?: UserRole[]) => {
     if (!allowedRoles || allowedRoles.length === 0) return true;
-    return allowedRoles.includes(role as UserRole);
+    return roles.some((r) => allowedRoles.includes(r as UserRole));
   };
 
   return (

@@ -12,9 +12,11 @@ import {
   X,
   Eye,
   ImageIcon,
+  PanelRightOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/lib/i18n";
+import { useCanvasStore } from "@/stores";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 
 export interface AttachmentItem {
@@ -23,6 +25,8 @@ export interface AttachmentItem {
   size?: number;
   content_type?: string;
   error?: string;
+  download_url?: string;
+  content_url?: string;
 }
 
 export interface FileAttachmentCardProps {
@@ -98,14 +102,24 @@ export function FileAttachmentCard({
   className,
 }: FileAttachmentCardProps) {
   const { tx } = useTranslation();
+  const { openCanvas } = useCanvasStore();
   const [imageOpen, setImageOpen] = React.useState(false);
   const [imgError, setImgError] = React.useState(false);
 
   const isImg = isImageAttachment(attachment);
-  const contentUrl = `/api/files/${attachment.id}/content`;
+  const contentUrl = attachment.content_url || `/api/files/${attachment.id}/content`;
+  const downloadUrl = attachment.download_url || contentUrl;
   const formattedSize = formatFileSize(attachment.size);
   const fileMeta = getFileMeta(attachment.name);
   const Icon = fileMeta.icon;
+
+  const handleOpenCanvas = React.useCallback(() => {
+    openCanvas({
+      title: attachment.name,
+      contentUrl,
+      downloadUrl,
+    });
+  }, [attachment.name, contentUrl, downloadUrl, openCanvas]);
 
   // 1. Composer Variant (Compact preview before sending)
   if (variant === "composer") {
@@ -259,7 +273,7 @@ export function FileAttachmentCard({
               </div>
               <div className="flex items-center justify-end gap-2 pt-1">
                 <a
-                  href={contentUrl}
+                  href={downloadUrl}
                   download={attachment.name}
                   target="_blank"
                   rel="noreferrer"
@@ -280,43 +294,63 @@ export function FileAttachmentCard({
   return (
     <div
       className={cn(
-        "group flex max-w-[280px] items-center gap-3 rounded-2xl border border-border/80 bg-card/90 p-2.5 shadow-sm transition-all duration-200 hover:border-border hover:bg-card hover:shadow-md sm:max-w-[320px]",
+        "group flex max-w-[280px] items-center gap-2.5 rounded-2xl border border-border/80 bg-card/90 p-2.5 shadow-sm transition-all duration-200 hover:border-border hover:bg-card hover:shadow-md sm:max-w-[320px]",
         className,
       )}
     >
-      <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border shadow-xs", fileMeta.bg)}>
-        <Icon className={cn("h-5 w-5", fileMeta.color)} aria-hidden="true" />
-      </div>
-      <div className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate text-xs font-semibold text-foreground" title={attachment.name}>
-          {attachment.name}
-        </span>
-        <div className="flex items-center gap-2">
-          {formattedSize ? (
-            <span className="text-[11px] text-muted-foreground">{formattedSize}</span>
-          ) : (
-            <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
-              {attachment.name.split(".").pop() || "FILE"}
-            </span>
-          )}
-          {attachment.error && (
-            <span className="truncate text-[10px] text-destructive" title={attachment.error}>
-              • {tx("Lỗi", "Error")}
-            </span>
-          )}
-        </div>
-      </div>
-      <a
-        href={contentUrl}
-        download={attachment.name}
-        target="_blank"
-        rel="noreferrer"
-        className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        aria-label={tx(`Tải xuống ${attachment.name}`, `Download ${attachment.name}`)}
-        title={tx("Tải tệp xuống", "Download file")}
+      <button
+        type="button"
+        onClick={handleOpenCanvas}
+        className="flex min-w-0 flex-1 items-center gap-3 text-left cursor-pointer focus-visible:outline-none"
+        title={tx("Nhấn để mở xem trong Canvas bên cạnh", "Click to open in side Canvas panel")}
       >
-        <Download className="h-4 w-4" aria-hidden="true" />
-      </a>
+        <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border shadow-xs transition-transform group-hover:scale-105", fileMeta.bg)}>
+          <Icon className={cn("h-5 w-5", fileMeta.color)} aria-hidden="true" />
+        </div>
+        <div className="flex min-w-0 flex-1 flex-col">
+          <span className="truncate text-xs font-semibold text-foreground group-hover:text-primary transition-colors" title={attachment.name}>
+            {attachment.name}
+          </span>
+          <div className="flex items-center gap-2">
+            {formattedSize ? (
+              <span className="text-[11px] text-muted-foreground">{formattedSize}</span>
+            ) : (
+              <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                {attachment.name.split(".").pop() || "FILE"}
+              </span>
+            )}
+            {attachment.error && (
+              <span className="truncate text-[10px] text-destructive" title={attachment.error}>
+                • {tx("Lỗi", "Error")}
+              </span>
+            )}
+          </div>
+        </div>
+      </button>
+
+      <div className="flex items-center gap-0.5 shrink-0">
+        <button
+          type="button"
+          onClick={handleOpenCanvas}
+          className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none"
+          aria-label={tx(`Mở trong Canvas ${attachment.name}`, `Open in Canvas ${attachment.name}`)}
+          title={tx("Mở Canvas", "Open in Canvas")}
+        >
+          <PanelRightOpen className="h-4 w-4 text-primary" aria-hidden="true" />
+        </button>
+
+        <a
+          href={downloadUrl}
+          download={attachment.name}
+          target="_blank"
+          rel="noreferrer"
+          className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none"
+          aria-label={tx(`Tải xuống ${attachment.name}`, `Download ${attachment.name}`)}
+          title={tx("Tải tệp xuống", "Download file")}
+        >
+          <Download className="h-4 w-4" aria-hidden="true" />
+        </a>
+      </div>
     </div>
   );
 }

@@ -254,6 +254,69 @@ describe("messagesFromPersisted", () => {
     expect(a.blocks[1]).toMatchObject({ name: "write_file", status: "done", result: "<svg>cat</svg>" });
     expect(a.blocks[3]).toMatchObject({ tokensIn: 20, tokensOut: 30, costUsd: 0.02, model: "gpt-x", toolCount: 1 });
   });
+
+  it("hydrates artifacts from assistant message meta", () => {
+    const rows = [
+      {
+        id: "a1",
+        role: "assistant",
+        content: "Here is your report",
+        meta: {
+          artifacts: [
+            {
+              id: "art-1",
+              path: "report.pdf",
+              filename: "report.pdf",
+              content_type: "application/pdf",
+              size: 1024,
+              download_url: "/api/workspace/artifacts/art-1/download",
+              content_url: "/api/workspace/artifacts/art-1/download?inline=true",
+              source_tool: "run_code",
+            },
+          ],
+        },
+      },
+    ];
+    const msgs = messagesFromPersisted(rows);
+    const a = msgs[0] as AssistantMessage;
+    expect(a.artifacts).toBeDefined();
+    expect(a.artifacts).toHaveLength(1);
+    expect(a.artifacts?.[0]).toMatchObject({
+      id: "art-1",
+      filename: "report.pdf",
+      content_type: "application/pdf",
+    });
+  });
+});
+
+describe("applyChatEvent artifacts", () => {
+  it("attaches artifacts emitted in message_done event", () => {
+    const { state } = reduce([
+      ["token", { content: "File ready." }],
+      [
+        "message_done",
+        {
+          artifacts: [
+            {
+              id: "art-2",
+              path: "output.png",
+              filename: "output.png",
+              content_type: "image/png",
+              size: 2048,
+              download_url: "/api/workspace/artifacts/art-2/download",
+            },
+          ],
+        },
+      ],
+    ]);
+    const a = assistantOf(state);
+    expect(a.artifacts).toHaveLength(1);
+    expect(a.artifacts?.[0]).toMatchObject({
+      id: "art-2",
+      filename: "output.png",
+      content_type: "image/png",
+    });
+  });
 });
 
 describe("looksFailed", () => {

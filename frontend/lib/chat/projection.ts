@@ -84,10 +84,22 @@ export interface UserMessage {
   attachments?: UserAttachment[];
 }
 
+export interface ArtifactItem {
+  id: string;
+  path: string;
+  filename: string;
+  content_type: string;
+  size: number;
+  download_url: string;
+  content_url?: string;
+  source_tool?: string;
+}
+
 export interface AssistantMessage {
   role: "assistant";
   id: string;
   blocks: AssistantBlock[];
+  artifacts?: ArtifactItem[];
 }
 
 export interface ApprovalMessage {
@@ -405,6 +417,9 @@ export function applyChatEvent(
       const statsIdx = assistant.blocks.findIndex((b) => b.kind === "stats");
       if (statsIdx >= 0) assistant.blocks[statsIdx] = { ...stats, id: (assistant.blocks[statsIdx] as StatsBlock).id };
       else assistant.blocks.push(stats);
+      if (Array.isArray(d.artifacts) && d.artifacts.length > 0) {
+        assistant.artifacts = d.artifacts as ArtifactItem[];
+      }
       side.terminal = true;
       side.phase = null;
       const sid = strOrUndef(d.session_id);
@@ -578,6 +593,14 @@ export function messagesFromPersisted(rows: PersistedMessageRow[]): ChatMessage[
         noAnswer: !row.content?.trim() && !reasoning.trim(),
       });
     }
-    return { role: "assistant", id: row.id, blocks };
+    const artifacts: ArtifactItem[] | undefined = Array.isArray(meta.artifacts) && meta.artifacts.length > 0
+      ? (meta.artifacts as ArtifactItem[])
+      : undefined;
+    return {
+      role: "assistant",
+      id: row.id,
+      blocks,
+      ...(artifacts?.length ? { artifacts } : {}),
+    };
   });
 }

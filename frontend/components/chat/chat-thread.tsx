@@ -2,8 +2,7 @@
 
 import * as React from "react";
 import { ArrowDown, Bot, Bug, Trash2 } from "lucide-react";
-import { useCurrentRole } from "@/hooks";
-import { isAdminRole, isOperator } from "@/lib/roles";
+import { useCurrentRoles } from "@/hooks";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { ChatMessageItem } from "@/components/chat/chat-message-item";
@@ -106,8 +105,8 @@ export function ChatThread({
   const showStatusRow =
     (streaming || statusPhase === "approval") && !hasPendingApproval && !inMessageStreaming;
 
-  const role = useCurrentRole();
-  const canSwitchAgent = isAdminRole(role) || isOperator(role);
+  const roles = useCurrentRoles();
+  const canSwitchAgent = roles.includes("operator");
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">

@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.core.authz.policy import has_permission
+from app.core.authz.policy import PrincipalContext, has_permission
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
@@ -21,16 +21,47 @@ from app.models.user import User
 
 
 class TestPermissionMatrix:
-    def test_org_admin_has_everything(self) -> None:
-        assert has_permission(Role.org_admin, "anything:at:all")
-        assert has_permission(Role.org_admin, "")
-        assert has_permission(Role.org_admin, "*")
+    def test_org_admin_manages_org_not_ai_stack(self) -> None:
         assert has_permission(Role.org_admin, "orgs:manage")
-        assert has_permission(Role.org_admin, "models:manage")
-        assert has_permission(Role.org_admin, "mcp:manage")
-        assert has_permission(Role.org_admin, "providers:manage")
-        assert has_permission(Role.org_admin, "agents:create")
-        assert has_permission(Role.org_admin, "workflows:delete")
+        assert has_permission(Role.org_admin, "quota:usage")
+        assert has_permission(Role.org_admin, "admin:email-intelligence")
+        assert has_permission(Role.org_admin, "debug:read")
+        assert has_permission(Role.org_admin, "usage:read")
+        # org_admin is not involved in AI configuration at all.
+        assert not has_permission(Role.org_admin, "*")
+        assert not has_permission(Role.org_admin, "models:manage")
+        assert not has_permission(Role.org_admin, "mcp:manage")
+        assert not has_permission(Role.org_admin, "providers:manage")
+        assert not has_permission(Role.org_admin, "agents:create")
+        assert not has_permission(Role.org_admin, "workflows:delete")
+        # Granting org_admin itself is platform_admin-only.
+        assert not has_permission(Role.org_admin, "orgs:grant-admin")
+
+    def test_platform_admin_org_lifecycle_and_break_glass_read_only(self) -> None:
+        assert has_permission(Role.platform_admin, "orgs:create")
+        assert has_permission(Role.platform_admin, "orgs:manage")
+        assert has_permission(Role.platform_admin, "orgs:grant-admin")
+        # Break-glass: read-only visibility into every org's AI/ops surface.
+        assert has_permission(Role.platform_admin, "agents:read")
+        assert has_permission(Role.platform_admin, "models:read")
+        assert has_permission(Role.platform_admin, "workflows:read")
+        # Never write/manage inside a tenant org.
+        assert not has_permission(Role.platform_admin, "*")
+        assert not has_permission(Role.platform_admin, "agents:manage")
+        assert not has_permission(Role.platform_admin, "models:manage")
+        assert not has_permission(Role.platform_admin, "workflows:delete")
+        assert not has_permission(Role.platform_admin, "admin:email-intelligence")
+
+    def test_multi_role_principal_unions_permissions(self) -> None:
+        # A self-registered founder holds both org_admin and operator.
+        principal = PrincipalContext(
+            user_id="u1",
+            role=Role.operator,
+            roles=frozenset({Role.org_admin, Role.operator}),
+        )
+        assert principal.allows("orgs:manage")  # via org_admin
+        assert principal.allows("agents:manage")  # via operator
+        assert not principal.allows("orgs:grant-admin")  # neither role has it
 
     def test_legacy_admin_alias_dropped(self) -> None:
         # The ``admin`` spelling was removed from the enum and from the
@@ -163,6 +194,35 @@ def _add_member(client: TestClient, token: str, org_id: str, email: str, role: s
     )
     assert resp.status_code == 201, f"add member failed: {resp.text}"
     return member_token
+
+
+def _mint_platform_admin_token(async_session_factory) -> str:
+    """Only platform_admin can grant org_admin (orgs:grant-admin); local auth
+    has no API path to become platform_admin, so insert one directly. Its
+    break-glass access to any tenant org needs no membership row there (see
+    dependencies.py::_global_platform_admin_roles)."""
+    import asyncio
+    import uuid
+
+    from app.core.auth.jwt import create_access_token
+
+    async def _setup() -> str:
+        async with async_session_factory() as session:
+            org = Organization(name="Platform", slug=f"platform-{uuid.uuid4().hex[:8]}")
+            session.add(org)
+            await session.flush()
+            user = User(
+                email=f"pa-{uuid.uuid4().hex[:8]}@test.com",
+                display_name="Platform Admin",
+                hashed_password="x",
+            )
+            session.add(user)
+            await session.flush()
+            session.add(Membership(org_id=org.id, user_id=user.id, role=Role.platform_admin))
+            await session.commit()
+            return create_access_token(user_id=user.id, org_id=org.id, role="platform_admin")
+
+    return asyncio.run(_setup())
 
 
 def _auth_headers(token: str, org_id: str | None = None) -> dict[str, str]:
@@ -344,12 +404,15 @@ class TestRouteRBAC:
         assert resp.status_code == 201, resp.text
         assert resp.json()["tools"] == []
 
-    def test_admin_can_manage_org(self, client: TestClient) -> None:
+    def test_admin_can_manage_org(self, client: TestClient, async_session_factory) -> None:
         owner_token = _register(client, "ao_owner@test.com", PASSWORD, "AdminOrg")
         org_id = _get_org_id(client, owner_token)
 
+        # Granting org_admin is platform_admin-only now - the org's own
+        # org_admin cannot mint a peer admin (see orgs:grant-admin).
+        platform_admin_token = _mint_platform_admin_token(async_session_factory)
         admin_email = "ao_admin@test.com"
-        admin_home_token = _add_member(client, owner_token, org_id, admin_email, "org_admin")
+        admin_home_token = _add_member(client, platform_admin_token, org_id, admin_email, "org_admin")
 
         # Admin can read org members
         resp = client.get(
@@ -365,6 +428,17 @@ class TestRouteRBAC:
             json={"name": "admin-key"},
         )
         assert resp.status_code == 201
+
+    def test_org_admin_cannot_grant_org_admin(self, client: TestClient) -> None:
+        owner_token = _register(client, "no_grant_owner@test.com", PASSWORD, "NoGrantOrg")
+        org_id = _get_org_id(client, owner_token)
+
+        resp = client.post(
+            f"/api/orgs/{org_id}/members",
+            json={"email": "no_grant_target@test.com", "role": "org_admin"},
+            headers=_auth_headers(owner_token),
+        )
+        assert resp.status_code == 403, resp.text
 
     def test_tenant_isolation_prevents_cross_org_access(self, client: TestClient) -> None:
         token_a = _register(client, "iso_a@test.com", PASSWORD, "Org A")

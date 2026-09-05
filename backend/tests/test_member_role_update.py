@@ -24,6 +24,10 @@ from app.config import get_settings
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
+from app.models.membership import Membership
+from app.models.organization import Organization
+from app.models.role import Role
+from app.models.user import User
 
 PASSWORD = "Secret123!"
 
@@ -107,6 +111,35 @@ def _login_token(client: TestClient, email: str, password: str) -> str:
     resp = client.post("/api/auth/login", json={"email": email, "password": password})
     assert resp.status_code == 200, resp.text
     return resp.json()["access_token"]
+
+
+def _mint_platform_admin_token(async_session_factory) -> str:
+    """Granting org_admin is platform_admin-only; local auth has no API path
+    to become platform_admin, so insert one directly. Its break-glass access
+    to any tenant org needs no membership row there (see
+    dependencies.py::_global_platform_admin_roles)."""
+    import asyncio
+    import uuid
+
+    from app.core.auth.jwt import create_access_token
+
+    async def _setup() -> str:
+        async with async_session_factory() as session:
+            org = Organization(name="Platform", slug=f"platform-{uuid.uuid4().hex[:8]}")
+            session.add(org)
+            await session.flush()
+            user = User(
+                email=f"pa-{uuid.uuid4().hex[:8]}@test.com",
+                display_name="Platform Admin",
+                hashed_password="x",
+            )
+            session.add(user)
+            await session.flush()
+            session.add(Membership(org_id=org.id, user_id=user.id, role=Role.platform_admin))
+            await session.commit()
+            return create_access_token(user_id=user.id, org_id=org.id, role="platform_admin")
+
+    return asyncio.run(_setup())
 
 
 def _patch_role(client: TestClient, token: str, org_id: str, user_id: str, role: str) -> Any:
@@ -194,22 +227,37 @@ class TestPatchMemberRole:
         resp = _patch_role(client, admin_token, org_id, member["user_id"], "superuser")
         assert resp.status_code == 400, resp.text
 
-    def test_promote_operator_to_org_admin_when_other_admin_exists(self, client: TestClient) -> None:
+    def test_org_admin_cannot_grant_org_admin_via_patch(self, client: TestClient) -> None:
+        """Granting org_admin is platform_admin-only now - PATCH (the org's
+        own org_admin job) no longer accepts "org_admin" as a target role at
+        all; use POST /members with a platform_admin token instead."""
         admin_token = _register(client, "admin_pa@test.com", PASSWORD, "Org PromA")
         org_id = _org_id(client, admin_token)
         member = _add_member(client, admin_token, org_id, "promo@test.com", "operator")
 
         resp = _patch_role(client, admin_token, org_id, member["user_id"], "org_admin")
-        assert resp.status_code == 200, resp.text
-        assert resp.json()["role"] == "org_admin"
+        assert resp.status_code == 400, resp.text
 
-    def test_demote_org_admin_to_user_when_other_admin_exists(self, client: TestClient) -> None:
+    def test_platform_admin_grants_org_admin_alongside_existing_role(
+        self, client: TestClient, async_session_factory
+    ) -> None:
+        """Granting org_admin adds it alongside the member's existing
+        functional role (operator/user) rather than replacing it - a member
+        can hold both, like the self-registered founder does."""
         admin_token = _register(client, "admin_dem@test.com", PASSWORD, "Org Dem")
         org_id = _org_id(client, admin_token)
         member = _add_member(client, admin_token, org_id, "dem@test.com", "operator")
-        promote = _patch_role(client, admin_token, org_id, member["user_id"], "org_admin")
-        assert promote.status_code == 200, promote.text
 
+        platform_admin_token = _mint_platform_admin_token(async_session_factory)
+        promote = client.post(
+            f"/api/orgs/{org_id}/members",
+            json={"email": "dem@test.com", "role": "org_admin"},
+            headers={"Authorization": f"Bearer {platform_admin_token}"},
+        )
+        assert promote.status_code == 201, promote.text
+
+        # The functional (operator) role is untouched by the grant; PATCH
+        # still targets it, independent of the separately-held org_admin row.
         resp = _patch_role(client, admin_token, org_id, member["user_id"], "user")
         assert resp.status_code == 200, resp.text
         assert resp.json()["role"] == "user"

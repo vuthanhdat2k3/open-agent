@@ -11,12 +11,13 @@ from app.config import get_settings
 from app.core.auth.api_key import hash_api_key
 from app.core.auth.application_session import resolve_application_session
 from app.core.auth.jwt import verify_access_token
-from app.core.authz.policy import PrincipalContext, has_permission
+from app.core.authz.policy import PrincipalContext, has_permission, primary_role
 from app.core.authz.scope import set_ownership_scope
 from app.core.observability.chat_timing import mark_chat_phase
 from app.db.session import get_db
 from app.models.api_key import ApiKey
 from app.models.membership import Membership
+from app.models.role import Role
 from app.models.user import User
 
 DEFAULT_ORG_ID = "default-org-id"  # disposable local/test compatibility only
@@ -245,11 +246,11 @@ async def get_current_org_id(
     if user_id and header_org:
         if header_org != state_org:
             res = await db.execute(
-                select(Membership).where(
+                select(Membership.id).where(
                     Membership.org_id == header_org,
                     Membership.user_id == user_id,
                     Membership.lifecycle_status == "active",
-                )
+                ).limit(1)
             )
             membership = res.scalar_one_or_none()
             if not membership:
@@ -284,6 +285,21 @@ async def get_current_org_id(
     raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Organization context required")
 
 
+async def _global_platform_admin_roles(db: AsyncSession, user_id: str) -> frozenset[Role]:
+    """platform_admin's membership row lives in the special 'platform' org,
+    not in every tenant org - so its break-glass read-only access can't be
+    resolved from a target-org membership lookup alone. Returns
+    {Role.platform_admin} if this user holds that role anywhere, else empty."""
+    res = await db.execute(
+        select(Membership.id).where(
+            Membership.user_id == user_id,
+            Membership.role == Role.platform_admin,
+            Membership.lifecycle_status == "active",
+        ).limit(1)
+    )
+    return frozenset({Role.platform_admin}) if res.scalar_one_or_none() else frozenset()
+
+
 def require_permission(permission: str):
     """Enforce RBAC permission check against the resolved request org_id.
 
@@ -302,27 +318,35 @@ def require_permission(permission: str):
             select(Membership).where(
                 Membership.org_id == org_id,
                 Membership.user_id == current_user.id,
+                Membership.lifecycle_status == "active",
             )
         )
-        membership = res.scalar_one_or_none()
-        if membership is None or membership.lifecycle_status != "active":
+        memberships = res.scalars().all()
+        roles = frozenset(m.role for m in memberships)
+        if not roles:
+            # No row in this specific org - a global platform_admin still
+            # gets its break-glass read-only permissions here.
+            roles = await _global_platform_admin_roles(db, current_user.id)
+        if not roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="User does not belong to this organization",
             )
-        if not has_permission(membership.role, permission):
+        if not any(has_permission(role, permission) for role in roles):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Permission denied: {permission}",
             )
-        user_role_val = getattr(membership.role, "value", str(membership.role))
-        current_user.role = user_role_val
+        display_role = primary_role(roles)
+        current_user.role = display_role.value
+        display_membership = next((m for m in memberships if m.role == display_role), None)
         principal = PrincipalContext(
             user_id=current_user.id,
             principal_id=current_user.id,
-            role=membership.role,
+            role=display_role,
+            roles=roles,
             organization_id=org_id,
-            membership_id=membership.id,
+            membership_id=display_membership.id if display_membership else None,
             session_id=getattr(request.state, "session_id", None),
         )
         request.state.principal = principal
@@ -346,20 +370,29 @@ def require_any_permission(*permissions: str):
             select(Membership).where(
                 Membership.org_id == org_id,
                 Membership.user_id == current_user.id,
+                Membership.lifecycle_status == "active",
             )
         )
-        membership = res.scalar_one_or_none()
-        if membership is None or not any(has_permission(membership.role, permission) for permission in permissions):
+        memberships = res.scalars().all()
+        roles = frozenset(m.role for m in memberships)
+        if not roles:
+            roles = await _global_platform_admin_roles(db, current_user.id)
+        if not roles or not any(
+            has_permission(role, permission) for role in roles for permission in permissions
+        ):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Permission denied: {' or '.join(permissions)}",
             )
+        display_role = primary_role(roles)
+        display_membership = next((m for m in memberships if m.role == display_role), None)
         principal = PrincipalContext(
             user_id=current_user.id,
             principal_id=current_user.id,
-            role=membership.role,
+            role=display_role,
+            roles=roles,
             organization_id=org_id,
-            membership_id=membership.id,
+            membership_id=display_membership.id if display_membership else None,
             session_id=getattr(request.state, "session_id", None),
         )
         request.state.principal = principal

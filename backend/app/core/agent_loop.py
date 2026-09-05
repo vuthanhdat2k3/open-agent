@@ -8,6 +8,7 @@ import time
 import unicodedata
 from collections.abc import AsyncIterator, Awaitable, Callable, Coroutine
 from datetime import timedelta
+from pathlib import Path
 from typing import Any
 
 import structlog
@@ -63,6 +64,7 @@ from app.models.model import Model
 from app.models.provider import Provider
 from app.models.task import Task
 from app.models.usage import UsageEvent
+from app.models.workspace import WorkspaceArtifact
 from app.schemas.chat import AgentLoopResult
 from app.services.quota_service import invalidate_monthly_cost_cache
 
@@ -825,6 +827,7 @@ async def _agent_stream(
         message_images = []
 
     phase_started_at = time.monotonic()
+    turn_started_at = utc_now()
     logger.info(
         "chat_latency_phase",
         phase="agent_loop_start",
@@ -2416,6 +2419,52 @@ async def _agent_stream(
             }
             model_label = model.display_name or model.name
             reasoning_text = reasoning_text or "".join(reasoning_parts)
+
+            # Query workspace artifacts created/updated during this turn
+            artifacts_list: list[dict[str, Any]] = []
+            if agent.org_id:
+                try:
+                    run_or_task_ids = [
+                        tid for tid in [root_run_id, current_task_id, (root_task.id if root_task else None)]
+                        if tid
+                    ]
+                    art_filters = [WorkspaceArtifact.org_id == agent.org_id]
+                    if run_or_task_ids:
+                        cond = or_(
+                            WorkspaceArtifact.root_run_id.in_(run_or_task_ids),
+                            WorkspaceArtifact.task_id.in_(run_or_task_ids),
+                        )
+                        if session_id:
+                            cond = or_(
+                                cond,
+                                (WorkspaceArtifact.session_id == session_id)
+                                & (WorkspaceArtifact.updated_at >= turn_started_at),
+                            )
+                        art_filters.append(cond)
+                    elif session_id:
+                        art_filters.append(WorkspaceArtifact.session_id == session_id)
+                        art_filters.append(WorkspaceArtifact.updated_at >= turn_started_at)
+
+                    art_stmt = (
+                        select(WorkspaceArtifact)
+                        .where(*art_filters)
+                        .order_by(WorkspaceArtifact.created_at.asc())
+                    )
+                    art_res = await db.execute(art_stmt)
+                    for art in art_res.scalars().all():
+                        artifacts_list.append({
+                            "id": art.id,
+                            "path": art.path,
+                            "filename": Path(art.path).name,
+                            "content_type": art.content_type,
+                            "size": art.size,
+                            "download_url": f"/api/workspace/artifacts/{art.id}/download",
+                            "content_url": f"/api/workspace/artifacts/{art.id}/download?inline=true",
+                            "source_tool": art.source_tool,
+                        })
+                except Exception:
+                    logger.warning("failed_to_query_turn_artifacts", exc_info=True)
+
             done_ev = {
                 "event": "message_done",
                 "data": {
@@ -2428,6 +2477,7 @@ async def _agent_stream(
                     "model": model_label,
                     "reasoning": reasoning_text,
                     "finalization": finalization_outcome,
+                    "artifacts": artifacts_list,
                 },
             }
             if session_id:
@@ -2444,6 +2494,7 @@ async def _agent_stream(
                             "content": final,
                             "usage": usage,
                             "reasoning": reasoning_text,
+                            "artifacts": artifacts_list,
                         },
                     )
                 except slog.SessionEventError:
@@ -2468,7 +2519,8 @@ async def _agent_stream(
                         "tools": tool_calls_log,
                         "model": model_label,
                         "reasoning": reasoning_text,
-                    "finalization": finalization_outcome,
+                        "finalization": finalization_outcome,
+                        "artifacts": artifacts_list,
                     },
                     org_id=agent.org_id,
                     created_by_user_id=user_id or agent.created_by_user_id,
