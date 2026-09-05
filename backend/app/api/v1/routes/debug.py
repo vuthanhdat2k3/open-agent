@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.dependencies import get_current_org_id, get_db, require_permission
 from app.models.task import Task
+from app.models.user import User
 from app.services.debug_service import DebugService
 
 router = APIRouter(
@@ -61,6 +62,15 @@ async def task_tree(
     if not tasks:
         raise HTTPException(404, "task tree not found")
 
+    triggered_by_user_id = next((t.triggered_by_user_id for t in tasks if t.triggered_by_user_id), None)
+    triggered_by_email: str | None = None
+    triggered_by_name: str | None = None
+    if triggered_by_user_id:
+        triggering_user = await db.scalar(select(User).where(User.id == triggered_by_user_id))
+        if triggering_user:
+            triggered_by_email = triggering_user.email
+            triggered_by_name = triggering_user.display_name
+
     nodes = {
         task.id: {
             "id": task.id,
@@ -100,5 +110,8 @@ async def task_tree(
         "root_run_id": root_run_id,
         "trace_id": langfuse_trace_id_value,
         "langfuse_url": trace_url,
+        "triggered_by_user_id": triggered_by_user_id,
+        "triggered_by_email": triggered_by_email,
+        "triggered_by_name": triggered_by_name,
         "tasks": roots,
     }

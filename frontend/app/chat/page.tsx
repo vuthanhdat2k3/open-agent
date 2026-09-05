@@ -858,6 +858,15 @@ export default function ChatPage() {
 
   const send = async () => {
     if ((!draft.trim() && attachments.length === 0) || !agentId) return;
+    if (roles.includes("operator") && !roles.includes("user")) {
+      toast.error(
+        tx(
+          "Vai trò operator không được phép chat trực tiếp — chỉ quản lý cấu hình AI. Hãy dùng tài khoản user để trò chuyện.",
+          "The operator role cannot chat directly — it only manages AI configuration. Use a user account to chat."
+        )
+      );
+      return;
+    }
     const sentDraft = draft.trim() ? draft : tx("Vui lòng xem lại (các) tệp đính kèm.", "Please review the attached file(s).");
     const userMsg: ChatMessage = {
       id: `u-${Date.now()}`,
