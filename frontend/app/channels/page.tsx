@@ -10,6 +10,8 @@ import {
   useDeleteChannelConnection,
   useUpdateChannelConnection,
   useTestChannelConnection,
+  useCurrentRoles,
+  useMe,
 } from "@/hooks";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -30,6 +32,10 @@ import {
 
 export default function ChannelsPage() {
   const { tx } = useTranslation();
+  const roles = useCurrentRoles();
+  const me = useMe();
+  const currentUserId = me.data?.id;
+  const isOperator = roles.includes("operator");
   const { data, isLoading, isError, refetch } = useChannelConnections();
   const create = useCreateChannelConnection();
   const del = useDeleteChannelConnection();
@@ -38,6 +44,27 @@ export default function ChannelsPage() {
   const [open, setOpen] = React.useState(false);
   const [editOpen, setEditOpen] = React.useState(false);
   const [editTarget, setEditTarget] = React.useState<ChannelConnection | null>(null);
+  const [selectedUserFilter, setSelectedUserFilter] = React.useState<string>("all");
+
+  // Extract unique creators for filter dropdown
+  const uniqueCreators = React.useMemo(() => {
+    const map = new Map<string, { id: string; label: string }>();
+    (data || []).forEach((c) => {
+      if (c.created_by_user_id) {
+        map.set(c.created_by_user_id, {
+          id: c.created_by_user_id,
+          label: c.creator_email || c.creator_name || c.created_by_user_id.slice(0, 8),
+        });
+      }
+    });
+    return Array.from(map.values());
+  }, [data]);
+
+  // Filter connections by selected creator
+  const filteredConnections = React.useMemo(() => {
+    if (selectedUserFilter === "all") return data || [];
+    return (data || []).filter((c) => c.created_by_user_id === selectedUserFilter);
+  }, [data, selectedUserFilter]);
 
   return (
     <div className="space-y-6">
@@ -122,6 +149,22 @@ export default function ChannelsPage() {
         </DialogContent>
       </Dialog>
 
+      {isOperator && uniqueCreators.length > 0 && (
+        <div className="flex items-center gap-2 text-xs">
+          <span className="text-muted-foreground">{tx("Lọc theo người tạo", "Filter by creator")}:</span>
+          <select
+            value={selectedUserFilter}
+            onChange={(e) => setSelectedUserFilter(e.target.value)}
+            className="rounded-md border border-input bg-background/80 px-2 py-1 text-xs"
+          >
+            <option value="all">{tx("Tất cả", "All")}</option>
+            {uniqueCreators.map((c) => (
+              <option key={c.id} value={c.id}>{c.label}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
       {isLoading ? (
         <LoadingSkeleton variant="grid" />
       ) : isError ? (
@@ -130,9 +173,9 @@ export default function ChannelsPage() {
           description={tx("Không thể tải dữ liệu kênh tin nhắn.", "Channel data could not be loaded.")}
           onRetry={() => void refetch()}
         />
-      ) : data && data.length > 0 ? (
+      ) : filteredConnections && filteredConnections.length > 0 ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 stagger">
-          {data.map((c) => {
+          {filteredConnections.map((c) => {
             const active = c.status === "active";
             const errored = c.status === "error";
             return (
@@ -166,6 +209,20 @@ export default function ChannelsPage() {
                     {c.id}
                   </div>
                 </div>
+
+                {/* Creator info - visible to operator */}
+                {isOperator && (
+                  <div className="mt-3 flex-1 space-y-1">
+                    <div className="font-semibold text-[10px] uppercase tracking-wider text-muted-foreground/80">
+                      {tx("Người tạo", "Creator")}
+                    </div>
+                    <div className="truncate rounded-lg border border-border/40 bg-muted/30 px-2.5 py-1.5 text-xs text-muted-foreground">
+                      {c.created_by_user_id
+                        ? (c.creator_email || c.creator_name || c.created_by_user_id.slice(0, 8))
+                        : tx("Dùng chung", "Shared")}
+                    </div>
+                  </div>
+                )}
 
                 <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-border/60 pt-4">
                   {(() => {

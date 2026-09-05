@@ -66,7 +66,7 @@ export const navGroups: NavGroup[] = [
     roles: ["operator"],
     items: [
       { href: "/", label: "Studio Overview", i18nKey: "nav.studioOverview", icon: LayoutDashboard, roles: ["operator"] },
-      { href: "/chat", label: "Chat", i18nKey: "nav.chat", icon: MessageSquare, roles: ["operator"] },
+      // Chat removed - operator configures AI, does not chat (see backend policy.py)
       { href: "/agents", label: "Agents", i18nKey: "nav.agents", icon: Bot, roles: ["operator"], permission: "agents:read" },
       { href: "/providers", label: "Providers", i18nKey: "nav.providers", icon: Server, roles: ["operator"], permission: "providers:read" },
       { href: "/workflows", label: "Workflows", i18nKey: "nav.workflows", icon: Workflow, roles: ["operator"], permission: "workflows:read" },

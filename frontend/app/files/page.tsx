@@ -9,6 +9,8 @@ import {
   useUploadFile,
   useDeleteFile,
   useIngestFile,
+  useCurrentRoles,
+  useMe,
 } from "@/hooks";
 import type { UploadedFile } from "@/types";
 import { Card, CardContent } from "@/components/ui/card";
@@ -49,6 +51,10 @@ function formatSize(bytes: number) {
 
 export default function FilesPage() {
   const { t, dict, locale, tx } = useTranslation();
+  const roles = useCurrentRoles();
+  const me = useMe();
+  const currentUserId = me.data?.id;
+  const isOperator = roles.includes("operator");
   const { data, isLoading, isError, refetch } = useFiles();
   const upload = useUploadFile();
   const del = useDeleteFile();
@@ -58,11 +64,32 @@ export default function FilesPage() {
   const [collection, setCollection] = React.useState("default");
   const [page, setPage] = React.useState(1);
   const [pageSize, setPageSize] = React.useState(10);
+  const [selectedUserFilter, setSelectedUserFilter] = React.useState<string>("all");
+
+  // Extract unique creators for filter dropdown
+  const uniqueCreators = React.useMemo(() => {
+    const map = new Map<string, { id: string; label: string }>();
+    (data || []).forEach((f) => {
+      if (f.created_by_user_id) {
+        map.set(f.created_by_user_id, {
+          id: f.created_by_user_id,
+          label: f.creator_email || f.creator_name || f.created_by_user_id.slice(0, 8),
+        });
+      }
+    });
+    return Array.from(map.values());
+  }, [data]);
+
+  // Filter files by selected creator
+  const filteredFiles = React.useMemo(() => {
+    if (selectedUserFilter === "all") return data || [];
+    return (data || []).filter((f) => f.created_by_user_id === selectedUserFilter);
+  }, [data, selectedUserFilter]);
 
   const paginatedFiles = React.useMemo(() => {
     const start = (page - 1) * pageSize;
-    return (data || []).slice(start, start + pageSize);
-  }, [data, page, pageSize]);
+    return filteredFiles.slice(start, start + pageSize);
+  }, [filteredFiles, page, pageSize]);
 
   async function onPick(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -112,6 +139,29 @@ export default function FilesPage() {
         <CardContent className="p-0">
           {isLoading ? <div className="p-6"><LoadingSkeleton variant="table" /></div> : isError ? <div className="p-6"><ErrorState title={tx("Không thể tải tệp", "Unable to load files")} description={tx("Không thể tải dữ liệu tệp.", "File data could not be loaded.")} onRetry={() => void refetch()} /></div> : data && data.length > 0 ? (
             <>
+              <div className="flex items-center justify-between px-4 py-2 border-b border-border/60">
+                <span className="text-xs text-muted-foreground">
+                  {tx("Tổng", "Total")}: {filteredFiles.length}
+                </span>
+                {isOperator && uniqueCreators.length > 0 && (
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="text-muted-foreground">{tx("Người tạo", "Creator")}:</span>
+                    <select
+                      value={selectedUserFilter}
+                      onChange={(e) => {
+                        setSelectedUserFilter(e.target.value);
+                        setPage(1);
+                      }}
+                      className="rounded-md border border-input bg-background/80 px-2 py-1 text-xs"
+                    >
+                      <option value="all">{tx("Tất cả", "All")}</option>
+                      {uniqueCreators.map((c) => (
+                        <option key={c.id} value={c.id}>{c.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -120,6 +170,7 @@ export default function FilesPage() {
                     <TableHead>{tx("Kích thước", "Size")}</TableHead>
                     <TableHead>{tx("Trạng thái", "Status")}</TableHead>
                     <TableHead>{tx("Bộ sưu tập", "Collection")}</TableHead>
+                    {isOperator && <TableHead>{tx("Người tải lên", "Uploaded by")}</TableHead>}
                     <TableHead className="text-right">{tx("Hành động", "Actions")}</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -143,6 +194,13 @@ export default function FilesPage() {
                       <TableCell className="text-muted-foreground font-mono text-xs">
                         {f.collection || "—"}
                       </TableCell>
+                      {isOperator && (
+                        <TableCell className="text-xs text-muted-foreground max-w-[160px] truncate">
+                          <span className="font-mono text-[11px] bg-muted/50 px-1.5 py-0.5 rounded border border-border/50">
+                            {f.creator_email || f.creator_name || f.created_by_user_id?.slice(0, 8) || "—"}
+                          </span>
+                        </TableCell>
+                      )}
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
                           {canIngest && (
@@ -203,7 +261,7 @@ export default function FilesPage() {
               <DataPagination
                 page={page}
                 pageSize={pageSize}
-                totalItems={data.length}
+                totalItems={filteredFiles.length}
                 onPageChange={setPage}
                 onPageSizeChange={setPageSize}
                 pageSizeOptions={[5, 10, 20, 50]}
