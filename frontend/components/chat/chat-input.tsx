@@ -28,6 +28,8 @@ interface ChatInputProps {
   onSendMessage?: (message: string) => void;
   sessionId?: string;
   messages?: ChatMessage[];
+  onCompactSession?: () => Promise<void>;
+  onClearSession?: () => Promise<void>;
 }
 
 // Docked composer for an active conversation. `onSubmit` arrives already
@@ -37,7 +39,7 @@ interface ChatInputProps {
 export function ChatInput({
   draft, onDraftChange, onSubmit, streaming, disabled, connectionState, attachments, onAttachmentsChange,
   models, effectiveModel, onModelChange, executionPolicy, onExecutionPolicyChange, onClear, onReset,
-  agents, currentAgentId, onAgentChange, usage, onSendMessage, sessionId
+  agents, currentAgentId, onAgentChange, usage, onSendMessage, sessionId, messages, onCompactSession, onClearSession
 }: ChatInputProps) {
   return (
     <div className="mt-3">
@@ -65,6 +67,9 @@ export function ChatInput({
         usage={usage}
         onSendMessage={onSendMessage}
         sessionId={sessionId}
+        messages={messages}
+        onCompactSession={onCompactSession}
+        onClearSession={onClearSession}
       />
     </div>
   );

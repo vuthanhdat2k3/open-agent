@@ -60,6 +60,10 @@ interface ChatComposerProps {
   /** Current session id */
   sessionId?: string;
   messages?: ChatMessage[];
+  /** Callback to compact session context on server */
+  onCompactSession?: () => Promise<void>;
+  /** Callback to clear session on server */
+  onClearSession?: () => Promise<void>;
 }
 
 // Shared by ChatEmptyState (centered, empty thread) and the docked composer
@@ -93,6 +97,8 @@ export function ChatComposer({
   onSendMessage,
   sessionId,
   messages = [],
+  onCompactSession,
+  onClearSession,
 }: ChatComposerProps) {
   const { t, locale, tx } = useTranslation();
   const defaultPlaceholder = tx("Nhập tin nhắn… (Enter để gửi, Shift+Enter để xuống dòng). Gõ / để xem lệnh.", "Type a message… (Enter to send, Shift+Enter for newline). Type / for commands.");
@@ -167,6 +173,8 @@ export function ChatComposer({
       onClear: onClear || (() => {}),
       onReset: onReset || (() => {}),
       onAgentChange: onAgentChange || (() => {}),
+      onCompactSession,
+      onClearSession,
       onSend: (message: string) => {
         onDraftChange("");
         onSendMessage?.(message);
@@ -183,7 +191,7 @@ export function ChatComposer({
       },
       tx,
     };
-  }, [draft, models, effectiveModel, executionPolicy, agents, currentAgentId, sessionId, messages, usage, onModelChange, onExecutionPolicyChange, onClear, onReset, onAgentChange, onSendMessage, onDraftChange, tx]);
+  }, [draft, models, effectiveModel, executionPolicy, agents, currentAgentId, sessionId, messages, usage, onModelChange, onExecutionPolicyChange, onClear, onReset, onAgentChange, onSendMessage, onDraftChange, onCompactSession, onClearSession, tx]);
 
   const executeCommand = React.useCallback(
     async (cmd: SlashCommand, args: string) => {

@@ -149,6 +149,7 @@ export default function ChatPage() {
     [],
   );
 
+
   const setPendingSessionModelId = React.useCallback(
     (modelId: string) => {
       setPendingModel(agentId, modelId || null);
@@ -248,6 +249,49 @@ export default function ChatPage() {
     agentReady && sessions.isSuccess && sessionBelongsToAgent,
   );
   const { refetch: refetchMessages } = messagesQuery;
+
+  const handleClearSession = React.useCallback(async () => {
+    if (!sessionId) {
+      setMessages([]);
+      setDraft("");
+      return;
+    }
+    try {
+      await api.post(`/api/sessions/${sessionId}/clear`);
+      setMessages([]);
+      setDraft("");
+      setAttachments([]);
+      await refetchMessages();
+      await usageSummary.refetch();
+      toast.success(tx("Đã xóa toàn bộ lịch sử tin nhắn của phiên", "Session conversation history cleared"));
+    } catch (err) {
+      console.error("Failed to clear session:", err);
+      toast.error(tx("Không thể xóa hội thoại", "Failed to clear session"));
+    }
+  }, [sessionId, refetchMessages, usageSummary, tx]);
+
+  const handleCompactSession = React.useCallback(async () => {
+    if (!sessionId) {
+      toast.info(tx("Chưa có phiên hội thoại để nén", "No active session to compact"));
+      return;
+    }
+    const toastId = toast.loading(tx("Đang nén ngữ cảnh phiên hội thoại...", "Compacting session context..."));
+    try {
+      const res = await api.post<{ ok: boolean; compacted: boolean; message: string; summary?: string }>(
+        `/api/sessions/${sessionId}/compact`
+      );
+      if (res.compacted) {
+        await refetchMessages();
+        await usageSummary.refetch();
+        toast.success(tx("Đã nén ngữ cảnh phiên hội thoại thành công", "Session context compressed successfully"), { id: toastId });
+      } else {
+        toast.info(res.message || tx("Ngữ cảnh phiên còn quá ngắn, chưa cần nén.", "Context is too short to compact."), { id: toastId });
+      }
+    } catch (err) {
+      console.error("Failed to compact session:", err);
+      toast.error(tx("Không thể nén ngữ cảnh phiên", "Failed to compact session"), { id: toastId });
+    }
+  }, [sessionId, refetchMessages, usageSummary, tx]);
 
   const commit = React.useCallback(() => {
     rafRef.current = null;
@@ -1242,10 +1286,9 @@ export default function ChatPage() {
               onModelChange={(modelId: string) => void setDefaultModel(modelId)}
               executionPolicy={effectiveExecutionPolicy}
               onExecutionPolicyChange={handleExecutionPolicyChange}
-              onClear={() => {
-                setMessages([]);
-                setDraft("");
-              }}
+              onClear={handleClearSession}
+              onClearSession={handleClearSession}
+              onCompactSession={handleCompactSession}
               onReset={() => {
                 setMessages([]);
                 setDraft("");

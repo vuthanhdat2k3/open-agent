@@ -40,6 +40,10 @@ export interface SlashCommandContext {
   /** Open command info dialog (modal) for rich view */
   openDialog?: (type: CommandDialogType) => void;
   /** Toast-like notification fallback */
+  /** Callback to trigger server-side compaction */
+  onCompactSession?: () => Promise<void>;
+  /** Callback to trigger server-side session clear */
+  onClearSession?: () => Promise<void>;
   notify: (message: string, kind?: "success" | "error" | "info") => void;
   /** Translation function */
   tx: (vietnamese: string, english: string) => string;
