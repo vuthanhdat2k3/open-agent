@@ -255,6 +255,33 @@ describe("messagesFromPersisted", () => {
     expect(a.blocks[3]).toMatchObject({ tokensIn: 20, tokensOut: 30, costUsd: 0.02, model: "gpt-x", toolCount: 1 });
   });
 
+  it("hydrates tokens from input_tokens and output_tokens when in_tokens is omitted", () => {
+    const rows = [
+      {
+        id: "m2",
+        role: "assistant",
+        content: "Here you go.",
+        meta: {
+          input_tokens: 1540,
+          output_tokens: 320,
+          cost_usd: 0.005,
+          latency_ms: 1200,
+          model: "qwen3.6",
+        },
+      },
+    ];
+    const msgs = messagesFromPersisted(rows);
+    const a = msgs[0] as AssistantMessage;
+    const stats = a.blocks.find((b) => b.kind === "stats");
+    expect(stats).toMatchObject({
+      tokensIn: 1540,
+      tokensOut: 320,
+      costUsd: 0.005,
+      latencyMs: 1200,
+      model: "qwen3.6",
+    });
+  });
+
   it("hydrates artifacts from assistant message meta", () => {
     const rows = [
       {
