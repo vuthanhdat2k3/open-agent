@@ -29,7 +29,7 @@ from app.core.auth.jwt import (
 )
 from app.core.auth.oauth import oauth
 from app.core.auth.password import hash_password, verify_password
-from app.core.authz.policy import PERMISSIONS
+from app.core.authz.policy import PERMISSIONS, primary_role
 from app.core.observability.audit import log_action
 from app.db.base import utc_now
 from app.db.session import get_db
@@ -360,9 +360,12 @@ async def register(
     db.add(default_organization_quota(org.id))
     await ensure_rag_mcp_server(db, org.id)
 
-    # Create Membership
+    # Create Membership. org_admin is not involved in AI configuration, and
+    # every org needs at least one operator - the founder gets both roles so
+    # they can immediately configure agents/models/providers.
     membership = Membership(org_id=org.id, user_id=user.id, role=Role.org_admin)
     db.add(membership)
+    db.add(Membership(org_id=org.id, user_id=user.id, role=Role.operator))
 
     # Issue Tokens
     access_token = create_access_token(user_id=user.id, org_id=org.id, role=Role.org_admin)
@@ -551,18 +554,26 @@ async def me(
         .where(Membership.user_id == current_user.id)
     )
     rows = res.all()
+    # A user can hold more than one role in the same org - group role-rows
+    # per org before building the response, instead of emitting/overwriting
+    # one entry per row.
+    by_org: dict[str, tuple[Organization, list[Role]]] = {}
+    for mem, org in rows:
+        by_org.setdefault(org.id, (org, []))[1].append(mem.role)
+
     memberships_out = [
         UserMembershipOut(
             org_id=org.id,
             org_name=org.name,
             org_slug=org.slug,
-            role=mem.role.value,
+            role=primary_role(frozenset(roles)).value,
+            roles=[r.value for r in roles],
         )
-        for mem, org in rows
+        for org, roles in by_org.values()
     ]
     permissions_by_org = {
-        org.id: sorted(PERMISSIONS.get(mem.role, set()))
-        for mem, org in rows
+        org_id: sorted({perm for role in roles for perm in PERMISSIONS.get(role, set())})
+        for org_id, (_, roles) in by_org.items()
     }
 
     return MeResponse(
@@ -773,6 +784,7 @@ async def oauth_callback(
 
             membership = Membership(org_id=org.id, user_id=user.id, role=Role.org_admin)
             db.add(membership)
+            db.add(Membership(org_id=org.id, user_id=user.id, role=Role.operator))
 
         # Create OAuthAccount link
         oauth_acc = OAuthAccount(

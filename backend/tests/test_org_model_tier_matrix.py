@@ -36,11 +36,13 @@ async def env_setup(async_session_factory):
         db.add(user)
         await db.flush()
 
+        # Model tier routing is AI-stack configuration - an operator concern
+        # under the current RBAC model, not org_admin.
         membership = Membership(
             id=gen_id(),
             org_id=org.id,
             user_id=user.id,
-            role=Role.org_admin,
+            role=Role.operator,
             lifecycle_status="active",
         )
         db.add(membership)

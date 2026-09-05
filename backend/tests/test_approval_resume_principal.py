@@ -28,6 +28,7 @@ from app.main import app
 from app.models.agent import Agent
 from app.models.approval_request import ApprovalRequest
 from app.models.model import Model
+from app.models.organization import Organization
 from app.models.provider import Provider
 from app.models.session import Session
 from app.models.task import Task
@@ -68,15 +69,18 @@ def _register(client: TestClient, email: str) -> tuple[str, str]:
     return token, me.json()["memberships"][0]["org_id"]
 
 
-def _add_admin(client: TestClient, owner_token: str, org_id: str, email: str) -> str:
-    """Register *email* and add them as an org_admin, return their token."""
+def _add_approver(client: TestClient, owner_token: str, org_id: str, email: str) -> str:
+    """Register *email* and add them as an operator of *org_id* (deciding
+    tool-call approvals is an operator concern, not org_admin, under the
+    current RBAC model), return their token. *owner_token* is the org's own
+    org_admin+operator founder, who already manages *org_id*."""
     member_token, _ = _register(client, email)
     resp = client.post(
         f"/api/orgs/{org_id}/members",
-        json={"email": email, "role": "org_admin"},
+        json={"email": email, "role": "operator"},
         headers={"Authorization": f"Bearer {owner_token}"},
     )
-    assert resp.status_code == 201, f"add admin failed: {resp.text}"
+    assert resp.status_code == 201, f"add approver failed: {resp.text}"
     return member_token
 
 
@@ -88,7 +92,7 @@ def test_decide_approval_resumes_with_the_original_requesters_principal(
     role, not the deciding admin's - and `decided_by` on the approval row
     must be the admin, never silently overwritten with the requester."""
     requester_token, org_id = _register(client, "requester@test.com")
-    approver_token = _add_admin(client, requester_token, org_id, "approver-admin@test.com")
+    approver_token = _add_approver(client, requester_token, org_id, "approver-admin@test.com")
 
     # Resolve each principal's own user id via /api/auth/me so the test does
     # not have to reach into JWT internals.

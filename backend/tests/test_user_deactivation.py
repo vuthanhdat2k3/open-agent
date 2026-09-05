@@ -2,7 +2,7 @@
 
 import httpx
 import pytest
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.db.base import Base
@@ -60,15 +60,19 @@ async def _register(api_client: httpx.AsyncClient, email: str, org_name: str | N
 
 
 async def _seed_platform_admin(factory, org_id: str, email: str) -> None:
+    """Replace this user's role-row(s) in org_id with a single platform_admin
+    row. A blanket UPDATE would try to set every one of the user's role-rows
+    (a self-registered founder has two: org_admin + operator) to
+    platform_admin, colliding on the (org_id, user_id, role) unique
+    constraint - delete first, then insert the one row we actually want."""
     async with factory() as session:
         user = (
             await session.execute(select(User).where(User.email == email))
         ).scalar_one()
         await session.execute(
-            update(Membership)
-            .where(Membership.org_id == org_id, Membership.user_id == user.id)
-            .values(role=Role.platform_admin)
+            delete(Membership).where(Membership.org_id == org_id, Membership.user_id == user.id)
         )
+        session.add(Membership(org_id=org_id, user_id=user.id, role=Role.platform_admin))
         await session.commit()
 
 
