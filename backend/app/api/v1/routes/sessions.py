@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import delete, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authz.policy import PrincipalContext
@@ -78,7 +78,13 @@ async def list_messages(
     # Query all artifacts for this session
     art_stmt = (
         select(WorkspaceArtifact)
-        .where(WorkspaceArtifact.session_id == session_id, WorkspaceArtifact.org_id == org_id)
+        .where(
+            WorkspaceArtifact.org_id == org_id,
+            or_(
+                WorkspaceArtifact.session_id == session_id,
+                WorkspaceArtifact.root_run_id == session_id,
+            ),
+        )
         .order_by(WorkspaceArtifact.created_at.asc())
     )
     art_res = await db.execute(art_stmt)

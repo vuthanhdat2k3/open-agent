@@ -73,7 +73,7 @@ async def _write_file(args: dict[str, Any], ctx: ToolContext) -> str:
             source_tool="write_file",
             user_id=ctx.user_id,
             agent_id=ctx.agent_id,
-            session_id=ctx.session_id,
+            session_id=ctx.session_id or ctx.parent_session_id,
             task_id=ctx.current_task_id,
             root_run_id=ctx.root_run_id,
         )
@@ -275,14 +275,18 @@ async def _preview_web_artifact(args: dict[str, Any], ctx: ToolContext) -> str:
             source_tool="preview_web_artifact",
             user_id=ctx.user_id,
             agent_id=ctx.agent_id,
-            session_id=ctx.session_id,
+            session_id=ctx.session_id or ctx.parent_session_id,
             task_id=ctx.current_task_id,
             root_run_id=ctx.root_run_id,
         )
     except Exception:
         pass
 
-    return f"Live interactive web preview ready for '{path}' ({size_bytes} bytes). The user can now view and interact with the rendered web application directly in the Live Preview panel."
+    return (
+        f"Live interactive web preview ready for '{path}' ({size_bytes} bytes). "
+        "The artifact is attached as a file card below the assistant message. "
+        "The user can view the full code, open the interactive preview, or test it in the side Canvas panel directly in chat."
+    )
 
 
 register(

@@ -137,7 +137,7 @@ SYSTEM_AGENT_BLUEPRINTS: dict[str, SystemAgentBlueprint] = {
             "- For Code / CLI Scripts (.py, .sh, .js): Instruct the Software & Data Engineer to execute them via `run_code`.\n"
             "- When a sub-agent completes its work, do NOT delegate again redundantly. Directly synthesize the outcome and provide clear instructions to the user.\n"
             "- CRITICAL: Do NOT emit duplicate tool calls or delegate to the same agent multiple times in parallel for the same task. Call each tool at most ONCE per turn.\n"
-            "- Synthesize sub-agent results into one clear, concise final answer for the user."
+            "- Synthesize sub-agent results into one clear, concise final answer for the user. When code or web artifacts are created, ALWAYS include the full or essential runnable code block (e.g. html ...  or python ... ) in your response so the user can inspect the code directly and use inline action buttons (Preview, Canvas, Run). Inform the user that they can click the File Attachment Card below or the Preview/Canvas buttons to interact with the artifact. NEVER claim that there is a 'Live Preview panel above'."
         ),
         recommended_tier="fast",
         tools=_with_common("call_agent", "workflow_list"),
@@ -301,8 +301,10 @@ SYSTEM_AGENT_BLUEPRINTS: dict[str, SystemAgentBlueprint] = {
             "  * If it is a web artifact (.html, .htm, .svg), call `preview_web_artifact(path=...)`.\n"
             "  * If it is a runnable script (.py, .sh, .js), call `run_code`.\n"
             "  * DO NOT overwrite or rewrite the existing file unless specifically asked to edit or modify it.\n"
-            "- When responding with code for inline explanation or preview in chat, also include "
-            "the formatted code block in your response."
+            "- CRITICAL FOR CHAT EXPERIENCE: When creating, generating, or modifying code, scripts, HTML, SVG, or styling, "
+            "ALWAYS both save the file to the workspace AND include the complete, formatted markdown code block "
+            "(e.g. `html ... ` or `python ... `) in your text response. This ensures the user sees the code "
+            "inline in chat and can run, preview, or open it in the side Canvas panel directly."
         ),
         recommended_tier="fast",
         tools=_with_common("run_code", "write_file", "preview_web_artifact", "list_dir", "search_files", "read_attachment"),
