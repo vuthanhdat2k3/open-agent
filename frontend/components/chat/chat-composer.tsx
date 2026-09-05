@@ -306,7 +306,8 @@ export function ChatComposer({
               const lastSlashIndex = textBeforeCursor.lastIndexOf("/");
               const lastSpaceIndex = textBeforeCursor.lastIndexOf(" ");
 
-              if (lastSlashIndex > lastSpaceIndex && lastSlashIndex === textBeforeCursor.trimStart().length - 1) {
+              const trimOffset = textBeforeCursor.length - textBeforeCursor.trimStart().length;
+              if (lastSlashIndex > lastSpaceIndex && lastSlashIndex === trimOffset) {
                 // User just typed / at start of line or after space
                 setShowSlashMenu(true);
                 setSlashQuery("");
