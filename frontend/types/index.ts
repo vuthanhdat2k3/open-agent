@@ -494,6 +494,17 @@ export interface ApiKeyCreateResponse {
   secret_key: string;
 }
 
+export interface AppNotification {
+  id: string;
+  title: string;
+  body: string;
+  source_type: string;
+  source_id: string | null;
+  link_url: string | null;
+  read_at: string | null;
+  created_at: string;
+}
+
 export interface ApprovalRequest {
   id: string;
   org_id: string;

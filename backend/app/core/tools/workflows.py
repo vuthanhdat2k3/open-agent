@@ -172,10 +172,19 @@ register(
 
 
 # ---------------------------------------------------------------------------
-# 3. workflow_run: Execute a workflow on-demand
+# 3. workflow_run: Start a workflow run in the background (non-blocking)
 # ---------------------------------------------------------------------------
 async def _workflow_run(args: dict[str, Any], ctx: ToolContext) -> str:
-    """Execute a DAG workflow and return the output and execution summary."""
+    """Queue a DAG workflow run and return immediately with a run_id.
+
+    Runs are executed by the same durable background worker used for
+    scheduled/HTTP-triggered runs (see enqueue_workflow_run) instead of
+    blocking inline in this tool call. A multi-node workflow (research +
+    LLM writing, etc.) routinely takes well over this tool's timeout; running
+    it inline left the WorkflowRun row stuck at status="running" forever the
+    moment the timeout cancelled the coroutine mid-DAG. Use workflow_get_run
+    with the returned run_id to check progress and fetch the final output.
+    """
     workflow_id = (args.get("workflow_id") or "").strip()
     name = (args.get("name") or "").strip()
     input_text = str(args.get("input") or "")
@@ -200,43 +209,98 @@ async def _workflow_run(args: dict[str, Any], ctx: ToolContext) -> str:
             f"error: workflow not found with id='{workflow_id}' or name='{name}'"
         )
 
-    from app.core.workflow.engine import run_workflow
+    from app.core.workflow.engine import create_workflow_run
+    from app.core.workflow.queue import enqueue_workflow_run
 
     try:
-        final_output, log, run_id = await run_workflow(
-            workflow=wf,
-            input_text=input_text,
-            db=ctx.db,
-            stream=False,
-            user_id=ctx.user_id,
-            user_role=(ctx.authorization.role if ctx.authorization and ctx.authorization.is_human else None),
-            timezone_name=ctx.timezone_name,
+        run = await create_workflow_run(
+            wf,
+            input_text,
+            ctx.db,
+            None,
+            ctx.user_id,
+            (ctx.authorization.role if ctx.authorization and ctx.authorization.is_human else None),
+            ctx.timezone_name,
+            None,
+            "manual",
         )
     except Exception as exc:
-        return f"error executing workflow '{wf.name}': {exc}"
+        return f"error starting workflow '{wf.name}': {exc}"
 
-    node_summaries = []
-    for ev in log:
-        if ev.get("event") == "node_done":
-            node_data = ev.get("data") or {}
-            node_summaries.append(
-                f"✓ Node '{node_data.get('node_id')}': {str(node_data.get('output'))[:200]}"
-            )
-        elif ev.get("event") == "node_error":
-            node_data = ev.get("data") or {}
-            node_summaries.append(
-                f"✗ Node '{node_data.get('node_id')}' ERROR: {node_data.get('message')}"
-            )
+    run.status = "queued"
+    await ctx.db.commit()
+    try:
+        await enqueue_workflow_run(run.id)
+    except Exception as exc:
+        run.status = "failed"
+        run.error = f"failed to enqueue: {exc}"
+        await ctx.db.commit()
+        return f"error: could not queue workflow run: {exc}"
 
     return json.dumps(
         {
-            "status": "success",
+            "status": "queued",
             "workflow_id": wf.id,
             "workflow_name": wf.name,
-            "run_id": run_id,
-            "output": final_output,
-            "nodes_executed": len(node_summaries),
-            "execution_log": node_summaries,
+            "run_id": run.id,
+            "message": (
+                f"Workflow '{wf.name}' is now running in the background "
+                f"(run_id={run.id}). Call workflow_get_run with this run_id "
+                "after a short wait to check progress and read the final output."
+            ),
+        },
+        ensure_ascii=False,
+        indent=2,
+    )
+
+
+# ---------------------------------------------------------------------------
+# 3b. workflow_get_run: Check status/output of a queued or finished run
+# ---------------------------------------------------------------------------
+async def _workflow_get_run(args: dict[str, Any], ctx: ToolContext) -> str:
+    """Fetch the status, output, and per-node results of a workflow run."""
+    run_id = (args.get("run_id") or "").strip()
+    if not run_id:
+        return "error: 'run_id' is required"
+
+    from app.models.workflow_node_run import WorkflowNodeRun
+    from app.models.workflow_run import WorkflowRun
+
+    stmt = select(WorkflowRun).where(
+        WorkflowRun.id == run_id, WorkflowRun.org_id == ctx.org_id
+    )
+    if ctx.user_id:
+        stmt = scope_to_owner(stmt, ctx.db, WorkflowRun.triggered_by_user_id)
+    res = await ctx.db.execute(stmt)
+    run = res.scalar_one_or_none()
+    if run is None:
+        return f"error: workflow run not found with id='{run_id}'"
+
+    node_res = await ctx.db.execute(
+        select(WorkflowNodeRun)
+        .where(WorkflowNodeRun.workflow_run_id == run.id)
+        .order_by(WorkflowNodeRun.started_at, WorkflowNodeRun.attempt)
+    )
+    nodes = node_res.scalars().all()
+
+    return json.dumps(
+        {
+            "run_id": run.id,
+            "workflow_id": run.workflow_id,
+            "status": run.status,
+            "output": run.output,
+            "error": run.error,
+            "started_at": run.started_at.isoformat() if run.started_at else None,
+            "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+            "nodes": [
+                {
+                    "node_id": n.node_id,
+                    "status": n.status,
+                    "output": n.output,
+                    "error": n.error,
+                }
+                for n in nodes
+            ],
         },
         ensure_ascii=False,
         indent=2,
@@ -245,10 +309,35 @@ async def _workflow_run(args: dict[str, Any], ctx: ToolContext) -> str:
 
 register(
     ToolSpec(
+        name="workflow_get_run",
+        description=(
+            "Check the status, output, and per-node results of a workflow run "
+            "started with workflow_run. Use the run_id it returned."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "run_id": {
+                    "type": "string",
+                    "description": "The run_id returned by workflow_run.",
+                },
+            },
+            "required": ["run_id"],
+            "additionalProperties": False,
+        },
+        risk_tier=RiskTier.safe,
+        run=_workflow_get_run,
+    )
+)
+
+
+register(
+    ToolSpec(
         name="workflow_run",
         description=(
-            "Execute an existing DAG workflow by ID or name with input text, "
-            "returning the final execution output and node logs."
+            "Start an existing DAG workflow by ID or name with input text, "
+            "running in the background. Returns a run_id immediately — call "
+            "workflow_get_run with it to check progress and read the final output."
         ),
         input_schema={
             "type": "object",

@@ -247,7 +247,12 @@ SYSTEM_AGENT_BLUEPRINTS: dict[str, SystemAgentBlueprint] = {
             "Key capabilities:\n"
             "- List and search existing workflows using `workflow_list`\n"
             "- Inspect node/edge DAG definitions using `workflow_get`\n"
-            "- Run workflows with on-demand input parameters using `workflow_run`\n"
+            "- Run workflows with on-demand input parameters using `workflow_run` "
+            "(it starts the run in the background and returns a run_id immediately — "
+            "it never blocks, so a multi-step workflow never times out here)\n"
+            "- Check the status/output of a run with `workflow_get_run` (poll it a "
+            "few seconds after `workflow_run` — do not assume a run finished just "
+            "because `workflow_run` returned)\n"
             "- Generate new workflow architectures from prompt using `workflow_generate`\n"
             "- Create or update custom workflows using `workflow_create` or `workflow_update`\n"
             "- Search and install pre-built templates from the Marketplace using "
@@ -259,6 +264,7 @@ SYSTEM_AGENT_BLUEPRINTS: dict[str, SystemAgentBlueprint] = {
             "workflow_list",
             "workflow_get",
             "workflow_run",
+            "workflow_get_run",
             "workflow_create",
             "workflow_update",
             "workflow_delete",
