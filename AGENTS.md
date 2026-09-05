@@ -96,6 +96,8 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 |---|---|---|---|
 | `dev` | `G:\open-agent` | Nhánh tích hợp chính — không code trực tiếp ở đây | — |
 
+> 2026-09-06: Đã merge PR #292 vào `dev` và deploy lên `deploy/dev` qua PR #293 (Sửa triệt để lỗi context tokens = 0 trong modal /context: truyền messages={messages} cho ChatInput, sửa parser input_tokens/output_tokens từ database khi reload tin nhắn, tính toán Base Context cho Agent từ system_prompt và tools schema khi phiên mới tinh, bổ sung badge chỉ báo nguồn token "Lượt gần nhất" hoặc "Ước tính").
+
 > 2026-09-05: Đã merge PR #290 vào `dev` và deploy lên `deploy/dev` qua PR #291 (Hiển thị trực quan Cửa sổ ngữ cảnh Context Window và số Tokens thực tế của session trong /context: Hero Card Gauge Bar với 3 dải màu Xanh/Vàng/Đỏ cảnh báo khi đầy; thống kê tokens đã dùng, khả dụng còn lại và giới hạn model; cảnh báo thông minh khi vượt quá 75% kèm nút kích hoạt nhanh /compact; phân tích chi tiết phiên với số lượt hỏi, tổng tin nhắn, prompt/output tokens và độ trễ lượt gần nhất).
 
 > 2026-09-05: Đã merge PR #288 vào `dev` và deploy lên `deploy/dev` qua PR #289 (Chuẩn hóa toàn diện cơ chế Slash Commands: khắc phục lỗi di chuyển phím mũi tên bằng scrollIntoView và wrap-around; hỗ trợ phím Tab và hover chuột; menu glassmorphism với icon badge cho 10 lệnh và footer phím tắt; thay thế popup toast Sonner của /context, /usage, /help bằng modal CommandInfoDialog chuyên nghiệp 3 tab gồm chi tiết Model/Agent/Policy/Session ID với nút copy, 4 metric cards tổng hợp chi phí USD/tokens và bảng tra cứu lệnh; tự động dọn sạch draft sau khi chạy lệnh; bổ sung 15 unit tests cho registry và command handlers).
