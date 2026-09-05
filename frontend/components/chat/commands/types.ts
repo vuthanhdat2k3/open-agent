@@ -21,7 +21,7 @@ export interface SlashCommandContext {
   /** Callback to set draft text */
   onDraftChange: (draft: string) => void;
   /** Translation function */
-  t: (vietnamese: string, english: string) => string;
+  tx: (vietnamese: string, english: string) => string;
 }
 
 /** One slash command definition */
