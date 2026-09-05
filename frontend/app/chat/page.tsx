@@ -1046,13 +1046,15 @@ export default function ChatPage() {
           }
         }}
       />
-      <div
-        className={cn(
-          "flex min-h-0 flex-1 flex-col transition-all duration-200",
-          isCanvasOpen && !isCanvasFullscreen && "lg:flex-initial lg:w-[52%] xl:w-[55%]",
-          isCanvasFullscreen && "hidden",
-        )}
-      >
+      {/* Main Chat + Canvas split container */}
+      <div className="flex min-h-0 flex-1 flex-row min-w-0 overflow-hidden relative">
+        <div
+          className={cn(
+            "flex min-h-0 flex-1 flex-col transition-all duration-200 min-w-0",
+            isCanvasOpen && !isCanvasFullscreen && "lg:w-[50%] xl:w-[52%] lg:flex-initial",
+            isCanvasFullscreen && "hidden",
+          )}
+        >
         <ChatThread
           messages={messages}
           debug={debug}
@@ -1125,7 +1127,8 @@ export default function ChatPage() {
         )}
       </div>
 
-      {isCanvasOpen && <ChatCanvasPanel />}
+        {isCanvasOpen && <ChatCanvasPanel />}
+      </div>
     </div>
   );
 }

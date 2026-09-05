@@ -198,7 +198,7 @@ export function ChatCanvasPanel() {
         "flex flex-col bg-background transition-all duration-200 shrink-0",
         isFullscreen
           ? "fixed inset-0 z-50 w-screen h-screen border-l-0"
-          : "fixed inset-0 z-40 w-full h-full border-l-0 lg:relative lg:inset-auto lg:z-20 lg:w-[48%] xl:w-[45%] lg:border-l lg:border-border/80 min-h-0",
+          : "fixed inset-0 z-40 w-full h-full border-l-0 lg:relative lg:inset-auto lg:z-20 lg:w-[50%] xl:w-[48%] lg:border-l lg:border-border/80 min-h-0 shrink-0",
       )}
     >
       {/* 1. Header Toolbar */}
@@ -209,7 +209,7 @@ export function ChatCanvasPanel() {
             <FileCode className="h-4 w-4" aria-hidden="true" />
           </div>
           <div className="min-w-0 flex flex-col">
-            <span className="truncate text-xs font-semibold text-foreground font-mono" title={activeItem.title}>
+            <span className="truncate text-xs font-semibold text-foreground font-mono max-w-[120px] sm:max-w-[180px] lg:max-w-[200px]" title={activeItem.title}>
               {activeItem.title}
             </span>
             {lang && (
@@ -267,12 +267,12 @@ export function ChatCanvasPanel() {
               {isRunning ? (
                 <>
                   <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
-                  <span className="hidden sm:inline">{tx("Đang chạy...", "Running...")}</span>
+                  <span className="hidden xl:inline">{tx("Đang chạy...", "Running...")}</span>
                 </>
               ) : (
                 <>
                   <Play className="h-3.5 w-3.5 fill-current" aria-hidden="true" />
-                  <span className="hidden sm:inline">{tx("Chạy", "Run")}</span>
+                  <span className="hidden xl:inline">{tx("Chạy", "Run")}</span>
                 </>
               )}
             </Button>
@@ -292,7 +292,7 @@ export function ChatCanvasPanel() {
             ) : (
               <Copy className="h-3.5 w-3.5" aria-hidden="true" />
             )}
-            <span className="hidden sm:inline">{copied ? tx("Đã chép", "Copied") : tx("Sao chép", "Copy")}</span>
+            <span className="hidden xl:inline">{copied ? tx("Đã chép", "Copied") : tx("Sao chép", "Copy")}</span>
           </Button>
 
           {/* Download button */}
