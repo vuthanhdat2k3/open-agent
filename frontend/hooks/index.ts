@@ -11,6 +11,7 @@ import type {
   AgentToolInfo,
   ApiKey,
   ApiKeyCreateResponse,
+  AppNotification,
   ApprovalRequest,
   EvaluationCase,
   EvaluationCaseInput,
@@ -962,6 +963,48 @@ export function useApprovals(enabled: boolean = true, includeChat: boolean = tru
     refetchInterval: enabled ? 5000 : false,
     refetchIntervalInBackground: false,
     enabled,
+  });
+}
+
+export function useNotifications(enabled: boolean = true, unreadOnly: boolean = false) {
+  const orgId = getActiveOrgId();
+  const qs = unreadOnly ? "?unread_only=true" : "";
+  return useQuery({
+    queryKey: ["notifications", orgId, { unreadOnly }],
+    queryFn: () => api.get<AppNotification[]>(`/api/notifications${qs}`),
+    // Same cadence as useEmailIntelligenceNavigationSummary — frequent
+    // enough to feel live for a background workflow result, cheap enough
+    // to leave on for every page.
+    refetchInterval: enabled ? 30000 : false,
+    refetchIntervalInBackground: false,
+    enabled,
+  });
+}
+
+export function useUnreadNotificationCount(enabled: boolean = true) {
+  const orgId = getActiveOrgId();
+  return useQuery({
+    queryKey: ["notifications", orgId, "unread-count"],
+    queryFn: () => api.get<{ count: number }>("/api/notifications/unread-count"),
+    refetchInterval: enabled ? 30000 : false,
+    refetchIntervalInBackground: false,
+    enabled,
+  });
+}
+
+export function useMarkNotificationRead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.post(`/api/notifications/${id}/read`, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications"] }),
+  });
+}
+
+export function useMarkAllNotificationsRead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.post("/api/notifications/read-all", {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications"] }),
   });
 }
 

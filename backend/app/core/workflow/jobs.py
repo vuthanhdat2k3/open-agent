@@ -13,6 +13,38 @@ from app.models.workflow_run import WorkflowRun
 from app.schemas.chat import ChatRequest
 from app.services.chat_service import ChatService
 
+_TERMINAL_STATUSES = {"succeeded", "failed", "diverged", "cancelled"}
+
+
+async def _notify_run_finished(session, workflow: Workflow, workflow_run: WorkflowRun) -> None:
+    """Notify the triggering user that a background run reached a terminal
+    state. This is the only funnel every non-inline run (scheduled, queued
+    from chat, or "run now" from the Workflows page) executes through, so a
+    single hook here covers all of them — the run would otherwise finish
+    unattended with no way for the user to learn about it short of manually
+    opening the run history.
+    """
+    if workflow_run.status not in _TERMINAL_STATUSES or not workflow_run.triggered_by_user_id:
+        return
+    from app.services.notification_service import NotificationService
+
+    if workflow_run.status == "succeeded":
+        title = f"Workflow ‘{workflow.name}’ completed"
+        output = workflow_run.output
+        body = output.get("text") if isinstance(output, dict) else str(output or "")
+    else:
+        title = f"Workflow ‘{workflow.name}’ {workflow_run.status}"
+        body = workflow_run.error or ""
+    await NotificationService(session).create(
+        org_id=workflow_run.org_id,
+        user_id=workflow_run.triggered_by_user_id,
+        title=title,
+        body=(body or "")[:4000],
+        source_type="workflow_run",
+        source_id=workflow_run.id,
+        link_url="/workflows",
+    )
+
 
 async def run_workflow(ctx, workflow_run_id: str) -> None:  # noqa: ARG001
     """ARQ entry: execute a queued/resumed workflow run.
@@ -72,6 +104,7 @@ async def run_workflow_detached(workflow_run_id: str) -> None:
                 if occurrence is not None and workflow_run.status != "running":
                     occurrence.status = workflow_run.status
             await session.commit()
+            await _notify_run_finished(session, workflow, workflow_run)
         except Exception as exc:  # noqa: BLE001
             workflow_run.status = "failed"
             workflow_run.error = str(exc)
@@ -81,6 +114,7 @@ async def run_workflow_detached(workflow_run_id: str) -> None:
                 if occurrence is not None:
                     occurrence.status = "failed"
             await session.commit()
+            await _notify_run_finished(session, workflow, workflow_run)
 
 
 async def run_chat(ctx, payload: dict) -> None:  # noqa: ARG001

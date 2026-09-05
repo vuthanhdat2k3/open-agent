@@ -88,6 +88,7 @@ async def test_workflow_tools_registered():
         "workflow_list",
         "workflow_get",
         "workflow_run",
+        "workflow_get_run",
         "workflow_create",
         "workflow_update",
         "workflow_delete",
@@ -118,6 +119,70 @@ async def test_workflow_list_and_get(test_env):
     assert get_res["id"] == test_env["workflow_id"]
     assert get_res["name"] == "Daily News Digest"
     assert len(get_res["graph"]["nodes"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_workflow_run_queues_instead_of_blocking(test_env, monkeypatch):
+    """workflow_run must create a queued WorkflowRun and hand it to the
+    durable background worker (enqueue_workflow_run) instead of executing
+    the DAG inline — inline execution is what left runs stuck at
+    status="running" forever whenever the calling tool call was cancelled
+    (e.g. by the chat tool's timeout) before the DAG finished."""
+    db = test_env["db"]
+    ctx = ToolContext(db=db, org_id=test_env["org_id"], user_id=test_env["user_id"])
+
+    enqueued: list[str] = []
+
+    async def fake_enqueue(workflow_run_id: str) -> str:
+        enqueued.append(workflow_run_id)
+        return "job-1"
+
+    monkeypatch.setattr("app.core.workflow.queue.enqueue_workflow_run", fake_enqueue)
+
+    run_tool = BUILTIN_TOOLS["workflow_run"]
+    res_str = await run_tool.run(
+        {"workflow_id": test_env["workflow_id"], "input": "hello"}, ctx
+    )
+    res = json.loads(res_str)
+
+    assert res["status"] == "queued"
+    assert res["run_id"]
+    assert enqueued == [res["run_id"]]
+
+    from app.models.workflow_run import WorkflowRun
+
+    run = await db.get(WorkflowRun, res["run_id"])
+    assert run is not None
+    assert run.status == "queued"
+
+
+@pytest.mark.asyncio
+async def test_workflow_get_run_reports_status_and_output(test_env, monkeypatch):
+    db = test_env["db"]
+    ctx = ToolContext(db=db, org_id=test_env["org_id"], user_id=test_env["user_id"])
+
+    async def fake_enqueue(workflow_run_id: str) -> str:
+        return "job-1"
+
+    monkeypatch.setattr("app.core.workflow.queue.enqueue_workflow_run", fake_enqueue)
+
+    run_tool = BUILTIN_TOOLS["workflow_run"]
+    started = json.loads(
+        await run_tool.run({"workflow_id": test_env["workflow_id"]}, ctx)
+    )
+
+    from app.models.workflow_run import WorkflowRun
+
+    run = await db.get(WorkflowRun, started["run_id"])
+    run.status = "succeeded"
+    run.output = {"text": "done"}
+    await db.commit()
+
+    get_run_tool = BUILTIN_TOOLS["workflow_get_run"]
+    status_str = await get_run_tool.run({"run_id": started["run_id"]}, ctx)
+    status = json.loads(status_str)
+    assert status["status"] == "succeeded"
+    assert status["output"] == {"text": "done"}
 
 
 @pytest.mark.asyncio
