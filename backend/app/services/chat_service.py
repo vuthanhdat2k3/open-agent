@@ -62,15 +62,33 @@ class ChatService:
             if model is None:
                 raise ValueError("model is not available for this organization")
         selected_agent: Agent | RuntimeAgent | None = None
-        if user_role == "user":
-            # The `user` role only ever consumes the org's orchestrator-kind
-            # agent through chat; specialized worker agents are reachable
-            # only via the orchestrator's call_agent delegation, never
-            # directly. operator/org_admin/platform_admin are unrestricted.
+        if user_role == "platform_admin":
+            # platform_admin is break-glass/read-only everywhere else in this
+            # system (see authz/policy.py) - its one exception, agents:run,
+            # is scoped here to ONLY visibility="platform_admin" agents (the
+            # Ops & Reliability agent), not blanket access to every org's
+            # regular agents.
             target_agent = await self._load_agent(org_id, request.agent_id)
-            if getattr(target_agent, "kind", "worker") != "orchestrator":
-                raise ValueError("this role may only chat with the orchestrator agent")
+            if getattr(target_agent, "visibility", "all") != "platform_admin":
+                raise ValueError("platform_admin may only chat with platform_admin-scoped agents")
             selected_agent = target_agent
+        else:
+            # Agents flagged visibility="platform_admin" (e.g. the Ops &
+            # Reliability agent, which can open real PRs) must never be
+            # reachable by any other role, regardless of RBAC permission on
+            # the chat endpoint itself.
+            target_agent = await self._load_agent(org_id, request.agent_id)
+            if getattr(target_agent, "visibility", "all") == "platform_admin":
+                raise ValueError("this agent is restricted to platform_admin")
+            if user_role == "user":
+                # The `user` role only ever consumes the org's orchestrator-kind
+                # agent through chat; specialized worker agents are reachable
+                # only via the orchestrator's call_agent delegation, never
+                # directly. operator/org_admin are unrestricted beyond the
+                # visibility check above.
+                if getattr(target_agent, "kind", "worker") != "orchestrator":
+                    raise ValueError("this role may only chat with the orchestrator agent")
+                selected_agent = target_agent
         if request.model_id:
             # Admin model changes publish a new agent release. Repin an
             # existing session only for that default-model path; a user model
@@ -99,6 +117,13 @@ class ChatService:
         title = (raw[:72] + "…") if len(raw) > 72 else raw
         title = title[:1].upper() + title[1:] if title else "New session"
         execution_policy = normalize_execution_policy(request.execution_policy)
+        if getattr(agent, "template_key", None) == "ops-reliability":
+            # policy_requires_approval() short-circuits to False under
+            # full-access regardless of a tool's own requires_approval flag
+            # (see execution_policy.py) - repo_open_pr must never lose its
+            # approval gate, so this agent's sessions can never be anything
+            # but manual, no matter what the request asked for.
+            execution_policy = ExecutionPolicy.manual
         if execution_policy is ExecutionPolicy.full_access and user_role not in {
             "user",
             "operator",
@@ -338,6 +363,12 @@ class ChatService:
             session = session_res.scalar_one_or_none()
             if session is None:
                 raise ValueError("chat session not found")
+            session_id = session.id
+            agent = await self._load_agent(
+                org_id,
+                request.agent_id,
+                prepared_agent_release_id or session.agent_release_id,
+            )
             if request.execution_policy:
                 new_policy = normalize_execution_policy(request.execution_policy)
                 if new_policy is ExecutionPolicy.full_access and user_role not in {
@@ -347,15 +378,11 @@ class ChatService:
                     "platform_admin",
                 }:
                     raise ValueError("full-access execution policy is not available for this role")
+                if getattr(agent, "template_key", None) == "ops-reliability":
+                    new_policy = ExecutionPolicy.manual
                 session.execution_policy = new_policy.value
                 await self.db.commit()
                 await self.db.refresh(session)
-            session_id = session.id
-            agent = await self._load_agent(
-                org_id,
-                request.agent_id,
-                prepared_agent_release_id or session.agent_release_id,
-            )
         else:
             session = await self.ensure_session(org_id, request, user_id, user_role)
             session_id = session.id

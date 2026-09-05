@@ -10,3 +10,4 @@ class JobKey:
     CI_GMAIL_WATCH_RENEWAL = "ci_gmail_watch_renewal"
     AUTO_ROLLBACK_SWEEP = "auto_rollback_sweep"
     FAIL_ORPHANED_CHAT_RUNS = "fail_orphaned_chat_runs"
+    OPS_AGENT_SWEEP = "ops_agent_sweep"

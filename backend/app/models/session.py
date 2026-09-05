@@ -23,5 +23,10 @@ class Session(Base):
     execution_policy: Mapped[str] = mapped_column(
         String(16), default=ExecutionPolicy.manual.value, nullable=False
     )
+    # Set once by the ops_repo.repo_worktree_open tool. When present,
+    # ToolContext.workspace_dir uses this real git-worktree path instead of
+    # the default ephemeral sandbox for the rest of this session's tool
+    # calls (write_file/run_code etc. work unmodified against it).
+    workspace_override_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
     created_at: Mapped["utc_now"] = mapped_column(DateTime, default=utc_now)
     updated_at: Mapped["utc_now"] = mapped_column(DateTime, default=utc_now, onupdate=utc_now)

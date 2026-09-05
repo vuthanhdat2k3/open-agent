@@ -43,6 +43,7 @@ from app.models.message import Message
 from app.models.model import Model
 from app.models.oauth_account import OAuthAccount
 from app.models.oidc_login_transaction import OidcLoginTransaction
+from app.models.ops_finding import OpsFinding
 from app.models.org_agent_settings import OrgAgentSettings
 from app.models.org_model_tier_config import OrgModelTierConfig
 from app.models.organization import Organization
@@ -76,6 +77,7 @@ __all__ = [
     "ApiKey",
     "ApprovalRequest",
     "AuditLog",
+    "OpsFinding",
     "BriefingReport",
     "CalendarConnection",
     "ChannelConnection",

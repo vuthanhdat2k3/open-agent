@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.authz.policy import PrincipalContext
+from app.core.authz.policy import PrincipalContext, Role
 from app.core.observability.audit import log_action
 from app.core.quota.dependencies import enforce_resource_quota
 from app.dependencies import get_current_org_id, get_current_user, get_db, require_permission
@@ -43,6 +43,8 @@ async def list_agents(
     from app.models.user import User
 
     agents = await AgentService(db).list(org_id)
+    if Role.platform_admin not in authz.roles:
+        agents = [a for a in agents if getattr(a, "visibility", "all") == "all"]
     # Join User to get creator email/name
     user_ids = [a.created_by_user_id for a in agents if a.created_by_user_id]
     user_map: dict[str, User] = {}

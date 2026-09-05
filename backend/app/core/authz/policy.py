@@ -45,10 +45,25 @@ PERMISSIONS: dict[Role, set[str]] = {
     Role.platform_admin: {
         "orgs:create", "orgs:read", "orgs:manage", "orgs:grant-admin",
         # break-glass: read-only visibility into every org's AI/ops surface
-        # for support - never write/manage.
-        "agents:read", "models:read", "providers:read", "workflows:read",
+        # for support - never write/manage. The one deliberate exception is
+        # agents:run + tools:use:{safe,read,network} (needed to actually let
+        # the tool-call authorization gate in authorization.py pass), scoped
+        # to chatting with visibility="platform_admin" agents only (e.g. the
+        # Ops & Reliability agent - a monitoring/reporting agent by design,
+        # so it never needs write/execute/dangerous tiers at all).
+        "agents:read", "agents:run",
+        "tools:use:safe", "tools:use:read", "tools:use:network",
+        "models:read", "providers:read", "workflows:read",
         "mcp:read", "files:read", "evaluations:read", "usage:read",
-        "debug:read", "sessions:read", "approvals:read", "ci:read", "channels:read",
+        "debug:read", "sessions:read", "ci:read", "channels:read",
+        # approvals:manage (in addition to approvals:read - has_permission
+        # does literal/wildcard matching, not tier hierarchy, so both are
+        # listed explicitly): the scheduled sweep runs with no interactive
+        # user (requested_by is null), so the "decide your own request"
+        # ownership path in approvals.py can never apply - platform_admin,
+        # as the only role that can reach the Ops agent at all, must be able
+        # to decide the approvals it raises.
+        "approvals:read", "approvals:manage",
     },
     Role.org_admin: {
         "orgs:read", "orgs:manage", "quota:read", "quota:manage", "quota:usage",

@@ -40,6 +40,7 @@ def _apply_blueprint_to_agent(agent: Agent, blueprint: SystemAgentBlueprint) -> 
     agent.a2a_exposed = blueprint.a2a_exposed
     agent.auto_rollback_enabled = blueprint.auto_rollback_enabled
     agent.template_key = blueprint.key
+    agent.visibility = blueprint.visibility
     agent.is_customized = False
 
 
@@ -73,6 +74,7 @@ async def _create_blueprint_agent(
         a2a_exposed=blueprint.a2a_exposed,
         auto_rollback_enabled=blueprint.auto_rollback_enabled,
         template_key=blueprint.key,
+        visibility=blueprint.visibility,
         is_customized=False,
     )
     db.add(persisted)

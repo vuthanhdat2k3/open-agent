@@ -124,6 +124,23 @@ async def _workflow_scheduler_tick(ctx: dict) -> None:
         )
 
 
+async def _ops_agent_sweep_tick(ctx: dict) -> None:
+    """Run the Ops & Reliability agent's scan sweep for every org that has it."""
+    from app.core.agents.ops_sweep import run_ops_agent_sweep
+    from app.core.scheduling.job_keys import JobKey
+    from app.core.scheduling.tick import run_leased_tick
+
+    async with SessionLocal() as db:
+        await run_leased_tick(
+            db,
+            job_key=JobKey.OPS_AGENT_SWEEP,
+            interval_seconds=900,
+            lease_seconds=600,
+            worker_id=_worker_identity(),
+            run=lambda: run_ops_agent_sweep(db),
+        )
+
+
 async def _ci_retry_due_cases_tick(ctx: dict) -> None:
     """Retry due CI cases and record failures without stopping ARQ."""
     from app.core.scheduling.job_keys import JobKey
@@ -400,6 +417,7 @@ class WorkerSettings:
         cron(_resume_orphaned_runs, minute=set(range(2, 60, 5)), run_at_startup=False),
         cron(_fail_orphaned_chat_runs, minute=set(range(0, 60, 2)), run_at_startup=False),
         cron(_ci_scheduler_tick, minute=set(range(0, 60, 5)), run_at_startup=False),
+        cron(_ops_agent_sweep_tick, minute=set(range(0, 60, 15)), run_at_startup=False),
         cron(_workflow_scheduler_tick, minute=set(range(0, 60, 1)), run_at_startup=False),
         cron(_ci_retry_due_cases_tick, minute=set(range(0, 60, 1)), run_at_startup=False),
         cron(_ci_dispatch_ingested_tick, minute=set(range(0, 60, 1)), run_at_startup=False),

@@ -62,6 +62,7 @@ from app.models.approval_request import ApprovalRequest
 from app.models.message import Message
 from app.models.model import Model
 from app.models.provider import Provider
+from app.models.session import Session
 from app.models.task import Task
 from app.models.usage import UsageEvent
 from app.models.workspace import WorkspaceArtifact
@@ -273,6 +274,13 @@ async def _build_orchestrator_delegate_tools(
             Agent.org_id == org_id,
             Agent.id != exclude_agent_id,
             Agent.kind == "worker",
+            # platform_admin-only agents (e.g. Ops & Reliability, which can
+            # open real PRs) are never auto-exposed as a delegate_to_* tool
+            # - that would let any orchestrator session reach them
+            # indirectly regardless of who is actually chatting. Direct,
+            # deliberate session creation (gated in chat_service.py) is the
+            # only path to them.
+            Agent.visibility == "all",
         )
     )
     agents = list(result.scalars().all())
@@ -933,10 +941,23 @@ async def _agent_stream(
 
     base_prompt = agent.system_prompt or ""
 
+    # Ops agent's repo_worktree_open sets this once a real git worktree is
+    # opened for a fix - every write_file/run_code call for the rest of this
+    # session then operates against the real checkout instead of the default
+    # ephemeral sandbox, with no change needed to those tools themselves.
+    effective_workspace_dir = settings.workspace_dir
+    resolved_session_id = session_id or parent_session_id
+    if resolved_session_id:
+        override = await db.scalar(
+            select(Session.workspace_override_path).where(Session.id == resolved_session_id)
+        )
+        if override:
+            effective_workspace_dir = override
+
     ctx = ToolContext(
         db=db,
         depth=depth,
-        workspace_dir=settings.workspace_dir,
+        workspace_dir=effective_workspace_dir,
         mcp_manager=get_mcp_manager(),
         agent_id=agent.id,
         session_id=session_id or parent_session_id,
