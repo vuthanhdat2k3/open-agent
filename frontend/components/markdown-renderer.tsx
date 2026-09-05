@@ -23,9 +23,11 @@ import rehypeKatex from "rehype-katex";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import React from "react";
+import { PanelRightOpen } from "lucide-react";
 import { streamSSE } from "@/lib/api";
 import { inlineCodeHttpUrl, normalizeLatex } from "@/lib/chat/markdown-text";
 import { useTranslation } from "@/lib/i18n";
+import { useCanvasStore } from "@/stores";
 
 // content is LLM output, which is attacker-influenceable via prompt
 // injection (e.g. from ingested documents). rehype-raw turns raw HTML in
@@ -61,7 +63,8 @@ function extractCodeText(children: React.ReactNode): string {
 }
 
 function CodeBlockWithAction({ className, children, ...props }: any) {
-    const { locale, tx } = useTranslation();
+  const { locale, tx } = useTranslation();
+  const { openCanvas } = useCanvasStore();
   const isBlock = Boolean(className?.includes("language-") || className?.includes("math"));
   const match = /language-(\w+)/.exec(className || "");
   const lang = match ? match[1].toLowerCase() : "";
@@ -163,41 +166,61 @@ function CodeBlockWithAction({ className, children, ...props }: any) {
   return (
     <div className="relative group/code my-2">
       <div className="flex items-center justify-between px-3 py-1 bg-muted/60 border border-border/40 border-b-0 rounded-t-lg text-[10px] font-mono text-muted-foreground">
-        <span className="uppercase font-semibold tracking-wider text-[9px] text-foreground/70">{lang}</span>
-        {isHtml && (
-          <div className="flex items-center gap-1.5">
-            <button
-              onClick={() => setShowPreview((v) => !v)}
-              type="button"
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-primary/10 text-primary hover:bg-primary/20 transition-colors cursor-pointer"
-            >
-              {showPreview ? tx("▶ Ẩn xem trước", "▶ Hide Preview") : tx("▶ Xem trước", "▶ Preview")}
-            </button>
-            <button
-              onClick={handleOpenNewTab}
-              type="button"
-              title={tx("Mở trang HTML trong tab mới", "Open HTML page in a new tab")}
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-muted/60 text-foreground/80 hover:bg-muted transition-colors cursor-pointer"
-            >
-              {tx("↗ Mở tab mới", "↗ Open new tab")}</button>
-          </div>
-        )}
-        {isRunnable && (
+        <span className="uppercase font-semibold tracking-wider text-[9px] text-foreground/70">{lang || "code"}</span>
+        <div className="flex items-center gap-1.5">
           <button
-            onClick={handleRunBackend}
-            disabled={isRunning}
             type="button"
-            className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-[10px] font-medium bg-success/15 text-success hover:bg-success/25 border border-success/30 disabled:opacity-50 transition-colors cursor-pointer"
+            onClick={() =>
+              openCanvas({
+                title: `${lang || "code"} snippet`,
+                code: codeText,
+                language: lang,
+                initialTab: isHtml ? "preview" : "code",
+              })
+            }
+            title={tx("Mở trong Canvas cạnh chat", "Open in side Canvas panel")}
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-muted/80 text-muted-foreground hover:text-foreground hover:bg-muted border border-border/40 transition-colors cursor-pointer"
           >
-            {isRunning ? (
-              <>
-                <span className="h-1.5 w-1.5 rounded-full bg-success animate-ping" />
-                {tx("Đang chạy...", "Running...")}</>
-            ) : (
-              tx("▶ Chạy", "▶ Run")
-            )}
+            <PanelRightOpen className="h-3 w-3 text-primary" aria-hidden="true" />
+            <span>Canvas</span>
           </button>
-        )}
+          {isHtml && (
+            <>
+              <button
+                onClick={() => setShowPreview((v) => !v)}
+                type="button"
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-primary/10 text-primary hover:bg-primary/20 transition-colors cursor-pointer"
+              >
+                {showPreview ? tx("▶ Ẩn xem trước", "▶ Hide Preview") : tx("▶ Xem trước", "▶ Preview")}
+              </button>
+              <button
+                onClick={handleOpenNewTab}
+                type="button"
+                title={tx("Mở trang HTML trong tab mới", "Open HTML page in a new tab")}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-muted/60 text-foreground/80 hover:bg-muted transition-colors cursor-pointer"
+              >
+                {tx("↗ Mở tab mới", "↗ Open new tab")}
+              </button>
+            </>
+          )}
+          {isRunnable && (
+            <button
+              onClick={handleRunBackend}
+              disabled={isRunning}
+              type="button"
+              className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-[10px] font-medium bg-success/15 text-success hover:bg-success/25 border border-success/30 disabled:opacity-50 transition-colors cursor-pointer"
+            >
+              {isRunning ? (
+                <>
+                  <span className="h-1.5 w-1.5 rounded-full bg-success animate-ping" />
+                  {tx("Đang chạy...", "Running...")}
+                </>
+              ) : (
+                tx("▶ Chạy", "▶ Run")
+              )}
+            </button>
+          )}
+        </div>
       </div>
 
       <code className={`${className ?? ""} text-[10.5px] leading-relaxed block border border-border/40 border-t-0 rounded-b-lg bg-muted/30 p-3 overflow-x-auto`} {...props}>

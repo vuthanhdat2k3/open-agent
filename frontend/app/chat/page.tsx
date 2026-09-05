@@ -4,7 +4,7 @@ import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { api, ApiError, streamSSE, streamSSEGet } from "@/lib/api";
-import { randomId } from "@/lib/utils";
+import { cn, randomId } from "@/lib/utils";
 import {
   useAgents,
   useCurrentRole,
@@ -18,7 +18,7 @@ import {
   useApprovals,
   useUpdateAgent,
 } from "@/hooks";
-import { useChatStore } from "@/stores";
+import { useChatStore, useCanvasStore } from "@/stores";
 import {
   type ChatMessage,
   type RunProjectionState,
@@ -31,6 +31,7 @@ import {
 import { ChatSidebar } from "@/components/chat/chat-sidebar";
 import { ChatThread } from "@/components/chat/chat-thread";
 import { ChatInput } from "@/components/chat/chat-input";
+import { ChatCanvasPanel } from "@/components/chat/chat-canvas-panel";
 import { useTranslation } from "@/lib/i18n";
 import { isEndUser } from "@/lib/roles";
 import type { ConnectionState } from "@/components/chat/chat-connection-banner";
@@ -63,6 +64,18 @@ export default function ChatPage() {
     setPendingModel,
     setPendingExecutionPolicy,
   } = useChatStore();
+
+  const { isOpen: isCanvasOpen, isFullscreen: isCanvasFullscreen, closeCanvas } = useCanvasStore();
+
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isCanvasOpen) {
+        closeCanvas();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isCanvasOpen, closeCanvas]);
 
   const pendingSessionModelId = (agentId && pendingModelIdByAgent[agentId]) || "";
 
@@ -1017,7 +1030,7 @@ export default function ChatPage() {
   };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-row">
+    <div className="flex min-h-0 flex-1 flex-row overflow-hidden">
       <ChatSidebar
         sessions={sessions.data ?? []}
         activeSessionId={sessionId}
@@ -1033,7 +1046,13 @@ export default function ChatPage() {
           }
         }}
       />
-      <div className="flex min-h-0 flex-1 flex-col">
+      <div
+        className={cn(
+          "flex min-h-0 flex-col transition-all duration-200",
+          isCanvasOpen && !isCanvasFullscreen ? "w-full lg:w-[52%] xl:w-[55%]" : "flex-1",
+          isCanvasFullscreen && "hidden",
+        )}
+      >
         <ChatThread
           messages={messages}
           debug={debug}
@@ -1105,6 +1124,8 @@ export default function ChatPage() {
           </div>
         )}
       </div>
+
+      {isCanvasOpen && <ChatCanvasPanel />}
     </div>
   );
 }
