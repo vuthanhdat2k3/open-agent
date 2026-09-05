@@ -96,6 +96,8 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 |---|---|---|---|
 | `dev` | `G:\open-agent` | Nhánh tích hợp chính — không code trực tiếp ở đây | — |
 
+> 2026-09-06: Đã merge PR #297 vào `dev` và deploy lên `deploy/dev` qua PR #298 (Refactor Compaction theo chuẩn DeepSeek Harness: append-only không xóa tin nhắn cũ trong Message table, chèn checkpoint marker role=compaction tại đúng ranh giới phân tách; component CompactionItem collapsed-by-default với Sparkles icon màu amber, thống kê số tin nhắn và tokens đã nén, accordion disclosure xem Markdown tóm tắt; cập nhật thuật toán đo tokens /context tự động trừ dải tin nhắn bị shadow và phản ánh chính xác dung lượng model nạp).
+
 > 2026-09-06: Đã merge PR #294 vào `dev` và deploy lên `deploy/dev` qua PR #295 (Triển khai thực tế cho /compact và /clear: endpoint POST /api/sessions/:id/compact tự động tóm tắt ngữ cảnh hội thoại, sinh event COMPACTION_SUMMARY với surface_op replace/shadowing dải tin nhắn cũ trong Session Event Log, dọn dẹp messages cũ trong DB và chèn tin nhắn tóm tắt; endpoint POST /api/sessions/:id/clear xóa sạch Message, SessionEvent và SessionMemory trong cơ sở dữ liệu; đấu nối trực tiếp frontend Slash Commands, tự động refetch messages và cập nhật context token gauge).
 
 > 2026-09-06: Đã merge PR #292 vào `dev` và deploy lên `deploy/dev` qua PR #293 (Sửa triệt để lỗi context tokens = 0 trong modal /context: truyền messages={messages} cho ChatInput, sửa parser input_tokens/output_tokens từ database khi reload tin nhắn, tính toán Base Context cho Agent từ system_prompt và tools schema khi phiên mới tinh, bổ sung badge chỉ báo nguồn token "Lượt gần nhất" hoặc "Ước tính").
