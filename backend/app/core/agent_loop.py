@@ -939,7 +939,7 @@ async def _agent_stream(
         workspace_dir=settings.workspace_dir,
         mcp_manager=get_mcp_manager(),
         agent_id=agent.id,
-        session_id=session_id,
+        session_id=session_id or parent_session_id,
         org_id=agent.org_id,
         user_id=user_id or agent.created_by_user_id,
         current_task_id=current_task_id,
@@ -2431,11 +2431,11 @@ async def _agent_stream(
                     id_conditions = []
                     if task_ids:
                         id_conditions.append(WorkspaceArtifact.task_id.in_(task_ids))
+                    if root_run_id:
+                        id_conditions.append(WorkspaceArtifact.root_run_id == root_run_id)
                     if session_id:
                         id_conditions.append(WorkspaceArtifact.session_id == session_id)
                         id_conditions.append(WorkspaceArtifact.root_run_id == session_id)
-                    elif root_run_id:
-                        id_conditions.append(WorkspaceArtifact.root_run_id == root_run_id)
 
                     art_filters = [
                         WorkspaceArtifact.org_id == agent.org_id,

@@ -383,7 +383,7 @@ async def _call_agent(args: dict[str, Any], ctx: ToolContext) -> str:
                 instruction,
                 ctx.db,
                 depth=ctx.depth + 1,
-                session_id=None,
+                session_id=ctx.session_id or ctx.parent_session_id,
                 current_task_id=task.id,
                 root_run_id=task.root_run_id,
                 user_id=ctx.user_id,
