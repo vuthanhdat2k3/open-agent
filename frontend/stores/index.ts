@@ -137,17 +137,22 @@ interface CanvasState {
   isOpen: boolean;
   activeItem: CanvasItem | null;
   isFullscreen: boolean;
+  panelWidthPercentage: number;
   openCanvas: (item: CanvasItem) => void;
   closeCanvas: () => void;
   toggleFullscreen: () => void;
+  setPanelWidthPercentage: (width: number) => void;
 }
 
 export const useCanvasStore = create<CanvasState>((set) => ({
   isOpen: false,
   activeItem: null,
   isFullscreen: false,
+  panelWidthPercentage: 50,
   openCanvas: (item) => set({ isOpen: true, activeItem: item }),
   closeCanvas: () => set({ isOpen: false, activeItem: null, isFullscreen: false }),
   toggleFullscreen: () => set((state) => ({ isFullscreen: !state.isFullscreen })),
+  setPanelWidthPercentage: (width) =>
+    set({ panelWidthPercentage: Math.max(25, Math.min(75, Math.round(width))) }),
 }));
 

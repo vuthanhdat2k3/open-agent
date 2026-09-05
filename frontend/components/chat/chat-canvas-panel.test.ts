@@ -44,4 +44,30 @@ describe("useCanvasStore", () => {
     expect(useCanvasStore.getState().isOpen).toBe(false);
     expect(useCanvasStore.getState().activeItem).toBeNull();
   });
+it("manages panel width percentage with clamping between 25 and 75", () => {
+    expect(useCanvasStore.getState().panelWidthPercentage).toBe(50);
+
+    useCanvasStore.getState().setPanelWidthPercentage(60);
+    expect(useCanvasStore.getState().panelWidthPercentage).toBe(60);
+
+    // Below min clamp
+    useCanvasStore.getState().setPanelWidthPercentage(10);
+    expect(useCanvasStore.getState().panelWidthPercentage).toBe(25);
+
+    // Above max clamp
+    useCanvasStore.getState().setPanelWidthPercentage(90);
+    expect(useCanvasStore.getState().panelWidthPercentage).toBe(75);
+
+    // Reset back to 50
+    useCanvasStore.getState().setPanelWidthPercentage(50);
+    expect(useCanvasStore.getState().panelWidthPercentage).toBe(50);
+  });
+
+  it("toggles fullscreen state", () => {
+    expect(useCanvasStore.getState().isFullscreen).toBe(false);
+    useCanvasStore.getState().toggleFullscreen();
+    expect(useCanvasStore.getState().isFullscreen).toBe(true);
+    useCanvasStore.getState().toggleFullscreen();
+    expect(useCanvasStore.getState().isFullscreen).toBe(false);
+  });
 });
