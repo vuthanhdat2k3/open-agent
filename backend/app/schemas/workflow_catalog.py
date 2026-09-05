@@ -15,6 +15,7 @@ class WorkflowCatalogRecommendation(BaseModel):
 class WorkflowCatalogCapabilities(BaseModel):
     can_view: bool = True
     can_install: bool = False
+    can_delete: bool = False
 
 
 class WorkflowCatalogItem(BaseModel):

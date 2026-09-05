@@ -5,6 +5,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.core import session_log as slog
+from app.core.quota.dependencies import _redis_client
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
@@ -12,6 +14,7 @@ from app.models.agent import Agent
 from app.models.memory import SessionMemory
 from app.models.message import Message
 from app.models.session import Session
+from app.models.session_event import SessionEvent
 
 PASSWORD = "Secret123!"
 
@@ -32,7 +35,11 @@ def client(async_session_factory):
         async with async_session_factory() as session:
             yield session
 
+    async def _override_redis():
+        yield None
+
     app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[_redis_client] = _override_redis
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
@@ -78,6 +85,16 @@ async def test_delete_session_removes_messages_and_session_memory(client, async_
                 value="concise",
             )
         )
+        db.add(
+            SessionEvent(
+                id="event-delete-regression",
+                org_id=org_id,
+                session_id=session_id,
+                seq=0,
+                type=slog.USER_MESSAGE,
+                data={"content": "hello"},
+            )
+        )
         await db.commit()
 
     response = client.delete(
@@ -90,3 +107,26 @@ async def test_delete_session_removes_messages_and_session_memory(client, async_
         assert await db.scalar(select(Session).where(Session.id == session_id)) is None
         assert await db.scalar(select(Message).where(Message.session_id == session_id)) is None
         assert await db.scalar(select(SessionMemory).where(SessionMemory.session_id == session_id)) is None
+        assert await db.scalar(select(SessionEvent).where(SessionEvent.session_id == session_id)) is None
+
+
+@pytest.mark.asyncio
+async def test_update_session_execution_policy_full_access(client, async_session_factory):
+    token, org_id = _register(client)
+    session_id = "session-update-policy"
+    agent_id = "agent-update-policy"
+
+    async with async_session_factory() as db:
+        db.add(Agent(id=agent_id, org_id=org_id, name="Policy test agent"))
+        db.add(Session(id=session_id, org_id=org_id, agent_id=agent_id, title="Policy me", execution_policy="manual"))
+        await db.commit()
+
+    response = client.patch(
+        f"/api/sessions/{session_id}",
+        json={"execution_policy": "full-access"},
+        headers={"Authorization": f"Bearer {token}", "X-Org-Id": org_id},
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["execution_policy"] == "full-access"
+

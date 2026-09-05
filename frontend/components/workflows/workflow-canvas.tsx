@@ -20,8 +20,9 @@ import {
   applyNodeChanges,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { Map as MapIcon } from "lucide-react";
+import { Map as MapIcon, Crosshair, Sparkles, LayoutGrid } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import type { GraphEdge, GraphNode } from "@/types";
 import { workflowNodeTypes, type NodeStatus, type WorkflowNodeData } from "./workflow-node-types";
 import { workflowEdgeTypes, type WorkflowEdgeData } from "./workflow-custom-edge";
@@ -36,6 +37,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { useTranslation } from "@/lib/i18n";
 
 interface WorkflowCanvasProps {
   graphNodes: GraphNode[];
@@ -43,24 +45,40 @@ interface WorkflowCanvasProps {
   nodeStatus: Record<string, string>;
   selectedNodeId: string | null;
   className?: string;
+  followRunningNode?: boolean;
+  onToggleFollow?: () => void;
+  onAutoLayout?: () => void;
   onGraphChange: (nodes: GraphNode[], edges: GraphEdge[]) => void;
   onSelectNode: (id: string | null) => void;
   onCreateNode: (kind: GraphNode["kind"], position: { x: number; y: number }) => void;
+  onEditEdgeCondition?: (edgeId: string) => void;
 }
 
 function toFlowStatus(status: string | undefined): NodeStatus {
   if (status === "running") return "running";
   if (status === "done") return "done";
   if (status === "error") return "error";
+  if (status === "waiting_approval") return "waiting";
   return "idle";
 }
 
-function toFlowNodes(nodes: GraphNode[], nodeStatus: Record<string, string>): Node<WorkflowNodeData>[] {
+function toFlowNodes(
+  nodes: GraphNode[],
+  nodeStatus: Record<string, string>,
+  onDelete: (id: string) => void,
+  onInspect: (id: string) => void,
+): Node<WorkflowNodeData>[] {
   return nodes.map((n) => ({
     id: n.id,
     type: n.kind,
     position: n.position || { x: 0, y: 0 },
-    data: { label: n.label, kind: n.kind, status: toFlowStatus(nodeStatus[n.id]) },
+    data: {
+      label: n.label,
+      kind: n.kind,
+      status: toFlowStatus(nodeStatus[n.id]),
+      onDelete,
+      onInspect,
+    },
   }));
 }
 
@@ -68,13 +86,15 @@ function toFlowEdges(
   edges: GraphEdge[],
   nodeStatus: Record<string, string>,
   onDelete: (edgeId: string) => void,
+  onEditCondition?: (edgeId: string) => void,
 ): Edge<WorkflowEdgeData>[] {
   return edges.map((e, i) => ({
     id: `${e.from_}->${e.to}#${i}`,
     source: e.from_,
     target: e.to,
     type: "custom",
-    data: { sourceStatus: toFlowStatus(nodeStatus[e.from_]), onDelete },
+    label: e.condition || undefined,
+    data: { sourceStatus: toFlowStatus(nodeStatus[e.from_]), onDelete, onEditCondition },
   }));
 }
 
@@ -94,14 +114,35 @@ function WorkflowCanvasInner({
   nodeStatus,
   selectedNodeId,
   className,
+  followRunningNode = true,
+  onToggleFollow,
+  onAutoLayout,
   onGraphChange,
   onSelectNode,
   onCreateNode,
+  onEditEdgeCondition,
 }: WorkflowCanvasProps) {
-  const { screenToFlowPosition } = useReactFlow();
+  const { t, locale, tx } = useTranslation();
+  const { screenToFlowPosition, setCenter, fitView } = useReactFlow();
   const [showMiniMap, setShowMiniMap] = React.useState(true);
   const [pendingDelete, setPendingDelete] = React.useState<PendingDelete | null>(null);
   const wrapperRef = React.useRef<HTMLDivElement>(null);
+
+  // Auto-follow / Pin running node: center viewport on node when it becomes running
+  React.useEffect(() => {
+    if (!followRunningNode) return;
+    const runningEntry = Object.entries(nodeStatus).find(([_, status]) => status === "running");
+    if (runningEntry) {
+      const [runningNodeId] = runningEntry;
+      const targetNode = graphNodes.find((n) => n.id === runningNodeId);
+      if (targetNode?.position) {
+        setCenter(targetNode.position.x + 107, targetNode.position.y + 47, {
+          zoom: 1.05,
+          duration: 700,
+        });
+      }
+    }
+  }, [nodeStatus, followRunningNode, graphNodes, setCenter]);
 
   const deleteEdge = React.useCallback(
     (from_: string, to: string) => {
@@ -121,6 +162,14 @@ function WorkflowCanvasInner({
     [graphNodes, graphEdges, onGraphChange, selectedNodeId, onSelectNode],
   );
 
+  const handleDeleteNode = React.useCallback(
+    (nodeId: string) => {
+      const target = graphNodes.find((n) => n.id === nodeId);
+      setPendingDelete({ kind: "node", id: nodeId, label: target?.label || nodeId });
+    },
+    [graphNodes],
+  );
+
   const handleDeleteEdge = React.useCallback(
     (edgeId: string) => {
       const { from_, to } = edgeIdToGraphEdge(edgeId);
@@ -129,10 +178,20 @@ function WorkflowCanvasInner({
     [],
   );
 
-  const nodes = React.useMemo(() => toFlowNodes(graphNodes, nodeStatus), [graphNodes, nodeStatus]);
+  const handleInspectNode = React.useCallback(
+    (nodeId: string) => {
+      onSelectNode(nodeId);
+    },
+    [onSelectNode],
+  );
+
+  const nodes = React.useMemo(
+    () => toFlowNodes(graphNodes, nodeStatus, handleDeleteNode, handleInspectNode),
+    [graphNodes, nodeStatus, handleDeleteNode, handleInspectNode],
+  );
   const edges = React.useMemo(
-    () => toFlowEdges(graphEdges, nodeStatus, handleDeleteEdge),
-    [graphEdges, nodeStatus, handleDeleteEdge],
+    () => toFlowEdges(graphEdges, nodeStatus, handleDeleteEdge, onEditEdgeCondition),
+    [graphEdges, nodeStatus, handleDeleteEdge, onEditEdgeCondition],
   );
 
   const onNodesChange: OnNodesChange<Node<WorkflowNodeData>> = React.useCallback(
@@ -162,9 +221,6 @@ function WorkflowCanvasInner({
     (changes: EdgeChange<Edge<WorkflowEdgeData>>[]) => {
       const removed = changes.filter((c) => c.type === "remove");
       if (removed.length === 0) return;
-      // Only ever one edge can be "selected + Delete key pressed" at a time
-      // in practice; route through the same confirmation as the edge's
-      // hover delete button.
       const { from_, to } = edgeIdToGraphEdge(removed[0].id);
       setPendingDelete({ kind: "edge", from_, to });
     },
@@ -208,11 +264,22 @@ function WorkflowCanvasInner({
     [screenToFlowPosition, onCreateNode],
   );
 
+  const onNodeClick = React.useCallback(
+    (_: React.MouseEvent, node: Node) => {
+      onSelectNode(node.id);
+    },
+    [onSelectNode],
+  );
+
+  const onPaneClick = React.useCallback(() => {
+    onSelectNode(null);
+  }, [onSelectNode]);
+
   return (
     <div
       ref={wrapperRef}
       className={cn(
-        "relative overflow-hidden rounded-xl border border-border/80 bg-card/30 shadow-inner-edge",
+        "relative overflow-hidden rounded-2xl border border-border/80 bg-card/40 shadow-inner-edge",
         className,
       )}
       onDragOver={onDragOver}
@@ -227,64 +294,119 @@ function WorkflowCanvasInner({
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         isValidConnection={isValidConnection}
-        onNodeClick={(_e, node) => onSelectNode(node.id)}
-        onPaneClick={() => onSelectNode(null)}
-        selectionOnDrag={false}
-        deleteKeyCode={["Backspace", "Delete"]}
-        colorMode="dark"
-        proOptions={{ hideAttribution: true }}
+        onNodeClick={onNodeClick}
+        onPaneClick={onPaneClick}
         fitView
+        fitViewOptions={{ padding: 0.2 }}
+        minZoom={0.2}
+        maxZoom={2.0}
+        snapToGrid
+        snapGrid={[16, 16]}
+        defaultEdgeOptions={{ type: "custom" }}
+        proOptions={{ hideAttribution: true }}
       >
-        <Background variant={BackgroundVariant.Dots} gap={20} size={1.5} className="opacity-60" />
-        <Controls className="!border !border-border/60 !bg-card/90 !shadow-3d-card [&_button]:!border-border/40 [&_button]:!bg-transparent [&_button]:!text-foreground [&_button:hover]:!bg-muted" />
+        <Background variant={BackgroundVariant.Dots} gap={20} size={1.2} className="opacity-40" />
+        <Controls className="!bg-card/90 !border-border/80 !shadow-3d-card !rounded-xl overflow-hidden [&>button]:!bg-transparent [&>button]:!border-border/60 hover:[&>button]:!bg-muted/50" />
         {showMiniMap && (
           <MiniMap
-            pannable
             zoomable
-            className="!border !border-border/60 !bg-card/90 !shadow-3d-card"
-            maskColor="hsl(var(--background) / 0.6)"
-            nodeColor="hsl(var(--muted-foreground) / 0.4)"
+            pannable
+            className="!bg-card/90 !border-border/80 !rounded-xl !shadow-3d-card overflow-hidden"
+            nodeStrokeWidth={3}
+            nodeColor={(n) => {
+              const status = nodeStatus[n.id];
+              if (status === "running") return "#38bdf8";
+              if (status === "done") return "#10b981";
+              if (status === "error") return "#ef4444";
+              return "#64748b";
+            }}
           />
         )}
-        <Panel position="top-right">
-          <button
-            type="button"
+
+        <Panel position="top-right" className="flex items-center gap-1.5 bg-card/90 backdrop-blur-md p-1.5 rounded-xl border border-border/80 shadow-3d-card">
+          {onToggleFollow && (
+            <Button
+              size="sm"
+              variant={followRunningNode ? "secondary" : "ghost"}
+              className={cn(
+                "h-7 text-xs gap-1.5 px-2.5 rounded-lg transition-all",
+                followRunningNode && "bg-primary/15 text-primary border border-primary/30 font-semibold shadow-inner-edge",
+              )}
+              onClick={onToggleFollow}
+              title={t("pages.workflows.followRunningNode", "Follow Running Node")}
+            >
+              <Crosshair className={cn("h-3.5 w-3.5", followRunningNode && "text-primary animate-pulse")} />
+              <span className="hidden sm:inline">
+                {t("pages.workflows.followRunningNode", "Follow Node")}
+              </span>
+            </Button>
+          )}
+
+          {onAutoLayout && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 text-xs gap-1.5 px-2.5 rounded-lg text-muted-foreground hover:text-foreground"
+              onClick={onAutoLayout}
+              title={t("pages.workflows.btnAutoLayout", "Auto-layout Graph")}
+            >
+              <LayoutGrid className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">
+                {t("pages.workflows.btnAutoLayout", "Auto Layout")}
+              </span>
+            </Button>
+          )}
+
+          <Button
+            size="sm"
+            variant="ghost"
+            className={cn("h-7 w-7 p-0 rounded-lg", showMiniMap && "text-primary")}
             onClick={() => setShowMiniMap((v) => !v)}
-            title={showMiniMap ? "Hide minimap" : "Show minimap"}
-            aria-label={showMiniMap ? "Hide minimap" : "Show minimap"}
-            aria-pressed={showMiniMap}
-            className="grid h-8 w-8 place-items-center rounded-lg border border-border/60 bg-card/90 text-muted-foreground shadow-3d-card transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            title={locale === "vi" ? "Bật/tắt MiniMap" : "Toggle MiniMap"}
           >
-            <MapIcon className="h-4 w-4" />
-          </button>
+            <MapIcon className="h-3.5 w-3.5" />
+          </Button>
         </Panel>
       </ReactFlow>
 
-      <AlertDialog open={Boolean(pendingDelete)} onOpenChange={(open) => !open && setPendingDelete(null)}>
+      {/* Confirmation modal before deleting node / edge */}
+      <AlertDialog open={pendingDelete !== null} onOpenChange={(open) => !open && setPendingDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {pendingDelete?.kind === "node" ? `Delete "${pendingDelete.label}"?` : "Delete this connection?"}
+              {pendingDelete?.kind === "node"
+                ? locale === "vi"
+                  ? `Xóa Node "${pendingDelete.label}"?`
+                  : `Delete node "${pendingDelete.label}"?`
+                : locale === "vi"
+                  ? "Xóa liên kết này?"
+                  : "Delete connection?"}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {pendingDelete?.kind === "node"
-                ? "The node and any edges connected to it will be removed from the canvas."
-                : "This edge will be removed from the workflow graph."}
+                ? locale === "vi"
+                  ? "Node và tất cả các liên kết kết nối đến node này sẽ bị xóa khỏi canvas."
+                  : "The node and all incoming/outgoing connections will be removed from the canvas."
+                : locale === "vi"
+                  ? `Liên kết giữa ${pendingDelete?.from_} và ${pendingDelete?.to} sẽ bị xóa.`
+                  : `The connection from ${pendingDelete?.from_} to ${pendingDelete?.to} will be removed.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{tx("Hủy", "Cancel")}</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={() => {
                 if (!pendingDelete) return;
-                if (pendingDelete.kind === "node") deleteNode(pendingDelete.id);
-                else deleteEdge(pendingDelete.from_, pendingDelete.to);
+                if (pendingDelete.kind === "node") {
+                  deleteNode(pendingDelete.id);
+                } else {
+                  deleteEdge(pendingDelete.from_, pendingDelete.to);
+                }
                 setPendingDelete(null);
               }}
             >
-              Delete
-            </AlertDialogAction>
+              {tx("Xóa", "Delete")}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -293,6 +415,7 @@ function WorkflowCanvasInner({
 }
 
 export function WorkflowCanvas(props: WorkflowCanvasProps) {
+    const { locale, tx } = useTranslation();
   return (
     <ReactFlowProvider>
       <WorkflowCanvasInner {...props} />

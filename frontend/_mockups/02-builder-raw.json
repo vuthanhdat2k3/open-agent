@@ -1,0 +1,43 @@
+﻿{
+    "outputComponents":  [
+                             {
+                                 "design":  {
+                                                "screens":  [
+                                                                {
+                                                                    "designSystem":  "@{designSystem=; name=assets/eeddfcc795704f4ba5f2567bd5c281cc; version=1}",
+                                                                    "deviceType":  "DESKTOP",
+                                                                    "generatedBy":  "figaro_agent",
+                                                                    "height":  "2048",
+                                                                    "htmlCode":  "@{downloadUrl=https://contribution.usercontent.google.com/download?c=CgthaWRhX2NvZGVmeBJ8Eh1hcHBfY29tcGFuaW9uX2dlbmVyYXRlZF9maWxlcxpbCiVodG1sXzk2YjVmYTM5OGNiYTQwNzRiNTNkN2MxOGYyNjk4NWFmEgsSBxCN3bDIhR0YAZIBJAoKcHJvamVjdF9pZBIWQhQxMTk2Njc1MTYyMDY3NDU1NDgwNA\u0026filename=\u0026opi=96797242; mimeType=text/html; name=projects/11966751620674554804/files/961d962986c04247bd2d7676eb165b46}",
+                                                                    "id":  "072bc078e30f43c883cbe67c567359be",
+                                                                    "name":  "projects/11966751620674554804/screens/072bc078e30f43c883cbe67c567359be",
+                                                                    "prompt":  "A high-density Operator Builder dashboard for an \u0027org_admin\u0027. \n\nLayout:\n- Top: 4 KPI cards in a row: Agents (12), Workflows (8), Models (14), Providers (5). Use monospace font for the large numbers.\n- Middle Section (2-column split):\n    - Left column: \"Needs your attention\" section. Includes 2 approval rows. Each row has a description and a risk badge: \u0027HIGH\u0027 (red/bright alert style) or \u0027STD\u0027 (subtle/neutral style).\n    - Right column: \"Recent activity\" section. Includes 3 workflow run rows. Each row indicates status: OK (checkmark) or WARN (warning icon).\n- Lower Section: \"Resources\" grid (3x2). Grid items: Agents (12), Workflows (8), Models (14), Providers (5), Integrations (22), MCP Servers (3).\n- Bottom Section: \"Usage\" table. Columns: Agent Name, Model, Calls, In Tokens, Out Tokens, Cost. Fill with realistic developer data. Use monospace font for all numeric values.\n\nVisual Style:\n- Follow the \u0027Monochrome Logic\u0027 {{DATA:DESIGN_SYSTEM:DESIGN_SYSTEM_1}} style: Dark mode, deep blacks (#0e0e0e/ #131313), Inter typography, white text, subtle borders.\n- Professional, technical, \u0027developer tool\u0027 aesthetic.\n- High data density with clear hierarchy.\n- Navigation should match the \u0027Admin Console\u0027 sidebar from {{DATA:COMPONENTS:COMPONENTS_7}}.",
+                                                                    "screenMetadata":  "@{agentType=PRO_AGENT; status=COMPLETE}",
+                                                                    "screenType":  "DESIGN",
+                                                                    "screenshot":  "@{downloadUrl=https://lh3.googleusercontent.com/aida/AEtjO1VGpymzWbYQ8T7PZc8UVrQzkIFYGJPkMFq0PdPU7Q3E8ZwcN7BnUdH_cF-YLaicjHDYwxb2hcl7rn7h-8B40gOEAeUq3I2w-NwN_IHirT90hGwLMX5TbvKZ4xQSMnS6zr_QQ2Z5F_HSKcVtLtdNYOBMcix0SlZ7NT-W9WK6zCTkQiwbkYrmrUAj45U1trMVa4EYTZwqD4omYCg6N2i-XEZgg6IVkOMNYp12R4Qy72XmjRrGuad0vCBDqzRF; name=projects/11966751620674554804/files/32a26e49ad9c4c9fa0b7ce76ff376103}",
+                                                                    "theme":  "@{bodyFont=INTER; bodyFontFamily=Inter; colorMode=DARK; colorVariant=FIDELITY; customColor=#ffffff; font=INTER; headlineFont=INTER; headlineFontFamily=Inter; labelFont=INTER; labelFontFamily=Inter; namedColors=; overrideNeutralColor=#000000; overridePrimaryColor=#ffffff; overrideSecondaryColor=#1a1a1a; overrideTertiaryColor=#262626; roundness=ROUND_EIGHT; spacing=; spacingScale=2; typography=}",
+                                                                    "title":  "Operator Builder Dashboard",
+                                                                    "width":  "2560"
+                                                                }
+                                                            ],
+                                                "theme":  {
+
+                                                          }
+                                            }
+                             },
+                             {
+                                 "text":  "I\u0027ve designed the Operator Builder dashboard for the organizational administrator, maintaining the technical, high-density aesthetic of your \u0027Monochrome Logic\u0027 design system.\n\n### Key Design Decisions:\n- **Administrative Hierarchy**: Utilized the Enterprise-tier sidebar and top bar components to clearly distinguish this as an organizational management view.\n- **Critical Oversight**: The \"Needs your attention\" panel uses high-contrast risk badges to surface urgent approval tasks (like the High-risk deployment) immediately.\n- **Developer Density**: Integrated a 4-card KPI row and a detailed usage table at the bottom, using monospace numbers to ensure readability for technical metrics like token counts and costs.\n- **Visual Continuity**: Anchored the layout in the established dark monochrome palette with sharp card borders and Inter typography to match your existing developer console screens.\n\nHow does this administrative view feel for managing your operators? I can refine the specific usage metrics or expand the activity feed if you\u0027d like more granular detail."
+                             },
+                             {
+                                 "suggestion":  "Add a \u0027Deploy New Operator\u0027 flow"
+                             },
+                             {
+                                 "suggestion":  "Expand the Usage table with time-series charts"
+                             },
+                             {
+                                 "suggestion":  "Show the approval modal for a High-risk badge"
+                             }
+                         ],
+    "projectId":  "11966751620674554804",
+    "sessionId":  "9804471775062011693"
+}

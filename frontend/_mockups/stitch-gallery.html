@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>OpenAgent — Stitch Mockups Gallery</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0a0a0a; color: #e5e5e5; padding: 32px; }
+  h1 { font-size: 24px; font-weight: 700; margin-bottom: 8px; }
+  .sub { font-size: 13px; color: #888; margin-bottom: 32px; }
+  .grid { display: grid; grid-template-columns: 1fr; gap: 32px; }
+  .card { background: #131313; border: 1px solid #262626; border-radius: 12px; overflow: hidden; }
+  .card-header { padding: 16px 20px; border-bottom: 1px solid #262626; display: flex; align-items: center; justify-content: space-between; }
+  .card-title { font-size: 16px; font-weight: 600; }
+  .card-tag { font-size: 11px; padding: 3px 8px; border-radius: 9999px; background: #1a1a1a; color: #c4c7c8; border: 1px solid #444; }
+  .card-desc { padding: 12px 20px; font-size: 13px; color: #888; border-bottom: 1px solid #262626; }
+  .card img { display: block; width: 100%; height: auto; }
+  .meta { padding: 12px 20px; font-size: 11px; color: #666; font-family: ui-monospace, "JetBrains Mono", monospace; }
+</style>
+</head>
+<body>
+
+<h1>OpenAgent AgentOS v2 — Stitch Mockups</h1>
+<p class="sub">4 screens generated via Google Stitch API · Project <code>projects/11966751620674554804</code> · Design system "Monochrome Logic" · 2560x2048 source, displayed at fit-width</p>
+
+<div class="grid">
+
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">1 · Home (3-column Agent Home)</span>
+      <span class="card-tag">screen id: 8977652080894691ac074e6e2d0c8008</span>
+    </div>
+    <div class="card-desc">
+      Activity Feed (left, 320px) + Agent Chat with composer (center, flexible) + Quick Glance (right, 280px).
+      Top bar: OpenAgent brand, search, notification bell, user avatar.
+      Sidebar: Home / Builder / Chat / Automations / Integrations / Inbox / Settings.
+      <br><br>
+      <strong>v2 note:</strong> Stitch render used dev-tool jargon ("Agent Deployed", "API Key Generated") in feed + 3 widgets on right rail (System Health / Agent Stats / Integrations). v2 replaces feed copy with user-facing events, reduces right rail to single "Today" 2x2 widget. See <code>stitch-screens/REVIEW-NOTES.md</code> v2.
+    </div>
+    <img src="stitch-screens/01-home.png" alt="Home mockup" />
+    <div class="meta">Stitch summary: "Monochrome Logic" design system · Inter typography · 12px radii · 3D subtle elevation · 4px dot grid background</div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">2 · Builder (Operator Dashboard)</span>
+      <span class="card-tag">screen id: 072bc078e30f43c883cbe67c567359be</span>
+    </div>
+    <div class="card-desc">
+      4 KPI cards (Agents 12, Workflows 8, Models 14, Providers 5) +
+      2-column split: Needs your attention (approval rows) + Recent activity (workflow run rows) +
+      Resources grid 3x2 + Usage table (calls / tokens / cost in monospace).
+    </div>
+    <img src="stitch-screens/02-builder.png" alt="Builder mockup" />
+    <div class="meta">Stitch summary: "Critical Oversight" panel with HIGH risk badges · developer density · monospace numbers · matches Monochrome Logic</div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">3 · Notification Inbox (right Sheet)</span>
+      <span class="card-tag">screen id: (in 03-inbox-raw.json)</span>
+    </div>
+    <div class="card-desc">
+      Right-side slide-out 420px. 3 sections: Needs your attention (2 items, red left border for HIGH risk) +
+      Today (4 items) + Earlier (2 items). Each item: icon + title + meta (actor, risk, time).
+      <br><br>
+      <strong>v2 adopt:</strong> 3-section labels + urgent red left border pattern (validated by Stitch, kept in v2).
+    </div>
+    <img src="stitch-screens/03-inbox.png" alt="Inbox mockup" />
+    <div class="meta">Note: Stitch rendered a full-page mockup, not a side-overlay. Use this for the "inbox full view" state or as reference for the Sheet component layout.</div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">4 · Activity Detail Drawer (email detail)</span>
+      <span class="card-tag">screen id: (in 04-drawer-raw.json)</span>
+    </div>
+    <div class="card-desc">
+      Right-side slide-out 560px. Header: avatar + subject + sender + time + close X.
+      3 sections: Why Sentinel flagged this (info callout) + Email body + Related context (bullets).
+      Footer: 3 buttons - Archive / Ask Atlas / Reply (primary).
+    </div>
+    <img src="stitch-screens/04-drawer.png" alt="Drawer mockup" />
+    <div class="meta">Note: Stitch rendered a full-page mockup, not a side-overlay. Reference for the Drawer component layout and the "Why Sentinel flagged this" AI summary box style.</div>
+  </div>
+
+</div>
+
+<p class="sub" style="margin-top: 32px;">
+  <strong>Heads up on Stitch project:</strong> Stitch project <code>11966751620674554804</code> is in your Google Cloud account
+  and persists. You can re-open it at <a href="https://stitch.withgoogle.com" style="color: #6ea8ff;">stitch.withgoogle.com</a>
+  to edit/regenerate any screen. The 1 logo + 1 design system "Monochrome Logic" are also saved there.
+</p>
+<p class="sub">
+  <strong>API key reminder:</strong> You pasted a Google API key into chat earlier. <strong>Revoke it now</strong> at
+  <a href="https://console.cloud.google.com/apis/credentials" style="color: #6ea8ff;">console.cloud.google.com/apis/credentials</a>
+  and rotate to a fresh key. The key was used to create the project above; any future requests with the same key can mutate it.
+</p>
+
+</body>
+</html>

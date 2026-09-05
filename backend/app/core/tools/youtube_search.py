@@ -27,6 +27,9 @@ async def _youtube_search(args: dict[str, Any], ctx: ToolContext) -> str:
     if not api_key:
         return "error: YouTube search is not configured (missing youtube_api_key)"
 
+    if ctx.emit:
+        await ctx.emit({"stage": "searching", "query": query, "line": f"Searching YouTube for videos: '{query}'...\n"})
+
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.get(
@@ -45,6 +48,8 @@ async def _youtube_search(args: dict[str, Any], ctx: ToolContext) -> str:
         return f"error searching YouTube: {e}"
 
     items = data.get("items", [])
+    if ctx.emit:
+        await ctx.emit({"stage": "found", "count": len(items), "line": f"Retrieved {len(items)} YouTube videos\n"})
     if not items:
         return "No search results found"
 

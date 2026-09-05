@@ -3,6 +3,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict
 
+from app.core.execution_policy import ExecutionPolicy
+
 ChatRole = Literal["user", "assistant", "system", "tool"]
 
 
@@ -12,10 +14,14 @@ class ChatRequest(BaseModel):
     # active status for user selections; it never changes the agent default.
     model_id: str | None = None
     message: str
+    # Ids from POST /api/files/upload. Their content is read and inlined into
+    # the prompt for this turn only — never auto-ingested into the RAG index.
+    attachment_ids: list[str] = []
     session_id: str | None = None
     run_id: str | None = None
     stream: bool = True
     timezone: str | None = None
+    execution_policy: ExecutionPolicy | None = None
 
 
 class ChatMessageOut(BaseModel):
@@ -35,9 +41,18 @@ class SessionOut(BaseModel):
 
     id: str
     agent_id: str
+    execution_policy: ExecutionPolicy
     title: str
+    created_by_user_id: str | None = None
+    creator_email: str | None = None
+    creator_name: str | None = None
     created_at: datetime
     updated_at: datetime
+
+
+class SessionUpdate(BaseModel):
+    execution_policy: ExecutionPolicy | None = None
+    title: str | None = None
 
 
 class ChatStreamEvent(BaseModel):
@@ -54,3 +69,4 @@ class AgentLoopResult(BaseModel):
     latency_ms: int = 0
     cost_usd: float = 0.0
     error: str | None = None
+    model: str | None = None

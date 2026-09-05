@@ -38,6 +38,7 @@ class Agent(Base):
     kind: Mapped[str] = mapped_column(String(32), default="worker", nullable=False)
     max_iterations: Mapped[int] = mapped_column(Integer, default=12)
     temperature: Mapped[float] = mapped_column(Float, default=0.7)
+    enable_thinking: Mapped[bool | None] = mapped_column(nullable=True)
     active_release_id: Mapped[str | None] = mapped_column(
         String(36),
         ForeignKey("agent_releases.id", ondelete="SET NULL", use_alter=True),
@@ -57,6 +58,10 @@ class Agent(Base):
 
     # --- A2A Exposure (M16) ---
     a2a_exposed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    # --- System Templates & Hybrid Resolution ---
+    template_key: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    is_customized: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     created_at: Mapped["utc_now"] = mapped_column(DateTime, default=utc_now)
     updated_at: Mapped["utc_now"] = mapped_column(DateTime, default=utc_now, onupdate=utc_now)

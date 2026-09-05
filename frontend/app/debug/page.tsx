@@ -1,14 +1,31 @@
 "use client";
 
 import * as React from "react";
-import { Bug, MessageSquare, BarChart3, GitBranch, Workflow } from "lucide-react";
-import { useDebugSessions, useSessionTree, useTaskTree, useUsageSummary, useWorkflowRun } from "@/hooks";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Select } from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
-import { EmptyState, ErrorState, LoadingSkeleton } from "@/components/shared";
+import {
+  Activity,
+  Bug,
+  Coins,
+  GitBranch,
+  MessageSquare,
+  RefreshCw,
+  Search,
+  Zap,
+  BarChart3,
+  Bot,
+} from "lucide-react";
+import {
+  useDebugSessions,
+  useUsageSummary,
+  useSessionTree,
+  useTaskTree,
+  useWorkflowRun,
+  useUrlSearchParam,
+} from "@/hooks";
 import { PageHeader } from "@/components/page-header";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import {
   Table,
   TableBody,
@@ -17,182 +34,488 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { EmptyState, ErrorState, LoadingSkeleton, DataPagination } from "@/components/shared";
+import { useTranslation, roleLabel } from "@/lib/i18n";
 
 export default function DebugPage() {
+  const { t, dict, locale, tx } = useTranslation();
+  const [tabParam, setTabParam] = useUrlSearchParam("tab");
+  const activeTab = (tabParam as "usage" | "sessions" | "tasks") || "usage";
+
   const sessions = useDebugSessions();
   const usage = useUsageSummary();
-  const [sel, setSel] = React.useState<string | null>(null);
-  const [rootRunId, setRootRunId] = React.useState("");
-  const [workflowRunId, setWorkflowRunId] = React.useState("");
-  const tree = useSessionTree(sel);
-  const taskTree = useTaskTree(rootRunId || null);
-  const workflowRun = useWorkflowRun(workflowRunId || null);
+  const [selSession, setSelSession] = useUrlSearchParam("session");
+  const [rootRunParam, setRootRunParam] = useUrlSearchParam("root_run");
+  const [runParam, setRunParam] = useUrlSearchParam("run");
+  const [rootRunDraft, setRootRunDraft] = React.useState(rootRunParam ?? "");
+  const [workflowRunDraft, setWorkflowRunDraft] = React.useState(runParam ?? "");
+  const [usageSearch, setUsageSearch] = React.useState("");
+
+  React.useEffect(() => setRootRunDraft(rootRunParam ?? ""), [rootRunParam]);
+  React.useEffect(() => setWorkflowRunDraft(runParam ?? ""), [runParam]);
+
+  const tree = useSessionTree(selSession);
+  const taskTree = useTaskTree(rootRunParam || null);
+  const workflowRun = useWorkflowRun(runParam || null);
+
+  // Compute aggregated totals
+  const totalCost = usage.data?.reduce((acc, curr) => acc + curr.cost_usd, 0) ?? 0;
+  const totalCalls = usage.data?.reduce((acc, curr) => acc + curr.calls, 0) ?? 0;
+  const totalInputTokens = usage.data?.reduce((acc, curr) => acc + curr.input_tokens, 0) ?? 0;
+  const totalOutputTokens = usage.data?.reduce((acc, curr) => acc + curr.output_tokens, 0) ?? 0;
+  const totalTokens = totalInputTokens + totalOutputTokens;
+
+  const filteredUsage = React.useMemo(() => {
+    if (!usage.data) return [];
+    if (!usageSearch.trim()) return usage.data;
+    const q = usageSearch.toLowerCase();
+    return usage.data.filter(
+      (u) =>
+        u.agent_name.toLowerCase().includes(q) ||
+        u.model_name.toLowerCase().includes(q),
+    );
+  }, [usage.data, usageSearch]);
+
+  const [usagePage, setUsagePage] = React.useState(1);
+  const [usagePageSize, setUsagePageSize] = React.useState(10);
+  React.useEffect(() => {
+    setUsagePage(1);
+  }, [usageSearch]);
+  const paginatedUsage = React.useMemo(() => {
+    const start = (usagePage - 1) * usagePageSize;
+    return filteredUsage.slice(start, start + usagePageSize);
+  }, [filteredUsage, usagePage, usagePageSize]);
+
+  const [sessionPage, setSessionPage] = React.useState(1);
+  const [sessionPageSize, setSessionPageSize] = React.useState(8);
+  const paginatedSessions = React.useMemo(() => {
+    const start = (sessionPage - 1) * sessionPageSize;
+    return (sessions.data ?? []).slice(start, start + sessionPageSize);
+  }, [sessions.data, sessionPage, sessionPageSize]);
 
   return (
     <div className="space-y-6">
-      <PageHeader icon={Bug} title="Debug" description="Inspect sessions, messages, and token usage" />
+      {/* 1. Page Header */}
+      <PageHeader
+        icon={Bug}
+        title={dict.pages.debug.title}
+        description={dict.pages.debug.description}
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              void usage.refetch();
+              void sessions.refetch();
+              if (selSession) void tree.refetch();
+              if (rootRunParam) void taskTree.refetch();
+            }}
+            disabled={usage.isFetching || sessions.isFetching}
+            className="gap-1.5"
+          >
+            <RefreshCw className={usage.isFetching || sessions.isFetching ? "h-3.5 w-3.5 animate-spin" : "h-3.5 w-3.5"} />
+            {tx("Làm mới", "Refresh")}
+          </Button>
+        }
+      />
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 stagger">
-        <Card glass className="flex flex-col shadow-3d-card overflow-hidden">
-          <CardHeader className="flex flex-row items-center gap-3 border-b border-border/60 bg-muted/20">
-            <div className="grid h-9 w-9 place-items-center rounded-xl bg-primary/10 text-primary shadow-inner-edge border border-primary/25">
-              <MessageSquare className="h-4 w-4" />
-            </div>
-            <CardTitle className="text-sm font-semibold tracking-tight text-foreground">Active Sessions</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4 pt-6">
-            <div className="space-y-1.5">
-              <label htmlFor="debug-session" className="text-sm font-semibold text-foreground">Select debug session</label>
-              <Select id="debug-session" value={sel || ""} onChange={(e) => setSel(e.target.value || null)}>
-                <option value="">— select session —</option>
-                {sessions.data?.map((s) => (
-                  <option key={s.id} value={s.id}>{s.title}</option>
-                ))}
-              </Select>
-            </div>
-
-            {sessions.isError ? <ErrorState title="Unable to load sessions" description="Debug sessions could not be loaded." onRetry={() => void sessions.refetch()} /> : tree.isLoading ? <LoadingSkeleton variant="table" /> : tree.isError ? <ErrorState title="Unable to load session messages" description="The selected session could not be inspected." onRetry={() => void tree.refetch()} /> : tree.data ? (
-              <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-1">
-                {tree.data.messages.map((m: any) => (
-                  <div
-                    key={m.id}
-                    className="rounded-xl border border-border/80 bg-card/65 p-3.5 text-xs transition-[border-color,background-color] duration-200 hover:border-primary/40 hover:bg-card shadow-inner-edge"
-                  >
-                    <div className="mb-2 flex items-center justify-between">
-                      <Badge variant="outline" className="text-[10px] bg-muted/40 font-semibold px-2 py-0.5">{m.role}</Badge>
-                      {m.meta?.cost_usd != null && (
-                        <span className="font-mono text-[10px] text-muted-foreground/85 bg-muted/30 px-1.5 py-0.5 rounded border border-border/30">
-                          ${Number(m.meta.cost_usd).toFixed(6)} · {m.meta.latency_ms}ms
-                        </span>
-                      )}
-                    </div>
-                    <div className="whitespace-pre-wrap leading-relaxed select-text font-sans text-foreground/90">{m.content}</div>
-                    {m.meta?.tools?.length > 0 && (
-                      <div className="mt-2.5 pt-2 border-t border-border/40 text-[10px] text-muted-foreground/80 flex items-center gap-1.5">
-                        <span>Invoked tools:</span>
-                        <span className="font-mono bg-muted/50 px-1.5 py-0.5 rounded text-foreground font-medium">
-                          {m.meta.tools.map((t: any) => t.name).join(", ")}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-xs text-muted-foreground/80 py-8 text-center border border-dashed border-border/60 rounded-xl bg-muted/10">
-                Select a session to inspect its messages.
-              </div>
-            )}
-          </CardContent>
+      {/* 2. Executive Analytics Metric Ribbon */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Card className="flex items-center gap-3.5 p-4 shadow-card">
+          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-emerald-500/10 text-emerald-500">
+            <Coins className="h-5 w-5" />
+          </div>
+          <div>
+            <p className="text-2xl font-bold leading-none tabular-nums text-foreground">
+              ${totalCost.toFixed(4)}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground font-medium">
+              {tx("Chi phí LLM (USD)", "Total LLM Spend (USD)")}
+            </p>
+          </div>
         </Card>
 
-        <Card glass className="flex flex-col shadow-3d-card overflow-hidden">
-          <CardHeader className="flex flex-row items-center gap-3 border-b border-border/60 bg-muted/20">
-            <div className="grid h-9 w-9 place-items-center rounded-xl bg-primary/10 text-primary shadow-inner-edge border border-primary/25">
-              <BarChart3 className="h-4 w-4" />
-            </div>
-            <CardTitle className="text-sm font-semibold tracking-tight text-foreground">Usage Per Agent/Model</CardTitle>
-          </CardHeader>
-          <CardContent className="pt-6">
-            {usage.isLoading ? <LoadingSkeleton variant="table" /> : usage.isError ? <ErrorState title="Unable to load usage" description="Usage data could not be loaded." onRetry={() => void usage.refetch()} /> : usage.data?.length ? (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Agent</TableHead>
-                    <TableHead>Model</TableHead>
-                    <TableHead className="text-right">Calls</TableHead>
-                    <TableHead className="text-right">In</TableHead>
-                    <TableHead className="text-right">Out</TableHead>
-                    <TableHead className="text-right">Cost</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {usage.data.map((u, i) => (
-                    <TableRow key={i}>
-                      <TableCell className="font-medium text-xs text-foreground">{u.agent_name}</TableCell>
-                      <TableCell className="text-muted-foreground text-xs font-mono">{u.model_name}</TableCell>
-                      <TableCell className="text-right tabular-nums text-xs font-mono">{u.calls}</TableCell>
-                      <TableCell className="text-right tabular-nums font-mono text-[11px] text-muted-foreground">
-                        {u.input_tokens.toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums font-mono text-[11px] text-muted-foreground">
-                        {u.output_tokens.toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums font-mono text-[11px] font-semibold text-primary">
-                        ${u.cost_usd.toFixed(6)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            ) : (
-              <EmptyState icon={BarChart3} title="No usage recorded yet" />
-            )}
-          </CardContent>
+        <Card className="flex items-center gap-3.5 p-4 shadow-card">
+          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+            <Activity className="h-5 w-5" />
+          </div>
+          <div>
+            <p className="text-2xl font-bold leading-none tabular-nums text-foreground">
+              {totalCalls.toLocaleString()}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground font-medium">
+              {tx("Lượt gọi AI", "Total AI Invocations")}
+            </p>
+          </div>
+        </Card>
+
+        <Card className="flex items-center gap-3.5 p-4 shadow-card">
+          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-sky-500/10 text-sky-500">
+            <Zap className="h-5 w-5" />
+          </div>
+          <div>
+            <p className="text-2xl font-bold leading-none tabular-nums text-foreground">
+              {totalTokens > 1_000_000
+                ? `${(totalTokens / 1_000_000).toFixed(2)}M`
+                : `${(totalTokens / 1_000).toFixed(1)}k`}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground font-medium">
+              {tx("Tokens tiêu thụ", "Tokens Burned")}
+            </p>
+          </div>
+        </Card>
+
+        <Card className="flex items-center gap-3.5 p-4 shadow-card">
+          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-amber-500/10 text-amber-500">
+            <MessageSquare className="h-5 w-5" />
+          </div>
+          <div>
+            <p className="text-2xl font-bold leading-none tabular-nums text-foreground">
+              {sessions.data?.length ?? 0}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground font-medium">
+              {tx("Phiên hội thoại", "Recorded Sessions")}
+            </p>
+          </div>
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <Card glass className="shadow-3d-card overflow-hidden">
-          <CardHeader className="flex flex-row items-center gap-3 border-b border-border/60 bg-muted/20">
-            <GitBranch className="h-4 w-4 text-primary" />
-            <CardTitle className="text-sm font-semibold text-foreground">Task Tree</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4 pt-6">
-            <Input id="debug-root-run" name="root_run_id" onChange={(e) => setRootRunId(e.target.value)} placeholder="root_run_id" className="font-mono text-xs" />
-            {taskTree.data?.tasks?.map((node) => (
-              <div key={node.id} className="rounded-xl border border-border/80 bg-card/50 p-3.5 text-xs shadow-inner-edge">
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold text-foreground">{node.goal}</span>
-                  <Badge variant="outline">{node.status}</Badge>
-                </div>
-                <div className="mt-1 font-mono text-muted-foreground text-[10px]">{node.id}</div>
-                {node.children.map((child) => (
-                  <div key={child.id} className="mt-3 border-l border-border pl-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-foreground">{child.goal}</span>
-                      <Badge variant="outline">{child.status}</Badge>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ))}
-          </CardContent>
-        </Card>
+      {/* 3. Segmented Navigation Tabs */}
+      <div className="flex gap-2 border-b border-border/70 pb-2">
+        <Button
+          type="button"
+          variant={activeTab === "usage" ? "secondary" : "ghost"}
+          onClick={() => setTabParam("usage")}
+          className="gap-2 font-medium"
+        >
+          <BarChart3 className="h-4 w-4 text-primary" />
+          {tx("Phân tích Chi phí", "Cost Analytics")}
+        </Button>
 
-        <Card glass className="shadow-3d-card overflow-hidden">
-          <CardHeader className="flex flex-row items-center gap-3 border-b border-border/60 bg-muted/20">
-            <Workflow className="h-4 w-4 text-primary" />
-            <CardTitle className="text-sm font-semibold text-foreground">Workflow Run</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4 pt-6">
-            <Input id="debug-workflow-run" name="workflow_run_id" onChange={(e) => setWorkflowRunId(e.target.value)} placeholder="workflow_run_id" className="font-mono text-xs" />
-            {workflowRun.data && (
-              <div className="space-y-2">
-                <Badge variant="outline">{workflowRun.data.status}</Badge>
+        <Button
+          type="button"
+          variant={activeTab === "sessions" ? "secondary" : "ghost"}
+          onClick={() => setTabParam("sessions")}
+          className="gap-2 font-medium"
+        >
+          <MessageSquare className="h-4 w-4 text-primary" />
+          {tx("Lịch sử Phiên", "Session Audit")}
+        </Button>
+
+        <Button
+          type="button"
+          variant={activeTab === "tasks" ? "secondary" : "ghost"}
+          onClick={() => setTabParam("tasks")}
+          className="gap-2 font-medium"
+        >
+          <GitBranch className="h-4 w-4 text-primary" />
+          {tx("Cây Tác vụ", "Task Graph")}
+        </Button>
+      </div>
+
+      {/* 4. Tab 1: Cost & Token Analytics */}
+      {activeTab === "usage" && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="relative flex-1 max-w-sm">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={usageSearch}
+                onChange={(e) => setUsageSearch(e.target.value)}
+                placeholder={tx("Lọc theo agent hoặc model...", "Filter by agent or model...")}
+                className="pl-9 text-xs"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground font-mono">
+              {tx(`Hiển thị ${filteredUsage.length} bản ghi chi tiết`, `Showing ${filteredUsage.length} breakdown records`)}
+            </p>
+          </div>
+
+          <Card className="shadow-card border-border/80 overflow-hidden">
+            {usage.isLoading ? (
+              <LoadingSkeleton variant="table" />
+            ) : usage.isError ? (
+              <ErrorState
+                title={tx("Không thể tải phân tích chi phí", "Unable to load usage analytics")}
+                description={tx("Dữ liệu đo lường chi phí chưa sẵn sàng.", "Usage telemetry data could not be retrieved.")}
+                onRetry={() => void usage.refetch()}
+              />
+            ) : filteredUsage.length ? (
+              <div>
                 <Table>
                   <TableHeader>
-                    <TableRow>
-                      <TableHead>Node</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Attempt</TableHead>
+                    <TableRow className="bg-muted/40">
+                      <TableHead className="text-xs font-semibold">{tx("Tên Agent", "Agent Name")}</TableHead>
+                      <TableHead className="text-xs font-semibold">{tx("Mô hình", "Model Provider")}</TableHead>
+                      <TableHead className="text-right text-xs font-semibold">{tx("Lượt gọi", "Calls")}</TableHead>
+                      <TableHead className="text-right text-xs font-semibold">{tx("Tokens Đầu vào", "Prompt In")}</TableHead>
+                      <TableHead className="text-right text-xs font-semibold">{tx("Tokens Đầu ra", "Completion Out")}</TableHead>
+                      <TableHead className="text-right text-xs font-semibold">{tx("Tổng Chi phí", "Total Cost")}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {workflowRun.data.nodes.map((node) => (
-                      <TableRow key={node.id}>
-                        <TableCell className="font-mono text-xs text-foreground">{node.node_id}</TableCell>
-                        <TableCell><Badge variant="outline">{node.status}</Badge></TableCell>
-                        <TableCell className="text-right font-mono text-xs">{node.attempt}</TableCell>
+                    {paginatedUsage.map((u, i) => (
+                      <TableRow key={i} className="hover:bg-muted/20 transition-colors">
+                        <TableCell className="font-medium text-xs text-foreground flex items-center gap-2">
+                          <Bot className="h-3.5 w-3.5 text-primary shrink-0" />
+                          {u.agent_name}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground text-xs font-mono">
+                          <Badge variant="outline" className="font-mono text-[10px]">
+                            {u.model_name}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums text-xs font-mono">
+                          {u.calls.toLocaleString()}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums font-mono text-xs text-muted-foreground">
+                          {u.input_tokens.toLocaleString()}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums font-mono text-xs text-muted-foreground">
+                          {u.output_tokens.toLocaleString()}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums font-mono text-xs font-semibold text-emerald-500">
+                          ${u.cost_usd.toFixed(6)}
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
+                <div className="p-3 border-t border-border/60">
+                  <DataPagination
+                    page={usagePage}
+                    pageSize={usagePageSize}
+                    totalItems={filteredUsage.length}
+                    onPageChange={setUsagePage}
+                    onPageSizeChange={setUsagePageSize}
+                    pageSizeOptions={[5, 10, 25, 50]}
+                  />
+                </div>
               </div>
+            ) : (
+              <EmptyState
+                icon={BarChart3}
+                title={tx("Không tìm thấy dữ liệu tiêu thụ", "No usage data found")}
+                description={tx("Thực hiện các cuộc trò chuyện AI để xem phân tích chi phí.", "Perform AI interactions to inspect token telemetry.")}
+              />
             )}
-          </CardContent>
-        </Card>
-      </div>
+          </Card>
+        </div>
+      )}
+
+      {/* 5. Tab 2: Session Audit & Message Traces */}
+      {activeTab === "sessions" && (
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          {/* Left Column: Session Selector */}
+          <Card className="shadow-card border-border/80 lg:col-span-1 flex flex-col">
+            <CardHeader className="border-b border-border/60 pb-3">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <MessageSquare className="h-4 w-4 text-primary" /> {tx("Chọn Phiên kiểm toán", "Select Audit Session")}
+              </CardTitle>
+              <CardDescription className="text-xs">
+                {tx("Kiểm tra raw prompt messages và tool calls của từng hội thoại.", "Inspect raw prompt messages and tool calls for any chat conversation.")}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-3 flex-1 flex flex-col justify-between">
+              {sessions.isLoading ? (
+                <LoadingSkeleton variant="table" />
+              ) : sessions.isError ? (
+                <ErrorState
+                  title={tx("Không thể tải danh sách phiên", "Unable to load sessions")}
+                  description={tx("Danh sách phiên chưa sẵn sàng.", "Session list could not be loaded.")}
+                  onRetry={() => void sessions.refetch()}
+                />
+              ) : sessions.data?.length ? (
+                <div className="space-y-3">
+                  <div className="space-y-1.5 max-h-[50vh] overflow-y-auto pr-1">
+                    {paginatedSessions.map((s) => {
+                      const isSelected = selSession === s.id;
+                      return (
+                        <button
+                          key={s.id}
+                          type="button"
+                          onClick={() => setSelSession(s.id)}
+                          className={`w-full text-left rounded-lg p-3 transition-all flex flex-col gap-1 border ${
+                            isSelected
+                              ? "border-primary bg-primary/10 text-foreground shadow-sm"
+                              : "border-border/60 hover:bg-muted/40 text-muted-foreground"
+                          }`}
+                        >
+                          <p className={`text-xs font-semibold truncate ${isSelected ? "text-primary" : "text-foreground"}`}>
+                            {s.title || (tx("Hội thoại không tên", "Untitled Conversation"))}
+                          </p>
+                          <p className="font-mono text-[10px] text-muted-foreground truncate">
+                            {tx("ID:", "ID:")}{s.id}
+                          </p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <DataPagination
+                    page={sessionPage}
+                    pageSize={sessionPageSize}
+                    totalItems={sessions.data.length}
+                    onPageChange={setSessionPage}
+                    onPageSizeChange={setSessionPageSize}
+                    pageSizeOptions={[5, 10, 20]}
+                    compact
+                  />
+                </div>
+              ) : (
+                <EmptyState
+                  icon={MessageSquare}
+                  title={tx("Không có phiên nào được ghi lại", "No recorded sessions")}
+                />
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Right Column: Message Stream Inspection */}
+          <Card className="shadow-card border-border/80 lg:col-span-2 flex flex-col">
+            <CardHeader className="border-b border-border/60 pb-3">
+              <CardTitle className="text-sm font-semibold flex items-center justify-between">
+                <span>{tx("Luồng Tin nhắn & Truy vết Thực thi", "Message Stream & Execution Trace")}</span>
+                {tree.data && (
+                  <Badge variant="outline" className="font-mono text-[10px]">
+                    {tree.data.messages.length} {tx("tin nhắn", "messages")}
+                  </Badge>
+                )}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-4 flex-1">
+              {!selSession ? (
+              <div className="py-16 text-center text-xs text-muted-foreground">
+                {t("pages.debug.selectSessionDesc", "Chọn một phiên hội thoại từ danh sách bên trái để kiểm tra chi tiết.")}
+              </div>
+              ) : tree.isLoading ? (
+                <LoadingSkeleton variant="table" />
+              ) : tree.isError ? (
+                <ErrorState
+                  title={tx("Không thể tải truy vết phiên", "Unable to load session trace")}
+                  description={tx("Phiên được chọn không thể kiểm tra.", "Selected session could not be inspected.")}
+                  onRetry={() => void tree.refetch()}
+                />
+              ) : tree.data?.messages.length ? (
+                <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+                  {tree.data.messages.map((m: any) => (
+                    <div
+                      key={m.id}
+                      className="rounded-xl border border-border/80 bg-card p-4 text-xs shadow-card space-y-2"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <Badge
+                          variant={m.role === "user" ? "default" : "outline"}
+                          className="text-[10px] uppercase font-mono"
+                        >
+                          {roleLabel(m.role, t)}
+                        </Badge>
+                        {m.meta?.cost_usd != null && (
+                          <span className="font-mono text-[10.5px] text-muted-foreground bg-muted/40 px-2 py-0.5 rounded border border-border/40">
+                            ${Number(m.meta.cost_usd).toFixed(6)} · {m.meta.latency_ms || 0}{tx("ms", "ms")}</span>
+                        )}
+                      </div>
+
+                      <div className="whitespace-pre-wrap leading-relaxed select-text font-sans text-foreground">
+                        {m.content}
+                      </div>
+
+                      {m.meta?.tools?.length > 0 && (
+                        <div className="mt-2.5 pt-2 border-t border-border/50 text-[11px] text-muted-foreground flex flex-wrap items-center gap-1.5">
+                          <span className="font-semibold text-foreground">{tx("Công cụ đã gọi:", "Tools Dispatched:")}</span>
+                          {m.meta.tools.map((t: any, idx: number) => (
+                            <Badge key={idx} variant="outline" className="font-mono text-[10px] bg-primary/5 text-primary border-primary/30">
+                              {t.name}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <EmptyState
+                  icon={MessageSquare}
+                  title={tx("Không có tin nhắn nào trong phiên", "No messages in session")}
+                />
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* 6. Tab 3: Task Graph & Execution Tree */}
+      {activeTab === "tasks" && (
+        <div className="space-y-4">
+          <Card className="shadow-card border-border/80">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base font-semibold">
+                {tx("Kiểm tra Cây Thực thi Tác vụ", "Inspect Task Execution Tree")}
+              </CardTitle>
+              <CardDescription className="text-xs">
+                {t("pages.debug.rootRunIdDesc", "Nhập ID lượt chạy gốc (root run ID) để xem cây phân cấp subagent và trạng thái phụ thuộc.")}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center gap-3 max-w-xl">
+                <Input
+                  id="debug-root-run"
+                  name="root_run_id"
+                  value={rootRunDraft}
+                  onChange={(e) => setRootRunDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") setRootRunParam(rootRunDraft.trim() || null);
+                  }}
+                  placeholder={tx("Nhập root_run_id (ví dụ: run-98a72...)", "Enter root_run_id (e.g. run-98a72...)")}
+                  className="font-mono text-xs"
+                />
+                <Button
+                  size="sm"
+                  onClick={() => setRootRunParam(rootRunDraft.trim() || null)}
+                  className="font-semibold text-xs"
+                >
+                  {tx("Kiểm tra", "Inspect Run")}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {taskTree.isLoading ? (
+            <LoadingSkeleton variant="table" />
+          ) : taskTree.isError ? (
+            <ErrorState
+              title={tx("Không thể tải cây tác vụ", "Unable to load task tree")}
+              description={tx("Cây tác vụ không khả dụng.", "Task graph could not be retrieved.")}
+              onRetry={() => void taskTree.refetch()}
+            />
+          ) : taskTree.data?.tasks?.length ? (
+            <div className="space-y-3">
+              {taskTree.data.tasks.map((node) => (
+                <Card key={node.id} className="shadow-card border-border/80 p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2.5">
+                      <GitBranch className="h-4 w-4 text-primary" />
+                      <span className="font-semibold text-sm text-foreground">{node.goal}</span>
+                    </div>
+                    <Badge variant={node.status === "completed" ? "default" : "outline"} className="text-[10px] font-mono uppercase">
+                      {node.status}
+                    </Badge>
+                  </div>
+                  <div className="mt-2 text-xs font-mono text-muted-foreground flex items-center gap-4">
+                    <span>{tx("Task ID:", "Task ID:")}{node.id}</span>
+                    <span>{tx("Tác vụ cha:", "Parent:")} {node.parent_task_id || "Root"}</span>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              icon={GitBranch}
+              title={tx("Chưa tải cây tác vụ nào", "No task tree loaded")}
+              description={tx("Cung cấp root run ID đang chạy hoặc đã hoàn tất để hiển thị biểu đồ.", "Provide an active or completed root run ID to visualize its execution graph.")}
+            />
+          )}
+        </div>
+      )}
     </div>
   );
 }

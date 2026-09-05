@@ -34,7 +34,10 @@ async def upload_file(
     ):
         raise HTTPException(429, "storage quota reached")
     try:
-        visibility = "organization" if authz.role.value in {"org_admin", "operator"} else "personal"
+        # Plain ``user`` members are self-scoped (owner_user_id is set only
+        # for that role): their uploads stay personal, staff uploads are
+        # organization-visible.
+        visibility = "personal" if authz.owner_user_id else "organization"
         return await FileService(db).save_upload(org_id, file, current_user.id, visibility)
     except ValueError as e:
         raise HTTPException(400, str(e))
@@ -47,7 +50,7 @@ async def list_files(
     authz: PrincipalContext = Depends(require_permission("files:read")),
     db: AsyncSession = Depends(get_db),
 ):
-    owner = current_user.id if authz.role.value == "user" else None
+    owner = authz.owner_user_id
     return await FileService(db).list(org_id, owner_user_id=owner)
 
 
@@ -59,10 +62,40 @@ async def delete_file(
     authz: PrincipalContext = Depends(require_permission("files:write")),
     db: AsyncSession = Depends(get_db),
 ):
-    owner = current_user.id if authz.role.value == "user" else None
+    owner = authz.owner_user_id
     if not await FileService(db).delete(org_id, id, owner_user_id=owner):
         raise HTTPException(404, "file not found")
     return {"ok": True}
+
+
+@router.get("/{id}/content")
+async def get_file_content(
+    id: str,
+    org_id: str = Depends(get_current_org_id),
+    current_user: User = Depends(get_current_user),
+    authz: PrincipalContext = Depends(require_permission("files:read")),
+    db: AsyncSession = Depends(get_db),
+):
+    import mimetypes
+
+    owner = authz.owner_user_id
+    result = await FileService(db).download(org_id, id, owner_user_id=owner)
+    if result is None:
+        raise HTTPException(404, "file not found")
+    data, record = result
+
+    content_type, _ = mimetypes.guess_type(record.original_name)
+    if not content_type:
+        content_type = "application/octet-stream"
+
+    return Response(
+        content=data,
+        media_type=content_type,
+        headers={
+            "Content-Disposition": f'inline; filename="{record.original_name}"',
+            "Cache-Control": "public, max-age=86400",
+        },
+    )
 
 
 @router.post("/{id}/ingest", response_model=IngestJobOut, status_code=202, dependencies=[Depends(require_permission("files:manage"))])

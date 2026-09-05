@@ -221,7 +221,8 @@ def test_multitenancy_migration_backfill(tmp_path: Path) -> None:
         assert len(memberships) == 1
         assert memberships[0][0] == "default-org-id"
         assert memberships[0][1] == "default-user-id"
-        assert memberships[0][2] == "admin"
+        # 0059_profile_role_hardening normalizes the legacy ``admin`` spelling
+        assert memberships[0][2] == "org_admin"
 
         releases = conn.execute(
             text(

@@ -12,10 +12,15 @@ from typing import Any
 
 from app.config import get_settings
 from app.core.observability.metrics import sandbox_executions_total
+from app.core.tools.filesystem import safe_resolve
 from app.core.tools.registry import register
 from app.core.tools.risk_tier import RiskTier
 from app.core.tools.types import ToolContext, ToolSpec
-from app.services.workspace_service import finish_execution_record, start_execution_record
+from app.services.workspace_service import (
+    finish_execution_record,
+    start_execution_record,
+    upsert_workspace_artifact,
+)
 
 settings = get_settings()
 
@@ -26,6 +31,8 @@ SKIP_WORKSPACE_DIRS = {".git", "__pycache__", ".venv", "node_modules", ".codegra
 _LANG_IMAGES = {
     "python": (settings.sandbox_docker_image_python, "python"),
     "bash": (settings.sandbox_docker_image_bash, "bash"),
+    "node": (settings.sandbox_docker_image_node, "node"),
+    "javascript": (settings.sandbox_docker_image_node, "node"),
 }
 
 _DOCKER_OK: bool | None = None
@@ -72,6 +79,7 @@ def build_docker_args(
     *,
     stdin_mode: str = "code",
     name: str | None = None,
+    rm: bool = True,
 ) -> list[str]:
     image, cmd = _LANG_IMAGES[language]
     fname = filename or f"script.{'py' if language == 'python' else 'sh'}"
@@ -88,8 +96,9 @@ def build_docker_args(
         "docker",
         "run",
         "-i",
-        "--rm",
     ]
+    if rm:
+        args.append("--rm")
     if name:
         args += ["--name", name]
     args += [
@@ -99,9 +108,14 @@ def build_docker_args(
         "no-new-privileges",
         "--pids-limit",
         "64",
-        "--read-only",
-        "--tmpfs",
-        "/work:rw,size=64m",
+    ]
+    if rm:
+        args += [
+            "--read-only",
+            "--tmpfs",
+            "/work:rw,size=64m",
+        ]
+    args += [
         "--memory",
         settings.sandbox_memory,
         "--cpus",
@@ -147,6 +161,119 @@ def build_workspace_archive(workspace_dir: str, filename: str, code: str) -> byt
         archive.addfile(info, io.BytesIO(data))
 
     return buf.getvalue()
+
+
+async def sync_sandbox_artifacts(
+    cname: str,
+    workspace_dir: str,
+    *,
+    script_filename: str | None = None,
+    ctx: ToolContext | None = None,
+    source_tool: str = "run_code",
+) -> list[str]:
+    """Inspect newly created or modified files in the sandbox container and sync back to workspace_dir."""
+    if not _docker_available():
+        return []
+
+    script_name = os.path.basename(str(script_filename)) if script_filename else None
+
+    # 1. Run docker diff to detect added (A) or changed (C) files in /work
+    try:
+        diff_proc = await asyncio.create_subprocess_exec(
+            "docker",
+            "diff",
+            cname,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        diff_out, _ = await diff_proc.communicate()
+    except Exception:
+        return []
+
+    if diff_proc.returncode != 0 or not diff_out:
+        return []
+
+    changed_paths: set[str] = set()
+    for line in diff_out.decode("utf-8", errors="replace").splitlines():
+        line = line.strip()
+        if not (line.startswith("A ") or line.startswith("C ")):
+            continue
+        if "/work/" not in line:
+            continue
+        rel_path = line.split("/work/", 1)[1].strip()
+        if not rel_path or rel_path == ".":
+            continue
+        if script_name and rel_path == script_name:
+            continue
+        if any(skip in rel_path for skip in SKIP_WORKSPACE_DIRS):
+            continue
+        if rel_path.endswith((".pyc", ".pyo", ".pyd")):
+            continue
+        changed_paths.add(rel_path)
+
+    if not changed_paths:
+        return []
+
+    # 2. Extract files using docker cp tar stream
+    try:
+        cp_proc = await asyncio.create_subprocess_exec(
+            "docker",
+            "cp",
+            f"{cname}:/work/.",
+            "-",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        tar_bytes, _ = await cp_proc.communicate()
+    except Exception:
+        return []
+
+    if cp_proc.returncode != 0 or not tar_bytes:
+        return []
+
+    synced_files: list[str] = []
+    try:
+        with tarfile.open(fileobj=io.BytesIO(tar_bytes), mode="r:*") as tar:
+            for member in tar.getmembers():
+                clean_name = member.name.lstrip("./")
+                if clean_name not in changed_paths or member.isdir():
+                    continue
+                # Maximum 50MB per artifact to prevent filling host disk
+                if member.size > 50 * 1024 * 1024:
+                    continue
+
+                target = safe_resolve(workspace_dir, clean_name)
+                if target is None:
+                    continue
+
+                f = tar.extractfile(member)
+                if f is None:
+                    continue
+
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(f.read())
+                synced_files.append(clean_name)
+
+                if ctx and ctx.db and ctx.org_id:
+                    try:
+                        await upsert_workspace_artifact(
+                            ctx.db,
+                            org_id=ctx.org_id,
+                            path=target,
+                            workspace_dir=workspace_dir,
+                            source_tool=source_tool,
+                            user_id=ctx.user_id,
+                            agent_id=ctx.agent_id,
+                            session_id=ctx.session_id or ctx.parent_session_id,
+                            task_id=ctx.current_task_id,
+                            root_run_id=ctx.root_run_id,
+                        )
+                    except Exception:
+                        pass
+    except Exception:
+        pass
+
+    return synced_files
 
 
 async def stream_sandbox_execution(
@@ -292,7 +419,7 @@ async def _run_code(args: dict[str, Any], ctx: ToolContext) -> str:
         command=str(code)[:4000],
         user_id=ctx.user_id,
         agent_id=ctx.agent_id,
-        session_id=ctx.session_id,
+        session_id=ctx.session_id or ctx.parent_session_id,
         task_id=ctx.current_task_id,
         root_run_id=ctx.root_run_id,
     )
@@ -328,7 +455,7 @@ async def _run_code(args: dict[str, Any], ctx: ToolContext) -> str:
         return msg
 
     cname = f"oa-sandbox-{uuid.uuid4().hex[:12]}"
-    docker_args = build_docker_args(language, filename, stdin_mode="archive", name=cname)
+    docker_args = build_docker_args(language, filename, stdin_mode="archive", name=cname, rm=False)
 
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -338,7 +465,7 @@ async def _run_code(args: dict[str, Any], ctx: ToolContext) -> str:
             stderr=asyncio.subprocess.STDOUT,
         )
         if proc.stdin:
-            await proc.stdin.write(archive)
+            proc.stdin.write(archive)
             await proc.stdin.drain()
             proc.stdin.close()
 
@@ -382,7 +509,6 @@ async def _run_code(args: dict[str, Any], ctx: ToolContext) -> str:
                     await ctx.emit({"kind": "stdout", "line": line})
 
         if timed_out:
-            await _kill_container(cname)
             try:
                 proc.kill()
                 await proc.wait()
@@ -401,7 +527,6 @@ async def _run_code(args: dict[str, Any], ctx: ToolContext) -> str:
             return msg
 
         if truncated:
-            await _kill_container(cname)
             try:
                 proc.kill()
                 await proc.wait()
@@ -423,6 +548,18 @@ async def _run_code(args: dict[str, Any], ctx: ToolContext) -> str:
         if len(text) > MAX_SANDBOX_OUTPUT:
             text = text[:MAX_SANDBOX_OUTPUT] + "\n...[truncated]"
         text += f"\n[exit code: {proc.returncode}]"
+
+        if proc.returncode == 0:
+            synced = await sync_sandbox_artifacts(
+                cname,
+                ctx.workspace_dir,
+                script_filename=filename,
+                ctx=ctx,
+                source_tool="run_code",
+            )
+            if synced:
+                text += f"\n[artifacts synced to workspace: {', '.join(synced)}]"
+
         sandbox_executions_total.labels("ok" if proc.returncode == 0 else "error").inc()
         await finish_execution_record(
             ctx.db,
@@ -433,27 +570,27 @@ async def _run_code(args: dict[str, Any], ctx: ToolContext) -> str:
         )
         return text
     except FileNotFoundError:
-        await _kill_container(cname)
         sandbox_executions_total.labels("docker_missing").inc()
         msg = "error: docker CLI not found on the backend host"
         await finish_execution_record(ctx.db, execution, status="failed", output=msg, error=msg)
         return msg
     except Exception as e:  # noqa: BLE001
-        await _kill_container(cname)
         sandbox_executions_total.labels("error").inc()
         msg = f"error executing sandbox: {e}"
         await finish_execution_record(ctx.db, execution, status="failed", output=msg, error=str(e))
         return msg
+    finally:
+        await _kill_container(cname)
 
 register(
     ToolSpec(
         name="run_code",
         description=(
-            "Execute Python or bash inside an isolated Docker container and return "
+            "Execute Python, bash, or JavaScript/Node.js inside an isolated Docker container and return "
             "its combined output plus exit code. Code cannot access the host or "
-            "network (unless enabled). Provide 'language' (python|bash) and 'code'. "
+            "network (unless enabled). Provide 'language' (python|bash|javascript) and 'code'. "
             "Optional 'filename', 'timeout' (seconds). Use language='python' for "
-            "Python code. The bash image is minimal and does not include python, "
+            "Python code, language='javascript' for Node.js. The bash image is minimal and does not include python, "
             "pip, npm, apt-get, or build tools.\n\n"
             "NOTE FOR GRAPHICS & DRAWINGS: The sandbox runs in headless mode (no GUI/turtle/X11). "
             "To draw or display visual graphics (flowers, charts, diagrams) directly in the Chat UI, "
@@ -468,8 +605,8 @@ register(
             "properties": {
                 "language": {
                     "type": "string",
-                    "description": "python or bash",
-                    "enum": ["python", "bash"],
+                    "description": "python, bash, or javascript (Node.js)",
+                    "enum": ["python", "bash", "javascript", "node"],
                 },
                 "code": {
                     "type": "string",
@@ -481,7 +618,7 @@ register(
                 },
                 "filename": {
                     "type": "string",
-                    "description": "Optional filename (default script.py/script.sh)",
+                    "description": "Optional filename (default script.py/script.sh/script.js)",
                 },
                 "timeout": {
                     "type": "number",

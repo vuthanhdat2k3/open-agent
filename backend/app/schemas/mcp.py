@@ -39,6 +39,8 @@ class McpToolOut(BaseModel):
     description: str = ""
     input_schema: dict[str, Any] = {}
     enabled: bool = True
+    risk_tier: str = "dangerous"
+    requires_approval: bool = True
 
 
 class McpServerOut(McpServerBase):

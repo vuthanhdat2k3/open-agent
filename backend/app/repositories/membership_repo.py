@@ -11,11 +11,13 @@ class MembershipRepository(BaseRepository[Membership]):
         super().__init__(Membership, db)
 
     async def get_membership(self, org_id: str, user_id: str) -> Membership | None:
+        """Return one of this user's role-rows in the org (a user may hold
+        more than one - see Membership's (org_id, user_id, role) uniqueness).
+        Use `list_by_org`/`list_by_user` when the full role set matters."""
         res = await self.db.execute(
-            select(Membership).where(
-                Membership.org_id == org_id,
-                Membership.user_id == user_id,
-            )
+            select(Membership)
+            .where(Membership.org_id == org_id, Membership.user_id == user_id)
+            .limit(1)
         )
         return res.scalar_one_or_none()
 

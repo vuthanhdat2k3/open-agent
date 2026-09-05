@@ -130,7 +130,7 @@ async def test_chat_stream_recovery_e2e(client, async_session_factory, test_user
     )
 
     async with async_session_factory() as db:
-        mem = Membership(org_id="org-chat", user_id="user-chat", role="admin")
+        mem = Membership(org_id="org-chat", user_id="user-chat", role="operator")
         prov = Provider(
             id="p-chat", org_id="org-chat", key="t", name="t", base_url="http://test", api_key="sk-fake"
         )
@@ -217,7 +217,9 @@ async def test_empty_finalization_retries_without_tools_or_duplicate_execution(
 
     calls: list[dict] = []
 
-    async def _empty_then_final(self, messages, tools=None, temperature=0.7, tool_choice=None):
+    async def _empty_then_final(
+        self, messages, tools=None, temperature=0.7, tool_choice=None, thinking=None
+    ):
         calls.append({"tools": tools, "tool_choice": tool_choice})
         if len(calls) == 1:
             yield {

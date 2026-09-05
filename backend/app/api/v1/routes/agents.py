@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authz.policy import PrincipalContext
@@ -39,14 +40,44 @@ async def list_agents(
     org_id: str = Depends(get_current_org_id),
     db: AsyncSession = Depends(get_db),
 ):
+    from app.models.user import User
+
     agents = await AgentService(db).list(org_id)
-    # A plain "user" role only ever sees the org's primary (orchestrator-kind)
-    # agent(s) - worker agents are implementation detail the orchestrator
-    # delegates to internally via call_agent, not something a user picks
-    # directly. Admin sees everything (needed to build/test each agent).
-    if not authz.allows("agents:manage"):
-        agents = [a for a in agents if a.kind == "orchestrator"]
-    return agents
+    # Join User to get creator email/name
+    user_ids = [a.created_by_user_id for a in agents if a.created_by_user_id]
+    user_map: dict[str, User] = {}
+    if user_ids:
+        res = await db.execute(select(User).where(User.id.in_(user_ids)))
+        for u in res.scalars().all():
+            user_map[u.id] = u
+
+    return [
+        AgentOut(
+            id=a.id,
+            name=a.name,
+            description=a.description,
+            system_prompt=a.system_prompt,
+            model_id=a.model_id,
+            tools=a.tools,
+            allowed_risk_tiers=a.allowed_risk_tiers,
+            kind=a.kind,
+            max_iterations=a.max_iterations,
+            temperature=a.temperature,
+            enable_thinking=a.enable_thinking,
+            a2a_exposed=a.a2a_exposed,
+            active_release_id=a.active_release_id,
+            latest_release_number=a.latest_release_number,
+            template_key=a.template_key,
+            is_customized=getattr(a, "is_customized", True),
+            is_pinned=getattr(a, "is_pinned", False),
+            created_by_user_id=a.created_by_user_id,
+            creator_email=user_map[a.created_by_user_id].email if a.created_by_user_id and a.created_by_user_id in user_map else None,
+            creator_name=user_map[a.created_by_user_id].display_name if a.created_by_user_id and a.created_by_user_id in user_map else None,
+            created_at=a.created_at,
+            updated_at=a.updated_at,
+        )
+        for a in agents
+    ]
 
 
 @router.get("/tools", response_model=list[AgentToolInfo], dependencies=[Depends(require_permission("agents:read"))])
@@ -117,7 +148,7 @@ async def update_agent(
             user_id,
         )
     except ValueError as e:
-        raise HTTPException(404, str(e))
+        raise _release_error(e)
     if agent.latest_release_number != previous_release_number:
         await log_action(
             db,
@@ -310,3 +341,19 @@ async def delete_agent(
     except ValueError as e:
         raise HTTPException(400, str(e))
     return {"ok": True}
+
+
+@router.post(
+    "/{id}/reset-template",
+    response_model=AgentOut,
+    dependencies=[Depends(require_permission("agents:update"))],
+)
+async def reset_agent_to_template(
+    id: str,
+    org_id: str = Depends(get_current_org_id),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        return await AgentService(db).reset_to_template(org_id, id)
+    except ValueError as e:
+        raise HTTPException(400, str(e))

@@ -8,8 +8,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input, Label } from "@/components/ui/input";
 import { setAccessToken } from "@/lib/auth";
+import { useTranslation } from "@/lib/i18n";
 
 export default function RegisterPage() {
+    const { locale, tx } = useTranslation();
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [orgName, setOrgName] = React.useState("");
@@ -20,14 +22,14 @@ export default function RegisterPage() {
     setLoading(true);
     try {
       const response = await fetch("/api/auth/register", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password, org_name: orgName || undefined }) });
-      if (!response.ok) throw new Error("Registration failed");
+      if (!response.ok) throw new Error(tx("Đăng ký thất bại", "Registration failed"));
       const data = (await response.json()) as { access_token: string };
       setAccessToken(data.access_token);
       window.location.href = "/";
     } catch (error: unknown) {
-      toast.error(error instanceof Error ? error.message : "Unable to create account");
+      toast.error(error instanceof Error ? error.message : tx("Không thể tạo tài khoản", "Unable to create account"));
     } finally { setLoading(false); }
   }
 
-  return <div className="mx-auto flex min-h-dvh max-w-md items-center px-4 py-12"><Card className="w-full border-border/80 shadow-3d-floating"><CardHeader className="space-y-3 pb-3 text-center"><div className="mx-auto grid h-12 w-12 place-items-center rounded-xl bg-primary text-primary-foreground shadow-card"><Bot className="h-6 w-6" aria-hidden="true" /></div><div><CardTitle className="text-xl">Create your account</CardTitle><p className="mt-2 text-sm text-muted-foreground">Start building multi-agent AI systems with OpenAgent</p></div></CardHeader><CardContent><form onSubmit={submit} className="space-y-5"><div className="space-y-2"><Label htmlFor="register-email">Email</Label><Input id="register-email" type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="name@company.com" required /></div><div className="space-y-2"><Label htmlFor="register-password">Password</Label><Input id="register-password" type="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} required minLength={6} /></div><div className="space-y-2"><Label htmlFor="register-org">Organization (optional)</Label><Input id="register-org" value={orgName} onChange={(event) => setOrgName(event.target.value)} placeholder="Acme Inc." /></div><Button type="submit" className="h-11 w-full gap-2" loading={loading} disabled={!email || !password}>Create account{!loading && <ArrowRight className="h-4 w-4" aria-hidden="true" />}</Button><p className="text-center text-sm text-muted-foreground">Already have an account? <Link className="font-semibold text-primary underline-offset-4 hover:underline" href="/login">Sign in</Link></p></form></CardContent></Card></div>;
+  return <div className="mx-auto flex min-h-dvh max-w-md items-center px-4 py-12"><Card className="w-full border-border/80 shadow-3d-floating"><CardHeader className="space-y-3 pb-3 text-center"><div className="mx-auto grid h-12 w-12 place-items-center rounded-xl bg-primary text-primary-foreground shadow-card"><Bot className="h-6 w-6" aria-hidden="true" /></div><div><CardTitle className="text-xl">{tx("Tạo tài khoản của bạn", "Create your account")}</CardTitle><p className="mt-2 text-sm text-muted-foreground">{tx("Bắt đầu xây dựng hệ thống AI đa agent với OpenAgent", "Start building multi-agent AI systems with OpenAgent")}</p></div></CardHeader><CardContent><form onSubmit={submit} className="space-y-5"><div className="space-y-2"><Label htmlFor="register-email">{tx("Email", "Email")}</Label><Input id="register-email" type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder={tx("name@company.com", "name@company.com")} required /></div><div className="space-y-2"><Label htmlFor="register-password">{tx("Mật khẩu", "Password")}</Label><Input id="register-password" type="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} required minLength={6} /></div><div className="space-y-2"><Label htmlFor="register-org">{tx("Tổ chức (tùy chọn)", "Organization (optional)")}</Label><Input id="register-org" value={orgName} onChange={(event) => setOrgName(event.target.value)} placeholder={tx("Acme Inc.", "Acme Inc.")} /></div><Button type="submit" className="h-11 w-full gap-2" loading={loading} disabled={!email || !password}>{tx("Tạo tài khoản", "Create account")}{!loading && <ArrowRight className="h-4 w-4" aria-hidden="true" />}</Button><p className="text-center text-sm text-muted-foreground">{tx("Đã có tài khoản?", "Already have an account?")}<Link className="font-semibold text-primary underline-offset-4 hover:underline" href="/login">{tx("Đăng nhập", "Sign in")}</Link></p></form></CardContent></Card></div>;
 }

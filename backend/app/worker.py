@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import os
 import socket
@@ -9,6 +9,7 @@ from arq.connections import RedisSettings
 from sqlalchemy import select
 
 from app.config import get_settings
+from app.core.channels.jobs import process_channel_message
 from app.core.chat_events import fail_orphaned_chat_runs
 from app.core.observability.llm_trace import NoopSink, set_default_sink
 from app.core.outbox import publish_pending_outbox
@@ -390,12 +391,13 @@ async def process_outbox_event(ctx: dict, event_id: str) -> None:
 
 
 class WorkerSettings:
-    functions = [run_workflow, run_chat, run_provider_discovery, run_ci_research, process_outbox_event]
+    functions = [run_workflow, run_chat, run_provider_discovery, run_ci_research, process_outbox_event, process_channel_message]
     redis_settings = RedisSettings.from_dsn(get_settings().redis_url)
     on_startup = _startup
     on_shutdown = _shutdown
     cron_jobs = [
         cron(_auto_rollback_sweep, minute=set(range(0, 60, 5))),
+        cron(_resume_orphaned_runs, minute=set(range(2, 60, 5)), run_at_startup=False),
         cron(_fail_orphaned_chat_runs, minute=set(range(0, 60, 2)), run_at_startup=False),
         cron(_ci_scheduler_tick, minute=set(range(0, 60, 5)), run_at_startup=False),
         cron(_workflow_scheduler_tick, minute=set(range(0, 60, 1)), run_at_startup=False),

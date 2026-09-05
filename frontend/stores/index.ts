@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { GraphEdge, GraphNode } from "@/types";
+import type { ExecutionPolicy, GraphEdge, GraphNode } from "@/types";
 
 interface AgentState {
   selectedAgentId: string | null;
@@ -13,12 +13,15 @@ export const useAgentStore = create<AgentState>((set) => ({
 }));
 
 interface WorkflowState {
+  activeWorkflowId: string | null;
+  activeWorkflowName: string;
   nodes: GraphNode[];
   edges: GraphEdge[];
   selectedNodeId: string | null;
   activeRunId: string | null;
   activeRunStatus: string | null;
   setGraph: (nodes: GraphNode[], edges: GraphEdge[]) => void;
+  setActiveWorkflow: (id: string | null, name: string) => void;
   setSelectedNode: (id: string | null) => void;
   setActiveRun: (id: string | null, status?: string | null) => void;
   reset: () => void;
@@ -27,15 +30,27 @@ interface WorkflowState {
 export const useWorkflowStore = create<WorkflowState>()(
   persist(
     (set) => ({
+      activeWorkflowId: null,
+      activeWorkflowName: "",
       nodes: [],
       edges: [],
       selectedNodeId: null,
       activeRunId: null,
       activeRunStatus: null,
       setGraph: (nodes, edges) => set({ nodes, edges }),
+      setActiveWorkflow: (id, name) => set({ activeWorkflowId: id, activeWorkflowName: name }),
       setSelectedNode: (id) => set({ selectedNodeId: id }),
       setActiveRun: (id, status = null) => set({ activeRunId: id, activeRunStatus: status }),
-      reset: () => set({ nodes: [], edges: [], selectedNodeId: null, activeRunId: null, activeRunStatus: null }),
+      reset: () =>
+        set({
+          activeWorkflowId: null,
+          activeWorkflowName: "",
+          nodes: [],
+          edges: [],
+          selectedNodeId: null,
+          activeRunId: null,
+          activeRunStatus: null,
+        }),
     }),
     { name: "openagent-workflow-editor" },
   ),
@@ -45,17 +60,23 @@ interface ChatState {
   agentId: string | null;
   sessionId: string | null;
   activeRunId: string | null;
+  debug: boolean;
   // Model the user picked for upcoming messages, kept per agent so switching
   // agents does not carry a selection that may not even be valid for the next
   // one. Persisted on purpose: this used to live in component state, so a
   // reload between picking a model and sending silently reverted the next
   // message to the agent default.
   pendingModelIdByAgent: Record<string, string>;
+  pendingExecutionPolicy: ExecutionPolicy;
   hydrated: boolean;
   setAgent: (id: string | null) => void;
   setSession: (id: string | null) => void;
+  setAgentAndSession: (agentId: string | null, sessionId: string | null) => void;
   setActiveRun: (id: string | null) => void;
+  setDebug: (debug: boolean) => void;
+  toggleDebug: () => void;
   setPendingModel: (agentId: string | null, modelId: string | null) => void;
+  setPendingExecutionPolicy: (policy: ExecutionPolicy) => void;
   setHydrated: (hydrated: boolean) => void;
 }
 
@@ -65,11 +86,16 @@ export const useChatStore = create<ChatState>()(
       agentId: null,
       sessionId: null,
       activeRunId: null,
+      debug: false,
       pendingModelIdByAgent: {},
+      pendingExecutionPolicy: "manual",
       hydrated: false,
       setAgent: (id) => set({ agentId: id }),
       setSession: (id) => set({ sessionId: id }),
+      setAgentAndSession: (agentId, sessionId) => set({ agentId, sessionId }),
       setActiveRun: (id) => set({ activeRunId: id }),
+      setDebug: (debug) => set({ debug }),
+      toggleDebug: () => set((state) => ({ debug: !state.debug })),
       setPendingModel: (agentId, modelId) =>
         set((state) => {
           if (!agentId) return state;
@@ -78,6 +104,7 @@ export const useChatStore = create<ChatState>()(
           else delete next[agentId];
           return { pendingModelIdByAgent: next };
         }),
+      setPendingExecutionPolicy: (policy) => set({ pendingExecutionPolicy: policy }),
       setHydrated: (hydrated) => set({ hydrated }),
     }),
     {
@@ -86,7 +113,9 @@ export const useChatStore = create<ChatState>()(
         agentId: state.agentId,
         sessionId: state.sessionId,
         activeRunId: state.activeRunId,
+        debug: state.debug,
         pendingModelIdByAgent: state.pendingModelIdByAgent,
+        pendingExecutionPolicy: state.pendingExecutionPolicy,
       }),
       onRehydrateStorage: () => (state) => {
         state?.setHydrated(true);
@@ -94,3 +123,31 @@ export const useChatStore = create<ChatState>()(
     },
   ),
 );
+
+export interface CanvasItem {
+  title: string;
+  code?: string;
+  contentUrl?: string;
+  downloadUrl?: string;
+  language?: string;
+  initialTab?: "code" | "preview";
+}
+
+interface CanvasState {
+  isOpen: boolean;
+  activeItem: CanvasItem | null;
+  isFullscreen: boolean;
+  openCanvas: (item: CanvasItem) => void;
+  closeCanvas: () => void;
+  toggleFullscreen: () => void;
+}
+
+export const useCanvasStore = create<CanvasState>((set) => ({
+  isOpen: false,
+  activeItem: null,
+  isFullscreen: false,
+  openCanvas: (item) => set({ isOpen: true, activeItem: item }),
+  closeCanvas: () => set({ isOpen: false, activeItem: null, isFullscreen: false }),
+  toggleFullscreen: () => set((state) => ({ isFullscreen: !state.isFullscreen })),
+}));
+

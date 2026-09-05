@@ -6,16 +6,23 @@ import json
 import re
 import time
 import unicodedata
-from collections.abc import AsyncIterator, Coroutine
+from collections.abc import AsyncIterator, Awaitable, Callable, Coroutine
 from datetime import timedelta
+from pathlib import Path
 from typing import Any
 
 import structlog
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
+from app.core import session_log as slog
 from app.core.chat_events import ChatEventRecorder
+from app.core.execution_policy import (
+    ExecutionPolicy,
+    build_execution_policy_context,
+    policy_allows_tier,
+)
 from app.core.guardrails.approval import request_approval
 from app.core.guardrails.budget import BudgetTracker, RunBudget
 from app.core.guardrails.injection import wrap_untrusted_if_flagged
@@ -33,7 +40,16 @@ from app.core.observability.metrics import (
     tool_calls_total,
 )
 from app.core.providers.factory import build_driver
+from app.core.providers.templates import get_template
 from app.core.runtime_context import build_runtime_context, normalize_timezone
+from app.core.session_surface import derive_messages
+from app.core.tools.authorization import (
+    build_tool_authorization,
+    tool_args_hash,
+)
+from app.core.tools.authorization import (
+    requires_approval as tool_requires_approval,
+)
 from app.core.tools.registry import BUILTIN_TOOLS, execute_tool_call
 from app.core.tools.risk_tier import RiskTier
 from app.core.tools.types import ToolContext, ToolSpec, tool_to_openai_schema
@@ -48,6 +64,7 @@ from app.models.model import Model
 from app.models.provider import Provider
 from app.models.task import Task
 from app.models.usage import UsageEvent
+from app.models.workspace import WorkspaceArtifact
 from app.schemas.chat import AgentLoopResult
 from app.services.quota_service import invalidate_monthly_cost_cache
 
@@ -106,6 +123,7 @@ def defer_user_message(
     org_id: str,
     created_by_user_id: str | None,
     db: AsyncSession | None = None,
+    meta: dict[str, Any] | None = None,
 ) -> None:
     previous = _DEFERRED_USER_WRITES.pop(task_id, None)
     if previous is not None:
@@ -134,7 +152,7 @@ def defer_user_message(
         session_id=session_id,
         role="user",
         content=content,
-        meta={},
+        meta=meta or {},
         org_id=org_id,
         created_by_user_id=created_by_user_id,
         db=writer_db,
@@ -193,9 +211,14 @@ RAG_DIRECTIVE = (
 ORCHESTRATOR_SYSTEM_SUFFIX = (
     "Orchestrator behavior:\n"
     "- Break the user's goal into clear sub-tasks when delegation helps.\n"
-    "- Use `call_agent` to delegate work to suitable worker agents. You may call it "
-    "multiple times, including multiple tool calls in one turn when tasks can run independently.\n"
-    "- Synthesize subagent results into one concise final answer."
+    "- Use named delegate tools (delegate_to_*) to delegate work to the single most appropriate worker agent.\n"
+    "- For follow-up requests on files created in earlier turns (e.g., 'chạy luôn file đó cho tôi', 'preview it', 'run it'):\n"
+    "  * DO NOT ask the worker to regenerate, recreate, edit, or check if the file exists.\n"
+    "  * Instruct the worker ONLY to execute or preview the existing file directly: e.g. 'Chạy file add.py bằng run_code và trả về kết quả' or 'Xem trước file house.html bằng preview_web_artifact'.\n"
+    "  * NEVER say 'Tạo file nếu chưa có' or 'tạo file' for files already discussed or created in previous turns.\n"
+    "- Do NOT chain sub-agents redundantly (e.g. do not call another agent to search for a file that Software & Data Engineer just created).\n"
+    "- When a sub-agent completes its work, directly synthesize its output and present the final answer and usage guidance to the user.\n"
+    "- Synthesize all sub-agent results into one clear, concise final answer."
 )
 
 
@@ -246,9 +269,29 @@ async def _build_orchestrator_delegate_tools(
         capabilities = {key: list(value) for key, value in cached_capabilities.items()}
         return roster, specs, capabilities, {spec.name: spec for spec in specs}
     result = await db.execute(
-        select(Agent).where(Agent.org_id == org_id, Agent.id != exclude_agent_id)
+        select(Agent).where(
+            Agent.org_id == org_id,
+            Agent.id != exclude_agent_id,
+            Agent.kind == "worker",
+        )
     )
     agents = list(result.scalars().all())
+    if agents:
+        from app.models.org_agent_settings import OrgAgentSettings
+
+        disabled_res = await db.execute(
+            select(OrgAgentSettings.template_key).where(
+                OrgAgentSettings.org_id == org_id,
+                OrgAgentSettings.is_enabled.is_(False),
+            )
+        )
+        disabled_keys = set(disabled_res.scalars().all())
+        if disabled_keys:
+            agents = [
+                agent
+                for agent in agents
+                if getattr(agent, "template_key", None) not in disabled_keys
+            ]
     if not agents:
         return "", [], {}, {}
 
@@ -275,16 +318,17 @@ async def _build_orchestrator_delegate_tools(
             )
 
         spec = ToolSpec(
-                name=tool_name,
-                description=description,
-                input_schema={
-                    "type": "object",
-                    "properties": {"instruction": {"type": "string"}},
-                    "required": ["instruction"],
-                },
-                run=run_delegate,
-                risk_tier=RiskTier.execute,
-            )
+            name=tool_name,
+            description=description,
+            input_schema={
+                "type": "object",
+                "properties": {"instruction": {"type": "string"}},
+                "required": ["instruction"],
+            },
+            run=run_delegate,
+            risk_tier=RiskTier.safe,
+            timeout_s=300.0,
+        )
         delegate_specs.append(spec)
         delegate_by_agent_id[target.id] = spec
         lines.append(f"- {target.id}: {target.name} - {description}")
@@ -301,9 +345,11 @@ async def _build_orchestrator_delegate_tools(
 
 
 _ROUTING_SYNONYMS: dict[str, tuple[str, ...]] = {
-    "email": ("email", "gmail", "mail", "thư", "email"),
+    "email": ("email", "gmail", "mail", "thư"),
     "calendar": ("calendar", "lịch", "schedule", "meeting", "cuộc họp"),
-    "drive": ("drive", "tài liệu", "document", "documents", "file", "files"),
+    "drive": ("drive", "google drive", "gdrive"),
+    "write": ("write_file", "viết code", "tao file", "tạo file", "lưu file", "save file", "code html", "code python", "lập trình"),
+    "run": ("run_code", "chạy code", "execute", "thực thi", "sandbox"),
 }
 
 _GOOGLE_TOOL_PREFIXES = ("email_", "drive_", "calendar_")
@@ -677,6 +723,18 @@ async def _finish_task(
     task.cost_usd = cost_usd
     task.token_usage = token_usage or {}
     task.finished_at = utc_now()
+    if task.parent_task_id is None and status in {"succeeded", "failed", "cancelled"} and task.root_run_id:
+        try:
+            await db.execute(
+                update(ApprovalRequest)
+                .where(
+                    ApprovalRequest.run_id == task.root_run_id,
+                    ApprovalRequest.status == "pending",
+                )
+                .values(status="expired", decided_at=utc_now(), reason="run finished")
+            )
+        except Exception:
+            pass
     await db.commit()
 
 
@@ -687,9 +745,55 @@ async def _is_cancelled(db: AsyncSession, task: Task | None) -> bool:
     return task.status == "cancelled"
 
 
+def format_multimodal_user_content(
+    text: str,
+    images: list[dict[str, str]],
+    driver_family: str = "openai_compatible",
+) -> list[dict[str, Any]]:
+    """Format user text and attached images into provider-specific content blocks."""
+    if driver_family == "anthropic":
+        blocks: list[dict[str, Any]] = [{"type": "text", "text": text}]
+        for img in images:
+            blocks.append(
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": img["mime_type"],
+                        "data": img["data_b64"],
+                    },
+                }
+            )
+        return blocks
+    elif driver_family == "gemini":
+        blocks = [{"text": text}]
+        for img in images:
+            blocks.append(
+                {
+                    "inline_data": {
+                        "mime_type": img["mime_type"],
+                        "data": img["data_b64"],
+                    }
+                }
+            )
+        return blocks
+    else:  # openai_compatible and default
+        blocks = [{"type": "text", "text": text}]
+        for img in images:
+            blocks.append(
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:{img['mime_type']};base64,{img['data_b64']}"
+                    },
+                }
+            )
+        return blocks
+
+
 async def _agent_stream(
     agent: Agent,
-    message: str,
+    message: str | dict[str, Any],
     db: AsyncSession,
     depth: int,
     session_id: str | None,
@@ -704,8 +808,26 @@ async def _agent_stream(
     record_stream: bool = True,
     approval_resume_id: str | None = None,
     timezone_name: str | None = None,
+    execution_policy: ExecutionPolicy | None = None,
+    parent_session_id: str | None = None,
+    display_message: str | None = None,
+    message_meta: dict[str, Any] | None = None,
+    attachment_warnings: list[str] | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
+    def _allows_tier(tier: str) -> bool:
+        if execution_policy is not None:
+            return policy_allows_tier(execution_policy, tier)
+        return tier in (agent.allowed_risk_tiers or [])
+
+    if isinstance(message, dict):
+        raw_message_text = str(message.get("text") or "")
+        message_images = list(message.get("images") or [])
+    else:
+        raw_message_text = str(message or "")
+        message_images = []
+
     phase_started_at = time.monotonic()
+    turn_started_at = utc_now()
     logger.info(
         "chat_latency_phase",
         phase="agent_loop_start",
@@ -743,7 +865,7 @@ async def _agent_stream(
             agent_id=agent.id,
             agent_release_id=getattr(agent, "active_release_id", None),
             triggered_by_user_id=user_id or agent.created_by_user_id,
-            goal=message,
+            goal=raw_message_text,
             status="running",
             depth=depth,
             started_at=utc_now(),
@@ -817,7 +939,7 @@ async def _agent_stream(
         workspace_dir=settings.workspace_dir,
         mcp_manager=get_mcp_manager(),
         agent_id=agent.id,
-        session_id=session_id,
+        session_id=session_id or parent_session_id,
         org_id=agent.org_id,
         user_id=user_id or agent.created_by_user_id,
         current_task_id=current_task_id,
@@ -825,6 +947,19 @@ async def _agent_stream(
         model_id=selected_model_id,
         actor_agent_identity_id=actor_agent_identity_id,
         delegation_chain=delegation_chain,
+        parent_session_id=parent_session_id or session_id,
+        authorization=build_tool_authorization(
+            org_id=agent.org_id,
+            user_id=user_id or agent.created_by_user_id,
+            user_role=user_role,
+            agent_id=agent.id,
+            allowed_risk_tiers=agent.allowed_risk_tiers,
+            run_id=root_run_id or session_id or current_task_id,
+            principal_type="human" if user_id else "system",
+            principal_id=user_id or agent.created_by_user_id,
+            execution_policy=execution_policy,
+            replay=replay_cursor is not None,
+        ),
         timezone_name=normalize_timezone(timezone_name),
     )
 
@@ -858,7 +993,7 @@ async def _agent_stream(
             db, agent.org_id, root_run_id, agent.id, session_id
         )
         forced_tool_choice, route_directive = _route_orchestrator_turn(
-            message,
+            raw_message_text,
             delegate_specs,
             capability_index,
             delegate_by_agent_id,
@@ -867,7 +1002,7 @@ async def _agent_stream(
         if route_directive:
             directives.append(route_directive)
     elif agent.kind != "orchestrator":
-        forced_tool_choice = _route_google_worker_tool(message, tool_by_name)
+        forced_tool_choice = _route_google_worker_tool(raw_message_text, tool_by_name)
 
     tool_schemas = [tool_to_openai_schema(s) for s in specs] if specs else None
     logger.info(
@@ -880,39 +1015,59 @@ async def _agent_stream(
     )
 
     system_parts = [build_runtime_context(timezone_name)]
+    if execution_policy is not None:
+        system_parts.append(build_execution_policy_context(execution_policy))
     if base_prompt:
         system_parts.append(base_prompt)
     system_parts.extend(directives)
     system_prompt = "\n\n".join(system_parts)
 
     # Build messages: system prompt first, then conversation history, then current user message.
-    # NOTE: previously messages was built before system_prompt and then overwritten here —
-    # that caused history + user message to be lost entirely.
+    # History is derived from the append-only session event log so tool-call
+    # fidelity is preserved across turns ("model-visible means logged").
+    # The legacy Message table is only consulted when a session has no
+    # session_events yet (safe backfill path for sessions created before
+    # this feature shipped).
     messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
-    if session_id:
-        res = await db.execute(
-            select(Message).where(Message.session_id == session_id).order_by(Message.position)
-        )
-        hist = res.scalars().all()
-        if len(hist) > 20:
-            # Compact older messages via hierarchical memory tiering (Hot/Warm/Cold)
-            tiered = await compact_tiered_memory(
-                session_id,
-                db,
-                model,
-                provider,
-                hot_window=8,
-                agent_id=agent.id,
-                org_id=agent.org_id,
-                created_by_user_id=user_id or agent.created_by_user_id,
-                observability=observability,
-            )
-            messages.append({"role": "system", "content": f"[Conversation context]\n{tiered['combined']}"})
+    effective_session_id = session_id or parent_session_id
+    if effective_session_id:
+        events = await slog.load_events(db, effective_session_id)
+        if events:
+            messages.extend(derive_messages(events, repair_crash_tail=not bool(approval_resume_id)))
         else:
-            for m in hist:
-                messages.append(_to_openai_message(m))
+            res = await db.execute(
+                select(Message).where(Message.session_id == effective_session_id).order_by(Message.position)
+            )
+            hist = res.scalars().all()
+            if len(hist) > 20:
+                # Legacy sessions: still apply tiered compaction so old
+                # sessions don't blow the window until they earn events.
+                tiered = await compact_tiered_memory(
+                    effective_session_id,
+                    db,
+                    model,
+                    provider,
+                    hot_window=8,
+                    agent_id=agent.id,
+                    org_id=agent.org_id,
+                    created_by_user_id=user_id or agent.created_by_user_id,
+                    observability=observability,
+                )
+                messages.append({"role": "system", "content": f"[Conversation context]\n{tiered['combined']}"})
+            else:
+                for m in hist:
+                    messages.append(_to_openai_message(m))
+    if message_images:
+        template = get_template(getattr(provider, "template_key", "") or "")
+        driver_family = template.driver if template else "openai_compatible"
+        user_content: Any = format_multimodal_user_content(
+            raw_message_text, message_images, driver_family
+        )
+    else:
+        user_content = raw_message_text
+
     if not approval_resume_id:
-        messages.append({"role": "user", "content": message})
+        messages.append({"role": "user", "content": user_content})
     elif not any(m.get("role") == "user" for m in messages):
         # A freshly-created delegated sub-agent (this nested resume's
         # current_task_id did not exist before this call) has no prior turn
@@ -922,7 +1077,7 @@ async def _agent_stream(
         # which every provider tested rejects (a tool_calls turn with no
         # preceding user turn to be responding to). Restate the goal as
         # that user turn so the conversation shape is well-formed.
-        messages.append({"role": "user", "content": message})
+        messages.append({"role": "user", "content": user_content})
 
     logger.info(
         "chat_latency_phase",
@@ -937,11 +1092,27 @@ async def _agent_stream(
         defer_user_message(
             root_task.id,
             session_id=session_id,
-            content=message,
+            content=display_message if display_message is not None else raw_message_text,
             org_id=agent.org_id,
             created_by_user_id=user_id or agent.created_by_user_id,
             db=db,
+            meta=message_meta,
         )
+        # Mirror the FULL prompt (with any inlined attachment text) into the
+        # append-only event log, never the display-only content above - this
+        # is what future turns replay as this turn's user message for the
+        # model, and it must keep seeing the attachment content it read.
+        try:
+            await slog.append_event(
+                db,
+                session_id=session_id,
+                org_id=agent.org_id,
+                type_=slog.USER_MESSAGE,
+                data={"content": user_content},
+            )
+        except slog.SessionEventError:
+            # Malformed payload: don't poison the run, just log and proceed.
+            pass
 
     # Only the chat root task gets a durable event log: it is the one a
     # browser reconnects to. Subagent loops (call_agent) just emit in-process.
@@ -956,15 +1127,22 @@ async def _agent_stream(
         else None
     )
     if rec is not None:
+        if approval_resume_id:
+            await rec.sync_seq_from_db(db)
         rec.start_liveness()
 
     start = time.monotonic()
-    if rec is not None:
+    if rec is not None and not approval_resume_id:
         await rec.record({"event": "message_start", "data": {}})
+        for warning_msg in (attachment_warnings or []):
+            await rec.record({"event": "attachment_warning", "data": {"message": warning_msg}})
         asyncio.create_task(
             rec.flush_progress(phase="thinking", content_chars=0, reasoning_chars=0)
         )
-    yield {"event": "message_start", "data": {}}
+    if not approval_resume_id:
+        yield {"event": "message_start", "data": {}}
+        for warning_msg in (attachment_warnings or []):
+            yield {"event": "attachment_warning", "data": {"message": warning_msg}}
 
     tool_calls_log: list[dict[str, Any]] = []
     consecutive_failures = 0
@@ -1067,21 +1245,142 @@ async def _agent_stream(
                 current_task_id=next_hop.id,
                 root_run_id=root_run_id,
                 user_id=user_id,
+                user_role=user_role,
                 model_id=model_id or selected_model_id,
                 actor_agent_identity_id=actor_agent_identity_id,
                 delegation_chain=delegation_chain,
                 record_stream=False,
                 approval_resume_id=approval_resume_id,
+                execution_policy=execution_policy,
             ):
-                if nested_ev["event"] == "message_done":
-                    nested_result = nested_ev["data"]["content"]
-                elif nested_ev["event"] in {"approval_required", "error", "replay_diverged"}:
-                    # The nested run itself paused/failed further down the
-                    # tree (e.g. a third approval gate) - surface that
-                    # outcome as-is rather than pretending this level
-                    # finished.
+                ev_type = nested_ev.get("event")
+                ev_data = nested_ev.get("data", {})
+                if ev_type == "message_done":
+                    nested_result = ev_data.get("content", "")
+                elif ev_type == "approval_required":
+                    prog_ev = {
+                        "event": "tool_progress",
+                        "data": {
+                            "index": 0,
+                            "name": resume_tool_name,
+                            "stage": "subagent_approval_required",
+                            "agent_name": child_agent.name,
+                            "agent_id": child_agent.id,
+                            "approval_id": ev_data.get("approval_id"),
+                            "tool_name": ev_data.get("tool_name"),
+                            "line": f"\n[Subagent '{child_agent.name}' requires approval for {ev_data.get('tool_name')}]\n",
+                        },
+                    }
+                    if rec is not None:
+                        await rec.record(prog_ev)
+                        await rec.record(nested_ev)
+                        await rec.close()
+                    yield prog_ev
                     yield nested_ev
                     return
+                elif ev_type in {"error", "replay_diverged"}:
+                    if rec is not None:
+                        await rec.record(nested_ev)
+                        await rec.close()
+                    yield nested_ev
+                    return
+                elif ev_type == "reasoning":
+                    text = ev_data.get("content", "")
+                    prog_ev = {
+                        "event": "tool_progress",
+                        "data": {
+                            "index": 0,
+                            "name": resume_tool_name,
+                            "stage": "subagent_reasoning",
+                            "agent_name": child_agent.name,
+                            "agent_id": child_agent.id,
+                            "content": text,
+                            "line": text,
+                        },
+                    }
+                    if rec is not None:
+                        await rec.record(prog_ev)
+                    yield prog_ev
+                elif ev_type == "token":
+                    text = ev_data.get("content", "")
+                    prog_ev = {
+                        "event": "tool_progress",
+                        "data": {
+                            "index": 0,
+                            "name": resume_tool_name,
+                            "stage": "subagent_token",
+                            "agent_name": child_agent.name,
+                            "agent_id": child_agent.id,
+                            "content": text,
+                            "line": text,
+                        },
+                    }
+                    if rec is not None:
+                        await rec.record(prog_ev)
+                    yield prog_ev
+                elif ev_type == "tool_call":
+                    tool_name = ev_data.get("name", "")
+                    tool_args = ev_data.get("arguments", {})
+                    prog_ev = {
+                        "event": "tool_progress",
+                        "data": {
+                            "index": 0,
+                            "name": resume_tool_name,
+                            "stage": "subagent_tool_call",
+                            "agent_name": child_agent.name,
+                            "agent_id": child_agent.id,
+                            "tool_name": tool_name,
+                            "arguments": tool_args,
+                            "line": f"\n[Subagent '{child_agent.name}' calling tool: {tool_name}]\n",
+                        },
+                    }
+                    if rec is not None:
+                        await rec.record(prog_ev)
+                    yield prog_ev
+                elif ev_type == "tool_progress":
+                    prog_ev = {
+                        "event": "tool_progress",
+                        "data": {
+                            "index": 0,
+                            "name": resume_tool_name,
+                            "stage": "subagent_tool_progress",
+                            "agent_name": child_agent.name,
+                            "agent_id": child_agent.id,
+                            **ev_data,
+                        },
+                    }
+                    if rec is not None:
+                        await rec.record(prog_ev)
+                    yield prog_ev
+                elif ev_type == "tool_result":
+                    tool_name = ev_data.get("name", "")
+                    prog_ev = {
+                        "event": "tool_progress",
+                        "data": {
+                            "index": 0,
+                            "name": resume_tool_name,
+                            "stage": "subagent_tool_result",
+                            "agent_name": child_agent.name,
+                            "agent_id": child_agent.id,
+                            "tool_name": tool_name,
+                            "result": ev_data.get("result", ""),
+                            "line": f"[Subagent '{child_agent.name}' tool {tool_name} completed]\n",
+                        },
+                    }
+                    if rec is not None:
+                        await rec.record(prog_ev)
+                    yield prog_ev
+            res_ev = {
+                "event": "tool_result",
+                "data": {
+                    "index": 0,
+                    "name": resume_tool_name,
+                    "result": nested_result,
+                },
+            }
+            if rec is not None:
+                await rec.record(res_ev)
+            yield res_ev
             messages.append({
                 "role": "assistant",
                 "content": None,
@@ -1105,6 +1404,17 @@ async def _agent_stream(
                 "content": nested_result,
             })
             approved_resume_result = nested_result
+            tool_args = (
+                {"target_agent_id": child_agent.id, "instruction": next_hop.goal}
+                if resume_tool_name == "call_agent"
+                else {"instruction": next_hop.goal}
+            )
+            tool_calls_log.append({
+                "name": resume_tool_name,
+                "arguments": tool_args,
+                "result": nested_result,
+                "approval_id": approval.id,
+            })
             # The routing directive that forced this turn's tool_choice
             # already did its job (it is why this delegation happened at
             # all); forcing it again on the next model call - which is what
@@ -1141,7 +1451,7 @@ async def _agent_stream(
                 else None
             )
             budget_reason = budget.record_call(name, args)
-            if budget_reason or spec.risk_tier.value not in agent.allowed_risk_tiers:
+            if budget_reason or not _allows_tier(spec.risk_tier.value):
                 result = budget_reason or (
                     f"error: tool '{name}' requires risk tier '{spec.risk_tier.value}' "
                     "which is not enabled for this agent"
@@ -1163,8 +1473,15 @@ async def _agent_stream(
                 await rec.record(call_ev)
                 await rec.flush_progress(phase=f"tool:{name}")
             yield call_ev
+            approved_ctx = copy.copy(ctx)
+            approved_ctx.authorization = ctx.authorization.for_approved_call(
+                approval_id=approval.id,
+                approval_status=approval.status,
+                tool_name=name,
+                args=args,
+            ) if ctx.authorization is not None else None
             try:
-                result = await execute_tool_call(spec, args, ctx)
+                result = await execute_tool_call(spec, args, approved_ctx)
                 tool_status = "ok"
                 if tool_observation is not None:
                     tool_observation.finish_success(result=result)
@@ -1212,6 +1529,11 @@ async def _agent_stream(
     finalization_retry_used = False
     finalization_outcome = "direct"
 
+    # Running token totals across the whole run, so a mid-run budget trip can
+    # persist what was actually spent onto the failed task - consistent with
+    # budget.cost_usd, which also accumulates across iterations.
+    usage_totals: dict[str, int] = {}
+
     async def _retry_finalization_without_tools() -> tuple[str, str, dict[str, int], bool, bool]:
         parts: list[str] = []
         reasoning: list[str] = []
@@ -1222,6 +1544,7 @@ async def _agent_stream(
             messages,
             tools=None,
             temperature=agent.temperature,
+            thinking=agent.enable_thinking,
         ):
             if retry_ev["type"] == "content":
                 parts.append(retry_ev["text"])
@@ -1267,6 +1590,7 @@ async def _agent_stream(
                     iteration=_,
                     elapsed_ms=round((time.monotonic() - phase_started_at) * 1000, 1),
                 )
+                stream_kwargs["thinking"] = agent.enable_thinking
                 stream_iter = llm.stream(messages, **stream_kwargs)
                 first_provider_event = True
                 async for ev in stream_iter:
@@ -1348,11 +1672,55 @@ async def _agent_stream(
                             estimated=usage_estimated,
                         )
                         genai.record_finish_reasons(chat_span, ev.get("finish_reasons") or [])
+                        # Feed this step's real cost into the run budget so
+                        # max_cost_usd can trip mid-run, not just at the end.
+                        if not usage_estimated and stream_usage:
+                            for k in ("input_tokens", "output_tokens"):
+                                usage_totals[k] = usage_totals.get(k, 0) + int(stream_usage.get(k, 0) or 0)
+                            step_cost = LLMClient.estimate_cost(model, {
+                                "input_tokens": int(stream_usage.get("input_tokens", 0) or 0),
+                                "output_tokens": int(stream_usage.get("output_tokens", 0) or 0),
+                            })
+                            cost_reason = budget.add_cost(step_cost)
+                            if cost_reason:
+                                guardrail_events_total.labels(
+                                    agent.org_id, "budget_exceeded", "blocked"
+                                ).inc()
+                                await log_action(
+                                    db,
+                                    org_id=agent.org_id,
+                                    actor_user_id=user_id or agent.created_by_user_id,
+                                    actor_agent_identity_id=actor_agent_identity_id,
+                                    delegation_chain=delegation_chain,
+                                    action="guardrail.budget_exceeded",
+                                    resource_type="model",
+                                    resource_id=model.name,
+                                    metadata={"reason": cost_reason, "run_id": root_run_id or session_id},
+                                    commit=False,
+                                )
+                                budget_ev = {
+                                    "event": "budget_exceeded",
+                                    "data": {"reason": cost_reason},
+                                }
+                                if rec is not None:
+                                    await rec.record(budget_ev)
+                                    await rec.close()
+                                await _finish_task(
+                                    db,
+                                    root_task,
+                                    status="failed",
+                                    result=f"error: run budget exceeded: {cost_reason}",
+                                    cost_usd=budget.cost_usd,
+                                    token_usage={**usage_totals, "estimated": False},
+                                )
+                                yield budget_ev
+                                return
 
             if tc_map:
                 openai_tcs = []
                 iter_failures = 0
                 iter_results: list[dict[str, str]] = []
+                batch_cached_results: dict[tuple[str, str], tuple[Any, str]] = {}
                 for entry in tc_map.values():
                     openai_tcs.append(
                         {
@@ -1373,6 +1741,7 @@ async def _agent_stream(
                         args = {}
                     spec = tool_by_name.get(name)
                     tool_index = idx
+                    call_sig = (name, json.dumps(args, sort_keys=True))
                     approved_replay = (
                         approved_resume_name == name
                         and approved_resume_args == args
@@ -1382,6 +1751,23 @@ async def _agent_stream(
                         "event": "tool_call",
                         "data": {"index": tool_index, "name": name, "arguments": args},
                     }
+                    if session_id:
+                        try:
+                            await slog.append_event(
+                                db,
+                                session_id=session_id,
+                                org_id=agent.org_id,
+                                type_=slog.TOOL_CALL,
+                                data={
+                                    "tool_call_id": entry["id"],
+                                    "name": name,
+                                    "arguments": entry.get("arguments") or "{}",
+                                    "status": "started",
+                                },
+                            )
+                            await db.commit()
+                        except slog.SessionEventError:
+                            pass
                     if rec is not None:
                         await rec.record(call_ev)
                         await rec.flush_progress(phase=f"tool:{name}")
@@ -1403,6 +1789,9 @@ async def _agent_stream(
                     if approved_replay:
                         result = approved_resume_result
                         tool_status = "approved_replay"
+                    elif call_sig in batch_cached_results:
+                        # Parallel duplicate tool call in the same turn: reuse cached result
+                        result, tool_status = batch_cached_results[call_sig]
                     elif spec is None:
                         result = f"error: tool '{name}' not available"
                         tool_status = "error"
@@ -1453,12 +1842,12 @@ async def _agent_stream(
                                 tool_observation.finish_error(RuntimeError(result), result=result)
                             return
                         # Layer 1: risk-tier capability gate
-                        if spec.risk_tier.value not in agent.allowed_risk_tiers:
+                        if not _allows_tier(spec.risk_tier.value):
                             tool_status = "denied"
                             result = (
                                 f"error: tool '{name}' requires risk tier "
-                                f"'{spec.risk_tier.value}' which is not enabled for this agent. "
-                                f"Allowed tiers: {agent.allowed_risk_tiers}"
+                                f"'{spec.risk_tier.value}' which is not allowed by the execution policy. "
+                                f"Policy: {execution_policy.value if execution_policy is not None else 'legacy-agent-tiers'}"
                             )
                             guardrail_events_total.labels(
                                 agent.org_id, "risk_tier_denied", "blocked"
@@ -1474,12 +1863,21 @@ async def _agent_stream(
                                 resource_id=name,
                                 metadata={
                                     "required_tier": spec.risk_tier.value,
-                                    "allowed_tiers": list(agent.allowed_risk_tiers or []),
+                                    "allowed_tiers": (
+                                        [tier for tier in (
+                                            ("safe", "read", "network")
+                                            if execution_policy is not None and execution_policy.value == "read-only"
+                                            else tuple(agent.allowed_risk_tiers or ())
+                                        )]
+                                    ),
+                                    "execution_policy": (
+                                        execution_policy.value if execution_policy is not None else None
+                                    ),
                                     "run_id": session_id,
                                 },
                                 commit=False,
                             )
-                        elif spec.requires_approval:
+                        elif tool_requires_approval(spec, execution_policy):
                             approval = await request_approval(
                                 db,
                                 org_id=agent.org_id,
@@ -1489,7 +1887,9 @@ async def _agent_stream(
                                 args_snapshot=args,
                                 requested_by=user_id or agent.created_by_user_id,
                                 owning_task_id=current_task_id,
+                                idempotency_key=f"{root_run_id}:{current_task_id or 'root'}:{name}:{tool_args_hash(args)}",
                             )
+                            await db.commit()
                             guardrail_events_total.labels(
                                 agent.org_id, "approval_required", "paused"
                             ).inc()
@@ -1780,6 +2180,23 @@ async def _agent_stream(
                             },
                             commit=False,
                         )
+                    # Mirror the tool result into the event log. The tool call
+                    # was persisted before execution so a crash cannot lose it.
+                    if session_id:
+                        try:
+                            await slog.append_event(
+                                db,
+                                session_id=session_id,
+                                org_id=agent.org_id,
+                                type_=slog.TOOL_RESULT,
+                                data={
+                                    "tool_call_id": entry["id"],
+                                    "content": result,
+                                    "status": tool_status,
+                                },
+                            )
+                        except slog.SessionEventError:
+                            pass
                     result_ev = {
                         "event": "tool_result",
                         "data": {"index": tool_index, "name": name, "result": result},
@@ -1788,6 +2205,7 @@ async def _agent_stream(
                         await rec.record(result_ev)
                         await rec.heartbeat(phase="thinking")
                     yield result_ev
+                    batch_cached_results[call_sig] = (result, tool_status)
                     log_entry: dict[str, Any] = {"name": name, "arguments": args, "result": result}
                     if secret_findings:
                         log_entry["redacted_secret_findings"] = [f.kind for f in secret_findings]
@@ -1886,6 +2304,52 @@ async def _agent_stream(
                         unexpected_tool_calls,
                     ) = await _retry_finalization_without_tools()
                     finalization_attempts.append((retry_usage, retry_estimated))
+                    if not retry_estimated and retry_usage:
+                        for key in ("input_tokens", "output_tokens"):
+                            usage_totals[key] = usage_totals.get(key, 0) + int(
+                                retry_usage.get(key, 0) or 0
+                            )
+                        retry_cost = LLMClient.estimate_cost(model, {
+                            "input_tokens": int(retry_usage.get("input_tokens", 0) or 0),
+                            "output_tokens": int(retry_usage.get("output_tokens", 0) or 0),
+                        })
+                        retry_budget_reason = budget.add_cost(retry_cost)
+                        if retry_budget_reason:
+                            guardrail_events_total.labels(
+                                agent.org_id, "budget_exceeded", "blocked"
+                            ).inc()
+                            await log_action(
+                                db,
+                                org_id=agent.org_id,
+                                actor_user_id=user_id or agent.created_by_user_id,
+                                actor_agent_identity_id=actor_agent_identity_id,
+                                delegation_chain=delegation_chain,
+                                action="guardrail.budget_exceeded",
+                                resource_type="model",
+                                resource_id=model.name,
+                                metadata={
+                                    "reason": retry_budget_reason,
+                                    "run_id": root_run_id or session_id,
+                                },
+                                commit=False,
+                            )
+                            budget_ev = {
+                                "event": "budget_exceeded",
+                                "data": {"reason": retry_budget_reason},
+                            }
+                            if rec is not None:
+                                await rec.record(budget_ev)
+                                await rec.close()
+                            await _finish_task(
+                                db,
+                                root_task,
+                                status="failed",
+                                result=f"error: run budget exceeded: {retry_budget_reason}",
+                                cost_usd=budget.cost_usd,
+                                token_usage={**usage_totals, "estimated": False},
+                            )
+                            yield budget_ev
+                            return
                     if unexpected_tool_calls:
                         logger.warning(
                             "chat_finalization_retry_returned_tool_calls",
@@ -1955,6 +2419,51 @@ async def _agent_stream(
             }
             model_label = model.display_name or model.name
             reasoning_text = reasoning_text or "".join(reasoning_parts)
+
+            # Query workspace artifacts created/updated during this turn
+            artifacts_list: list[dict[str, Any]] = []
+            if agent.org_id:
+                try:
+                    task_ids = [
+                        tid for tid in [current_task_id, (root_task.id if root_task else None)]
+                        if tid
+                    ]
+                    id_conditions = []
+                    if task_ids:
+                        id_conditions.append(WorkspaceArtifact.task_id.in_(task_ids))
+                    if root_run_id:
+                        id_conditions.append(WorkspaceArtifact.root_run_id == root_run_id)
+                    if session_id:
+                        id_conditions.append(WorkspaceArtifact.session_id == session_id)
+                        id_conditions.append(WorkspaceArtifact.root_run_id == session_id)
+
+                    art_filters = [
+                        WorkspaceArtifact.org_id == agent.org_id,
+                        WorkspaceArtifact.updated_at >= (turn_started_at - timedelta(seconds=1)),
+                    ]
+                    if id_conditions:
+                        art_filters.append(or_(*id_conditions))
+
+                    art_stmt = (
+                        select(WorkspaceArtifact)
+                        .where(*art_filters)
+                        .order_by(WorkspaceArtifact.created_at.asc())
+                    )
+                    art_res = await db.execute(art_stmt)
+                    for art in art_res.scalars().all():
+                        artifacts_list.append({
+                            "id": art.id,
+                            "path": art.path,
+                            "filename": Path(art.path).name,
+                            "content_type": art.content_type,
+                            "size": art.size,
+                            "download_url": f"/api/workspace/artifacts/{art.id}/download",
+                            "content_url": f"/api/workspace/artifacts/{art.id}/download?inline=true",
+                            "source_tool": art.source_tool,
+                        })
+                except Exception:
+                    logger.warning("failed_to_query_turn_artifacts", exc_info=True)
+
             done_ev = {
                 "event": "message_done",
                 "data": {
@@ -1967,8 +2476,28 @@ async def _agent_stream(
                     "model": model_label,
                     "reasoning": reasoning_text,
                     "finalization": finalization_outcome,
+                    "artifacts": artifacts_list,
                 },
             }
+            if session_id:
+                # Persist only the final assistant text. Tool calls/results
+                # are separate events and are projected into their own
+                # provider messages.
+                try:
+                    await slog.append_event(
+                        db,
+                        session_id=session_id,
+                        org_id=agent.org_id,
+                        type_=slog.ASSISTANT_MESSAGE,
+                        data={
+                            "content": final,
+                            "usage": usage,
+                            "reasoning": reasoning_text,
+                            "artifacts": artifacts_list,
+                        },
+                    )
+                except slog.SessionEventError:
+                    pass
             if rec is not None:
                 # Record before yielding so a reconnecting client that drains
                 # the log always sees the terminal event.
@@ -1989,7 +2518,8 @@ async def _agent_stream(
                         "tools": tool_calls_log,
                         "model": model_label,
                         "reasoning": reasoning_text,
-                    "finalization": finalization_outcome,
+                        "finalization": finalization_outcome,
+                        "artifacts": artifacts_list,
                     },
                     org_id=agent.org_id,
                     created_by_user_id=user_id or agent.created_by_user_id,
@@ -2038,7 +2568,7 @@ async def _agent_stream(
 
 async def run_agent_loop(
     agent: Agent,
-    message: str,
+    message: str | dict[str, Any],
     db: AsyncSession,
     depth: int = 0,
     session_id: str | None = None,
@@ -2053,6 +2583,12 @@ async def run_agent_loop(
     record_stream: bool = True,
     approval_resume_id: str | None = None,
     timezone_name: str | None = None,
+    execution_policy: ExecutionPolicy | None = None,
+    parent_session_id: str | None = None,
+    on_event: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
+    display_message: str | None = None,
+    message_meta: dict[str, Any] | None = None,
+    attachment_warnings: list[str] | None = None,
 ) -> AgentLoopResult:
     content = ""
     usage: dict[str, Any] = {"input_tokens": 0, "output_tokens": 0}
@@ -2060,6 +2596,7 @@ async def run_agent_loop(
     latency_ms = 0
     cost_usd = 0.0
     error: str | None = None
+    model_name: str | None = None
     async for ev in _agent_stream(
         agent,
         message,
@@ -2077,7 +2614,17 @@ async def run_agent_loop(
         record_stream=record_stream,
         approval_resume_id=approval_resume_id,
         timezone_name=timezone_name,
+        execution_policy=execution_policy,
+        parent_session_id=parent_session_id,
+        display_message=display_message,
+        message_meta=message_meta,
+        attachment_warnings=attachment_warnings,
     ):
+        if on_event is not None:
+            try:
+                await on_event(ev)
+            except Exception:  # noqa: BLE001
+                pass
         if ev["event"] == "message_done":
             data = ev["data"]
             content = data["content"]
@@ -2085,6 +2632,7 @@ async def run_agent_loop(
             tool_calls = data.get("tools", [])
             latency_ms = data["latency_ms"]
             cost_usd = float(data.get("cost_usd", 0.0) or 0.0)
+            model_name = data.get("model")
         elif ev["event"] == "error":
             error = str(ev["data"].get("message") or "agent execution failed")
     return AgentLoopResult(
@@ -2094,4 +2642,5 @@ async def run_agent_loop(
         latency_ms=latency_ms,
         cost_usd=cost_usd,
         error=error,
+        model=model_name,
     )

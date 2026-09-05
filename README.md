@@ -42,7 +42,7 @@ plug in over the MCP protocol without backend provider code.
   repository layer (every query is scoped by `org_id`).
 - **AuthN/AuthZ**: JWT access + rotating refresh tokens, OAuth2/OIDC login,
   API keys for machine-to-machine, static role→permission matrix
-  (`owner` / `admin` / `developer` / `viewer`).
+  (`platform_admin` / `org_admin` / `operator` / `user`).
 - **Guardrails**: prompt-injection filter, secret/PII scanner, loop &
   cost/wall-clock circuit breakers, human-in-the-loop approval gate, append-only
   audit log.

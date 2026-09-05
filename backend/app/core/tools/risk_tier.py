@@ -6,7 +6,7 @@ from enum import Enum
 class RiskTier(str, Enum):
     """Risk classification for every tool.
 
-    Used by the 2-layer capability gate (agent-level → org/role-level via ``agent.allowed_risk_tiers``).
+    Used as tool metadata for policy enforcement, RBAC checks, and audit records.
     """
 
     safe = "safe"  # memory tools, no side effects

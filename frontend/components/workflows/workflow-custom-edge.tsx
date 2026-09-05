@@ -7,13 +7,15 @@ import {
   getBezierPath,
   type EdgeProps,
 } from "@xyflow/react";
-import { X } from "lucide-react";
+import { X, GitBranch } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { NodeStatus } from "./workflow-node-types";
+import { useTranslation } from "@/lib/i18n";
 
 export type WorkflowEdgeData = {
   sourceStatus: NodeStatus;
   onDelete: (edgeId: string) => void;
+  onEditCondition?: (edgeId: string) => void;
 };
 
 export function WorkflowCustomEdge({
@@ -26,7 +28,9 @@ export function WorkflowCustomEdge({
   targetPosition,
   markerEnd,
   data,
+  label,
 }: EdgeProps & { data?: WorkflowEdgeData }) {
+  const { t } = useTranslation();
   const [hovered, setHovered] = React.useState(false);
   const [edgePath, labelX, labelY] = getBezierPath({
     sourceX,
@@ -38,6 +42,7 @@ export function WorkflowCustomEdge({
   });
 
   const sourceStatus = data?.sourceStatus ?? "idle";
+  const hasCondition = Boolean(label);
 
   const strokeClass =
     sourceStatus === "running"
@@ -68,10 +73,40 @@ export function WorkflowCustomEdge({
         onMouseLeave={() => setHovered(false)}
       />
       <EdgeLabelRenderer>
+        {hasCondition && (
+          <span
+            className={cn(
+              "pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-md border border-primary/30 bg-primary/10 px-1.5 py-0.5 font-mono text-[9px] text-primary transition-opacity duration-150",
+              hovered ? "opacity-100" : "opacity-70",
+            )}
+            style={{ left: labelX, top: labelY + 16 }}
+          >
+            <GitBranch className="mr-1 inline h-2.5 w-2.5" aria-hidden="true" />
+            {String(label).slice(0, 40)}
+          </span>
+        )}
         <button
           type="button"
-          aria-label="Delete connection"
-          title="Delete connection"
+          aria-label={t("pages.workflows.nodeCondition", "Edit condition")}
+          title={t("pages.workflows.nodeCondition", "Edit condition")}
+          onMouseEnter={() => setHovered(true)}
+          onMouseLeave={() => setHovered(false)}
+          onClick={(e) => {
+            e.stopPropagation();
+            data?.onEditCondition?.(id);
+          }}
+          className={cn(
+            "pointer-events-auto absolute grid h-5 w-5 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-primary/40 bg-primary text-primary-foreground shadow-3d-card transition-opacity duration-150 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            hovered ? "opacity-100" : "opacity-0",
+          )}
+          style={{ left: labelX - 14, top: labelY }}
+        >
+          <GitBranch className="h-3 w-3" />
+        </button>
+        <button
+          type="button"
+          aria-label={t("common.delete", "Delete connection")}
+          title={t("common.delete", "Delete connection")}
           onMouseEnter={() => setHovered(true)}
           onMouseLeave={() => setHovered(false)}
           onClick={(e) => {
@@ -82,7 +117,7 @@ export function WorkflowCustomEdge({
             "pointer-events-auto absolute grid h-5 w-5 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-destructive/40 bg-destructive text-destructive-foreground shadow-3d-card transition-opacity duration-150 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             hovered ? "opacity-100" : "opacity-0",
           )}
-          style={{ left: labelX, top: labelY }}
+          style={{ left: labelX + 14, top: labelY }}
         >
           <X className="h-3 w-3" />
         </button>

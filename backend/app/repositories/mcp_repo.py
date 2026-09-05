@@ -41,8 +41,16 @@ class McpRepository(BaseRepository[McpServer]):
     async def replace_tools(self, server_id: str, tools: list[dict]) -> None:
         from sqlalchemy import delete
 
+        existing = await self.db.execute(select(McpTool).where(McpTool.server_id == server_id))
+        classifications = {
+            row.name: (row.risk_tier or "dangerous", bool(row.requires_approval))
+            for row in existing.scalars().all()
+        }
         await self.db.execute(delete(McpTool).where(McpTool.server_id == server_id))
         for t in tools:
+            risk_tier, requires_approval = classifications.get(
+                t["name"], ("dangerous", True)
+            )
             self.db.add(
                 McpTool(
                     server_id=server_id,
@@ -50,6 +58,8 @@ class McpRepository(BaseRepository[McpServer]):
                     description=t.get("description", ""),
                     input_schema=t.get("input_schema", {}),
                     enabled=True,
+                    risk_tier=risk_tier,
+                    requires_approval=requires_approval,
                 )
             )
         await self.db.commit()

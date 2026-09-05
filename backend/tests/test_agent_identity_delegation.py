@@ -43,7 +43,7 @@ async def test_permission_intersection_user_and_allowed_tiers():
     assert user_safe is True
 
     admin_dangerous = evaluate_permission_intersection(
-        user_role=Role.admin,
+        user_role=Role.org_admin,
         permission="tools:use:dangerous",
         agent_allowed_risk_tiers=["safe", "read"],
     )

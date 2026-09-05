@@ -1,62 +1,154 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
+import { toast } from "sonner";
 import {
-  Bell,
-  Check,
-  ChevronLeft,
-  ChevronRight,
-  Inbox,
-  MailOpen,
+  CalendarDays,
+  CheckCheck,
+  Clock3,
+  ExternalLink,
+  Filter,
+  Mail,
+  Plus,
   RefreshCw,
   Search,
   ShieldAlert,
+  ShieldCheck,
+  Trash2,
+  Inbox,
+  UserCheck,
+  ChevronRight,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { useTranslation } from "@/lib/i18n";
+
+const NOTIFICATION_TYPE_KEYS: Record<string, string> = {
+  CONTRACT_UPDATE: "notifications.contractUpdate",
+  CALENDAR_INVITE: "notifications.calendarInvite",
+  GENERAL: "notifications.general",
+};
+
+function notificationTypeLabel(type: string, t: (p: string, f?: string) => string): string {
+  const key = NOTIFICATION_TYPE_KEYS[type] || type;
+  if (key.includes(".")) return t(key, type);
+  return key;
+}
+import { useCustomerIntelligenceNotifications, useMarkCustomerIntelligenceNotificationRead, useUrlSearchParam } from "@/hooks";
 import { PageHeader } from "@/components/page-header";
-import { EmptyState, ErrorState, LoadingSkeleton } from "@/components/shared";
-import { formatVietnamDateTime, vietnamDateRangeStart } from "@/lib/datetime";
-import {
-  useCustomerIntelligenceNotifications,
-  useMarkCustomerIntelligenceNotificationRead,
-} from "@/hooks";
+import { Button } from "@/components/ui/button";
+import { Input, Label } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { EmptyState, ErrorState, LoadingSkeleton, DataPagination, ConfirmDialog } from "@/components/shared";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { api } from "@/lib/api";
+import { getActiveOrgId } from "@/lib/auth";
+import { emailIntelligenceQueryKeys } from "@/lib/email-intelligence/query-keys";
+import type { CustomerIntelligenceNotification } from "@/types";
 
 type DateRange = "all" | "today" | "7d" | "30d";
 
+type Rule = {
+  id: string;
+  name: string;
+  match_type: string;
+  match_value: string;
+  action: string;
+  calendar_connection_id: string;
+  expires_at: string;
+  is_active: boolean;
+};
+
+type RuleResponse = {
+  rules: Rule[];
+};
+
 function dateRange(range: DateRange) {
   if (range === "all") return {};
-  return { receivedAfter: vietnamDateRangeStart(range) };
+  const end = new Date();
+  const start = new Date();
+  if (range === "today") {
+    start.setHours(0, 0, 0, 0);
+  } else if (range === "7d") {
+    start.setDate(end.getDate() - 7);
+  } else if (range === "30d") {
+    start.setDate(end.getDate() - 30);
+  }
+  return {
+    from_date: start.toISOString(),
+    to_date: end.toISOString(),
+  };
 }
 
-function relativeTime(value: string) {
-  const seconds = Math.round((new Date(value).getTime() - Date.now()) / 1000);
-  const absolute = Math.abs(seconds);
-  const unit = absolute < 60 ? "second" : absolute < 3600 ? "minute" : absolute < 86400 ? "hour" : "day";
-  const divisor = unit === "second" ? 1 : unit === "minute" ? 60 : unit === "hour" ? 3600 : 86400;
-  return new Intl.RelativeTimeFormat("en", { numeric: "auto" }).format(Math.round(seconds / divisor), unit);
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
-function preview(body: string, subject: string) {
-  const lines = body.split("\n");
-  return lines[0].trim() === subject.trim() ? lines.slice(1).join(" ").trim() : body.replace(/\s+/g, " ").trim();
-}
-
-function initials(sender: string) {
-  return sender.split("@")[0].slice(0, 2).toUpperCase();
+function createIdempotencyKey() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `idemp-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 export default function EmailIntelligencePage() {
+  const { t, dict, locale, tx } = useTranslation();
+  const [tabParam, setTabParam] = useUrlSearchParam("tab");
+  const activeTab = (tabParam as "inbox" | "rules") || "inbox";
+
   const [unreadOnly, setUnreadOnly] = React.useState(false);
   const [range, setRange] = React.useState<DateRange>("all");
   const [notificationType, setNotificationType] = React.useState("");
   const [searchInput, setSearchInput] = React.useState("");
   const [query, setQuery] = React.useState("");
+  const [pageSize, setPageSize] = React.useState(10);
   const [pageIndex, setPageIndex] = React.useState(0);
   const [pageCursors, setPageCursors] = React.useState<(string | null)[]>([null]);
   const markRead = useMarkCustomerIntelligenceNotificationRead();
+
+  // Rules state
+  const orgId = getActiveOrgId();
+  const qc = useQueryClient();
+  const rules = useQuery({
+    queryKey: emailIntelligenceQueryKeys(orgId).rules(),
+    queryFn: () => api.get<RuleResponse>("/api/email-intelligence/trusted-rules"),
+  });
+  const [ruleName, setRuleName] = React.useState("");
+  const [ruleDomain, setRuleDomain] = React.useState("");
+  const [calendarConnectionId, setCalendarConnectionId] = React.useState("");
+  const [ruleExpiry, setRuleExpiry] = React.useState("");
+  const [ruleError, setRuleError] = React.useState("");
+
+  const [rulePage, setRulePage] = React.useState(1);
+  const [rulePageSize, setRulePageSize] = React.useState(10);
+
+  const createRule = useMutation({
+    mutationFn: () =>
+      api.post<Rule>(
+        "/api/email-intelligence/trusted-rules",
+        {
+          name: ruleName,
+          match_type: "DOMAIN",
+          match_value: ruleDomain,
+          calendar_connection_id: calendarConnectionId,
+          minimum_classification_confidence: 0.95,
+          maximum_events_per_day: 3,
+          expires_at: new Date(ruleExpiry).toISOString(),
+        },
+        { headers: { "Idempotency-Key": createIdempotencyKey() } },
+      ),
+    onSuccess: () => {
+      setRuleName("");
+      setRuleDomain("");
+      setCalendarConnectionId("");
+      setRuleExpiry("");
+      toast.success(tx("Đã tạo quy tắc phê duyệt tự động", "Trusted calendar rule created"));
+      void qc.invalidateQueries({ queryKey: emailIntelligenceQueryKeys(orgId).rules() });
+    },
+    onError: (value) => setRuleError(value instanceof Error ? value.message : (tx("Lỗi khi tạo quy tắc", "Failed to create rule"))),
+  });
 
   React.useEffect(() => {
     const timer = window.setTimeout(() => setQuery(searchInput.trim()), 300);
@@ -72,139 +164,419 @@ export default function EmailIntelligencePage() {
     () => ({
       unreadOnly,
       cursor: pageCursors[pageIndex],
+      limit: pageSize,
       query,
       notificationType,
       ...dateRange(range),
     }),
-    [notificationType, pageCursors, pageIndex, query, range, unreadOnly],
+    [notificationType, pageCursors, pageIndex, pageSize, query, range, unreadOnly],
   );
+
   const notifications = useCustomerIntelligenceNotifications(filters);
   const items = React.useMemo(
     () => [...(notifications.data?.items ?? [])].sort((a, b) => new Date(b.received_at).getTime() - new Date(a.received_at).getTime()),
     [notifications.data?.items],
   );
 
-  function changeUnread(value: boolean) {
-    setUnreadOnly(value);
+  const paginatedRules = React.useMemo(() => {
+    const start = (rulePage - 1) * rulePageSize;
+    return (rules.data?.rules ?? []).slice(start, start + rulePageSize);
+  }, [rules.data?.rules, rulePage, rulePageSize]);
+
+  function changeUnread(val: boolean) {
+    setUnreadOnly(val);
     resetPaging();
   }
 
-  function changeRange(value: DateRange) {
-    setRange(value);
+  function changeRange(val: DateRange) {
+    setRange(val);
     resetPaging();
   }
 
-  function changeType(value: string) {
-    setNotificationType(value);
+  function changeType(val: string) {
+    setNotificationType(val);
     resetPaging();
-  }
-
-  function nextPage() {
-    if (!notifications.data?.next_cursor) return;
-    setPageCursors((current) => [...current.slice(0, pageIndex + 1), notifications.data!.next_cursor]);
-    setPageIndex((current) => current + 1);
-  }
-
-  function previousPage() {
-    if (pageIndex === 0) return;
-    setPageIndex((current) => current - 1);
   }
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-6">
-      <PageHeader icon={Bell} title="Smart Inbox" description="A focused view of routed email and safe next steps." />
-
-      <section className="space-y-3" aria-label="Inbox controls">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-          <div className="relative min-w-0 flex-1">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-            <Input
-              value={searchInput}
-              onChange={(event) => { setSearchInput(event.target.value); resetPaging(); }}
-              placeholder="Search sender, subject, or email content"
-              aria-label="Search inbox"
-              className="h-11 pl-9"
-            />
-          </div>
-          <Button variant="outline" size="icon" onClick={() => void notifications.refetch()} aria-label="Refresh inbox" disabled={notifications.isFetching}>
-            <RefreshCw className={notifications.isFetching ? "h-4 w-4 animate-spin" : "h-4 w-4"} aria-hidden="true" />
+    <div className="space-y-6">
+      <PageHeader
+        icon={Mail}
+        title={dict.pages.emailIntelligence.title}
+        description={dict.pages.emailIntelligence.description}
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              void notifications.refetch();
+              if (activeTab === "rules") void rules.refetch();
+            }}
+            className="gap-2"
+          >
+            <RefreshCw className="h-4 w-4" />
+            {tx("Làm mới", "Refresh")}
           </Button>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex rounded-lg border border-border bg-card p-1" role="tablist" aria-label="Read status">
-            <Button variant={!unreadOnly ? "default" : "ghost"} size="sm" role="tab" aria-selected={!unreadOnly} onClick={() => changeUnread(false)}>All mail</Button>
-            <Button variant={unreadOnly ? "default" : "ghost"} size="sm" role="tab" aria-selected={unreadOnly} onClick={() => changeUnread(true)}>Unread</Button>
-          </div>
-          <select aria-label="Filter by date" value={range} onChange={(event) => changeRange(event.target.value as DateRange)} className="h-9 rounded-lg border border-border bg-card px-3 text-xs font-medium text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring">
-            <option value="all">All time</option>
-            <option value="today">Today</option>
-            <option value="7d">Last 7 days</option>
-            <option value="30d">Last 30 days</option>
-          </select>
-          <select aria-label="Filter by type" value={notificationType} onChange={(event) => changeType(event.target.value)} className="h-9 rounded-lg border border-border bg-card px-3 text-xs font-medium text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring">
-            <option value="">All types</option>
-            <option value="email_received">Email received</option>
-          </select>
-          <div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
-            <Inbox className="h-3.5 w-3.5" aria-hidden="true" />
-            {notifications.data?.total ?? 0} messages
-            {(notifications.data?.unread ?? 0) > 0 && <Badge variant="info">{notifications.data?.unread} unread</Badge>}
-          </div>
-        </div>
-      </section>
+        }
+      />
 
-      {notifications.isLoading ? <LoadingSkeleton variant="table" /> : notifications.isError ? (
-        <ErrorState title="Unable to load inbox" description="Notifications could not be loaded." onRetry={() => void notifications.refetch()} />
-      ) : items.length ? (
-        <section className="overflow-hidden rounded-xl border border-border bg-card" aria-label="Email notifications" aria-live="polite">
-          {items.map((item) => {
-            const unread = !item.read_at;
-            const isSecurity = item.type.includes("security") || item.type.includes("quarantine");
-            return (
-              <article key={item.id} className={`group border-b border-border px-4 py-4 last:border-b-0 sm:px-5 ${unread ? "bg-primary/[0.035]" : "bg-card"}`}>
-                <div className="flex items-start gap-3 sm:gap-4">
-                  <div className={`mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-full text-xs font-bold ${isSecurity ? "bg-destructive/10 text-destructive" : unread ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`} aria-hidden="true">
-                    {isSecurity ? <ShieldAlert className="h-4 w-4" /> : initials(item.sender_email)}
+      {/* Segmented Navigation Tabs */}
+      <div className="flex gap-2 border-b border-border/70 pb-2">
+        <Button
+          type="button"
+          variant={activeTab === "inbox" ? "secondary" : "ghost"}
+          onClick={() => setTabParam("inbox")}
+          className="gap-2 font-medium"
+        >
+          <Mail className="h-4 w-4 text-primary" />
+          {tx("Hộp thư thông minh", "Inbox")}
+        </Button>
+
+        <Button
+          type="button"
+          variant={activeTab === "rules" ? "secondary" : "ghost"}
+          onClick={() => setTabParam("rules")}
+          className="gap-2 font-medium"
+        >
+          <ShieldCheck className="h-4 w-4 text-primary" />
+          {tx("Quy tắc Tự động duyệt", "Trusted Rules")}
+        </Button>
+      </div>
+
+      {/* Tab 1: Email Inbox View */}
+      {activeTab === "inbox" && (
+        <div className="space-y-4">
+          {/* Filter Bar */}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="relative flex-1 max-w-sm">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                placeholder={tx("Tìm theo người gửi, tiêu đề, công ty...", "Search sender, subject, company...")}
+                className="pl-9 text-xs"
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="inline-flex rounded-lg border border-border bg-muted/40 p-0.5">
+                <Button
+                  size="sm"
+                  variant={!unreadOnly ? "secondary" : "ghost"}
+                  className="h-7 text-xs font-medium"
+                  onClick={() => changeUnread(false)}
+                >
+                  {tx("Tất cả", "All")}
+                </Button>
+                <Button
+                  size="sm"
+                  variant={unreadOnly ? "secondary" : "ghost"}
+                  className="h-7 text-xs font-medium"
+                  onClick={() => changeUnread(true)}
+                >
+                  {tx("Chưa đọc", "Unread")}
+                </Button>
+              </div>
+
+              <select
+                value={range}
+                onChange={(e) => changeRange(e.target.value as DateRange)}
+                className="flex h-8 cursor-pointer rounded-lg border border-border bg-background px-2.5 py-1 text-xs text-foreground shadow-sm hover:border-primary/40 focus-visible:outline-none"
+              >
+                <option value="all">{tx("Toàn thời gian", "All Time")}</option>
+                <option value="today">{tx("Hôm nay", "Today")}</option>
+                <option value="7d">{tx("7 ngày qua", "Last 7 Days")}</option>
+                <option value="30d">{tx("30 ngày qua", "Last 30 Days")}</option>
+              </select>
+
+              <select
+                value={notificationType}
+                onChange={(e) => changeType(e.target.value)}
+                className="flex h-8 cursor-pointer rounded-lg border border-border bg-background px-2.5 py-1 text-xs text-foreground shadow-sm hover:border-primary/40 focus-visible:outline-none"
+              >
+                <option value="">{tx("Tất cả danh mục", "All Categories")}</option>
+                <option value="CONTRACT_UPDATE">{tx("Cập nhật hợp đồng", "Contract Updates")}</option>
+                <option value="CALENDAR_INVITE">{tx("Lời mời họp lịch", "Calendar Invites")}</option>
+                <option value="GENERAL">{tx("Tổng hợp thông thường", "General")}</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Inbox List */}
+          {notifications.isLoading ? (
+            <LoadingSkeleton variant="table" />
+          ) : notifications.isError ? (
+            <ErrorState
+              title={tx("Không thể tải thông báo email", "Unable to load notifications")}
+              description={tx("Luồng dữ liệu email chưa sẵn sàng.", "Email triage feed could not be retrieved.")}
+              onRetry={() => void notifications.refetch()}
+            />
+          ) : items.length ? (
+            <div className="space-y-3">
+              {items.map((n) => (
+                <Card
+                  key={n.id}
+                  glass
+                  className={`shadow-card border-border/80 p-4 transition-all hover:border-primary/40 ${
+                    !n.read_at ? "bg-primary/[0.02] border-primary/30 ring-1 ring-primary/10" : ""
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3 min-w-0">
+                      <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-border bg-muted/40 font-semibold text-primary text-xs">
+                        {initials(n.sender_email || tx("Khách hàng", "Client"))}
+                      </div>
+                      <div className="min-w-0 space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="font-semibold text-xs text-foreground">{n.sender_email}</p>
+                          {n.type && (
+                            <Badge variant="outline" className="text-[10px] uppercase font-mono">
+                              {notificationTypeLabel(n.type, t)}
+                            </Badge>
+                          )}
+                          {!n.read_at && (
+                            <span className="inline-flex h-2 w-2 rounded-full bg-primary" aria-label={tx("Chưa đọc", "Unread")} />
+                          )}
+                        </div>
+                        <p className="font-medium text-xs text-foreground/90">{n.subject}</p>
+                        <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">{n.body}</p>
+                        {n.classification && (
+                          <div className="mt-2 rounded bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 text-[11px] text-amber-600 dark:text-amber-400 font-medium">
+                            🏷️ {tx("Phân loại:", "Classification:")} {n.classification}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col items-end gap-2 shrink-0">
+                      <span className="text-[11px] text-muted-foreground font-mono">
+                        {new Date(n.received_at).toLocaleDateString(tx("vi-VN", "en-US"), {
+                          month: "short",
+                          day: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </span>
+                      {!n.read_at && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 gap-1 text-[11px] text-muted-foreground hover:text-foreground"
+                          onClick={() => markRead.mutate(n.id)}
+                        >
+                          <CheckCheck className="h-3.5 w-3.5" />
+                          {tx("Đã xem", "Mark read")}
+                        </Button>
+                      )}
+                    </div>
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-start gap-x-2 gap-y-1">
-                      <h2 className={`min-w-0 truncate text-sm ${unread ? "font-bold text-foreground" : "font-semibold text-foreground/85"}`} title={item.sender_email}>{item.sender_name || item.sender_email}</h2>
-                      {item.sender_name && <span className="max-w-full truncate text-xs text-muted-foreground">&lt;{item.sender_email}&gt;</span>}
-                      {unread && <Badge variant="info" className="ml-auto">Unread</Badge>}
-                    </div>
-                    <div className="mt-1 flex items-baseline justify-between gap-3">
-                      <p className={`truncate text-sm ${unread ? "font-semibold" : "font-medium text-foreground/80"}`}>{item.subject || "(No subject)"}</p>
-                      <time className="shrink-0 text-xs text-muted-foreground" dateTime={item.received_at} title={`${formatVietnamDateTime(item.received_at)} · Giờ Việt Nam`}>{relativeTime(item.received_at)}</time>
-                    </div>
-                    <p className="mt-1 line-clamp-2 break-words text-sm leading-5 text-muted-foreground" title={preview(item.body, item.subject)}>{preview(item.body, item.subject) || "No preview available"}</p>
-                    <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
-                      <Link href={`/customer-intelligence?email_id=${encodeURIComponent(item.email_id)}`} className="text-xs font-semibold text-primary hover:underline">Open related research</Link>
-                      {unread && <Button size="sm" variant="outline" onClick={() => markRead.mutate(item.id)} disabled={markRead.isPending}><Check className="h-3.5 w-3.5" aria-hidden="true" />Mark read</Button>}
-                      <Badge variant="outline" className="ml-auto hidden sm:inline-flex">{item.type.replaceAll("_", " ")}</Badge>
-                    </div>
-                  </div>
+                </Card>
+              ))}
+
+              {/* Standard Pager Navigation */}
+              <div className="flex items-center justify-between border-t border-border/60 pt-3 text-xs text-muted-foreground">
+                <span>
+                  {tx(`Trang ${pageIndex + 1}`, `Page ${pageIndex + 1}`)}
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 text-xs"
+                    disabled={pageIndex === 0 || notifications.isLoading}
+                    onClick={() => setPageIndex((p) => Math.max(0, p - 1))}
+                  >
+                    {tx("Trang trước", "Previous")}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 text-xs"
+                    disabled={!notifications.data?.next_cursor || notifications.isLoading}
+                    onClick={() => {
+                      if (notifications.data?.next_cursor) {
+                        setPageCursors((prev) => {
+                          const next = [...prev];
+                          next[pageIndex + 1] = notifications.data?.next_cursor ?? null;
+                          return next;
+                        });
+                        setPageIndex((p) => p + 1);
+                      }
+                    }}
+                  >
+                    {tx("Trang sau", "Next")}
+                  </Button>
                 </div>
-              </article>
-            );
-          })}
-        </section>
-      ) : (
-        <div className="rounded-xl border border-dashed border-border bg-card px-6 py-14 text-center">
-          {query || unreadOnly || range !== "all" ? <>
-            <MailOpen className="mx-auto h-8 w-8 text-muted-foreground" aria-hidden="true" />
-            <h2 className="mt-3 font-semibold">No matching emails</h2>
-            <p className="mt-1 text-sm text-muted-foreground">Try a broader search or clear one of the filters.</p>
-            <Button variant="outline" size="sm" className="mt-4" onClick={() => { setSearchInput(""); setQuery(""); setUnreadOnly(false); setRange("all"); setNotificationType(""); resetPaging(); }}>Clear filters</Button>
-          </> : <EmptyState icon={Bell} title="Your inbox is clear" description="Connect Gmail to receive routed email summaries and customer research updates." />}
+              </div>
+            </div>
+          ) : (
+            <EmptyState
+              icon={Inbox}
+              title={tx("Hộp thư đã xử lý gọn gàng", "All caught up in your inbox")}
+              description={tx("Không có email nào khớp với bộ lọc đang chọn.", "No incoming emails matched your active filters.")}
+            />
+          )}
         </div>
       )}
 
-      {(notifications.data?.has_more || pageIndex > 0) && (
-        <nav className="flex items-center justify-between border-t border-border pt-4" aria-label="Inbox pagination">
-          <Button variant="outline" size="sm" onClick={previousPage} disabled={pageIndex === 0 || notifications.isFetching}><ChevronLeft className="h-4 w-4" aria-hidden="true" />Newer</Button>
-          <span className="text-xs text-muted-foreground">Page {pageIndex + 1} · 25 per page</span>
-          <Button variant="outline" size="sm" onClick={nextPage} disabled={!notifications.data?.has_more || notifications.isFetching}>Older<ChevronRight className="h-4 w-4" aria-hidden="true" /></Button>
-        </nav>
+      {/* Tab 2: Trusted Rules View */}
+      {activeTab === "rules" && (
+        <div className="space-y-4">
+          <Card className="border-amber-500/30 bg-amber-500/[0.04] shadow-card">
+            <CardContent className="space-y-1.5 p-4 text-xs">
+              <p className="font-semibold text-amber-500 flex items-center gap-1.5">
+                <ShieldCheck className="h-4 w-4" /> {tx("Chính sách An toàn Doanh nghiệp", "Production Safety Policy Defaults")}
+              </p>
+              <p className="text-muted-foreground leading-relaxed">
+                {tx("Các quy tắc tự động đặt lịch chạy trong phạm vi nghiêm ngặt (CALENDAR_AUTO_CREATE). Yêu cầu tên miền doanh nghiệp chính xác, ngày hết hạn, giới hạn số sự kiện mỗi ngày và xác thực SPF/DKIM/DMARC.", "Rules currently operate with strict safety boundaries (CALENDAR_AUTO_CREATE). Rules require a verified exact company domain, expiration date, daily execution caps, and SPF/DKIM/DMARC authentication.")}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card glass className="shadow-card border-border/80">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base font-semibold text-foreground">
+                {tx("Tạo Quy tắc Phê duyệt Lịch tự động", "Create Trusted Calendar Rule")}
+              </CardTitle>
+              <CardDescription className="text-xs">
+                {t("pages.emailIntelligence.autoApproveDesc", "Tự động chấp thuận lời mời họp từ tên miền đối tác uy tín đáp ứng tiêu chuẩn an toàn.")}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  setRuleError("");
+                  createRule.mutate();
+                }}
+                className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 items-end"
+              >
+                <div className="space-y-1">
+                  <Label className="text-xs">{tx("Tên quy tắc", "Rule Name")}</Label>
+                  <Input
+                    value={ruleName}
+                    onChange={(e) => setRuleName(e.target.value)}
+                    placeholder={tx("ví dụ: Khách hàng VIP", "e.g. Strategic Partner")}
+                    required
+                    className="text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">{tx("Tên miền đối tác", "Partner Domain")}</Label>
+                  <Input
+                    value={ruleDomain}
+                    onChange={(e) => setRuleDomain(e.target.value)}
+                    placeholder={tx("partner.com", "partner.com")}
+                    required
+                    className="text-xs font-mono"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">{tx("ID Kết nối Lịch", "Calendar Connection ID")}</Label>
+                  <Input
+                    value={calendarConnectionId}
+                    onChange={(e) => setCalendarConnectionId(e.target.value)}
+                    placeholder={tx("conn-google-...", "conn-google-...")}
+                    required
+                    className="text-xs font-mono"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">{tx("Ngày hết hạn", "Expiration Date")}</Label>
+                  <Input
+                    type="date"
+                    value={ruleExpiry}
+                    onChange={(e) => setRuleExpiry(e.target.value)}
+                    required
+                    className="text-xs"
+                  />
+                </div>
+                <div className="sm:col-span-2 lg:col-span-4 flex items-center justify-between pt-2">
+                  {ruleError && <p className="text-xs text-destructive">{ruleError}</p>}
+                  <div className="ml-auto">
+                    <Button type="submit" disabled={createRule.isPending} className="gap-1.5 font-medium text-xs">
+                      <Plus className="h-4 w-4" />
+                      {tx("Lưu quy tắc", "Create Rule")}
+                    </Button>
+                  </div>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+
+          {/* Rules List Table */}
+          <Card glass className="overflow-hidden shadow-card border-border/80">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base font-semibold text-foreground">
+                {tx("Danh sách Quy tắc đang hiệu lực", "Active Trusted Rules")}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              {rules.isLoading ? (
+                <div className="p-6"><LoadingSkeleton variant="table" /></div>
+              ) : rules.isError ? (
+                <div className="p-6">
+                  <ErrorState
+                    title={tx("Không thể tải quy tắc", "Unable to load rules")}
+                    description={tx("Dữ liệu quy tắc tin cậy chưa sẵn sàng.", "Trusted rules could not be loaded.")}
+                    onRetry={() => void rules.refetch()}
+                  />
+                </div>
+              ) : rules.data?.rules?.length ? (
+                <div>
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/40">
+                        <TableHead className="text-xs font-semibold">{tx("Tên quy tắc", "Name")}</TableHead>
+                        <TableHead className="text-xs font-semibold">{tx("Tên miền", "Domain")}</TableHead>
+                        <TableHead className="text-xs font-semibold">{tx("Hành động", "Action")}</TableHead>
+                        <TableHead className="text-xs font-semibold">{tx("Hết hạn", "Expires")}</TableHead>
+                        <TableHead className="text-xs font-semibold">{tx("Trạng thái", "Status")}</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {paginatedRules.map((r) => (
+                        <TableRow key={r.id} className="hover:bg-muted/20 transition-colors">
+                          <TableCell className="font-medium text-xs text-foreground">{r.name}</TableCell>
+                          <TableCell className="font-mono text-xs text-muted-foreground">{r.match_value}</TableCell>
+                          <TableCell className="font-mono text-[10px] text-muted-foreground">
+                            <Badge variant="outline">{r.action}</Badge>
+                          </TableCell>
+                          <TableCell className="text-xs font-mono text-muted-foreground">
+                            {new Date(r.expires_at).toLocaleDateString(tx("vi-VN", "en-US"))}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={r.is_active ? "success" : "secondary"} className="text-[10px]">
+                              {r.is_active ? (tx("Đang chạy", "active")) : (tx("Tắt", "disabled"))}
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                  <div className="p-3 border-t border-border/60">
+                    <DataPagination
+                      page={rulePage}
+                      pageSize={rulePageSize}
+                      totalItems={rules.data.rules.length}
+                      onPageChange={setRulePage}
+                      onPageSizeChange={setRulePageSize}
+                      pageSizeOptions={[5, 10, 25]}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="p-6">
+                  <EmptyState
+                    icon={ShieldAlert}
+                    title={tx("Chưa có quy tắc tin cậy nào", "No trusted rules yet")}
+                    description={tx("Thêm tên miền đối tác để kích hoạt tự động đặt lịch an toàn.", "Add a partner domain to enable automated meeting approvals.")}
+                  />
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       )}
     </div>
   );
