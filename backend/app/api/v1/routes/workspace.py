@@ -85,6 +85,7 @@ async def read_artifact(
 )
 async def download_artifact(
     artifact_id: str,
+    inline: bool = False,
     org_id: str = Depends(get_current_org_id),
     db: AsyncSession = Depends(get_db),
 ):
@@ -94,7 +95,19 @@ async def download_artifact(
         raise HTTPException(404, str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(404, str(exc)) from exc
-    return FileResponse(target, filename=target.name)
+
+    import mimetypes
+    media_type, _ = mimetypes.guess_type(target.name)
+    if not media_type:
+        media_type = "application/octet-stream"
+
+    content_disposition_type = "inline" if inline else "attachment"
+    return FileResponse(
+        target,
+        filename=target.name,
+        media_type=media_type,
+        content_disposition_type=content_disposition_type,
+    )
 
 
 @router.delete(

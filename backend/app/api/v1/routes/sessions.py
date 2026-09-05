@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,6 +13,7 @@ from app.models.message import Message
 from app.models.session import Session
 from app.models.session_event import SessionEvent
 from app.models.user import User
+from app.models.workspace import WorkspaceArtifact
 from app.schemas.chat import ChatMessageOut, SessionOut, SessionUpdate
 
 router = APIRouter(
@@ -49,7 +52,66 @@ async def list_messages(
         Session.created_by_user_id,
     ).order_by(Message.position)
     res = await db.execute(stmt)
-    return list(res.scalars().all())
+    messages = list(res.scalars().all())
+
+    # Query all artifacts for this session
+    art_stmt = (
+        select(WorkspaceArtifact)
+        .where(WorkspaceArtifact.session_id == session_id, WorkspaceArtifact.org_id == org_id)
+        .order_by(WorkspaceArtifact.created_at.asc())
+    )
+    art_res = await db.execute(art_stmt)
+    artifacts = list(art_res.scalars().all())
+    if not artifacts:
+        return messages
+
+    # Backfill artifacts for historical messages where meta does not already track them
+    assigned_art_ids = set()
+    for m in messages:
+        if m.meta and isinstance(m.meta.get("artifacts"), list):
+            for a in m.meta["artifacts"]:
+                if isinstance(a, dict) and a.get("id"):
+                    assigned_art_ids.add(a["id"])
+
+    unassigned = [a for a in artifacts if a.id not in assigned_art_ids]
+    if not unassigned:
+        return messages
+
+    last_assistant_idx = -1
+    for i in range(len(messages) - 1, -1, -1):
+        if messages[i].role == "assistant":
+            last_assistant_idx = i
+            break
+
+    out: list[ChatMessageOut] = []
+    for idx, m in enumerate(messages):
+        meta = dict(m.meta or {})
+        if idx == last_assistant_idx and unassigned:
+            existing = list(meta.get("artifacts") or [])
+            for art in unassigned:
+                existing.append({
+                    "id": art.id,
+                    "path": art.path,
+                    "filename": Path(art.path).name,
+                    "content_type": art.content_type,
+                    "size": art.size,
+                    "download_url": f"/api/workspace/artifacts/{art.id}/download",
+                    "content_url": f"/api/workspace/artifacts/{art.id}/download?inline=true",
+                    "source_tool": art.source_tool,
+                })
+            meta["artifacts"] = existing
+        out.append(
+            ChatMessageOut(
+                id=m.id,
+                session_id=m.session_id,
+                role=m.role,
+                content=m.content,
+                meta=meta,
+                position=m.position,
+                created_at=m.created_at,
+            )
+        )
+    return out
 
 
 @router.patch("/{session_id}", response_model=SessionOut)

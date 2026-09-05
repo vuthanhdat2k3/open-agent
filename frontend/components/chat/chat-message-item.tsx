@@ -110,13 +110,14 @@ function ChatMessageItemBase({ message: m, debug, onApprovalDecision }: ChatMess
     .map((b) => b.content)
     .join("\n\n");
 
-  const hasVisibleBlocks = m.blocks.some((b) => {
-    if (b.kind === "text") return b.content.trim().length > 0 || b.streaming;
-    if (b.kind === "reasoning") return b.content.trim().length > 0 || b.streaming;
-    if (b.kind === "tool_call") return true;
-    if (b.kind === "stats") return true;
-    return false;
-  });
+  const hasVisibleBlocks =
+    m.blocks.some((b) => {
+      if (b.kind === "text") return b.content.trim().length > 0 || b.streaming;
+      if (b.kind === "reasoning") return b.content.trim().length > 0 || b.streaming;
+      if (b.kind === "tool_call") return true;
+      if (b.kind === "stats") return true;
+      return false;
+    }) || (m.artifacts && m.artifacts.length > 0);
 
   if (!hasVisibleBlocks) return null;
 
@@ -168,6 +169,30 @@ function ChatMessageItemBase({ message: m, debug, onApprovalDecision }: ChatMess
 
       <div className="min-w-0 flex-1 space-y-2 pt-0.5">
         {rendered}
+
+        {m.artifacts && m.artifacts.length > 0 && (
+          <div className="mt-2.5 flex flex-col gap-1.5 pt-1">
+            <span className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
+              {tx("Tệp được tạo", "Generated files")} ({m.artifacts.length})
+            </span>
+            <div className="flex flex-wrap gap-2">
+              {m.artifacts.map((art) => (
+                <FileAttachmentCard
+                  key={art.id}
+                  attachment={{
+                    id: art.id,
+                    name: art.filename || art.path,
+                    size: art.size,
+                    content_type: art.content_type,
+                    download_url: art.download_url,
+                    content_url: art.content_url,
+                  }}
+                  variant="message"
+                />
+              ))}
+            </div>
+          </div>
+        )}
 
         {fullTextContent && (
           <div className="flex items-center gap-1.5 pt-0.5">
