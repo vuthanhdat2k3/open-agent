@@ -47,6 +47,17 @@ export interface ModelTestResult {
   model_name?: string | null;
 }
 
+export type ModelTier = "economy" | "balanced" | "frontier";
+
+export interface OrgModelTierMatrixResponse {
+  tiers: Record<ModelTier, Model | null>;
+}
+
+export interface OrgModelTierMatrixUpdate {
+  tier_mappings: Record<ModelTier, string | null>;
+}
+
+
 export interface Model {
   id: string;
   provider_id: string;
@@ -80,9 +91,16 @@ export interface Agent {
   allowed_risk_tiers: string[];
   max_iterations: number;
   temperature: number;
+  enable_thinking: boolean | null;
   kind: "worker" | "orchestrator";
   active_release_id: string | null;
   latest_release_number: number;
+  template_key?: string | null;
+  is_customized?: boolean;
+  is_pinned?: boolean;
+  created_by_user_id?: string | null;
+  creator_email?: string | null;
+  creator_name?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -132,6 +150,8 @@ export interface EvaluationSuite {
   agent_id: string;
   dataset_version: number;
   created_by_user_id: string | null;
+  creator_email?: string | null;
+  creator_name?: string | null;
   created_at: string;
   updated_at: string;
   cases: EvaluationCase[];
@@ -222,6 +242,8 @@ export interface AgentToolInfo {
   description: string;
   available: boolean;
   risk_tier?: "safe" | "read" | "write" | "execute" | "network" | "dangerous";
+  allowed_for_orchestrator?: boolean;
+  allowed_for_worker?: boolean;
 }
 
 export interface McpTool {
@@ -248,14 +270,46 @@ export interface McpServer {
   updated_at: string;
 }
 
+export interface ChannelConnection {
+  id: string;
+  org_id: string;
+  provider: "telegram" | "discord";
+  bot_username: string;
+  status: "active" | "inactive" | "error";
+  config: Record<string, any>;
+  created_by_user_id?: string | null;
+  creator_email?: string | null;
+  creator_name?: string | null;
+  latest_session_id?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ChannelMessage {
+  id: string;
+  org_id: string;
+  connection_id: string;
+  direction: "inbound" | "outbound";
+  external_message_id: string;
+  sender_id: string;
+  sender_name: string;
+  conversation_id: string;
+  message_type: string;
+  content: string;
+  metadata: Record<string, any>;
+  agent_id?: string | null;
+  created_at: string;
+}
+
 export interface GraphNode {
   id: string;
-  kind: "input" | "agent" | "tool" | "merge" | "output" | "approval" | "sub_workflow";
+  kind: "input" | "agent" | "tool" | "merge" | "output" | "approval" | "sub_workflow" | "scheduler" | "triager" | "integration";
   label: string;
   position?: { x: number; y: number };
   agent_id?: string;
   merge_mode?: "all" | "any";
   config: Record<string, any>;
+  parameters?: Record<string, any>;
 }
 
 export interface GraphEdge {
@@ -264,19 +318,64 @@ export interface GraphEdge {
   condition?: string;
 }
 
+export interface NodeField {
+  name: string;
+  label: string;
+  type: "string" | "time" | "date" | "textarea" | "number" | "boolean" | "options" | "multiOptions" | "collection" | "fixedCollection" | "json";
+  default?: any;
+  required?: boolean;
+  description?: string;
+  placeholder?: string;
+  options?: Array<{ name: string; value: string; description?: string }>;
+  load_options_from?: "tools" | "models" | "agents" | "workflows" | "connections" | "users" | "categories";
+  display?: { show?: Record<string, any[]>; hide?: Record<string, any[]> };
+  type_options?: Record<string, any>;
+  advanced?: boolean;
+  internal?: boolean;
+  multiple?: boolean;
+}
+
+export interface NodeDefinition {
+  kind: string;
+  label: string;
+  description: string;
+  icon: string;
+  fields: NodeField[];
+  default_parameters: Record<string, any>;
+}
+
+export interface NodeOption {
+  name: string;
+  value: string;
+  description?: string;
+  risk_tier?: string;
+  input_schema?: Record<string, any>;
+}
+
 export interface Workflow {
   id: string;
   name: string;
   description: string;
   graph: { nodes: GraphNode[]; edges: GraphEdge[] };
+  template_key?: string;
+  is_customized?: boolean;
+  created_by_user_id?: string | null;
+  creator_email?: string | null;
+  creator_name?: string | null;
   created_at: string;
   updated_at: string;
 }
 
+export type ExecutionPolicy = "read-only" | "manual" | "full-access";
+
 export interface Session {
   id: string;
   agent_id: string;
+  execution_policy: ExecutionPolicy;
   title: string;
+  created_by_user_id?: string | null;
+  creator_email?: string | null;
+  creator_name?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -309,6 +408,9 @@ export interface UploadedFile {
   status: "uploaded" | "queued" | "processing" | "retrying" | "ingested" | "error" | "dead_letter";
   collection: string | null;
   error: string | null;
+  created_by_user_id?: string | null;
+  creator_email?: string | null;
+  creator_name?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -338,6 +440,9 @@ export interface WorkspaceArtifact {
   session_id: string | null;
   task_id: string | null;
   root_run_id: string | null;
+  created_by_user_id?: string | null;
+  creator_email?: string | null;
+  creator_name?: string | null;
   exists: boolean;
   created_at: string;
   updated_at: string;
@@ -357,6 +462,9 @@ export interface SandboxExecution {
   session_id: string | null;
   task_id: string | null;
   root_run_id: string | null;
+  created_by_user_id?: string | null;
+  creator_email?: string | null;
+  creator_name?: string | null;
   started_at: string;
   finished_at: string | null;
   created_at: string;
@@ -366,7 +474,10 @@ export interface OrgMember {
   user_id: string;
   email: string;
   display_name: string;
-  role: "platform_admin" | "org_admin" | "operator" | "user" | "admin";
+  // The backend's `/api/orgs/{id}/members` endpoint never returns `platform_admin`
+  // (the roster filters them out) nor the legacy `admin` alias; canonical
+  // `Role` covers every value the FE may receive.
+  role: "platform_admin" | "org_admin" | "operator" | "user";
   created_at: string;
 }
 
@@ -395,6 +506,8 @@ export interface ApprovalRequest {
   action?: string | null;
   status: "pending" | "approved" | "rejected" | "expired";
   requested_by: string | null;
+  requester_email?: string | null;
+  requester_name?: string | null;
   decided_by: string | null;
   reason: string;
   created_at: string;
@@ -421,6 +534,9 @@ export interface TaskTreeNode {
 
 export interface TaskTree {
   root_run_id: string;
+  triggered_by_user_id?: string | null;
+  triggered_by_email?: string | null;
+  triggered_by_name?: string | null;
   tasks: TaskTreeNode[];
 }
 
@@ -444,10 +560,15 @@ export interface ChatRunDetail {
   finished_at?: string | null;
 }
 
+export type WorkflowNodeRunDetail = WorkflowRunDetail["nodes"][number];
+
 export interface WorkflowRunDetail {
   id: string;
   org_id?: string;
   workflow_id: string;
+  trigger_node_id?: string | null;
+  trigger_type?: string | null;
+  graph_hash?: string | null;
   status: string;
   input: Record<string, unknown>;
   output: Record<string, unknown>;
@@ -464,6 +585,10 @@ export interface WorkflowRunDetail {
     error: string | null;
     started_at: string;
     finished_at: string | null;
+    tokens?: number;
+    cost_usd?: number;
+    timing_ms?: number;
+    data?: Record<string, unknown>;
   }>;
 }
 
@@ -471,7 +596,11 @@ export interface UserMembership {
   org_id: string;
   org_name: string;
   org_slug: string;
+  // `role` is the highest-priority role for display; `roles` is the full
+  // set - a user can hold more than one (e.g. a self-registered founder
+  // gets both org_admin and operator).
   role: string;
+  roles: string[];
 }
 
 export interface UserProfile {
@@ -479,6 +608,9 @@ export interface UserProfile {
   email: string;
   display_name: string | null;
   is_active: boolean;
+  // True when the current password was set by an admin (invite default reset);
+  // the UI redirects to /settings/profile?force=1 until the user sets a new one.
+  must_change_password?: boolean;
   created_at: string;
   memberships: UserMembership[];
   permissions_by_org: Record<string, string[]>;
@@ -605,3 +737,11 @@ export interface EmailIntelligenceNavigationSummary {
   };
   meta: { server_time: string; reason_registry_version?: string; correlation_id?: string };
 }
+
+export type {
+  ChatMessage,
+  ApprovalMessage,
+  UserMessage,
+  AssistantMessage,
+  ErrorMessage,
+} from "@/lib/chat/projection";

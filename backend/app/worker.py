@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import os
 import socket
@@ -9,6 +9,7 @@ from arq.connections import RedisSettings
 from sqlalchemy import select
 
 from app.config import get_settings
+from app.core.channels.jobs import process_channel_message
 from app.core.chat_events import fail_orphaned_chat_runs
 from app.core.observability.llm_trace import NoopSink, set_default_sink
 from app.core.outbox import publish_pending_outbox
@@ -120,6 +121,23 @@ async def _workflow_scheduler_tick(ctx: dict) -> None:
             lease_seconds=50,
             worker_id=_worker_identity(),
             run=lambda: run_due_workflows(db),
+        )
+
+
+async def _ops_agent_sweep_tick(ctx: dict) -> None:
+    """Run the Ops & Reliability agent's scan sweep for every org that has it."""
+    from app.core.agents.ops_sweep import run_ops_agent_sweep
+    from app.core.scheduling.job_keys import JobKey
+    from app.core.scheduling.tick import run_leased_tick
+
+    async with SessionLocal() as db:
+        await run_leased_tick(
+            db,
+            job_key=JobKey.OPS_AGENT_SWEEP,
+            interval_seconds=900,
+            lease_seconds=600,
+            worker_id=_worker_identity(),
+            run=lambda: run_ops_agent_sweep(db),
         )
 
 
@@ -390,14 +408,16 @@ async def process_outbox_event(ctx: dict, event_id: str) -> None:
 
 
 class WorkerSettings:
-    functions = [run_workflow, run_chat, run_provider_discovery, run_ci_research, process_outbox_event]
+    functions = [run_workflow, run_chat, run_provider_discovery, run_ci_research, process_outbox_event, process_channel_message]
     redis_settings = RedisSettings.from_dsn(get_settings().redis_url)
     on_startup = _startup
     on_shutdown = _shutdown
     cron_jobs = [
         cron(_auto_rollback_sweep, minute=set(range(0, 60, 5))),
+        cron(_resume_orphaned_runs, minute=set(range(2, 60, 5)), run_at_startup=False),
         cron(_fail_orphaned_chat_runs, minute=set(range(0, 60, 2)), run_at_startup=False),
         cron(_ci_scheduler_tick, minute=set(range(0, 60, 5)), run_at_startup=False),
+        cron(_ops_agent_sweep_tick, minute=set(range(0, 60, 15)), run_at_startup=False),
         cron(_workflow_scheduler_tick, minute=set(range(0, 60, 1)), run_at_startup=False),
         cron(_ci_retry_due_cases_tick, minute=set(range(0, 60, 1)), run_at_startup=False),
         cron(_ci_dispatch_ingested_tick, minute=set(range(0, 60, 1)), run_at_startup=False),

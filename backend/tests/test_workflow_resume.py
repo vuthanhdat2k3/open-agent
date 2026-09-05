@@ -100,7 +100,7 @@ async def test_completed_node_outputs_reads_back_recorded_text(session_factory) 
 
         outputs = await resume.completed_node_outputs(db, run.id)
 
-    assert outputs["in"] == "payload-xyz"
+    assert outputs["in"] == {"text": "payload-xyz", "data": {"input": "payload-xyz"}}
     assert set(outputs) == {"in", "mid", "out"}
 
 

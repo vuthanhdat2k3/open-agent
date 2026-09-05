@@ -1,0 +1,31 @@
+# Caddy reverse proxy / automatic HTTPS config for the `tls` Compose profile.
+#
+# Caddy issues and renews Let's Encrypt certificates automatically for any
+# domain listed as a site block below, as long as:
+#   - the domain resolves (via real DNS or a wildcard resolver like
+#     sslip.io) to this host's public IP, and
+#   - ports 80 and 443 are reachable from the internet on that IP (80 for
+#     the ACME HTTP-01 challenge, 443 for the issued certificate).
+#
+# OPENAGENT_APP_DOMAIN / OPENAGENT_API_DOMAIN / OPENAGENT_AUTH_DOMAIN are
+# required (see docker-compose.yml's `caddy` service) and substituted here
+# by Caddy's own env-var expansion - no template step needed.
+#
+# See docs/deployment-runbook.md for how to derive sslip.io subdomains from
+# a bare IP when no real domain is available yet.
+
+{$OPENAGENT_APP_DOMAIN} {
+	reverse_proxy frontend:3000
+}
+
+{$OPENAGENT_API_DOMAIN} {
+	reverse_proxy api:8000
+}
+
+# Fronts the existing zitadel-proxy (nginx) container, which in turn splits
+# traffic between the ZITADEL API and the ZITADEL v2 login UI. Caddy always
+# reaches it by service name over the internal Compose network, regardless
+# of whether zitadel-proxy itself still publishes a host port.
+{$OPENAGENT_AUTH_DOMAIN} {
+	reverse_proxy zitadel-proxy:80
+}

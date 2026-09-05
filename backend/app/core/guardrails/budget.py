@@ -36,6 +36,15 @@ class BudgetTracker:
         self.repeated_calls[key] = self.repeated_calls.get(key, 0) + 1
         return self.exceeded()
 
+    def add_cost(self, cost_usd: float) -> str | None:
+        """Accumulate model-request cost and re-check the budget.
+
+        Returns the exceeded reason when the budget trips, else None.
+        """
+        if cost_usd > 0:
+            self.cost_usd += cost_usd
+        return self.exceeded()
+
     def exceeded(self) -> str | None:
         if self.tool_calls > self.budget.max_tool_calls:
             self.last_reason = f"max_tool_calls exceeded ({self.tool_calls}>{self.budget.max_tool_calls})"

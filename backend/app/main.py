@@ -13,12 +13,15 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.router import api_router
 from app.config import get_settings
+from app.core.agents.sync import sync_system_agents_all_orgs
 from app.core.observability.llm_trace import NoopSink, set_default_sink
 from app.core.observability.logging import configure_logging, request_context_middleware
 from app.core.observability.metrics import mount_metrics
 from app.core.observability.tracing import init_tracing
+from app.core.providers.sync import sync_system_providers_all_orgs
 from app.core.security import allowed_origins
-from app.db.session import engine, get_db, init_db
+from app.core.workflow.sync import sync_system_workflow_templates
+from app.db.session import SessionLocal, engine, get_db, init_db
 from app.schemas.common import HealthResponse
 
 logger = structlog.get_logger(__name__)
@@ -27,6 +30,10 @@ logger = structlog.get_logger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    async with SessionLocal() as db:
+        await sync_system_providers_all_orgs(db)
+        await sync_system_agents_all_orgs(db)
+        await sync_system_workflow_templates(db)
     sink = None
     settings = get_settings()
     if settings.observability_enabled and settings.langfuse_enabled:
@@ -40,9 +47,38 @@ async def lifespan(app: FastAPI):
             # Observability must not take the API down when the optional SDK is
             # absent; production packaging can install it to enable the sink.
             await logger.awarning("langfuse_sdk_missing_observability_disabled")
+        except Exception as exc:  # noqa: BLE001
+            # Same principle for any other failure building the client (bad
+            # key format, unreachable host, etc.) - a broken Langfuse config
+            # must degrade to "no tracing", never take the API down.
+            await logger.awarning("langfuse_sink_init_failed_observability_disabled", error=str(exc))
+    # Start Discord bot gateway connections
+    discord_manager = None
+    try:
+        from app.channels.gateway import get_discord_manager
+        discord_manager = get_discord_manager()
+        await discord_manager.start()
+        await logger.ainfo("discord_gateway_started")
+    except Exception as e:
+        await logger.awarning("discord_gateway_start_failed", error=str(e))
+
+    # Start Telegram bot long-polling runners
+    telegram_manager = None
+    try:
+        from app.channels.gateway import get_telegram_manager
+        telegram_manager = get_telegram_manager()
+        await telegram_manager.start()
+        await logger.ainfo("telegram_gateway_started")
+    except Exception as e:
+        await logger.awarning("telegram_gateway_start_failed", error=str(e))
+
     try:
         yield
     finally:
+        if discord_manager:
+            await discord_manager.shutdown()
+        if telegram_manager:
+            await telegram_manager.shutdown()
         if sink:
             sink.flush(settings.langfuse_flush_timeout_seconds)
         set_default_sink(NoopSink())

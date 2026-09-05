@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.core.authz.scope import scope_to_owner
 from app.db.base import utc_now
+from app.models.user import User
 from app.models.workspace import SandboxExecution, WorkspaceArtifact
 
 MAX_ARTIFACT_CONTENT_CHARS = 200_000
@@ -31,7 +32,7 @@ def _safe_resolve(workspace_dir: str, path: str) -> Path | None:
     return Path(target)
 
 
-def artifact_out(record: WorkspaceArtifact) -> dict[str, Any]:
+def artifact_out(record: WorkspaceArtifact, user: User | None = None) -> dict[str, Any]:
     target = _safe_resolve(get_settings().workspace_dir, record.path)
     return {
         "id": record.id,
@@ -44,9 +45,36 @@ def artifact_out(record: WorkspaceArtifact) -> dict[str, Any]:
         "session_id": record.session_id,
         "task_id": record.task_id,
         "root_run_id": record.root_run_id,
+        "created_by_user_id": record.created_by_user_id,
+        "creator_email": user.email if user else None,
+        "creator_name": user.display_name if user else None,
         "exists": bool(target and target.is_file()),
         "created_at": record.created_at,
         "updated_at": record.updated_at,
+    }
+
+
+def execution_out(record: SandboxExecution, user: User | None = None) -> dict[str, Any]:
+    return {
+        "id": record.id,
+        "source": record.source,
+        "language": record.language,
+        "command": record.command,
+        "status": record.status,
+        "exit_code": record.exit_code,
+        "duration_ms": record.duration_ms,
+        "stdout_preview": record.stdout_preview,
+        "error": record.error,
+        "agent_id": record.agent_id,
+        "session_id": record.session_id,
+        "task_id": record.task_id,
+        "root_run_id": record.root_run_id,
+        "created_by_user_id": record.created_by_user_id,
+        "creator_email": user.email if user else None,
+        "creator_name": user.display_name if user else None,
+        "started_at": record.started_at,
+        "finished_at": record.finished_at,
+        "created_at": record.created_at,
     }
 
 
@@ -56,13 +84,14 @@ class WorkspaceService:
         self.settings = get_settings()
 
     async def list_artifacts(self, org_id: str) -> list[dict[str, Any]]:
-        stmt = scope_to_owner(
-            select(WorkspaceArtifact).where(WorkspaceArtifact.org_id == org_id),
-            self.db,
-            WorkspaceArtifact.created_by_user_id,
+        stmt = (
+            select(WorkspaceArtifact, User)
+            .outerjoin(User, WorkspaceArtifact.created_by_user_id == User.id)
+            .where(WorkspaceArtifact.org_id == org_id)
         )
+        stmt = scope_to_owner(stmt, self.db, WorkspaceArtifact.created_by_user_id)
         res = await self.db.execute(stmt.order_by(WorkspaceArtifact.updated_at.desc()))
-        return [artifact_out(row) for row in res.scalars().all()]
+        return [artifact_out(artifact, user) for artifact, user in res.all()]
 
     async def get_artifact(self, org_id: str, artifact_id: str) -> WorkspaceArtifact | None:
         stmt = scope_to_owner(
@@ -105,16 +134,17 @@ class WorkspaceService:
         await self.db.commit()
         return True
 
-    async def list_executions(self, org_id: str) -> list[SandboxExecution]:
-        stmt = scope_to_owner(
-            select(SandboxExecution).where(SandboxExecution.org_id == org_id),
-            self.db,
-            SandboxExecution.created_by_user_id,
+    async def list_executions(self, org_id: str) -> list[dict[str, Any]]:
+        stmt = (
+            select(SandboxExecution, User)
+            .outerjoin(User, SandboxExecution.created_by_user_id == User.id)
+            .where(SandboxExecution.org_id == org_id)
         )
+        stmt = scope_to_owner(stmt, self.db, SandboxExecution.created_by_user_id)
         res = await self.db.execute(
             stmt.order_by(SandboxExecution.started_at.desc()).limit(200)
         )
-        return list(res.scalars().all())
+        return [execution_out(exec_row, user) for exec_row, user in res.all()]
 
     async def get_execution(self, org_id: str, execution_id: str) -> SandboxExecution | None:
         stmt = scope_to_owner(

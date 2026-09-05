@@ -9,16 +9,28 @@ from app.models.role import Role
 # Every resource:action pair below is checked via require_permission() in the
 # FastAPI dependency chain.
 #
-# Two-role model: admin configures/operates the product; user consumes it.
-# Admin gets "*" (everything, including every current and future permission
-# string) rather than an enumerated list - there is no "trusted but slightly
-# less than admin" tier to reason about anymore.
+# Four NON-OVERLAPPING roles - each has exactly one job. A user can hold more
+# than one role in the same org (Membership allows one row per (org, user,
+# role)) when they genuinely need more than one job - e.g. a self-registered
+# founder gets both org_admin and operator, since org_admin alone could never
+# configure the AI stack it needs to bootstrap (see auth.py::register).
 #
-# User's permissions are deliberately narrow: chat with the org's primary
-# (orchestrator-kind) agent, run already-published workflows, see their own
-# usage/quota/data. Everything that shapes the product for every user
-# (agents, workflows authoring, providers, models, MCP,
-# members, evaluations, audit, approvals-decide, files write) is admin-only.
+#   platform_admin: create/manage organizations and grant org_admin to one.
+#   Nothing else, except read-only visibility into every org's AI/ops surface
+#   for support ("break-glass") - never write/manage inside a tenant org.
+#
+#   org_admin: manage org members (assign operator/user - NOT org_admin,
+#   that's platform_admin-only via orgs:grant-admin) and org-level system
+#   settings (quotas, email-gateway config, audit log). Not involved in AI
+#   configuration at all - no agents/models/providers/workflows/mcp/files.
+#
+#   operator: full AI-stack management (agents/models/providers/workflows/
+#   mcp/files/evaluations) - the AI engineer/ops persona. No org-admin
+#   surfaces (no orgs:*, admin:email-intelligence).
+#
+#   user consumes: chat with the org's primary (orchestrator-kind) agent, run
+#   already-published workflows, manage their OWN customer-intelligence
+#   connections (ci:personal:manage), see their own usage/quota/data.
 #
 # Convention: ``<domain>:<action>``
 #   domain  = plural noun (agents, workflows, providers, models, mcp, org, …)
@@ -30,13 +42,41 @@ from app.models.role import Role
 # ---------------------------------------------------------------------------
 
 PERMISSIONS: dict[Role, set[str]] = {
-    Role.platform_admin: {"*"},
-    Role.org_admin: {"*"},
+    Role.platform_admin: {
+        "orgs:create", "orgs:read", "orgs:manage", "orgs:grant-admin",
+        # break-glass: read-only visibility into every org's AI/ops surface
+        # for support - never write/manage. The one deliberate exception is
+        # agents:run + tools:use:{safe,read,network} (needed to actually let
+        # the tool-call authorization gate in authorization.py pass), scoped
+        # to chatting with visibility="platform_admin" agents only (e.g. the
+        # Ops & Reliability agent - a monitoring/reporting agent by design,
+        # so it never needs write/execute/dangerous tiers at all).
+        "agents:read", "agents:run",
+        "tools:use:safe", "tools:use:read", "tools:use:network",
+        "models:read", "providers:read", "workflows:read",
+        "mcp:read", "files:read", "evaluations:read", "usage:read",
+        "debug:read", "sessions:read", "ci:read", "channels:read",
+        # approvals:manage (in addition to approvals:read - has_permission
+        # does literal/wildcard matching, not tier hierarchy, so both are
+        # listed explicitly): the scheduled sweep runs with no interactive
+        # user (requested_by is null), so the "decide your own request"
+        # ownership path in approvals.py can never apply - platform_admin,
+        # as the only role that can reach the Ops agent at all, must be able
+        # to decide the approvals it raises.
+        "approvals:read", "approvals:manage",
+    },
+    Role.org_admin: {
+        "orgs:read", "orgs:manage", "quota:read", "quota:manage", "quota:usage",
+        "admin:email-intelligence", "debug:*", "usage:read",
+    },
     Role.operator: {
-        "agents:read", "agents:create", "agents:update", "agents:publish", "agents:run",
-        "workflows:*", "providers:*", "models:read", "mcp:*", "files:read", "files:write",
-        "sessions:*", "approvals:read", "approvals:manage", "evaluations:*", "ci:*",
-        "tools:use:safe", "tools:use:read", "tools:use:write", "tools:use:execute", "tools:use:network",
+        "agents:create", "agents:read", "agents:update", "agents:delete",
+        "agents:manage", "agents:publish", "agents:publish:force",
+        # NO "agents:run" - operator configures AI, does not chat/execute conversations.
+        "models:*", "providers:*", "workflows:*", "mcp:*", "files:*",
+        "evaluations:*", "usage:*", "debug:*", "sessions:*", "approvals:*", "ci:*",
+        "channels:*",
+        "tools:use:*", "quota:usage",
     },
     Role.user: {
         "agents:read",
@@ -44,6 +84,9 @@ PERMISSIONS: dict[Role, set[str]] = {
         "workflows:read",
         "workflows:run",
         "workflows:install",
+        "workflows:create",
+        "workflows:update",
+        "workflows:delete",
         "tools:use:safe",
         "tools:use:read",
         "tools:use:write",
@@ -58,18 +101,38 @@ PERMISSIONS: dict[Role, set[str]] = {
         "models:read",
         "ci:read",
         "ci:personal:manage",
+        "channels:read",
+        "channels:personal:manage",
     },
 }
 
-# Permissions used by route-level decisions must be declared here even when
-# they are currently reachable only through the admin wildcard. This keeps the
-# policy auditable before additional org roles are introduced.
-PERMISSIONS[Role.org_admin].update({
-    "agents:manage",
-    "agents:publish:force",
-    "approvals:manage",
-    "ci:organization:read",
-})
+
+# A user can hold more than one role in the same org (see Membership's
+# (org_id, user_id, role) uniqueness). This orders them for DISPLAY only
+# (PrincipalContext.role, a UI badge, workflow_catalog.py's admin check) -
+# actual authorization always checks the full `roles` set via `allows()`.
+ROLE_DISPLAY_PRIORITY: tuple[Role, ...] = (Role.platform_admin, Role.org_admin, Role.operator, Role.user)
+
+# Some single-role call sites downstream of chat (JWT role claim,
+# ToolAuthorizationContext.role for tools:use:<tier> checks) can't easily
+# consume a role set - for those, prefer whichever role actually grants
+# tool use, so a dual-role founder (org_admin, which doesn't, + operator,
+# which does) isn't blocked from using the AI stack they can configure.
+_TOOL_USE_ROLE_PRIORITY: tuple[Role, ...] = (Role.operator, Role.user, Role.org_admin, Role.platform_admin)
+
+
+def primary_role(roles: set[Role] | frozenset[Role]) -> Role:
+    for candidate in ROLE_DISPLAY_PRIORITY:
+        if candidate in roles:
+            return candidate
+    return Role.user
+
+
+def tool_use_role(roles: set[Role] | frozenset[Role]) -> Role:
+    for candidate in _TOOL_USE_ROLE_PRIORITY:
+        if candidate in roles:
+            return candidate
+    return Role.user
 
 
 @dataclass(frozen=True)
@@ -83,9 +146,18 @@ class PrincipalContext:
     membership_id: str | None = None
     principal_id: str | None = None
     session_id: str | None = None
+    roles: frozenset[Role] = frozenset()
+
+    def __post_init__(self) -> None:
+        if not self.roles:
+            object.__setattr__(self, "roles", frozenset({self.role}))
 
     def allows(self, permission: str) -> bool:
-        return has_permission(self.role, permission)
+        return any(has_permission(role, permission) for role in self.roles)
+
+    @property
+    def tool_use_role(self) -> Role:
+        return tool_use_role(self.roles)
 
     @property
     def effective_principal_id(self) -> str:
@@ -105,14 +177,10 @@ def has_permission(role: Role | str, permission: str) -> bool:
       - ``"tools:use:*"`` matches any ``tools:use:`` action.
     """
     if isinstance(role, str):
-        # Accept only the pre-cutover spelling at the local compatibility
-        # boundary; persisted production memberships use ``org_admin``.
         try:
-            role = Role.org_admin if role == "admin" else Role(role)
+            role = Role(role)
         except ValueError:
             return False
-    elif role == Role.admin:
-        role = Role.org_admin
     allowed = PERMISSIONS.get(role)
     if allowed is None:
         return False

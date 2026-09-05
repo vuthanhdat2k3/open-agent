@@ -1,14 +1,21 @@
 from __future__ import annotations
 
+import copy
+import hashlib
+import json
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.workflow.template_dags import TEMPLATE_DAGS, materialize_template_graph
 from app.db.base import gen_id, utc_now
 from app.db.session import get_db
 from app.dependencies import get_current_org_id, get_current_user, require_permission
+from app.models.agent import Agent
 from app.models.customer_intelligence import CalendarConnection, EmailConnection
+from app.models.model import Model
 from app.models.outbox import OutboxEvent
 from app.models.user import User
 from app.models.workflow import Workflow
@@ -168,22 +175,65 @@ async def install_template(
         raise HTTPException(409, "workflow template is already installed")
 
     installation_id = gen_id()
+    schedule = body.schedule.model_dump()
+    if body.template_key in {"gmail_monitor_and_triage", "new-customer-intelligence"}:
+        schedule = {"kind": "event", "time": None, "interval_hours": None, "weekday": None}
+
+    # Materialize the real template DAG so the user owns an editable workflow,
+    # not an opaque "catalog_template" placeholder.
+    import copy
+    default_agent = await db.scalar(
+        select(Agent)
+        .where(Agent.org_id == org_id, Agent.model_id.is_not(None))
+        .order_by(Agent.created_at.asc())
+        .limit(1)
+    )
+    default_model_id = await db.scalar(
+        select(Model.id)
+        .where(Model.org_id == org_id, Model.enabled.is_(True), Model.active.is_(True))
+        .order_by(Model.created_at.asc())
+        .limit(1)
+    )
+
+    if body.template_key in TEMPLATE_DAGS:
+        template_graph = materialize_template_graph(
+            body.template_key,
+            timezone=body.timezone,
+            schedule=schedule,
+            settings=settings,
+            default_agent_id=default_agent.id if default_agent else None,
+            default_model_id=default_model_id,
+        )
+    else:
+        # Fallback 1: lookup source workflow in organization by name
+        source_wf = await db.scalar(
+            select(Workflow)
+            .where(Workflow.org_id == org_id, Workflow.name == version.name)
+            .order_by(Workflow.created_at.desc())
+            .limit(1)
+        )
+        if source_wf and source_wf.graph:
+            template_graph = copy.deepcopy(source_wf.graph)
+        else:
+            # Fallback 2: lookup by ID prefix if template key starts with market-
+            short_id = body.template_key.replace("market-", "")
+            source_wf2 = await db.scalar(
+                select(Workflow)
+                .where(Workflow.org_id == org_id, Workflow.id.startswith(short_id))
+                .limit(1)
+            )
+            if source_wf2 and source_wf2.graph:
+                template_graph = copy.deepcopy(source_wf2.graph)
+            else:
+                template_graph = {"nodes": [], "edges": []}
     workflow = Workflow(
         id=gen_id(),
         org_id=org_id,
         created_by_user_id=current_user.id,
         name=body.name or version.name,
         description=f"Managed installation of {version.name}",
-        graph={
-            "kind": "catalog_template",
-            "template_key": body.template_key,
-            "template_version": version.version,
-        },
+        graph=template_graph,
     )
-    schedule = body.schedule.model_dump()
-    if body.template_key in {"gmail_monitor_and_triage", "new-customer-intelligence"}:
-        schedule = {"kind": "event", "time": None, "interval_hours": None, "weekday": None}
-
     installation = WorkflowInstallation(
         id=installation_id,
         org_id=org_id,
@@ -205,7 +255,7 @@ async def install_template(
     except IntegrityError as exc:
         await db.rollback()
         error_text = str(exc.orig)
-        if "uq_workflows_org_name" in error_text:
+        if "uq_workflows_org_user_name" in error_text or "uq_workflows_org_name" in error_text:
             raise HTTPException(409, "workflow name is already in use") from exc
         if "uq_active_workflow_installation_owner_template" in error_text or "uq_workflow_installation_owner_template" in error_text:
             raise HTTPException(409, "workflow template is already installed") from exc
@@ -237,12 +287,35 @@ async def run_installation_now(
     item = await db.scalar(select(WorkflowInstallation).where(WorkflowInstallation.id == installation_id, WorkflowInstallation.org_id == org_id, WorkflowInstallation.owner_user_id == current_user.id))
     if item is None:
         raise HTTPException(404, "workflow installation not found")
+    if item.status == "archived":
+        # Archived installations are soft-deleted; an archived run would
+        # still hit the worker, cost tokens, and pollute the activity log.
+        raise HTTPException(409, "workflow installation is archived")
     if (item.schedule or {}).get("kind") == "event":
         raise HTTPException(409, "event-triggered workflow runs when its provider event arrives")
     now = utc_now()
     occurrence_id = gen_id()
     run_id = gen_id()
-    db.add(WorkflowRun(id=run_id, org_id=org_id, workflow_id=item.workflow_id, status="queued", input={"text": "", "timezone": item.timezone, "trigger": "manual", "installation_id": item.id, "template_key": item.template_key, "template_version": item.template_version, "occurrence_id": occurrence_id}, triggered_by_user_id=current_user.id))
+    # Snapshot the graph + trigger identity like every other run path, so a
+    # manual run executes the graph as it was at click time (not the live
+    # graph if the workflow is edited before the worker claims it) and the
+    # engine starts from the right entry node instead of defaulting.
+    wf = await db.scalar(
+        select(Workflow).where(Workflow.id == item.workflow_id, Workflow.org_id == org_id)
+    )
+    graph_snapshot = copy.deepcopy((wf.graph if wf else None) or {})
+    graph_hash = hashlib.sha256(
+        json.dumps(graph_snapshot, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    trigger_node_id = next(
+        (
+            str(node["id"])
+            for node in graph_snapshot.get("nodes", [])
+            if isinstance(node, dict) and node.get("kind") == "scheduler" and node.get("id")
+        ),
+        None,
+    )
+    db.add(WorkflowRun(id=run_id, org_id=org_id, workflow_id=item.workflow_id, status="queued", input={"text": "", "timezone": item.timezone, "trigger": "manual", "installation_id": item.id, "template_key": item.template_key, "template_version": item.template_version, "occurrence_id": occurrence_id}, triggered_by_user_id=current_user.id, graph_snapshot=graph_snapshot, graph_hash=graph_hash, trigger_node_id=trigger_node_id, trigger_type="manual"))
     await db.flush()
     db.add(WorkflowOccurrence(id=occurrence_id, installation_id=item.id, workflow_run_id=run_id, occurrence_key=f"manual:{occurrence_id}", scheduled_for=now, status="queued", payload={"template_key": item.template_key, "trigger": "manual"}))
     db.add(OutboxEvent(event_type="workflow.run.requested", aggregate_type="workflow_occurrence", aggregate_id=occurrence_id, org_id=org_id, user_id=current_user.id, correlation_id=occurrence_id, payload={"run_id": run_id, "installation_id": item.id}, dedupe_key=f"manual:{occurrence_id}"))
@@ -266,6 +339,8 @@ async def pause_installation(
     item = await db.scalar(select(WorkflowInstallation).where(WorkflowInstallation.id == installation_id, WorkflowInstallation.org_id == org_id, WorkflowInstallation.owner_user_id == current_user.id))
     if item is None:
         raise HTTPException(404, "workflow installation not found")
+    if item.status == "archived":
+        raise HTTPException(409, "workflow installation is archived")
     item.status = "paused"
     item.next_run_at = None
     await db.commit()
@@ -283,6 +358,8 @@ async def resume_installation(
     item = await db.scalar(select(WorkflowInstallation).where(WorkflowInstallation.id == installation_id, WorkflowInstallation.org_id == org_id, WorkflowInstallation.owner_user_id == current_user.id))
     if item is None:
         raise HTTPException(404, "workflow installation not found")
+    if item.status == "archived":
+        raise HTTPException(409, "workflow installation is archived")
     item.status = "enabled"
     item.next_run_at = next_run_at(item.schedule, item.timezone)
     await db.commit()

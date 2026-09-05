@@ -129,6 +129,7 @@ async def test_provider_error_escalates_to_strong_model(monkeypatch):
         ci_classifier_company_confidence=0.75,
         ci_classifier_meeting_confidence=0.85,
         ci_classifier_daily_call_limit_per_org=10,
+        observability_enabled=False,
     )
     economy = SimpleNamespace(id="economy")
     strong = SimpleNamespace(id="strong")

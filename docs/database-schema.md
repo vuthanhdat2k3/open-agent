@@ -71,10 +71,13 @@ Configured agents (system prompt + model + granted tools).
 | `tools` | Text(JSON) | NOT NULL | `["read_attachment","call_agent","web_fetch","memory_store","mcp:srv:t"]` |
 | `max_iterations` | Integer | default 12 | loop cap |
 | `temperature` | Float | default 0.7 | |
+| `visibility` | String(16) | default `all` | `all` \| `platform_admin` — `platform_admin`-scoped agents are hidden from normal org listing/chat/delegate-tool paths (see `rbac-matrix.md` footnote on the Chat Assistant row) |
 | `created_at` | DateTime | NOT NULL | |
 | `updated_at` | DateTime | NOT NULL | |
 
 Note: `tools` is a JSON list of granted tool ids. The agent only sees those.
+
+Note: this table sketch predates several columns already in `app/models/agent.py` (`kind`, `allowed_risk_tiers`, `execution_policy`, `recommended_tier`, `is_pinned_by_default`, `key`, `org_id`, …) — treat the ORM model as authoritative for the full column set.
 
 ### 2.4 `mcp_servers`
 Registered MCP servers.
@@ -128,10 +131,30 @@ Chat sessions (one agent per session in v1).
 | `agent_id` | String(36) | FK → agents.id, NOT NULL | |
 | `title` | String(256) | | |
 | `status` | String(32) | default `active` | `active|archived` |
+| `workspace_override_path` | String(512) | NULL | when set, tools resolve files against this path instead of the default ephemeral sandbox — used by the Ops & Reliability agent's repo-worktree flow |
 | `created_at` | DateTime | NOT NULL | |
 | `updated_at` | DateTime | NOT NULL | |
 
 Index: `ix_sessions_agent`, `ix_sessions_updated`.
+
+### 2.7b `ops_findings`
+Findings recorded by the Ops & Reliability agent's monitoring sweeps (Langfuse traces + task/approval health). Reporting only — no row here implies any automatic fix was applied.
+
+| Column | Type | Constraints | Notes |
+|--------|------|-------------|-------|
+| `id` | String(36) | PK | UUID |
+| `org_id` | String(36) | FK → organizations.id, NOT NULL | |
+| `severity` | String(16) | default `info` | |
+| `title` | String(256) | NOT NULL | |
+| `summary` | Text | default `""` | |
+| `evidence` | JSON | NOT NULL | trace/task ids backing the finding |
+| `status` | String(24) | default `reported` | |
+| `pr_url` | String(512) | NULL | reserved; no tool currently opens a PR |
+| `related_run_id` | String(128) | NULL | |
+| `created_at` | DateTime | NOT NULL | |
+| `updated_at` | DateTime | NOT NULL | |
+
+Indexes: `ix_ops_findings_org_id`, `ix_ops_findings_severity`, `ix_ops_findings_status`, `ix_ops_findings_related_run_id`, `ix_ops_findings_created_at`.
 
 ### 2.8 `messages`
 Conversation history. Block-based to support tool calls & images.

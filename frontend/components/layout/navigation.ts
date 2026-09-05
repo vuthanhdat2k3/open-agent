@@ -2,47 +2,108 @@ import type { QueryClient, QueryKey } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import type { Agent, AgentToolInfo, McpServer, Model, Provider, Session, SandboxExecution, UploadedFile, UsageSummary, Workflow as WorkflowT, WorkspaceArtifact } from "@/types";
 import {
-  Bell, Bot, Bug, CalendarDays, Cpu, FileUp, FlaskConical, FolderKanban,
-  Gauge, LayoutDashboard, MessageSquare, PlayCircle, Plug, Search, Server, SlidersHorizontal, ShieldCheck, Users, Workflow, Zap,
+  Bell, Bot, Bug, Building2, CalendarDays, Cpu, FileUp, FlaskConical, FolderKanban,
+  Gauge, LayoutDashboard, MessageSquare, Plug, Search, Server, SlidersHorizontal, ShieldCheck, Users, Workflow, Zap,
   type LucideIcon,
 } from "lucide-react";
 
-export interface NavItem { href: string; label: string; icon: LucideIcon; permission?: string; platformOnly?: boolean; }
-export interface NavGroup { title: string; items: NavItem[]; }
+// Kept as a UI-only alias for nav gating: the canonical role set lives in
+// `@/lib/roles` and the wire-level `OrgMember.role` uses the same union.
+export type UserRole = "platform_admin" | "org_admin" | "operator" | "user";
 
-// adminOnly items configure/operate the product (agents, workflows authoring,
-// providers, models, MCP, integrations, evaluations, members, debug) - a
-// plain "user" only ever consumes it (Chat, Dashboard, and their own
-// Workspace/Files/Approvals/Quotas data). See the RBAC design spec.
+export interface NavItem {
+  href: string;
+  label: string;
+  i18nKey?: string;
+  icon: LucideIcon;
+  permission?: string;
+  platformOnly?: boolean;
+  roles?: UserRole[];
+}
+
+export interface NavGroup {
+  title: string;
+  i18nKey?: string;
+  roles?: UserRole[];
+  items: NavItem[];
+}
+
 export const navGroups: NavGroup[] = [
-  { title: "Overview", items: [
-    { href: "/", label: "Dashboard", icon: LayoutDashboard },
-    { href: "/chat", label: "Chat", icon: MessageSquare },
-    { href: "/run-workflow", label: "Run Workflow", icon: PlayCircle, permission: "workflows:run" },
-  ] },
-  { title: "AI Infrastructure", items: [
-    { href: "/agents", label: "Agents", icon: Bot, permission: "agents:read" },
-    { href: "/workflows", label: "Workflows", icon: Workflow, permission: "workflows:read" },
-    { href: "/workspace", label: "Workspace", icon: FolderKanban, permission: "files:read" },
-    { href: "/mcp", label: "MCP Servers", icon: Plug, permission: "mcp:read" },
-    { href: "/integrations", label: "Integrations", icon: CalendarDays, permission: "ci:personal:manage" },
-    { href: "/email-intelligence", label: "Smart Inbox", icon: Bell, permission: "ci:personal:manage" },
-    { href: "/automations", label: "Automations", icon: Zap, permission: "workflows:read" },
-    { href: "/email-intelligence/rules", label: "Automation Rules", icon: SlidersHorizontal, permission: "ci:personal:manage" },
-    { href: "/customer-intelligence", label: "Research Cases", icon: Search, permission: "ci:read" },
-    { href: "/models", label: "Models", icon: Cpu, permission: "models:read" },
-    { href: "/providers", label: "Providers", icon: Server, permission: "providers:read" },
-    { href: "/files", label: "Files", icon: FileUp, permission: "files:read" },
-  ] },
-  { title: "Governance & Ops", items: [
-    { href: "/approvals", label: "Approvals", icon: ShieldCheck, permission: "approvals:read" },
-    { href: "/evaluations", label: "Evaluations", icon: FlaskConical, permission: "evaluations:read" },
-    { href: "/settings/quotas", label: "Quotas", icon: Gauge, permission: "quota:usage" },
-    { href: "/settings/members", label: "Members", icon: Users, permission: "orgs:manage" },
-    { href: "/debug", label: "Debug", icon: Bug, permission: "orgs:manage" },
-    { href: "/admin/email-intelligence", label: "Email Operations", icon: Gauge, permission: "ci:organization:read" },
-    { href: "/organizations", label: "Organizations", icon: Users, permission: "orgs:read", platformOnly: true },
-  ] },
+  // --- Platform Admin ---
+  {
+    title: "Platform Admin",
+    i18nKey: "nav.groups.platformAdmin",
+    roles: ["platform_admin"],
+    items: [
+      { href: "/", label: "Overview", i18nKey: "nav.dashboard", icon: LayoutDashboard, roles: ["platform_admin"], platformOnly: true },
+      { href: "/organizations", label: "Organizations", i18nKey: "nav.organizations", icon: Users, roles: ["platform_admin"], platformOnly: true },
+    ],
+  },
+
+  // --- Organization Admin (Members, Quotas, System Governance, Email Ops) ---
+  {
+    title: "Administration",
+    i18nKey: "nav.groups.systemSettings",
+    roles: ["org_admin"],
+    items: [
+      { href: "/", label: "Overview", i18nKey: "nav.dashboard", icon: LayoutDashboard, roles: ["org_admin"] },
+      { href: "/settings/members", label: "Members", i18nKey: "nav.members", icon: Users, roles: ["org_admin"], permission: "orgs:manage" },
+      { href: "/settings/quotas", label: "Quotas", i18nKey: "nav.quotas", icon: Gauge, roles: ["org_admin"], permission: "quota:usage" },
+      { href: "/admin/email-intelligence", label: "Email Gateway", i18nKey: "nav.emailGateway", icon: SlidersHorizontal, roles: ["org_admin"], permission: "admin:email-intelligence" },
+      { href: "/debug", label: "Audit Logs", i18nKey: "nav.auditLogs", icon: Bug, roles: ["org_admin"], permission: "orgs:manage" },
+    ],
+  },
+
+  // --- Operator (AI Engineer / AI Operations Stack) ---
+  // org_admin is NOT included here - it manages the org, not the AI stack
+  // (see backend app/core/authz/policy.py header comment). A self-registered
+  // founder still sees this group because register() also grants them
+  // operator alongside org_admin (a fresh org needs at least one operator to
+  // configure agents/models/providers at all).
+  {
+    title: "AI Studio",
+    i18nKey: "nav.groups.agenticWorkflows",
+    roles: ["operator"],
+    items: [
+      { href: "/", label: "Studio Overview", i18nKey: "nav.studioOverview", icon: LayoutDashboard, roles: ["operator"] },
+      // Chat removed - operator configures AI, does not chat (see backend policy.py)
+      { href: "/agents", label: "Agents", i18nKey: "nav.agents", icon: Bot, roles: ["operator"], permission: "agents:read" },
+      { href: "/providers", label: "Providers", i18nKey: "nav.providers", icon: Server, roles: ["operator"], permission: "providers:read" },
+      { href: "/workflows", label: "Workflows", i18nKey: "nav.workflows", icon: Workflow, roles: ["operator"], permission: "workflows:read" },
+      { href: "/mcp", label: "MCP Servers", i18nKey: "nav.mcpServers", icon: Plug, roles: ["operator"], permission: "mcp:read" },
+      { href: "/channels", label: "Messaging Channels", i18nKey: "nav.channels", icon: MessageSquare, roles: ["operator", "user"], permission: "channels:read" },
+      { href: "/files", label: "Knowledge Base", i18nKey: "nav.knowledgeBase", icon: FolderKanban, roles: ["operator"], permission: "files:read" },
+    ],
+  },
+  {
+    title: "Observability",
+    i18nKey: "nav.groups.governanceAudit",
+    roles: ["operator"],
+    items: [
+      { href: "/debug", label: "Audit Logs", i18nKey: "nav.auditLogs", icon: Bug, roles: ["operator"], permission: "usage:read" },
+      { href: "/workspace", label: "Sandbox", i18nKey: "nav.sandbox", icon: FolderKanban, roles: ["operator"], permission: "files:read" },
+      { href: "/evaluations", label: "Evaluations", i18nKey: "nav.evaluations", icon: FlaskConical, roles: ["operator"], permission: "evaluations:read" },
+      { href: "/approvals", label: "Approvals", i18nKey: "nav.approvals", icon: ShieldCheck, roles: ["operator"], permission: "approvals:read" },
+    ],
+  },
+
+  // --- User (Business Consumer / End-User) ---
+  {
+    title: "Workspace",
+    i18nKey: "nav.groups.workspace",
+    roles: ["user"],
+    items: [
+      { href: "/", label: "Overview", i18nKey: "nav.dashboard", icon: LayoutDashboard, roles: ["user"] },
+      { href: "/chat", label: "Chat", i18nKey: "nav.chat", icon: MessageSquare, roles: ["user"] },
+      { href: "/workflows", label: "Workflows", i18nKey: "nav.workflows", icon: Workflow, roles: ["user"], permission: "workflows:read" },
+      { href: "/integrations", label: "Integrations", i18nKey: "nav.integrations", icon: Plug, roles: ["user"], permission: "ci:personal:manage" },
+      { href: "/channels", label: "My Channels", i18nKey: "nav.myChannels", icon: MessageSquare, roles: ["user"], permission: "channels:read" },
+      { href: "/email-intelligence", label: "Email Intelligence", i18nKey: "nav.emailIntelligence", icon: Bell, roles: ["user"], permission: "ci:personal:manage" },
+      { href: "/customer-intelligence", label: "Customer Intelligence", i18nKey: "nav.customerIntelligence", icon: Building2, roles: ["user"], permission: "ci:read" },
+      { href: "/workspace", label: "Sandbox", i18nKey: "nav.sandbox", icon: FolderKanban, roles: ["user"], permission: "files:read" },
+      { href: "/approvals", label: "Approvals", i18nKey: "nav.approvals", icon: ShieldCheck, roles: ["user"], permission: "approvals:read" },
+    ],
+  },
 ];
 
 export const allNavItems = navGroups.flatMap((group) => group.items);
@@ -69,7 +130,6 @@ const tabQueries: Record<string, PrefetchSpec[]> = {
   ],
   "/mcp": [{ queryKey: ["mcp"], queryFn: () => api.get<McpServer[]>("/api/mcp/servers") }],
   "/workflows": [{ queryKey: ["workflows"], queryFn: () => api.get<WorkflowT[]>("/api/workflows") }],
-  "/run-workflow": [{ queryKey: ["workflows"], queryFn: () => api.get<WorkflowT[]>("/api/workflows") }],
   "/workspace": [
     { queryKey: ["workspace-artifacts"], queryFn: () => api.get<WorkspaceArtifact[]>("/api/workspace/artifacts") },
     { queryKey: ["sandbox-executions"], queryFn: () => api.get<SandboxExecution[]>("/api/workspace/executions") },

@@ -18,6 +18,9 @@ class WorkspaceArtifactOut(BaseModel):
     session_id: str | None = None
     task_id: str | None = None
     root_run_id: str | None = None
+    created_by_user_id: str | None = None
+    creator_email: str | None = None
+    creator_name: str | None = None
     exists: bool = True
     created_at: datetime
     updated_at: datetime
@@ -39,6 +42,9 @@ class SandboxExecutionOut(BaseModel):
     session_id: str | None = None
     task_id: str | None = None
     root_run_id: str | None = None
+    created_by_user_id: str | None = None
+    creator_email: str | None = None
+    creator_name: str | None = None
     started_at: datetime
     finished_at: datetime | None = None
     created_at: datetime

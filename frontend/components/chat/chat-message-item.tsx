@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Copy, Check, ShieldCheck, ShieldX, ShieldAlert, Bot, XCircle } from "lucide-react";
+import { Copy, Check, ShieldCheck, ShieldX, ShieldAlert, Bot, XCircle, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +11,8 @@ import { ReasoningRow } from "./blocks/reasoning-row";
 import { ToolCallCard } from "./blocks/tool-call-card";
 import { ToolCallChip } from "./blocks/tool-call-chip";
 import { StatsLine } from "./blocks/stats-line";
+import { FileAttachmentCard } from "./file-attachment-card";
+import { useTranslation } from "@/lib/i18n";
 
 export interface ChatMessageItemProps {
   message: ChatMessage;
@@ -19,7 +21,9 @@ export interface ChatMessageItemProps {
 }
 
 function ChatMessageItemBase({ message: m, debug, onApprovalDecision }: ChatMessageItemProps) {
+  const { locale, tx } = useTranslation();
   const [copied, setCopied] = React.useState(false);
+  const [isDeciding, setIsDeciding] = React.useState(false);
 
   const copyText = React.useCallback(async (text: string) => {
     try {
@@ -28,119 +32,72 @@ function ChatMessageItemBase({ message: m, debug, onApprovalDecision }: ChatMess
       } else {
         const textarea = document.createElement("textarea");
         textarea.value = text;
-        textarea.setAttribute("readonly", "");
         textarea.style.position = "fixed";
-        textarea.style.opacity = "0";
+        textarea.style.left = "-9999px";
         document.body.appendChild(textarea);
         textarea.select();
-        const didCopy = document.execCommand("copy");
-        textarea.remove();
-        if (!didCopy) throw new Error("copy command failed");
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
       }
       setCopied(true);
-      window.setTimeout(() => setCopied(false), 1200);
+      setTimeout(() => setCopied(false), 1500);
     } catch {
-      // Ignore clipboard failure
+      // Ignore clipboard errors
     }
   }, []);
 
-  // 1. User message (DeepSeek Harness User_Bubble: r22, max-w-[525px], 16px/24px font)
+  // 1. User message
   if (m.role === "user") {
     return (
-      <div key={m.id} className="group flex w-full flex-col items-end gap-1.5 self-end">
-        <div className="flex max-w-[min(525px,85%)] flex-col items-end gap-1">
-          <div
-            className="cursor-text select-text whitespace-pre-wrap break-words rounded-[22px] px-4 py-2.5 text-[15px] leading-6 text-foreground shadow-sm"
-            style={{ backgroundColor: "var(--dsh-specific-bubble)" }}
-          >
-            {m.content || "…"}
-          </div>
+      <div className="group flex w-full justify-end gap-2">
+        <div className="mt-1 flex opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
           <button
             type="button"
             onClick={() => void copyText(m.content)}
-            className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none group-hover:opacity-100"
-            aria-label={copied ? "User message copied" : "Copy user message"}
-            title={copied ? "Copied" : "Copy message"}
+            className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            aria-label={copied ? tx("Đã sao chép tin nhắn", "Message copied") : tx("Sao chép tin nhắn", "Copy message")}
+            title={copied ? tx("Đã sao chép", "Copied") : tx("Sao chép tin nhắn", "Copy message")}
           >
-            {copied ? <Check className="h-3 w-3" aria-hidden="true" /> : <Copy className="h-3 w-3" aria-hidden="true" />}
-            {copied ? "Copied" : "Copy"}
+            {copied ? <Check className="h-3.5 w-3.5" aria-hidden="true" /> : <Copy className="h-3.5 w-3.5" aria-hidden="true" />}
           </button>
+        </div>
+        <div className="flex max-w-[85%] flex-col items-end gap-1.5">
+          {m.attachments?.length ? (
+            <div className="flex flex-wrap justify-end gap-2">
+              {m.attachments.map((a) => (
+                <FileAttachmentCard
+                  key={a.id}
+                  attachment={a}
+                  variant="message"
+                />
+              ))}
+            </div>
+          ) : null}
+          <div className="rounded-2xl bg-primary px-4 py-2.5 text-sm text-primary-foreground shadow-sm">
+            <p className="whitespace-pre-wrap break-words select-text">{m.content}</p>
+          </div>
         </div>
       </div>
     );
   }
 
-  // 2. Approval message
+  // 2. Approval messages: Handled exclusively by the dedicated bottom ApprovalDock while pending; hidden once approved/decided to keep the chat stream clean
   if (m.role === "approval") {
-    const status = m.status;
-    const args =
-      typeof m.argsSnapshot === "string"
-        ? m.argsSnapshot
-        : JSON.stringify(m.argsSnapshot ?? {}, null, 2);
-
-    return (
-      <div
-        key={m.id}
-        className="animate-scale-in self-start w-full max-w-[92%] rounded-xl border border-warning/40 bg-warning/[0.06] p-3 shadow-card my-1"
-      >
-        <div className="flex items-center gap-2 text-xs font-semibold">
-          {status === "approved" ? (
-            <ShieldCheck className="h-4 w-4 text-success" />
-          ) : status === "rejected" ? (
-            <ShieldX className="h-4 w-4 text-destructive" />
-          ) : (
-            <ShieldAlert className="h-4 w-4 text-warning" />
-          )}
-          <span>
-            {status === "pending"
-              ? "Approval required"
-              : status === "approved"
-              ? "Approved"
-              : "Rejected"}
-          </span>
-          {m.toolName && (
-            <Badge variant="outline" className="font-mono text-[9px]">
-              {m.toolName}
-            </Badge>
-          )}
-        </div>
-        <pre className="mt-2 max-h-48 overflow-auto rounded-lg border border-border/50 bg-black/30 p-2 font-mono text-[10px] leading-relaxed whitespace-pre-wrap break-all">
-          {args}
-        </pre>
-        {status === "pending" && onApprovalDecision ? (
-          <div className="mt-3 flex gap-2">
-            <Button
-              size="sm"
-              className="h-8 gap-1.5 text-xs"
-              onClick={() => onApprovalDecision(m.id, "approved")}
-            >
-              <ShieldCheck className="h-3.5 w-3.5" /> Approve
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-8 gap-1.5 text-xs"
-              onClick={() => onApprovalDecision(m.id, "rejected")}
-            >
-              <ShieldX className="h-3.5 w-3.5" /> Reject
-            </Button>
-          </div>
-        ) : null}
-      </div>
-    );
+    return null;
   }
 
   // 3. Error message
   if (m.role === "error") {
     return (
       <div
-        key={m.id}
+        tabIndex={0}
         role="alert"
+        aria-label={tx("Lỗi mô hình", "Model error")}
         className="animate-scale-in self-start w-full max-w-[92%] rounded-xl border border-destructive/40 bg-destructive/[0.06] p-3 text-sm text-destructive shadow-card my-1"
       >
         <div className="flex items-center gap-2 font-semibold">
           <XCircle className="h-4 w-4" />
-          <span>Model error</span>
+          <span>{tx("Lỗi mô hình", "Model error")}</span>
         </div>
         <p className="mt-2 whitespace-pre-wrap break-words text-foreground">{m.content}</p>
       </div>
@@ -153,13 +110,14 @@ function ChatMessageItemBase({ message: m, debug, onApprovalDecision }: ChatMess
     .map((b) => b.content)
     .join("\n\n");
 
-  const hasVisibleBlocks = m.blocks.some((b) => {
-    if (b.kind === "text") return b.content.trim().length > 0 || b.streaming;
-    if (b.kind === "reasoning") return b.content.trim().length > 0 || b.streaming;
-    if (b.kind === "tool_call") return true;
-    if (b.kind === "stats") return true;
-    return false;
-  });
+  const hasVisibleBlocks =
+    m.blocks.some((b) => {
+      if (b.kind === "text") return b.content.trim().length > 0 || b.streaming;
+      if (b.kind === "reasoning") return b.content.trim().length > 0 || b.streaming;
+      if (b.kind === "tool_call") return true;
+      if (b.kind === "stats") return true;
+      return false;
+    }) || (m.artifacts && m.artifacts.length > 0);
 
   if (!hasVisibleBlocks) return null;
 
@@ -168,7 +126,7 @@ function ChatMessageItemBase({ message: m, debug, onApprovalDecision }: ChatMess
   const flushChips = () => {
     if (chipGroup.length > 0) {
       rendered.push(
-        <div key={`chips-${rendered.length}`} className="flex flex-wrap items-center gap-1.5">
+        <div key={`chips-${rendered.length}`} className="flex flex-wrap items-center gap-1.5 my-1">
           {chipGroup.map((b) => (
             <ToolCallChip key={b.id} block={b} />
           ))}
@@ -195,7 +153,7 @@ function ChatMessageItemBase({ message: m, debug, onApprovalDecision }: ChatMess
         rendered.push(<TextBlock key={block.id} content={block.content} streaming={block.streaming} />);
         break;
       case "stats":
-        rendered.push(<StatsLine key={block.id} block={block} />);
+        rendered.push(<StatsLine key={block.id} block={block} debug={debug} />);
         break;
     }
   }
@@ -212,17 +170,41 @@ function ChatMessageItemBase({ message: m, debug, onApprovalDecision }: ChatMess
       <div className="min-w-0 flex-1 space-y-2 pt-0.5">
         {rendered}
 
+        {m.artifacts && m.artifacts.length > 0 && (
+          <div className="mt-2.5 flex flex-col gap-1.5 pt-1">
+            <span className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
+              {tx("Tệp được tạo", "Generated files")} ({m.artifacts.length})
+            </span>
+            <div className="flex flex-wrap gap-2">
+              {m.artifacts.map((art) => (
+                <FileAttachmentCard
+                  key={art.id}
+                  attachment={{
+                    id: art.id,
+                    name: art.filename || art.path,
+                    size: art.size,
+                    content_type: art.content_type,
+                    download_url: art.download_url,
+                    content_url: art.content_url,
+                  }}
+                  variant="message"
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
         {fullTextContent && (
           <div className="flex items-center gap-1.5 pt-0.5">
             <button
               type="button"
               onClick={() => void copyText(fullTextContent)}
               className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none group-hover:opacity-100"
-              aria-label={copied ? "Message copied" : "Copy message"}
-              title={copied ? "Copied" : "Copy message"}
+              aria-label={copied ? tx("Đã sao chép tin nhắn", "Message copied") : tx("Sao chép tin nhắn", "Copy message")}
+              title={copied ? tx("Đã sao chép", "Copied") : tx("Sao chép tin nhắn", "Copy message")}
             >
               {copied ? <Check className="h-3 w-3" aria-hidden="true" /> : <Copy className="h-3 w-3" aria-hidden="true" />}
-              {copied ? "Copied" : "Copy"}
+              {copied ? tx("Đã sao chép", "Copied") : tx("Sao chép", "Copy")}
             </button>
           </div>
         )}

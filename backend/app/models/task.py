@@ -26,6 +26,8 @@ class Task(Base):
     triggered_by_user_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    # Immutable caller snapshot for queued execution and approval resume.
+    execution_principal: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     goal: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[str] = mapped_column(String(32), default="pending", nullable=False, index=True)
     result: Mapped[str | None] = mapped_column(Text, nullable=True)

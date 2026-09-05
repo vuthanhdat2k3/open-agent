@@ -29,7 +29,7 @@ from app.core.auth.jwt import (
 )
 from app.core.auth.oauth import oauth
 from app.core.auth.password import hash_password, verify_password
-from app.core.authz.policy import PERMISSIONS
+from app.core.authz.policy import PERMISSIONS, primary_role
 from app.core.observability.audit import log_action
 from app.db.base import utc_now
 from app.db.session import get_db
@@ -49,21 +49,22 @@ from app.schemas.auth import (
     UserMembershipOut,
 )
 from app.services.quota_service import default_organization_quota
+from app.services.rag_mcp_bootstrap import ensure_rag_mcp_server
+from app.services.zitadel_service import ZitadelProvisioningService
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 settings = get_settings()
 logger = logging.getLogger(__name__)
 
 
-def _public_role(role: Role) -> str:
-    if get_settings().auth_provider == "local" and role == Role.org_admin:
-        return "admin"
-    return role.value
-
-
 def _require_local_auth() -> None:
     if get_settings().auth_provider == "zitadel":
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Legacy authentication surface is disabled")
+
+
+def _auth_error_redirect(error_code: str) -> RedirectResponse:
+    frontend_base = get_settings().zitadel_post_logout_redirect_uri.rstrip("/")
+    return RedirectResponse(f"{frontend_base}/login?error={error_code}", status_code=303)
 
 
 def _digest(value: str) -> str:
@@ -174,12 +175,12 @@ async def oidc_callback(
         )
     if token_response.status_code >= 400:
         await db.rollback()
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Authorization code exchange failed")
+        return _auth_error_redirect("CODE_EXCHANGE_FAILED")
     token = token_response.json()
     id_token = token.get("id_token")
     if not id_token:
         await db.rollback()
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "ZITADEL did not return an ID token")
+        return _auth_error_redirect("ID_TOKEN_MISSING")
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             jwks_response = await client.get(
@@ -193,7 +194,7 @@ async def oidc_callback(
         if signing_key is None:
             await db.rollback()
             logger.error("OIDC ID token signing key was not found", extra={"kid": key_id})
-            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "ZITADEL signing key not found")
+            return _auth_error_redirect("SIGNING_KEY_NOT_FOUND")
         claims = jwt.decode(
             id_token,
             signing_key,
@@ -203,10 +204,11 @@ async def oidc_callback(
         )
     except jwt.PyJWTError as exc:
         await db.rollback()
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid ZITADEL ID token") from exc
+        logger.warning("Invalid ZITADEL ID token: %s", exc)
+        return _auth_error_redirect("INVALID_ID_TOKEN")
     if _digest(str(claims.get("nonce", ""))) != transaction.nonce_hash:
         await db.rollback()
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid OIDC nonce")
+        return _auth_error_redirect("INVALID_NONCE")
     zitadel_user_id = str(claims.get("sub", ""))
     claim_email = str(claims.get("email", "")).strip().lower()
     if not claim_email and token.get("access_token"):
@@ -245,7 +247,7 @@ async def oidc_callback(
         db.add(Membership(org_id=system_org.id, user_id=user.id, role=Role.platform_admin))
     if user is None or not user.is_active or user.lifecycle_status != "active":
         await db.rollback()
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "ACCOUNT_NOT_PROVISIONED")
+        return _auth_error_redirect("ACCOUNT_NOT_PROVISIONED")
     org_claim = claims.get(get_settings().zitadel_required_org_claim) or claims.get("org_id")
     if isinstance(org_claim, list):
         org_claim = org_claim[0] if len(org_claim) == 1 else None
@@ -254,7 +256,7 @@ async def oidc_callback(
         expected_org = org_result.scalar_one_or_none()
         if expected_org is None or (org_claim and org_claim not in {expected_org.id, expected_org.zitadel_org_id}):
             await db.rollback()
-            raise HTTPException(status.HTTP_403_FORBIDDEN, "Organization context mismatch")
+            return _auth_error_redirect("ORGANIZATION_CONTEXT_MISMATCH")
         organization_id = expected_org.id
     else:
         platform_membership_result = await db.execute(
@@ -276,7 +278,7 @@ async def oidc_callback(
                 org = org_result.scalar_one_or_none()
                 if org is None:
                     await db.rollback()
-                    raise HTTPException(status.HTTP_403_FORBIDDEN, "ACCOUNT_NOT_PROVISIONED")
+                    return _auth_error_redirect("ACCOUNT_NOT_PROVISIONED")
                 organization_id = org.id
             else:
                 memberships_result = await db.execute(
@@ -288,7 +290,7 @@ async def oidc_callback(
                 memberships = memberships_result.scalars().all()
                 if len(memberships) != 1:
                     await db.rollback()
-                    raise HTTPException(status.HTTP_403_FORBIDDEN, "ORGANIZATION_CONTEXT_REQUIRED")
+                    return _auth_error_redirect("ORGANIZATION_CONTEXT_REQUIRED")
                 organization_id = memberships[0].org_id
     membership_result = await db.execute(
         select(Membership).where(
@@ -300,7 +302,7 @@ async def oidc_callback(
     membership = membership_result.scalar_one_or_none()
     if membership is None:
         await db.rollback()
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "ACCOUNT_NOT_PROVISIONED")
+        return _auth_error_redirect("ACCOUNT_NOT_PROVISIONED")
     if claims.get("email") and not user.email:
         user.email = str(claims["email"]).lower()
     if claims.get("name"):
@@ -356,10 +358,14 @@ async def register(
     db.add(org)
     await db.flush()
     db.add(default_organization_quota(org.id))
+    await ensure_rag_mcp_server(db, org.id)
 
-    # Create Membership
+    # Create Membership. org_admin is not involved in AI configuration, and
+    # every org needs at least one operator - the founder gets both roles so
+    # they can immediately configure agents/models/providers.
     membership = Membership(org_id=org.id, user_id=user.id, role=Role.org_admin)
     db.add(membership)
+    db.add(Membership(org_id=org.id, user_id=user.id, role=Role.operator))
 
     # Issue Tokens
     access_token = create_access_token(user_id=user.id, org_id=org.id, role=Role.org_admin)
@@ -548,18 +554,26 @@ async def me(
         .where(Membership.user_id == current_user.id)
     )
     rows = res.all()
+    # A user can hold more than one role in the same org - group role-rows
+    # per org before building the response, instead of emitting/overwriting
+    # one entry per row.
+    by_org: dict[str, tuple[Organization, list[Role]]] = {}
+    for mem, org in rows:
+        by_org.setdefault(org.id, (org, []))[1].append(mem.role)
+
     memberships_out = [
         UserMembershipOut(
             org_id=org.id,
             org_name=org.name,
             org_slug=org.slug,
-            role=_public_role(mem.role),
+            role=primary_role(frozenset(roles)).value,
+            roles=[r.value for r in roles],
         )
-        for mem, org in rows
+        for org, roles in by_org.values()
     ]
     permissions_by_org = {
-        org.id: sorted(PERMISSIONS.get(mem.role, set()))
-        for mem, org in rows
+        org_id: sorted({perm for role in roles for perm in PERMISSIONS.get(role, set())})
+        for org_id, (_, roles) in by_org.items()
     }
 
     return MeResponse(
@@ -567,6 +581,7 @@ async def me(
         email=current_user.email,
         display_name=current_user.display_name,
         is_active=current_user.is_active,
+        must_change_password=bool(current_user.must_change_password),
         created_at=current_user.created_at,
         memberships=memberships_out,
         permissions_by_org=permissions_by_org,
@@ -587,16 +602,36 @@ async def update_me(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    _require_local_auth()
     if body.display_name is not None:
         current_user.display_name = body.display_name.strip()
 
     if body.new_password:
         if not body.old_password:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Old password is required to set a new password")
-        if not verify_password(body.old_password, current_user.hashed_password or ""):
+
+        is_old_valid = False
+        if current_user.hashed_password:
+            is_old_valid = verify_password(body.old_password, current_user.hashed_password)
+
+        if not is_old_valid and get_settings().auth_provider == "zitadel":
+            is_old_valid = await ZitadelProvisioningService().verify_user_password(current_user.email, body.old_password)
+
+        if not is_old_valid:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Incorrect old password")
+
+        if get_settings().auth_provider == "zitadel":
+            zitadel = ZitadelProvisioningService()
+            user_id = await zitadel.get_user_id_by_email(current_user.email)
+            if user_id:
+                success = await zitadel.set_user_password(user_id, body.new_password)
+                if not success:
+                    raise HTTPException(
+                        status.HTTP_400_BAD_REQUEST,
+                        "Failed to update password on ZITADEL. Ensure it meets complexity rules (8+ chars, uppercase, lowercase, number, symbol)."
+                    )
+
         current_user.hashed_password = hash_password(body.new_password)
+        current_user.must_change_password = False
 
     await db.commit()
     await db.refresh(current_user)
@@ -745,9 +780,11 @@ async def oauth_callback(
             db.add(org)
             await db.flush()
             db.add(default_organization_quota(org.id))
+            await ensure_rag_mcp_server(db, org.id)
 
-            membership = Membership(org_id=org.id, user_id=user.id, role=Role.admin)
+            membership = Membership(org_id=org.id, user_id=user.id, role=Role.org_admin)
             db.add(membership)
+            db.add(Membership(org_id=org.id, user_id=user.id, role=Role.operator))
 
         # Create OAuthAccount link
         oauth_acc = OAuthAccount(

@@ -101,3 +101,20 @@ def test_google_tool_contracts_explain_provider_specific_arguments() -> None:
     assert "not raw Drive query syntax" in drive_list.input_schema["properties"]["query"]["description"]
     assert "ISO-8601" in calendar_list.description
     assert "timezone offset" in calendar_list.input_schema["properties"]["from"]["description"]
+
+
+def test_oauth_state_roundtrip_and_tamper() -> None:
+    from app.customer_intelligence.oauth import create_oauth_state, verify_oauth_state
+
+    state = create_oauth_state("user-1", "org-1", "email", "google")
+    payload = verify_oauth_state(state)
+    assert payload["user_id"] == "user-1"
+    assert payload["org_id"] == "org-1"
+    assert payload["kind"] == "email"
+    assert payload["provider"] == "google"
+
+    # Tampered signature should fail
+    tampered = state[:-4] + "abcd"
+    with pytest.raises(ValueError, match="invalid OAuth state"):
+        verify_oauth_state(tampered)
+

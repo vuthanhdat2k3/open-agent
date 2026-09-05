@@ -78,6 +78,28 @@ class FileService:
     async def get(self, org_id: str, id: str) -> UploadedFile | None:
         return await self.repo.get(org_id, id)
 
+    async def download(
+        self, org_id: str, id: str, owner_user_id: str | None = None
+    ) -> tuple[bytes, UploadedFile] | None:
+        """Fetch raw bytes for one upload, scoped to its owner when given.
+
+        Used to hand a chat attachment's content to the agent for a single
+        turn — this reads the blob only, it never touches the RAG index.
+        """
+        record = await self.repo.get(org_id, id, created_by_user_id=owner_user_id)
+        if record is None or not record.stored_path:
+            return None
+
+        def _download() -> bytes:
+            body = self._s3_client().get_object(Bucket=self.settings.s3_bucket, Key=record.stored_path)
+            return body["Body"].read()
+
+        try:
+            data = await asyncio.to_thread(_download)
+        except ClientError:
+            return None
+        return data, record
+
     async def delete(self, org_id: str, id: str, owner_user_id: str | None = None) -> bool:
         record = await self.repo.get(org_id, id, created_by_user_id=owner_user_id)
         if record is None:

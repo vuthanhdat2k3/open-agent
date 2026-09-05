@@ -74,4 +74,8 @@ def build_driver(
         provider=str(provider_name),
         model=str(model.name),
         generation_name=generation_name,
+        cost_rates=(
+            float(getattr(model, "input_cost_per_1k", 0) or 0),
+            float(getattr(model, "output_cost_per_1k", 0) or 0),
+        ),
     )

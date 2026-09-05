@@ -14,6 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
+from app.core.observability.llm_trace import ObservabilityContext, build_trace_context
 from app.core.providers.factory import build_driver
 from app.customer_intelligence.automation_budget import reserve_scope_budget
 from app.customer_intelligence.classifier import Classification
@@ -271,7 +272,26 @@ async def classify_with_agent(
             await db.rollback()
             raise ClassificationBudgetExceeded
         await db.commit()
-        driver = build_driver(provider, model, generation_name="ci-email-classification")
+        observability = (
+            ObservabilityContext(
+                build_trace_context(
+                    # Stable per-email trace id: a retry against the strong
+                    # model reuses the same trace as the economy-model
+                    # attempt (both classify the same email), and the id
+                    # never collides across emails because it is derived
+                    # from the message's own content hash.
+                    trace_id=f"ci-classify-{email.content_hash}",
+                    session_id=None,
+                    org_id=org_id,
+                    metadata={"run_type": "ci_email_classification", "provider_message_id": email.provider_message_id},
+                )
+            )
+            if settings.observability_enabled
+            else None
+        )
+        driver = build_driver(
+            provider, model, observability=observability, generation_name="ci-email-classification"
+        )
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
             {

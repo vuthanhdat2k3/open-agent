@@ -41,5 +41,9 @@ class McpTool(Base):
     description: Mapped[str] = mapped_column(Text, default="")
     input_schema: Mapped[dict] = mapped_column(JSON, default=dict)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    # MCP tools are untrusted until explicitly classified. Existing rows are
+    # backfilled to dangerous + approval-required by migration.
+    risk_tier: Mapped[str] = mapped_column(String(32), default="dangerous", nullable=False)
+    requires_approval: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     server: Mapped["McpServer"] = relationship(back_populates="tools")

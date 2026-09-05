@@ -1,20 +1,32 @@
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.sse import format_sse
 from app.config import get_settings
+from app.core.authz.policy import PrincipalContext
 from app.core.authz.scope import scope_to_owner
 from app.core.quota.dependencies import agent_run_admission, enforce_resource_quota
+from app.core.tools.registry import BUILTIN_TOOLS
 from app.core.workflow.engine import create_workflow_run, run_workflow
+from app.core.workflow.node_definitions import NODE_DEFINITIONS
 from app.core.workflow.queue import enqueue_workflow_run
 from app.db.base import utc_now
 from app.db.session import SessionLocal
 from app.dependencies import get_current_org_id, get_current_user, get_db, require_permission
+from app.models.model import Model
 from app.models.user import User
+from app.models.workflow import Workflow
+from app.models.workflow_installation import WorkflowInstallation
 from app.models.workflow_node_run import WorkflowNodeRun
 from app.models.workflow_run import WorkflowRun
+from app.repositories.customer_intelligence import (
+    CalendarConnectionRepository,
+    DriveConnectionRepository,
+    EmailConnectionRepository,
+)
 from app.schemas.workflow import (
     RunWorkflowRequest,
     WorkflowCreate,
@@ -22,6 +34,7 @@ from app.schemas.workflow import (
     WorkflowGenerateResponse,
     WorkflowOut,
     WorkflowUpdate,
+    WorkflowValidationError,
 )
 from app.services.workflow_service import WorkflowService
 
@@ -29,6 +42,80 @@ router = APIRouter(
     prefix="/api/workflows",
     tags=["workflows"],
 )
+
+
+@router.get("/node-definitions", dependencies=[Depends(require_permission("workflows:read"))])
+async def list_node_definitions():
+    """Declarative config schemas for every node kind (single source of truth)."""
+    return NODE_DEFINITIONS
+
+
+@router.get("/node-options", dependencies=[Depends(require_permission("workflows:read"))])
+async def list_node_options(
+    type: str = "models",
+    org_id: str = Depends(get_current_org_id),
+    current_user: User = Depends(get_current_user),
+    authz: PrincipalContext = Depends(require_permission("workflows:read")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Dynamic dropdown sources for ``load_options_from`` fields."""
+    from app.repositories.agent_repo import AgentRepository
+
+    if type == "models":
+        rows = await db.execute(select(Model).where(Model.org_id == org_id, Model.enabled.is_(True)))
+        return [{"name": m.display_name or m.name, "value": m.id} for m in rows.scalars().all()]
+    if type == "agents":
+        agents = await AgentRepository(db).list(org_id)
+        return [
+            {
+                "name": a.name,
+                "value": a.id,
+                "system_prompt": a.system_prompt,
+                "model_id": a.model_id,
+                "tools": a.tools,
+            }
+            for a in agents
+        ]
+    if type == "workflows":
+        rows = await db.execute(select(Workflow).where(Workflow.org_id == org_id))
+        return [{"name": w.name, "value": w.id} for w in rows.scalars().all()]
+    if type == "connections":
+        out = []
+        for repo in (EmailConnectionRepository, CalendarConnectionRepository, DriveConnectionRepository):
+            conns = await repo(db).list(org_id)
+            for c in conns:
+                label = getattr(c, "account_email", None) or getattr(c, "provider", "connection")
+                out.append({"name": f"{label} ({getattr(c, 'status', '')})", "value": c.id})
+        return out
+    if type == "users":
+        # Member emails are PII: plain ``user`` members (self-scoped) must not
+        # enumerate the organization roster; staff roles may configure nodes.
+        if authz.owner_user_id is not None:
+            raise HTTPException(403, "User role cannot enumerate organization members")
+        rows = await db.execute(
+            select(User).join(User.memberships).where(User.memberships.any(org_id=org_id))
+        )
+        return [{"name": u.email, "value": u.id} for u in rows.scalars().all()]
+    if type == "categories":
+        return []
+    return []
+
+
+@router.get("/tool-options", dependencies=[Depends(require_permission("workflows:read"))])
+async def list_tool_options():
+    """Registered tools for the tool-node dropdown (builtin + MCP + CI)."""
+    tools = []
+    for name, spec in BUILTIN_TOOLS.items():
+        tools.append(
+            {
+                "name": name,
+                "value": name,
+                "description": getattr(spec, "description", ""),
+                "risk_tier": getattr(spec, "risk_tier", "safe"),
+                "input_schema": getattr(spec, "input_schema", {}),
+            }
+        )
+    return tools
 
 
 async def _run_workflow_detached(workflow_id: str, org_id: str, workflow_run_id: str) -> None:
@@ -57,9 +144,40 @@ async def _run_workflow_detached(workflow_id: str, org_id: str, workflow_run_id:
 
 @router.get("", response_model=list[WorkflowOut], dependencies=[Depends(require_permission("workflows:read"))])
 async def list_workflows(
-    org_id: str = Depends(get_current_org_id), db: AsyncSession = Depends(get_db)
+    all: bool = False,
+    org_id: str = Depends(get_current_org_id),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
-    return await WorkflowService(db).list(org_id)
+    from app.models.user import User as UserModel
+
+    owner_id = None if all else current_user.id
+    workflows = await WorkflowService(db).list(org_id, created_by_user_id=owner_id)
+
+    # Join User to get creator email/name
+    user_ids = [w.created_by_user_id for w in workflows if w.created_by_user_id]
+    user_map: dict[str, UserModel] = {}
+    if user_ids:
+        res = await db.execute(select(UserModel).where(UserModel.id.in_(user_ids)))
+        for u in res.scalars().all():
+            user_map[u.id] = u
+
+    return [
+        WorkflowOut(
+            id=w.id,
+            name=w.name,
+            description=w.description,
+            graph=w.graph,
+            template_key=w.template_key,
+            is_customized=w.is_customized,
+            created_by_user_id=w.created_by_user_id,
+            creator_email=user_map[w.created_by_user_id].email if w.created_by_user_id and w.created_by_user_id in user_map else None,
+            creator_name=user_map[w.created_by_user_id].display_name if w.created_by_user_id and w.created_by_user_id in user_map else None,
+            created_at=w.created_at,
+            updated_at=w.updated_at,
+        )
+        for w in workflows
+    ]
 
 
 @router.post(
@@ -74,12 +192,21 @@ async def list_workflows(
 async def create_workflow(
     body: WorkflowCreate,
     org_id: str = Depends(get_current_org_id),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     try:
-        return await WorkflowService(db).create(org_id, body.model_dump())
+        return await WorkflowService(db).create(org_id, body.model_dump(), user_id=current_user.id)
+    except WorkflowValidationError as e:
+        raise HTTPException(400, detail={"errors": e.errors}) from e
     except ValueError as e:
         raise HTTPException(400, str(e))
+    except IntegrityError as e:
+        await db.rollback()
+        error_msg = str(e.orig) if hasattr(e, "orig") else str(e)
+        if "uq_workflows_org_user_name" in error_msg or "uq_workflows_org_name" in error_msg:
+            raise HTTPException(409, f'Workflow name "{body.name}" already exists.') from e
+        raise HTTPException(409, "Workflow could not be saved due to a data conflict.") from e
 
 
 @router.post(
@@ -115,12 +242,72 @@ async def update_workflow(
     id: str,
     body: WorkflowUpdate,
     org_id: str = Depends(get_current_org_id),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    # Check if this is a System Blueprint or existing DB workflow
+    existing = await db.scalar(select(Workflow).where(Workflow.id == id, Workflow.org_id == org_id))
+    if existing is not None:
+        # Ownership-scoped: role `user` may only update their own workflows.
+        res = await db.execute(
+            scope_to_owner(select(Workflow).where(Workflow.id == id, Workflow.org_id == org_id), db, Workflow.created_by_user_id)
+        )
+        if res.scalar_one_or_none() is None:
+            raise HTTPException(403, "you can only edit workflows you created")
+    else:
+        # Check if virtual blueprint
+        from app.core.workflow.templates import SYSTEM_WORKFLOW_BLUEPRINTS
+
+        matched_bp = any(
+            bp.id == id or bp.key == id or bp.name.lower() == id.lower() or bp.key == id.replace("sys-wf-", "")
+            for bp in SYSTEM_WORKFLOW_BLUEPRINTS.values()
+        )
+        if not matched_bp:
+            raise HTTPException(404, "workflow not found")
+
+    try:
+        result = await WorkflowService(db).update(org_id, id, body.model_dump(exclude_unset=True), user_id=current_user.id)
+    except WorkflowValidationError as e:
+        raise HTTPException(400, detail={"errors": e.errors}) from e
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except IntegrityError as e:
+        await db.rollback()
+        error_msg = str(e.orig) if hasattr(e, "orig") else str(e)
+        if "uq_workflows_org_user_name" in error_msg or "uq_workflows_org_name" in error_msg:
+            raise HTTPException(409, f'Workflow name "{body.name}" already exists.') from e
+        raise HTTPException(409, "Workflow could not be updated due to a data conflict.") from e
+    # If this workflow belongs to a template installation and the user edited
+    # its DAG, mark the installation so the worker runs the generic engine
+    # instead of the catalog executor (the user now owns the graph).
+    if body.graph is not None:
+        installation = await db.scalar(
+            select(WorkflowInstallation).where(
+                WorkflowInstallation.workflow_id == id, WorkflowInstallation.org_id == org_id
+            )
+        )
+        if installation is not None:
+            settings = dict(installation.settings or {})
+            settings["editor_overridden"] = True
+            installation.settings = settings
+            await db.commit()
+    return result
+
+
+@router.post(
+    "/{id}/reset-template",
+    response_model=WorkflowOut,
+    dependencies=[Depends(require_permission("workflows:update"))],
+)
+async def reset_workflow_to_template(
+    id: str,
+    org_id: str = Depends(get_current_org_id),
     db: AsyncSession = Depends(get_db),
 ):
     try:
-        return await WorkflowService(db).update(org_id, id, body.model_dump(exclude_unset=True))
+        return await WorkflowService(db).reset_to_template(org_id, id)
     except ValueError as e:
-        raise HTTPException(404, str(e))
+        raise HTTPException(400, str(e))
 
 
 @router.delete("/{id}", dependencies=[Depends(require_permission("workflows:delete"))])
@@ -129,6 +316,27 @@ async def delete_workflow(
     org_id: str = Depends(get_current_org_id),
     db: AsyncSession = Depends(get_db),
 ):
+    # Ownership-scoped: role `user` may only delete their own workflows.
+    res = await db.execute(
+        scope_to_owner(select(Workflow).where(Workflow.id == id, Workflow.org_id == org_id), db, Workflow.created_by_user_id)
+    )
+    if res.scalar_one_or_none() is None:
+        existing = await db.scalar(select(Workflow.id).where(Workflow.id == id, Workflow.org_id == org_id))
+        if existing is None:
+            raise HTTPException(404, "workflow not found")
+        raise HTTPException(403, "you can only delete workflows you created")
+
+    # Clean up associated marketplace installation if one exists
+    inst = await db.scalar(
+        select(WorkflowInstallation).where(
+            WorkflowInstallation.org_id == org_id,
+            WorkflowInstallation.workflow_id == id,
+        )
+    )
+    if inst:
+        await db.delete(inst)
+        await db.flush()
+
     if not await WorkflowService(db).delete(org_id, id):
         raise HTTPException(404, "workflow not found")
     return {"ok": True}
@@ -147,9 +355,10 @@ async def run_workflow_endpoint(
     background_tasks: BackgroundTasks,
     org_id: str = Depends(get_current_org_id),
     current_user: User = Depends(get_current_user),
+    authz: PrincipalContext = Depends(require_permission("workflows:run")),
     db: AsyncSession = Depends(get_db),
 ):
-    wf = await WorkflowService(db).get(org_id, id)
+    wf = await WorkflowService(db).ensure_persisted(org_id, id, user_id=current_user.id)
     if wf is None:
         raise HTTPException(404, "workflow not found")
     if not body.stream:
@@ -160,13 +369,24 @@ async def run_workflow_endpoint(
             stream=False,
             workflow_run_id=body.workflow_run_id,
             user_id=current_user.id,
+            user_role=authz.role.value,
             timezone_name=body.timezone,
+            trigger_node_id=body.trigger_node_id,
+            trigger_type="manual" if body.trigger_node_id else None,
         )
         return {"workflow_run_id": workflow_run_id, "output": output, "events": log}
 
     try:
         run = await create_workflow_run(
-            wf, body.input, db, body.workflow_run_id, current_user.id, body.timezone
+            wf,
+            body.input,
+            db,
+            body.workflow_run_id,
+            current_user.id,
+            authz.role.value,
+            body.timezone,
+            body.trigger_node_id,
+            "manual" if body.trigger_node_id else None,
         )
     except ValueError as exc:
         raise HTTPException(404, str(exc)) from exc
@@ -205,6 +425,7 @@ async def replay_workflow_run(
     run_id: str,
     org_id: str = Depends(get_current_org_id),
     current_user: User = Depends(get_current_user),
+    authz: PrincipalContext = Depends(require_permission("workflows:run")),
     db: AsyncSession = Depends(get_db),
 ):
     """Re-run a finished run against its recorded tool results.
@@ -236,6 +457,7 @@ async def replay_workflow_run(
         force_inline=True,
         replay_of_run_id=source.id,
         user_id=current_user.id,
+        user_role=authz.role.value,
     )
     # A replay that took a different path is a real finding, not an error:
     # report it with the divergence point so the caller can see where.
@@ -247,6 +469,39 @@ async def replay_workflow_run(
         "diverged": diverged["data"] if diverged else None,
         "events": log,
     }
+
+
+@router.post(
+    "/runs/{run_id}/cancel",
+    dependencies=[Depends(require_permission("workflows:run"))],
+)
+async def cancel_workflow_run(
+    run_id: str,
+    org_id: str = Depends(get_current_org_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Request cancellation of a live workflow run.
+
+    Cooperative: the run row is the shared signal between this API and
+    whichever worker owns the lease. The engine re-reads the status before
+    each scheduling round and halts at the next node boundary; a node already
+    executing finishes first. Queued and waiting-approval runs stop
+    immediately because no executor is mid-flight.
+    """
+    res = await db.execute(
+        select(WorkflowRun).where(WorkflowRun.id == run_id, WorkflowRun.org_id == org_id)
+    )
+    run = res.scalar_one_or_none()
+    if run is None:
+        raise HTTPException(404, "workflow run not found")
+    if run.status in {"succeeded", "failed", "diverged", "cancelled"}:
+        return {"ok": True, "status": run.status}
+    run.status = "cancelled"
+    run.finished_at = utc_now()
+    run.lease_owner = None
+    run.lease_expires_at = None
+    await db.commit()
+    return {"ok": True, "status": "cancelled"}
 
 
 @router.get("/runs/{run_id}", dependencies=[Depends(require_permission("workflows:read"))])

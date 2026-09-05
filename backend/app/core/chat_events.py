@@ -21,7 +21,7 @@ from collections.abc import AsyncIterator
 from datetime import timedelta
 from typing import Any
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -224,6 +224,25 @@ class ChatEventRecorder:
         self._phase = "queued"
         self._last_progress_at = 0.0
 
+    async def sync_seq_from_db(self, db: AsyncSession | None = None) -> int:
+        """Synchronize self.seq with the highest existing sequence number in DB."""
+        if db is not None:
+            res = await db.execute(
+                select(func.coalesce(func.max(ChatRunEvent.seq), 0)).where(
+                    ChatRunEvent.run_id == self.run_id
+                )
+            )
+            self.seq = int(res.scalar() or 0)
+            return self.seq
+        async with SessionLocal() as session:
+            res = await session.execute(
+                select(func.coalesce(func.max(ChatRunEvent.seq), 0)).where(
+                    ChatRunEvent.run_id == self.run_id
+                )
+            )
+            self.seq = int(res.scalar() or 0)
+            return self.seq
+
     def start_liveness(self) -> None:
         """Keep a live run fresh while the provider emits no token events."""
         if self._liveness_task is None or self._liveness_task.done():
@@ -244,6 +263,11 @@ class ChatEventRecorder:
         degrades to the old wait-until-done behavior) is always preferable to
         failing the user's run.
         """
+        if self.seq == 0 and not self._pending:
+            try:
+                await self.sync_seq_from_db()
+            except Exception:
+                pass
         self.seq += 1
         seq = self.seq
         event = str(ev.get("event") or "message")

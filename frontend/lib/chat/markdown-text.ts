@@ -37,32 +37,7 @@ export function normalizeLatex(text: string): string {
     return `___LATEX_PLACEHOLDER_${placeholders.length - 1}___`;
   });
 
-  // 5. On the remaining unprotected text, convert plain parenthesis ( math ) to $…$
-  //    Only if:
-  //    - The parenthesis does not close a markdown link destination `](…)`
-  //    - It is not preceded by \left or followed by \right (lookbehinds)
-  //    - It contains no URL (://) — link destinations would be mangled into math
-  //    - It contains a backslash, operator, or is a single variable/function call to prevent text matching
-  text = text.replace(/(?<!\\left)(?<!\])\(\s*([\s\S]*?)\s*(?<!\\right)\)/g, (match, inner) => {
-    const trimmed = inner.trim();
-    if (trimmed.length === 0 || trimmed.length > 150) return match;
-    if (/https?:\/\//.test(trimmed)) return match;
-
-    const isSingleVar = /^[a-zA-Z]$/.test(trimmed);
-    const isFunctionCall = /^[a-zA-Z]\([a-zA-Z0-9]\)$/.test(trimmed);
-    const hasMathIndicator =
-      /\\/.test(trimmed) ||
-      /[+\-*/=<>]/.test(trimmed) ||
-      /\b(to|implies)\b/.test(trimmed) ||
-      /[_^]/.test(trimmed);
-
-    if (isSingleVar || isFunctionCall || hasMathIndicator) {
-      return `$${trimmed}$`;
-    }
-    return match;
-  });
-
-  // 6. Restore the protected math blocks in reverse order. The replacement
+  // 4. Restore the protected math blocks in reverse order. The replacement
   //    must be a function: a string replacement would interpret `$$` as an
   //    escaped literal `$` and halve every display-math delimiter.
   for (let i = placeholders.length - 1; i >= 0; i--) {

@@ -328,7 +328,7 @@ async def test_prepare_run_pins_model_override_for_process_resume(async_session_
             ),
             "run-model-pin",
             user_id="user-model-pin",
-            user_role="admin",
+            user_role="org_admin",
         )
 
         assert task.progress["model_id"] == switched_model.id

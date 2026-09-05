@@ -12,6 +12,12 @@ class WorkflowTemplate(Base):
     __tablename__ = "workflow_templates"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=gen_id)
+    org_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    created_by_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     key: Mapped[str] = mapped_column(String(96), unique=True, nullable=False, index=True)
     status: Mapped[str] = mapped_column(String(24), nullable=False, default="published")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)

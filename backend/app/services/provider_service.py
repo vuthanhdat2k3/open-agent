@@ -115,8 +115,30 @@ class ProviderService:
         return await self.repo.get(org_id, id)
 
     @staticmethod
-    def _driver_for(provider: Provider, model_name: str = ""):
-        return build_driver(provider, Model(name=model_name or "discovery"))
+    def _driver_for(provider: Provider, model_name: str = "", org_id: str = ""):
+        from app.config import get_settings
+        from app.core.observability.llm_trace import ObservabilityContext, build_trace_context
+        from app.db.base import gen_id
+
+        settings = get_settings()
+        observability = (
+            ObservabilityContext(
+                build_trace_context(
+                    trace_id=gen_id(),
+                    session_id=None,
+                    org_id=org_id,
+                    metadata={"run_type": "provider_test_connection", "provider_id": provider.id},
+                )
+            )
+            if org_id and settings.observability_enabled
+            else None
+        )
+        return build_driver(
+            provider,
+            Model(name=model_name or "discovery"),
+            observability=observability,
+            generation_name="provider-test-connection",
+        )
 
     async def _persist_discovery(
         self,
@@ -211,7 +233,7 @@ class ProviderService:
             template_key=template.key,
             api_key=api_key.strip(),
         )
-        driver = self._driver_for(probe_provider, template.fallback_models[0].name if template.fallback_models else "discovery")
+        driver = self._driver_for(probe_provider, template.fallback_models[0].name if template.fallback_models else "discovery", org_id=org_id)
         result = await ModelDiscoveryService.probe(driver, template)
         if not result.test.ok:
             raise ValueError(result.test.message)
@@ -286,7 +308,7 @@ class ProviderService:
         # false for the app session, so the ORM object remains usable.
         await self.db.commit()
         try:
-            driver = self._driver_for(provider)
+            driver = self._driver_for(provider, org_id=org_id)
         except RuntimeError as exc:
             provider.status = "error"
             provider.discovery_status = "failed"

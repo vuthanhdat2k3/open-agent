@@ -1,6 +1,7 @@
 "use client";
 
 import { RefreshCw, WifiOff } from "lucide-react";
+import { useTranslation } from "@/lib/i18n";
 
 export type ConnectionState = "connected" | "reconnecting" | "disconnected";
 
@@ -12,6 +13,7 @@ interface ChatConnectionBannerProps {
 // stream is retrying or has given up. Does not cover the thread or input —
 // only a slim strip so the user can keep reading/typing.
 export function ChatConnectionBanner({ state }: ChatConnectionBannerProps) {
+  const { tx } = useTranslation();
   if (state === "connected") return null;
 
   const isReconnecting = state === "reconnecting";
@@ -33,8 +35,8 @@ export function ChatConnectionBanner({ state }: ChatConnectionBannerProps) {
       )}
       <span>
         {isReconnecting
-          ? "Reconnecting to the live run…"
-          : "Connection lost. The run will resume once the connection is back."}
+          ? tx("Đang kết nối lại tới phiên chạy trực tiếp...", "Reconnecting to the live run…")
+          : tx("Mất kết nối. Phiên chạy sẽ tiếp tục khi kết nối được khôi phục.", "Connection lost. The run will resume once the connection is back.")}
       </span>
     </div>
   );
