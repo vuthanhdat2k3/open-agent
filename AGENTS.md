@@ -96,6 +96,8 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 |---|---|---|---|
 | `dev` | `G:\open-agent` | Nhánh tích hợp chính — không code trực tiếp ở đây | — |
 
+> 2026-09-05: Đã merge PR #269 vào `dev` và deploy lên `deploy/dev` qua PR #270 (Khắc phục lỗi phạm vi tệp theo turn: chỉ hiển thị đúng các tệp sinh ra hoặc cập nhật trong lượt đó thay vì gom toàn bộ tệp trong session, chuẩn hóa thuật toán phân bổ tệp lịch sử chat theo timestamp).
+
 > 2026-09-05: Đã merge PR #267 vào `dev` và deploy lên `deploy/dev` (Bổ sung Side Code & Artifacts Canvas Panel docked bên cạnh Chat hiển thị mã nguồn có line numbers, tab xem trước HTML/SVG iframe sandbox và Sandbox Terminal Console chạy mã nguồn Python/JS/Bash realtime; tích hợp nút Canvas trên CodeBlockWithAction và FileAttachmentCard).
 
 > 2026-09-05: Đã merge PR #265 vào `dev` và deploy lên `deploy/dev` (Hiển thị trực tiếp các File Attachment Cards sinh ra bởi trợ lý AI trong tin nhắn chat, hỗ trợ thumbnail lightbox preview và tải file về máy, backfill lịch sử chat tự động từ WorkspaceArtifact).
