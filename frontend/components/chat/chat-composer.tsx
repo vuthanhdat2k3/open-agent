@@ -17,6 +17,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { FileAttachmentCard } from "./file-attachment-card";
+import { SlashCommandMenu } from "./slash-command-menu";
+import { SLASH_COMMANDS, filterCommands, getCommand } from "./commands/registry";
+import type { SlashCommand, SlashCommandOption } from "./commands/types";
 import type { UploadedFile, Model, ExecutionPolicy } from "@/types";
 
 interface ChatComposerProps {
@@ -38,6 +41,10 @@ interface ChatComposerProps {
   onModelChange?: (modelId: string) => void;
   executionPolicy?: ExecutionPolicy;
   onExecutionPolicyChange?: (policy: ExecutionPolicy) => void;
+  /** Callback to clear conversation history */
+  onClear?: () => void;
+  /** Callback to reset session (new conversation) */
+  onReset?: () => void;
 }
 
 // Shared by ChatEmptyState (centered, empty thread) and the docked composer
@@ -62,13 +69,22 @@ export function ChatComposer({
   onModelChange,
   executionPolicy,
   onExecutionPolicyChange,
+  onClear,
+  onReset,
 }: ChatComposerProps) {
   const { t, locale, tx } = useTranslation();
-  const defaultPlaceholder = tx("Nhập tin nhắn… (Enter để gửi, Shift+Enter để xuống dòng)", "Type a message… (Enter to send, Shift+Enter for newline)");
+  const defaultPlaceholder = tx("Nhập tin nhắn… (Enter để gửi, Shift+Enter để xuống dòng). Gõ / để xem lệnh.", "Type a message… (Enter to send, Shift+Enter for newline). Type / for commands.");
   const activePlaceholder = placeholder || defaultPlaceholder;
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const upload = useUploadFile();
+
+  // Slash command state
+  const [showSlashMenu, setShowSlashMenu] = React.useState(false);
+  const [slashQuery, setSlashQuery] = React.useState("");
+  const [slashActiveIndex, setSlashActiveIndex] = React.useState(0);
+  const [slashCommand, setSlashCommand] = React.useState<SlashCommand | null>(null);
+  const [slashOptions, setSlashOptions] = React.useState<SlashCommandOption[]>([]);
 
   const adjustHeight = React.useCallback(() => {
     const el = textareaRef.current;
@@ -100,8 +116,91 @@ export function ChatComposer({
     }
   };
 
+  // Slash command handlers
+  const closeSlashMenu = React.useCallback(() => {
+    setShowSlashMenu(false);
+    setSlashQuery("");
+    setSlashCommand(null);
+    setSlashOptions([]);
+    setSlashActiveIndex(0);
+  }, []);
+
+  const executeCommand = React.useCallback(
+    async (cmd: SlashCommand, args: string) => {
+      const context = {
+        draft,
+        models: models || [],
+        effectiveModel,
+        executionPolicy,
+        onModelChange: onModelChange || (() => {}),
+        onExecutionPolicyChange: onExecutionPolicyChange || (() => {}),
+        onClear: onClear || (() => {}),
+        onReset: onReset || (() => {}),
+        onDraftChange,
+        tx,
+      };
+      try {
+        await cmd.execute(args, context);
+      } catch (err) {
+        console.error(`[slash-command] /${cmd.name} failed:`, err);
+      }
+      closeSlashMenu();
+    },
+    [draft, models, effectiveModel, executionPolicy, onModelChange, onExecutionPolicyChange, onClear, onReset, onDraftChange, tx, closeSlashMenu]
+  );
+
+  const handleSelectCommand = React.useCallback(
+    (cmd: SlashCommand) => {
+      // If command has options, show them
+      if (cmd.getOptions) {
+        const options = cmd.getOptions({
+          draft,
+          models: models || [],
+          effectiveModel,
+          executionPolicy,
+          onModelChange: onModelChange || (() => {}),
+          onExecutionPolicyChange: onExecutionPolicyChange || (() => {}),
+          onClear: onClear || (() => {}),
+          onReset: onReset || (() => {}),
+          onDraftChange,
+          tx,
+        });
+        setSlashCommand(cmd);
+        setSlashOptions(options);
+        setSlashActiveIndex(0);
+      } else {
+        // Execute immediately
+        executeCommand(cmd, "");
+      }
+    },
+    [draft, models, effectiveModel, executionPolicy, onModelChange, onExecutionPolicyChange, onClear, onReset, onDraftChange, tx, executeCommand]
+  );
+
+  const handleSelectOption = React.useCallback(
+    (option: SlashCommandOption) => {
+      if (slashCommand) {
+        executeCommand(slashCommand, option.id);
+      }
+    },
+    [slashCommand, executeCommand]
+  );
+
   const handleSend = React.useCallback(() => {
     if (streaming) return;
+
+    // If slash menu is open, handle selection
+    if (showSlashMenu) {
+      if (slashCommand && slashOptions.length > 0) {
+        handleSelectOption(slashOptions[slashActiveIndex] || slashOptions[0]);
+      } else {
+        const filtered = filterCommands(slashQuery);
+        if (filtered.length > 0) {
+          handleSelectCommand(filtered[slashActiveIndex] || filtered[0]);
+        }
+      }
+      return;
+    }
+
     if (hasImageAttachment && !modelSupportsVision) {
       if (recommendedVisionModel && onModelChange) {
         toast.error(
@@ -123,6 +222,13 @@ export function ChatComposer({
     onSubmit();
   }, [
     streaming,
+    showSlashMenu,
+    slashCommand,
+    slashOptions,
+    slashActiveIndex,
+    slashQuery,
+    handleSelectOption,
+    handleSelectCommand,
     hasImageAttachment,
     modelSupportsVision,
     recommendedVisionModel,
@@ -182,24 +288,117 @@ export function ChatComposer({
       )}
 
       <label htmlFor="chat-composer" className="sr-only">{tx("Tin nhắn", "Message")}</label>
-      <Textarea
-        id="chat-composer"
-        ref={textareaRef}
-        value={draft}
-        onChange={(e) => {
-          onDraftChange(e.target.value);
-          adjustHeight();
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && !e.shiftKey) {
-            e.preventDefault();
-            if (!streaming) handleSend();
-          }
-        }}
-        placeholder={activePlaceholder}
-        className="min-h-[48px] w-full resize-none border-none bg-transparent px-4 py-3 text-sm shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
-        style={{ overflow: "hidden" }}
-      />
+      <div className="relative">
+        <Textarea
+          id="chat-composer"
+          ref={textareaRef}
+          value={draft}
+          onChange={(e) => {
+            const value = e.target.value;
+            onDraftChange(value);
+            adjustHeight();
+
+            // Detect slash command
+            const textarea = textareaRef.current;
+            if (textarea) {
+              const cursorPos = textarea.selectionStart || 0;
+              const textBeforeCursor = value.slice(0, cursorPos);
+              const lastSlashIndex = textBeforeCursor.lastIndexOf("/");
+              const lastSpaceIndex = textBeforeCursor.lastIndexOf(" ");
+
+              if (lastSlashIndex > lastSpaceIndex && lastSlashIndex === textBeforeCursor.trimStart().length - 1) {
+                // User just typed / at start of line or after space
+                setShowSlashMenu(true);
+                setSlashQuery("");
+                setSlashCommand(null);
+                setSlashOptions([]);
+                setSlashActiveIndex(0);
+              } else if (showSlashMenu && lastSlashIndex >= 0) {
+                // Update query
+                const query = textBeforeCursor.slice(lastSlashIndex + 1);
+                if (!query.includes(" ")) {
+                  setSlashQuery(query);
+                  setSlashActiveIndex(0);
+                  setSlashCommand(null);
+                  setSlashOptions([]);
+                } else {
+                  // User typed space, close menu unless command has args
+                  const cmdName = query.split(" ")[0];
+                  const cmd = getCommand(cmdName);
+                  if (cmd?.requiresArgs) {
+                    setSlashCommand(cmd);
+                    setSlashQuery(query.slice(cmdName.length + 1));
+                    if (cmd.getOptions) {
+                      setSlashOptions(cmd.getOptions({
+                        draft,
+                        models: models || [],
+                        effectiveModel,
+                        executionPolicy,
+                        onModelChange: onModelChange || (() => {}),
+                        onExecutionPolicyChange: onExecutionPolicyChange || (() => {}),
+                        onClear: onClear || (() => {}),
+                        onReset: onReset || (() => {}),
+                        onDraftChange,
+                        tx,
+                      }));
+                    }
+                  } else {
+                    closeSlashMenu();
+                  }
+                }
+              } else if (showSlashMenu) {
+                closeSlashMenu();
+              }
+            }
+          }}
+          onKeyDown={(e) => {
+            // Handle slash menu navigation
+            if (showSlashMenu) {
+              const items = slashCommand ? slashOptions : filterCommands(slashQuery);
+              if (e.key === "ArrowDown") {
+                e.preventDefault();
+                setSlashActiveIndex((prev) => Math.min(prev + 1, items.length - 1));
+                return;
+              }
+              if (e.key === "ArrowUp") {
+                e.preventDefault();
+                setSlashActiveIndex((prev) => Math.max(prev - 1, 0));
+                return;
+              }
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                handleSend();
+                return;
+              }
+              if (e.key === "Escape") {
+                e.preventDefault();
+                closeSlashMenu();
+                return;
+              }
+            }
+
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              if (!streaming) handleSend();
+            }
+          }}
+          placeholder={activePlaceholder}
+          className="min-h-[48px] w-full resize-none border-none bg-transparent px-4 py-3 text-sm shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
+          style={{ overflow: "hidden }}
+        />
+
+        {showSlashMenu && (
+          <SlashCommandMenu
+            commands={slashCommand ? [] : filterCommands(slashQuery)}
+            activeIndex={slashActiveIndex}
+            options={slashOptions}
+            showOptions={!!slashCommand}
+            onSelectCommand={handleSelectCommand}
+            onSelectOption={handleSelectOption}
+            onClose={closeSlashMenu}
+          />
+        )}
+      </div>
 
       <div className="flex items-center justify-between p-2">
         <div className="flex items-center gap-1">
