@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authz.policy import PrincipalContext
@@ -39,7 +40,44 @@ async def list_agents(
     org_id: str = Depends(get_current_org_id),
     db: AsyncSession = Depends(get_db),
 ):
-    return await AgentService(db).list(org_id)
+    from app.models.user import User
+
+    agents = await AgentService(db).list(org_id)
+    # Join User to get creator email/name
+    user_ids = [a.created_by_user_id for a in agents if a.created_by_user_id]
+    user_map: dict[str, User] = {}
+    if user_ids:
+        res = await db.execute(select(User).where(User.id.in_(user_ids)))
+        for u in res.scalars().all():
+            user_map[u.id] = u
+
+    return [
+        AgentOut(
+            id=a.id,
+            name=a.name,
+            description=a.description,
+            system_prompt=a.system_prompt,
+            model_id=a.model_id,
+            tools=a.tools,
+            allowed_risk_tiers=a.allowed_risk_tiers,
+            kind=a.kind,
+            max_iterations=a.max_iterations,
+            temperature=a.temperature,
+            enable_thinking=a.enable_thinking,
+            a2a_exposed=a.a2a_exposed,
+            active_release_id=a.active_release_id,
+            latest_release_number=a.latest_release_number,
+            template_key=a.template_key,
+            is_customized=getattr(a, "is_customized", True),
+            is_pinned=getattr(a, "is_pinned", False),
+            created_by_user_id=a.created_by_user_id,
+            creator_email=user_map[a.created_by_user_id].email if a.created_by_user_id and a.created_by_user_id in user_map else None,
+            creator_name=user_map[a.created_by_user_id].display_name if a.created_by_user_id and a.created_by_user_id in user_map else None,
+            created_at=a.created_at,
+            updated_at=a.updated_at,
+        )
+        for a in agents
+    ]
 
 
 @router.get("/tools", response_model=list[AgentToolInfo], dependencies=[Depends(require_permission("agents:read"))])

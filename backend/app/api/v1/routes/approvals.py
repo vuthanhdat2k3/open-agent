@@ -34,6 +34,8 @@ class ApprovalOut(BaseModel):
     args_snapshot: dict[str, Any]
     status: str
     requested_by: str | None = None
+    requester_email: str | None = None
+    requester_name: str | None = None
     decided_by: str | None = None
     decided_at: datetime | None = None
     reason: str = ""
@@ -68,11 +70,22 @@ async def list_approvals(
     is_admin = authz.allows("approvals:manage")
     exclude_run_types = [] if include_chat else ["agent"]
     approvals = await get_pending(db, org_id=org_id, exclude_run_types=exclude_run_types, run_id=run_id)
+
+    # Join User to get requester email/name
+    user_ids = [a.requested_by for a in approvals if a.requested_by]
+    user_map: dict[str, User] = {}
+    if user_ids:
+        res = await db.execute(select(User).where(User.id.in_(user_ids)))
+        for u in res.scalars().all():
+            user_map[u.id] = u
+
     result = []
     for approval in approvals:
         owner = is_admin or approval.requested_by == current_user.id
         action = approval.tool_name or approval.node_id or approval.run_type
         risk_level = "HIGH" if approval.case_id or approval.tool_name else "MEDIUM"
+        requester_email = user_map[approval.requested_by].email if approval.requested_by and approval.requested_by in user_map else None
+        requester_name = user_map[approval.requested_by].display_name if approval.requested_by and approval.requested_by in user_map else None
         result.append(
             {
                 "id": approval.id,
@@ -84,6 +97,8 @@ async def list_approvals(
                 "args_snapshot": approval.args_snapshot,
                 "status": approval.status,
                 "requested_by": approval.requested_by,
+                "requester_email": requester_email,
+                "requester_name": requester_name,
                 "decided_by": approval.decided_by,
                 "decided_at": approval.decided_at,
                 "reason": approval.reason,

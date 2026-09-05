@@ -1,12 +1,13 @@
 "use client";
 
 import * as React from "react";
-import { Bot, Cpu, Pencil, Trash2, History, Wrench, Sparkles } from "lucide-react";
+import { Bot, Cpu, Pencil, Trash2, History, Wrench, Sparkles, User } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import type { Agent, AgentToolInfo, Model } from "@/types";
 import { useTranslation } from "@/lib/i18n";
+import { useCurrentRoles } from "@/hooks";
 import { ConfirmDialog } from "@/components/shared";
 
 interface AgentCardProps {
@@ -33,6 +34,8 @@ export function AgentCard({
   onDelete,
 }: AgentCardProps) {
   const { t, locale, tx } = useTranslation();
+  const roles = useCurrentRoles();
+  const isOperator = roles.includes("operator");
   const agentModel = models?.find((m) => m.id === agent.model_id);
 
   return (
@@ -92,6 +95,14 @@ export function AgentCard({
         <History className="h-3 w-3" />
         {tx(`Phiên bản phát hành v${agent.latest_release_number}`, `Active release v${agent.latest_release_number}`)}
       </div>
+
+      {/* Creator info - visible to operator */}
+      {isOperator && agent.created_by_user_id && (
+        <div className="mt-2 flex items-center gap-1.5 text-[10px] text-muted-foreground/70">
+          <User className="h-2.5 w-2.5" />
+          <span className="truncate">{tx("Tạo bởi", "Created by")}: {agent.creator_email || agent.creator_name || agent.created_by_user_id.slice(0, 8)}</span>
+        </div>
+      )}
 
       {/* Model badge row */}
       {agentModel && (

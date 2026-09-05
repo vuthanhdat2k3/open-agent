@@ -26,7 +26,7 @@ import {
   type WorkflowCatalogItem,
 } from "@/lib/automations/api";
 import { workflowIcon } from "@/lib/automations/icons";
-import { useCurrentRole, useUrlSearchParam } from "@/hooks";
+import { useCurrentRole, useCurrentRoles, useUrlSearchParam } from "@/hooks";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/shared";
 import {
@@ -171,7 +171,8 @@ export default function WorkflowEditor() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const role = useCurrentRole();
-  const isOperator = role === "operator";
+  const roles = useCurrentRoles();
+  const isOperator = roles.includes("operator");
 
   // Tab State: "editor" (My Workflows) vs "marketplace" (Workflow Marketplace) with URL synchronization
   const [tabParam, setTabParam] = useUrlSearchParam("tab");
@@ -1056,6 +1057,11 @@ export default function WorkflowEditor() {
                                 </div>
                                 {wf.description && (
                                   <span className="text-[11px] text-muted-foreground line-clamp-1">{wf.description}</span>
+                                )}
+                                {isOperator && wf.created_by_user_id && (
+                                  <span className="text-[10px] text-muted-foreground/60">
+                                    {tx("Tạo bởi", "By")}: {wf.creator_email || wf.creator_name || wf.created_by_user_id.slice(0, 8)}
+                                  </span>
                                 )}
                               </div>
                             </Button>

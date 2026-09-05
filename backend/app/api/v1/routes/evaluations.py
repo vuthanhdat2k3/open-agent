@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -34,7 +35,7 @@ def _not_found_or_bad_request(exc: ValueError) -> HTTPException:
 
 
 async def _suite_out(
-    service: EvaluationService, org_id: str, suite
+    service: EvaluationService, org_id: str, suite, creator_email: str | None = None, creator_name: str | None = None,
 ) -> EvaluationSuiteOut:
     cases = await service.list_cases(org_id, suite.id, suite.dataset_version)
     return EvaluationSuiteOut(
@@ -44,6 +45,8 @@ async def _suite_out(
         agent_id=suite.agent_id,
         dataset_version=suite.dataset_version,
         created_by_user_id=suite.created_by_user_id,
+        creator_email=creator_email,
+        creator_name=creator_name,
         created_at=suite.created_at,
         updated_at=suite.updated_at,
         cases=[EvaluationCaseOut.from_orm_case(case) for case in cases],
@@ -59,10 +62,28 @@ async def list_suites(
     org_id: str = Depends(get_current_org_id),
     db: AsyncSession = Depends(get_db),
 ):
+    from app.models.user import User
+
     service = EvaluationService(db)
+    suites = await service.list_suites(org_id)
+
+    # Join User to get creator email/name
+    user_ids = [s.created_by_user_id for s in suites if s.created_by_user_id]
+    user_map: dict[str, User] = {}
+    if user_ids:
+        res = await db.execute(select(User).where(User.id.in_(user_ids)))
+        for u in res.scalars().all():
+            user_map[u.id] = u
+
     return [
-        await _suite_out(service, org_id, suite)
-        for suite in await service.list_suites(org_id)
+        await _suite_out(
+            service,
+            org_id,
+            suite,
+            creator_email=user_map[suite.created_by_user_id].email if suite.created_by_user_id and suite.created_by_user_id in user_map else None,
+            creator_name=user_map[suite.created_by_user_id].display_name if suite.created_by_user_id and suite.created_by_user_id in user_map else None,
+        )
+        for suite in suites
     ]
 
 

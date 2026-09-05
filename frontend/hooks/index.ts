@@ -577,8 +577,15 @@ export function useDisconnectMcp() {
   });
 }
 
-export function useWorkflows() {
-  return useQuery({ queryKey: ["workflows"], queryFn: () => api.get<Workflow[]>("/api/workflows") });
+export function useWorkflows(options?: { all?: boolean }) {
+  const roles = useCurrentRoles();
+  const isOperator = roles.includes("operator");
+  const shouldFetchAll = options?.all ?? isOperator;
+  const queryKey = shouldFetchAll ? ["workflows", "all"] : ["workflows"];
+  return useQuery({
+    queryKey,
+    queryFn: () => api.get<Workflow[]>(shouldFetchAll ? "/api/workflows?all=true" : "/api/workflows"),
+  });
 }
 export function useCreateWorkflow() {
   const qc = useQueryClient();

@@ -149,8 +149,35 @@ async def list_workflows(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    from app.models.user import User as UserModel
+
     owner_id = None if all else current_user.id
-    return await WorkflowService(db).list(org_id, created_by_user_id=owner_id)
+    workflows = await WorkflowService(db).list(org_id, created_by_user_id=owner_id)
+
+    # Join User to get creator email/name
+    user_ids = [w.created_by_user_id for w in workflows if w.created_by_user_id]
+    user_map: dict[str, UserModel] = {}
+    if user_ids:
+        res = await db.execute(select(UserModel).where(UserModel.id.in_(user_ids)))
+        for u in res.scalars().all():
+            user_map[u.id] = u
+
+    return [
+        WorkflowOut(
+            id=w.id,
+            name=w.name,
+            description=w.description,
+            graph=w.graph,
+            template_key=w.template_key,
+            is_customized=w.is_customized,
+            created_by_user_id=w.created_by_user_id,
+            creator_email=user_map[w.created_by_user_id].email if w.created_by_user_id and w.created_by_user_id in user_map else None,
+            creator_name=user_map[w.created_by_user_id].display_name if w.created_by_user_id and w.created_by_user_id in user_map else None,
+            created_at=w.created_at,
+            updated_at=w.updated_at,
+        )
+        for w in workflows
+    ]
 
 
 @router.post(

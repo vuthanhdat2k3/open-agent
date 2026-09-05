@@ -69,6 +69,9 @@ class WorkflowOut(WorkflowBase):
     id: str
     template_key: str | None = None
     is_customized: bool = True
+    created_by_user_id: str | None = None
+    creator_email: str | None = None
+    creator_name: str | None = None
     created_at: datetime
     updated_at: datetime
 
