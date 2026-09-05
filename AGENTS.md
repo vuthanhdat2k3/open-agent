@@ -96,6 +96,8 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 |---|---|---|---|
 | `dev` | `G:\open-agent` | Nhánh tích hợp chính — không code trực tiếp ở đây | — |
 
+> 2026-09-06: Đã merge PR #294 vào `dev` và deploy lên `deploy/dev` qua PR #295 (Triển khai thực tế cho /compact và /clear: endpoint POST /api/sessions/:id/compact tự động tóm tắt ngữ cảnh hội thoại, sinh event COMPACTION_SUMMARY với surface_op replace/shadowing dải tin nhắn cũ trong Session Event Log, dọn dẹp messages cũ trong DB và chèn tin nhắn tóm tắt; endpoint POST /api/sessions/:id/clear xóa sạch Message, SessionEvent và SessionMemory trong cơ sở dữ liệu; đấu nối trực tiếp frontend Slash Commands, tự động refetch messages và cập nhật context token gauge).
+
 > 2026-09-06: Đã merge PR #292 vào `dev` và deploy lên `deploy/dev` qua PR #293 (Sửa triệt để lỗi context tokens = 0 trong modal /context: truyền messages={messages} cho ChatInput, sửa parser input_tokens/output_tokens từ database khi reload tin nhắn, tính toán Base Context cho Agent từ system_prompt và tools schema khi phiên mới tinh, bổ sung badge chỉ báo nguồn token "Lượt gần nhất" hoặc "Ước tính").
 
 > 2026-09-05: Đã merge PR #290 vào `dev` và deploy lên `deploy/dev` qua PR #291 (Hiển thị trực quan Cửa sổ ngữ cảnh Context Window và số Tokens thực tế của session trong /context: Hero Card Gauge Bar với 3 dải màu Xanh/Vàng/Đỏ cảnh báo khi đầy; thống kê tokens đã dùng, khả dụng còn lại và giới hạn model; cảnh báo thông minh khi vượt quá 75% kèm nút kích hoạt nhanh /compact; phân tích chi tiết phiên với số lượt hỏi, tổng tin nhắn, prompt/output tokens và độ trễ lượt gần nhất).
