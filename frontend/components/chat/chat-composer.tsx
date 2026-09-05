@@ -384,7 +384,7 @@ export function ChatComposer({
           }}
           placeholder={activePlaceholder}
           className="min-h-[48px] w-full resize-none border-none bg-transparent px-4 py-3 text-sm shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
-          style={{ overflow: "hidden }}
+          style={{ overflow: "hidden" }}
         />
 
         {showSlashMenu && (
