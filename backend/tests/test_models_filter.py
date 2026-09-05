@@ -114,7 +114,7 @@ async def test_model_chat_connectivity(db_session: AsyncSession, monkeypatch):
         async def complete(self, messages, tools=None, temperature=0.7, tool_choice=None, thinking=None):
             return "OK. I am ready.", {"input_tokens": 5, "output_tokens": 3}, []
 
-    monkeypatch.setattr("app.core.providers.factory.build_driver", lambda prov, model: FakeDriver())
+    monkeypatch.setattr("app.core.providers.factory.build_driver", lambda prov, model, **kwargs: FakeDriver())
 
     result = await service.test_chat(org_id, m1.id)
     assert result["ok"] is True

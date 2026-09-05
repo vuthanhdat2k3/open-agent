@@ -38,6 +38,8 @@ class ChannelConnectionOut(BaseModel):
     status: str = "active"
     config: dict[str, Any] = {}
     created_by_user_id: str | None = None
+    creator_email: str | None = None
+    creator_name: str | None = None
     latest_session_id: str | None = None
     created_at: datetime
     updated_at: datetime

@@ -16,6 +16,7 @@ from app.dependencies import (
     require_permission,
 )
 from app.models.channel import ChannelConversation
+from app.models.user import User
 from app.schemas.channel import (
     ChannelConnectionCreate,
     ChannelConnectionOut,
@@ -96,9 +97,12 @@ async def list_connections(
     - Users only see their own personal connections (owner == user_id).
     """
     service = ChannelService(db)
-    user_id = None if _can_manage_all(authz) else authz.user_id
+    can_manage_all = _can_manage_all(authz)
     connections = await service.list_connections(
-        org_id, provider, owner_user_id=user_id
+        org_id,
+        provider,
+        owner_user_id=None if can_manage_all else authz.user_id,
+        include_all=can_manage_all,
     )
     session_map = await _get_latest_session_ids(
         db, org_id, [c.id for c in connections]
