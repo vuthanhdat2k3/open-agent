@@ -1,18 +1,93 @@
-﻿import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { filterCommands, getCommand, SLASH_COMMANDS } from "./commands/registry";
 import type { SlashCommandContext } from "./commands/types";
 import type { Model, Agent, ExecutionPolicy, UsageSummary } from "@/types";
 
 describe("Slash Commands Registry & Handlers", () => {
   const mockModels: Model[] = [
-    { id: "gpt-4o", name: "gpt-4o", display_name: "GPT-4o", active: true, tier: "frontier", supports_vision: true },
-    { id: "claude-3-5-sonnet", name: "claude-3-5-sonnet", display_name: "Claude 3.5 Sonnet", active: true, tier: "frontier" },
-    { id: "inactive-model", name: "inactive", display_name: "Inactive", active: false },
+    {
+      id: "gpt-4o",
+      provider_id: "p1",
+      name: "gpt-4o",
+      display_name: "GPT-4o",
+      active: true,
+      enabled: true,
+      discovered: true,
+      source: "manual",
+      created_at: "",
+      tier: "frontier",
+      context_window: 128000,
+      input_cost_per_1k: 0.005,
+      output_cost_per_1k: 0.015,
+      supports_vision: true,
+    },
+    {
+      id: "claude-3-5-sonnet",
+      provider_id: "p1",
+      name: "claude-3-5-sonnet",
+      display_name: "Claude 3.5 Sonnet",
+      active: true,
+      enabled: true,
+      discovered: true,
+      source: "manual",
+      created_at: "",
+      tier: "frontier",
+      context_window: 200000,
+      input_cost_per_1k: 0.003,
+      output_cost_per_1k: 0.015,
+    },
+    {
+      id: "inactive-model",
+      provider_id: "p1",
+      name: "inactive",
+      display_name: "Inactive",
+      active: false,
+      enabled: false,
+      discovered: true,
+      source: "manual",
+      created_at: "",
+      tier: "economy",
+      context_window: 8192,
+      input_cost_per_1k: 0.001,
+      output_cost_per_1k: 0.002,
+    },
   ];
 
   const mockAgents: Agent[] = [
-    { id: "agent-1", name: "Orchestrator Agent", kind: "orchestrator" },
-    { id: "agent-2", name: "Code Worker", kind: "worker" },
+    {
+      id: "agent-1",
+      name: "Orchestrator Agent",
+      description: "Main orchestrator",
+      system_prompt: "",
+      model_id: "gpt-4o",
+      tools: [],
+      allowed_risk_tiers: [],
+      kind: "orchestrator",
+      max_iterations: 10,
+      temperature: 0.7,
+      enable_thinking: null,
+      active_release_id: null,
+      latest_release_number: 1,
+      created_at: "",
+      updated_at: "",
+    },
+    {
+      id: "agent-2",
+      name: "Code Worker",
+      description: "Code assistant",
+      system_prompt: "",
+      model_id: "gpt-4o",
+      tools: [],
+      allowed_risk_tiers: [],
+      kind: "worker",
+      max_iterations: 10,
+      temperature: 0.7,
+      enable_thinking: null,
+      active_release_id: null,
+      latest_release_number: 1,
+      created_at: "",
+      updated_at: "",
+    },
   ];
 
   const mockUsage: UsageSummary[] = [
@@ -21,6 +96,7 @@ describe("Slash Commands Registry & Handlers", () => {
       model_name: "gpt-4o",
       calls: 5,
       cost_usd: 0.125,
+      latency_ms: 120,
       input_tokens: 15000,
       output_tokens: 2500,
     },

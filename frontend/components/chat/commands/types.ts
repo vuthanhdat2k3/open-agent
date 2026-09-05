@@ -1,4 +1,5 @@
 ﻿import type { Agent, ExecutionPolicy, Model, UsageSummary } from "@/types";
+import type { ChatMessage } from "@/lib/chat/projection";
 
 export type CommandDialogType = "context" | "usage" | "help";
 
@@ -18,6 +19,8 @@ export interface SlashCommandContext {
   currentAgentId: string | undefined;
   /** Current session id (if available) */
   sessionId?: string;
+  /** Messages in current conversation */
+  messages?: ChatMessage[];
   /** Usage summary rows (per agent/model) */
   usage: UsageSummary[];
   /** Callback to switch model */

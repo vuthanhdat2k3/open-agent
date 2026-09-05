@@ -22,6 +22,7 @@ import { CommandInfoDialog } from "./command-info-dialog";
 import { filterCommands, getCommand } from "./commands/registry";
 import type { SlashCommand, SlashCommandOption, SlashCommandContext, CommandDialogType } from "./commands/types";
 import type { UploadedFile, Model, ExecutionPolicy, Agent, UsageSummary } from "@/types";
+import type { ChatMessage } from "@/lib/chat/projection";
 
 interface ChatComposerProps {
   draft: string;
@@ -58,6 +59,7 @@ interface ChatComposerProps {
   onSendMessage?: (message: string) => void;
   /** Current session id */
   sessionId?: string;
+  messages?: ChatMessage[];
 }
 
 // Shared by ChatEmptyState (centered, empty thread) and the docked composer
@@ -90,6 +92,7 @@ export function ChatComposer({
   usage,
   onSendMessage,
   sessionId,
+  messages = [],
 }: ChatComposerProps) {
   const { t, locale, tx } = useTranslation();
   const defaultPlaceholder = tx("Nhập tin nhắn… (Enter để gửi, Shift+Enter để xuống dòng). Gõ / để xem lệnh.", "Type a message… (Enter to send, Shift+Enter for newline). Type / for commands.");
@@ -180,7 +183,7 @@ export function ChatComposer({
       },
       tx,
     };
-  }, [draft, models, effectiveModel, executionPolicy, agents, currentAgentId, sessionId, usage, onModelChange, onExecutionPolicyChange, onClear, onReset, onAgentChange, onSendMessage, onDraftChange, tx]);
+  }, [draft, models, effectiveModel, executionPolicy, agents, currentAgentId, sessionId, messages, usage, onModelChange, onExecutionPolicyChange, onClear, onReset, onAgentChange, onSendMessage, onDraftChange, tx]);
 
   const executeCommand = React.useCallback(
     async (cmd: SlashCommand, args: string) => {
