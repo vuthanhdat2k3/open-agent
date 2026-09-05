@@ -144,15 +144,27 @@ interface CanvasState {
   setPanelWidthPercentage: (width: number) => void;
 }
 
-export const useCanvasStore = create<CanvasState>((set) => ({
-  isOpen: false,
-  activeItem: null,
-  isFullscreen: false,
-  panelWidthPercentage: 50,
-  openCanvas: (item) => set({ isOpen: true, activeItem: item }),
-  closeCanvas: () => set({ isOpen: false, activeItem: null, isFullscreen: false }),
-  toggleFullscreen: () => set((state) => ({ isFullscreen: !state.isFullscreen })),
-  setPanelWidthPercentage: (width) =>
-    set({ panelWidthPercentage: Math.max(25, Math.min(75, Math.round(width))) }),
-}));
+export const useCanvasStore = create<CanvasState>()(
+  persist(
+    (set) => ({
+      isOpen: false,
+      activeItem: null,
+      isFullscreen: false,
+      panelWidthPercentage: 50,
+      openCanvas: (item) => set({ isOpen: true, activeItem: item }),
+      closeCanvas: () => set({ isOpen: false, activeItem: null, isFullscreen: false }),
+      toggleFullscreen: () => set((state) => ({ isFullscreen: !state.isFullscreen })),
+      setPanelWidthPercentage: (width) =>
+        set({ panelWidthPercentage: Math.max(25, Math.min(75, Math.round(width))) }),
+    }),
+    {
+      name: "openagent-canvas",
+      partialize: (state) => ({
+        isOpen: state.isOpen,
+        activeItem: state.activeItem,
+        panelWidthPercentage: state.panelWidthPercentage,
+      }),
+    },
+  ),
+);
 

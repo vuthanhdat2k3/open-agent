@@ -1,5 +1,7 @@
 "use client";
 
+import { GripVertical } from "lucide-react";
+
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
@@ -1207,17 +1209,24 @@ export default function ChatPage() {
             onTouchStart={() => setIsDraggingCanvas(true)}
             onDoubleClick={() => setPanelWidthPercentage(50)}
             className={cn(
-              "hidden lg:flex w-2 -mx-1 z-30 cursor-col-resize select-none items-center justify-center group relative hover:bg-primary/20 transition-colors",
-              isDraggingCanvas && "bg-primary/30"
+              "hidden lg:flex w-4 -mx-2 z-30 cursor-col-resize select-none items-center justify-center group relative transition-colors",
+              isDraggingCanvas ? "bg-primary/20" : "hover:bg-primary/10"
             )}
             title={tx("Kéo sang trái/phải để tùy chỉnh độ rộng (nhấp đúp để đặt lại 50%)", "Drag left/right to resize (double-click to reset 50%)")}
           >
+            {/* Continuous vertical guide line */}
+            <div className="absolute inset-y-0 w-px bg-border/80 group-hover:bg-primary/70 transition-colors" />
+
+            {/* Prominent centered grip handle pill */}
             <div
               className={cn(
-                "h-8 w-1 rounded-full bg-border/80 group-hover:bg-primary/80 transition-all",
-                isDraggingCanvas && "h-12 bg-primary w-1.5"
+                "relative z-10 flex h-10 w-4 items-center justify-center rounded-full border border-border/80 bg-background/95 text-muted-foreground shadow-sm backdrop-blur-xs transition-all",
+                "group-hover:border-primary group-hover:bg-primary/10 group-hover:text-primary group-hover:scale-110",
+                isDraggingCanvas && "border-primary bg-primary text-primary-foreground scale-110 shadow-md"
               )}
-            />
+            >
+              <GripVertical className="h-3 w-3" aria-hidden="true" />
+            </div>
           </div>
         )}
 
