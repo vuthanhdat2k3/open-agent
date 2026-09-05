@@ -2424,26 +2424,25 @@ async def _agent_stream(
             artifacts_list: list[dict[str, Any]] = []
             if agent.org_id:
                 try:
-                    run_or_task_ids = [
-                        tid for tid in [root_run_id, current_task_id, (root_task.id if root_task else None)]
+                    task_ids = [
+                        tid for tid in [current_task_id, (root_task.id if root_task else None)]
                         if tid
                     ]
-                    art_filters = [WorkspaceArtifact.org_id == agent.org_id]
-                    if run_or_task_ids:
-                        cond = or_(
-                            WorkspaceArtifact.root_run_id.in_(run_or_task_ids),
-                            WorkspaceArtifact.task_id.in_(run_or_task_ids),
-                        )
-                        if session_id:
-                            cond = or_(
-                                cond,
-                                (WorkspaceArtifact.session_id == session_id)
-                                & (WorkspaceArtifact.updated_at >= turn_started_at),
-                            )
-                        art_filters.append(cond)
-                    elif session_id:
-                        art_filters.append(WorkspaceArtifact.session_id == session_id)
-                        art_filters.append(WorkspaceArtifact.updated_at >= turn_started_at)
+                    id_conditions = []
+                    if task_ids:
+                        id_conditions.append(WorkspaceArtifact.task_id.in_(task_ids))
+                    if session_id:
+                        id_conditions.append(WorkspaceArtifact.session_id == session_id)
+                        id_conditions.append(WorkspaceArtifact.root_run_id == session_id)
+                    elif root_run_id:
+                        id_conditions.append(WorkspaceArtifact.root_run_id == root_run_id)
+
+                    art_filters = [
+                        WorkspaceArtifact.org_id == agent.org_id,
+                        WorkspaceArtifact.updated_at >= (turn_started_at - timedelta(seconds=1)),
+                    ]
+                    if id_conditions:
+                        art_filters.append(or_(*id_conditions))
 
                     art_stmt = (
                         select(WorkspaceArtifact)
