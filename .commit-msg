@@ -1,8 +1,0 @@
-fix(chat): forward slash command props through ChatThread to empty-state composer
-
-ChatEmptyState is rendered inside ChatThread, not directly by the page.
-ChatThread now accepts usage/onSendMessage and forwards agents,
-onAgentChange, currentAgentId, usage and onSendMessage down to the
-empty-state composer so /agents /usage /compact /context work there too.
-
-Co-authored-by: CommandCodeBot <noreply@commandcode.ai>
