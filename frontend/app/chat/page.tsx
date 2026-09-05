@@ -65,17 +65,67 @@ export default function ChatPage() {
     setPendingExecutionPolicy,
   } = useChatStore();
 
-  const { isOpen: isCanvasOpen, isFullscreen: isCanvasFullscreen, closeCanvas } = useCanvasStore();
+  const {
+    isOpen: isCanvasOpen,
+    isFullscreen: isCanvasFullscreen,
+    closeCanvas,
+    toggleFullscreen,
+    panelWidthPercentage,
+    setPanelWidthPercentage,
+  } = useCanvasStore();
+
+  const splitContainerRef = React.useRef<HTMLDivElement>(null);
+  const [isDraggingCanvas, setIsDraggingCanvas] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!isDraggingCanvas) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!splitContainerRef.current) return;
+      const rect = splitContainerRef.current.getBoundingClientRect();
+      const newCanvasPx = rect.right - e.clientX;
+      const newPct = (newCanvasPx / rect.width) * 100;
+      setPanelWidthPercentage(newPct);
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (!splitContainerRef.current || !e.touches[0]) return;
+      const rect = splitContainerRef.current.getBoundingClientRect();
+      const newCanvasPx = rect.right - e.touches[0].clientX;
+      const newPct = (newCanvasPx / rect.width) * 100;
+      setPanelWidthPercentage(newPct);
+    };
+
+    const handleMouseUp = () => {
+      setIsDraggingCanvas(false);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    window.addEventListener("touchmove", handleTouchMove);
+    window.addEventListener("touchend", handleMouseUp);
+
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+      window.removeEventListener("touchmove", handleTouchMove);
+      window.removeEventListener("touchend", handleMouseUp);
+    };
+  }, [isDraggingCanvas, setPanelWidthPercentage]);
 
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape" && isCanvasOpen) {
-        closeCanvas();
+        if (isCanvasFullscreen) {
+          toggleFullscreen();
+        } else {
+          closeCanvas();
+        }
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isCanvasOpen, closeCanvas]);
+  }, [isCanvasOpen, isCanvasFullscreen, closeCanvas, toggleFullscreen]);
 
   const pendingSessionModelId = (agentId && pendingModelIdByAgent[agentId]) || "";
 
@@ -1047,11 +1097,19 @@ export default function ChatPage() {
         }}
       />
       {/* Main Chat + Canvas split container */}
-      <div className="flex min-h-0 flex-1 flex-row min-w-0 overflow-hidden relative">
+      <div
+        ref={splitContainerRef}
+        className="flex min-h-0 flex-1 flex-row min-w-0 overflow-hidden relative"
+      >
         <div
+          style={
+            isCanvasOpen && !isCanvasFullscreen
+              ? { width: `${100 - panelWidthPercentage}%` }
+              : undefined
+          }
           className={cn(
-            "flex min-h-0 flex-1 flex-col transition-all duration-200 min-w-0",
-            isCanvasOpen && !isCanvasFullscreen && "lg:w-[50%] xl:w-[52%] lg:flex-initial",
+            "flex min-h-0 flex-1 flex-col min-w-0",
+            !isDraggingCanvas && "transition-all duration-100",
             isCanvasFullscreen && "hidden",
           )}
         >
@@ -1127,7 +1185,34 @@ export default function ChatPage() {
         )}
       </div>
 
-        {isCanvasOpen && <ChatCanvasPanel />}
+        {/* Resizable Divider Handle between Chat and Canvas (Desktop lg+) */}
+        {isCanvasOpen && !isCanvasFullscreen && (
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            tabIndex={0}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              setIsDraggingCanvas(true);
+            }}
+            onTouchStart={() => setIsDraggingCanvas(true)}
+            onDoubleClick={() => setPanelWidthPercentage(50)}
+            className={cn(
+              "hidden lg:flex w-2 -mx-1 z-30 cursor-col-resize select-none items-center justify-center group relative hover:bg-primary/20 transition-colors",
+              isDraggingCanvas && "bg-primary/30"
+            )}
+            title={tx("Kéo sang trái/phải để tùy chỉnh độ rộng (nhấp đúp để đặt lại 50%)", "Drag left/right to resize (double-click to reset 50%)")}
+          >
+            <div
+              className={cn(
+                "h-8 w-1 rounded-full bg-border/80 group-hover:bg-primary/80 transition-all",
+                isDraggingCanvas && "h-12 bg-primary w-1.5"
+              )}
+            />
+          </div>
+        )}
+
+        {isCanvasOpen && <ChatCanvasPanel isDragging={isDraggingCanvas} />}
       </div>
     </div>
   );
