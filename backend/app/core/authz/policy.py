@@ -55,7 +55,10 @@ PERMISSIONS: dict[Role, set[str]] = {
         "admin:email-intelligence", "debug:*", "usage:read",
     },
     Role.operator: {
-        "agents:*", "models:*", "providers:*", "workflows:*", "mcp:*", "files:*",
+        "agents:create", "agents:read", "agents:update", "agents:delete",
+        "agents:manage", "agents:publish", "agents:publish:force",
+        # NO "agents:run" - operator configures AI, does not chat/execute conversations.
+        "models:*", "providers:*", "workflows:*", "mcp:*", "files:*",
         "evaluations:*", "usage:*", "debug:*", "sessions:*", "approvals:*", "ci:*",
         "channels:*",
         "tools:use:*", "quota:usage",

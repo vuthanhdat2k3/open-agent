@@ -278,6 +278,8 @@ export interface ChannelConnection {
   status: "active" | "inactive" | "error";
   config: Record<string, any>;
   created_by_user_id?: string | null;
+  creator_email?: string | null;
+  creator_name?: string | null;
   latest_session_id?: string | null;
   created_at: string;
   updated_at: string;
@@ -406,6 +408,9 @@ export interface UploadedFile {
   status: "uploaded" | "queued" | "processing" | "retrying" | "ingested" | "error" | "dead_letter";
   collection: string | null;
   error: string | null;
+  created_by_user_id?: string | null;
+  creator_email?: string | null;
+  creator_name?: string | null;
   created_at: string;
   updated_at: string;
 }

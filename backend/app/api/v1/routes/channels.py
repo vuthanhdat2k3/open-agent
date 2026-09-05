@@ -38,7 +38,7 @@ def _can_personal_manage(authz: PrincipalContext) -> bool:
     return authz.allows("channels:personal:manage")
 
 
-def _connection_to_out(conn, latest_session_id: str | None = None) -> dict[str, Any]:
+def _connection_to_out(conn, latest_session_id: str | None = None, user: User | None = None) -> dict[str, Any]:
     """Convert a ChannelConnection to API response dict (without sensitive data)."""
     return {
         "id": conn.id,
@@ -48,6 +48,8 @@ def _connection_to_out(conn, latest_session_id: str | None = None) -> dict[str, 
         "status": conn.status,
         "config": conn.config,
         "created_by_user_id": conn.created_by_user_id,
+        "creator_email": user.email if user else None,
+        "creator_name": user.display_name if user else None,
         "latest_session_id": latest_session_id,
         "created_at": conn.created_at,
         "updated_at": conn.updated_at,
@@ -101,8 +103,21 @@ async def list_connections(
     session_map = await _get_latest_session_ids(
         db, org_id, [c.id for c in connections]
     )
+
+    # Join User to get creator email/name (avoid N+1)
+    creator_ids = [c.created_by_user_id for c in connections if c.created_by_user_id]
+    user_map: dict[str, User] = {}
+    if creator_ids:
+        res = await db.execute(select(User).where(User.id.in_(creator_ids)))
+        for u in res.scalars().all():
+            user_map[u.id] = u
+
     return [
-        _connection_to_out(c, latest_session_id=session_map.get(c.id))
+        _connection_to_out(
+            c,
+            latest_session_id=session_map.get(c.id),
+            user=user_map.get(c.created_by_user_id) if c.created_by_user_id else None,
+        )
         for c in connections
     ]
 

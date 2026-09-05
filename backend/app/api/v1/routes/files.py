@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authz.policy import PrincipalContext
@@ -51,7 +52,34 @@ async def list_files(
     db: AsyncSession = Depends(get_db),
 ):
     owner = authz.owner_user_id
-    return await FileService(db).list(org_id, owner_user_id=owner)
+    files = await FileService(db).list(org_id, owner_user_id=owner)
+
+    # Join User to get creator email/name (avoid N+1)
+    user_ids = [f.created_by_user_id for f in files if f.created_by_user_id]
+    user_map: dict[str, User] = {}
+    if user_ids:
+        res = await db.execute(select(User).where(User.id.in_(user_ids)))
+        for u in res.scalars().all():
+            user_map[u.id] = u
+
+    return [
+        UploadedFileOut(
+            id=f.id,
+            original_name=f.original_name,
+            content_type=f.content_type,
+            size=f.size,
+            status=f.status,
+            visibility=f.visibility,
+            collection=f.collection,
+            error=f.error,
+            created_by_user_id=f.created_by_user_id,
+            creator_email=user_map[f.created_by_user_id].email if f.created_by_user_id and f.created_by_user_id in user_map else None,
+            creator_name=user_map[f.created_by_user_id].display_name if f.created_by_user_id and f.created_by_user_id in user_map else None,
+            created_at=f.created_at,
+            updated_at=f.updated_at,
+        )
+        for f in files
+    ]
 
 
 @router.delete("/{id}")
