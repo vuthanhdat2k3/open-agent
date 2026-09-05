@@ -96,6 +96,8 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 |---|---|---|---|
 | `dev` | `G:\open-agent` | Nhánh tích hợp chính — không code trực tiếp ở đây | — |
 
+> 2026-09-05: Đã merge PR #277 vào `dev` và deploy lên `deploy/dev` qua PR #278 (Khắc phục lỗi tràn mép phải và cắt cụt Canvas Panel trên desktop: nhóm ChatThread và ChatCanvasPanel vào container dùng chung flex-row min-w-0 sau ChatSidebar, chia tỉ lệ 50/50 trên lg và 52/48 trên xl vừa khít 100% màn hình, thu gọn nhãn nút trên màn hình laptop tránh che tiêu đề).
+
 > 2026-09-05: Đã merge PR #274 vào `dev` và deploy lên `deploy/dev` qua PR #275 (Tối ưu giao diện Responsive toàn diện: ChatSidebar mobile slide-over Sheet drawer, ChatCanvasPanel mobile/tablet full overlay drawer, cuộn ngang min-w-[600px] cho tất cả Table, ẩn Companion3D trên mobile, co giãn Model Selector và grid 1 cột trên màn hình nhỏ).
 
 > 2026-09-05: Đã merge PR #271 vào `dev` và deploy lên `deploy/dev` qua PR #273 (Khắc phục lỗi đứt đoạn session_id khi Subagent tạo artifact: truyền session_id vào run_agent_loop và ToolContext, loại bỏ nhánh elif root_run_id gây bỏ qua root_run_id khi gom file cuối lượt, chuẩn hóa prompt Coder và Orchestrator luôn xuất kèm khối mã nguồn markdown và hướng dẫn dùng Thẻ tệp / Side Canvas Panel).

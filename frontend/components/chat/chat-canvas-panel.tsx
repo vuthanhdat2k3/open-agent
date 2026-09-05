@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 import {
   X,
   Maximize2,
@@ -25,9 +26,13 @@ import { streamSSE } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { inferLanguage } from "@/lib/chat/canvas-utils";
 
-export function ChatCanvasPanel() {
+interface ChatCanvasPanelProps {
+  isDragging?: boolean;
+}
+
+export function ChatCanvasPanel({ isDragging }: ChatCanvasPanelProps = {}) {
   const { tx } = useTranslation();
-  const { activeItem, isFullscreen, closeCanvas, toggleFullscreen } = useCanvasStore();
+  const { activeItem, isFullscreen, closeCanvas, toggleFullscreen, panelWidthPercentage } = useCanvasStore();
 
   const [activeTab, setActiveTab] = React.useState<"code" | "preview">("code");
   const [copied, setCopied] = React.useState(false);
@@ -192,13 +197,15 @@ export function ChatCanvasPanel() {
 
   const lines = content.split("\n");
 
-  return (
+  const panelContent = (
     <div
+      style={!isFullscreen ? { width: `${panelWidthPercentage}%` } : undefined}
       className={cn(
-        "flex flex-col bg-background transition-all duration-200 shrink-0",
+        "flex flex-col bg-background",
         isFullscreen
-          ? "fixed inset-0 z-50 w-screen h-screen border-l-0"
-          : "fixed inset-0 z-40 w-full h-full border-l-0 lg:relative lg:inset-auto lg:z-20 lg:w-[50%] xl:w-[48%] lg:border-l lg:border-border/80 min-h-0 shrink-0",
+          ? "fixed inset-0 z-[100] w-screen h-screen shadow-2xl"
+          : "fixed inset-0 z-40 w-full h-full border-l-0 lg:relative lg:inset-auto lg:z-20 lg:border-l lg:border-border/80 min-h-0 shrink-0",
+        !isDragging && !isFullscreen && "transition-all duration-100",
       )}
     >
       {/* 1. Header Toolbar */}
@@ -311,12 +318,20 @@ export function ChatCanvasPanel() {
           <Button
             size="sm"
             variant="ghost"
-            className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
+            className={cn(
+              "h-8 gap-1 px-2 text-xs",
+              isFullscreen
+                ? "text-primary bg-primary/10 hover:bg-primary/20"
+                : "text-muted-foreground hover:text-foreground p-0 w-8"
+            )}
             onClick={toggleFullscreen}
-            title={isFullscreen ? tx("Thu nhỏ", "Exit fullscreen") : tx("Toàn màn hình", "Fullscreen")}
+            title={isFullscreen ? tx("Thu nhỏ (Esc)", "Exit fullscreen (Esc)") : tx("Toàn màn hình", "Fullscreen")}
           >
             {isFullscreen ? (
-              <Minimize2 className="h-3.5 w-3.5" aria-hidden="true" />
+              <>
+                <Minimize2 className="h-4 w-4" aria-hidden="true" />
+                <span className="inline font-medium">{tx("Thu nhỏ", "Exit")}</span>
+              </>
             ) : (
               <Maximize2 className="h-3.5 w-3.5" aria-hidden="true" />
             )}
@@ -406,7 +421,7 @@ export function ChatCanvasPanel() {
                 title={activeItem.title}
                 srcDoc={content}
                 sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
-                className="h-full w-full border-0"
+                className={cn("h-full w-full border-0", isDragging && "pointer-events-none")}
               />
             </div>
           </div>
@@ -463,4 +478,10 @@ export function ChatCanvasPanel() {
       </div>
     </div>
   );
+
+  if (isFullscreen && typeof document !== "undefined") {
+    return createPortal(panelContent, document.body);
+  }
+
+  return panelContent;
 }
