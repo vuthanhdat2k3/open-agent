@@ -264,7 +264,7 @@ async def sync_sandbox_artifacts(
                             source_tool=source_tool,
                             user_id=ctx.user_id,
                             agent_id=ctx.agent_id,
-                            session_id=ctx.session_id,
+                            session_id=ctx.session_id or ctx.parent_session_id,
                             task_id=ctx.current_task_id,
                             root_run_id=ctx.root_run_id,
                         )
@@ -419,7 +419,7 @@ async def _run_code(args: dict[str, Any], ctx: ToolContext) -> str:
         command=str(code)[:4000],
         user_id=ctx.user_id,
         agent_id=ctx.agent_id,
-        session_id=ctx.session_id,
+        session_id=ctx.session_id or ctx.parent_session_id,
         task_id=ctx.current_task_id,
         root_run_id=ctx.root_run_id,
     )

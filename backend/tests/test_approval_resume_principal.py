@@ -28,7 +28,6 @@ from app.main import app
 from app.models.agent import Agent
 from app.models.approval_request import ApprovalRequest
 from app.models.model import Model
-from app.models.organization import Organization
 from app.models.provider import Provider
 from app.models.session import Session
 from app.models.task import Task

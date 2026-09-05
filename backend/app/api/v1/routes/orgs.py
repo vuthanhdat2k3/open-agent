@@ -12,10 +12,10 @@ from app.config import get_settings
 from app.core.agents.sync import sync_system_agents_for_org
 from app.core.auth.api_key import generate_api_key
 from app.core.auth.password import hash_password
+from app.core.authz.policy import PrincipalContext
 from app.core.observability.audit import log_action
 from app.db.base import utc_now
 from app.db.session import get_db
-from app.core.authz.policy import PrincipalContext
 from app.dependencies import get_current_user, require_permission
 from app.models.api_key import ApiKey
 from app.models.application_session import ApplicationSession
