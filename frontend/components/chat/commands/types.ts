@@ -1,4 +1,4 @@
-import type { Model, ExecutionPolicy } from "@/types";
+import type { Agent, ExecutionPolicy, Model, UsageSummary } from "@/types";
 
 /** Context passed to slash command handlers */
 export interface SlashCommandContext {
@@ -10,16 +10,28 @@ export interface SlashCommandContext {
   effectiveModel: Model | undefined;
   /** Current execution policy */
   executionPolicy: ExecutionPolicy | undefined;
+  /** Available agents */
+  agents: Agent[];
+  /** Current agent id */
+  currentAgentId: string | undefined;
+  /** Usage summary rows (per agent/model) */
+  usage: UsageSummary[];
   /** Callback to switch model */
   onModelChange: (modelId: string) => void;
   /** Callback to switch execution policy */
   onExecutionPolicyChange: (policy: ExecutionPolicy) => void;
-  /** Callback to clear conversation */
+  /** Callback to clear conversation history */
   onClear: () => void;
-  /** Callback to reset session */
+  /** Callback to reset session (new conversation) */
   onReset: () => void;
+  /** Callback to switch agent */
+  onAgentChange: (agentId: string) => void;
+  /** Callback to send a message programmatically (for /compact) */
+  onSend: (message: string) => void;
   /** Callback to set draft text */
   onDraftChange: (draft: string) => void;
+  /** Toast-like notification */
+  notify: (message: string, kind?: "success" | "error" | "info") => void;
   /** Translation function */
   tx: (vietnamese: string, english: string) => string;
 }
@@ -45,16 +57,4 @@ export interface SlashCommandOption {
   readonly id: string;
   readonly label: string;
   readonly detail?: string;
-}
-
-/** Parsed slash command from input */
-export interface ParsedSlashCommand {
-  /** Full command text including slash */
-  raw: string;
-  /** Command name */
-  name: string;
-  /** Arguments after command name */
-  args: string;
-  /** Cursor position in the input */
-  cursorPos: number;
 }

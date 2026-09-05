@@ -2,7 +2,7 @@
 
 import { ChatComposer } from "@/components/chat/chat-composer";
 import { ChatConnectionBanner, type ConnectionState } from "@/components/chat/chat-connection-banner";
-import type { Model, ExecutionPolicy, UploadedFile } from "@/types";
+import type { Agent, Model, ExecutionPolicy, UploadedFile, UsageSummary } from "@/types";
 
 interface ChatInputProps {
   draft: string;
@@ -20,6 +20,11 @@ interface ChatInputProps {
   onExecutionPolicyChange: (policy: ExecutionPolicy) => void;
   onClear?: () => void;
   onReset?: () => void;
+  agents?: Agent[];
+  currentAgentId?: string;
+  onAgentChange?: (agentId: string) => void;
+  usage?: UsageSummary[];
+  onSendMessage?: (message: string) => void;
 }
 
 // Docked composer for an active conversation. `onSubmit` arrives already
@@ -28,7 +33,8 @@ interface ChatInputProps {
 // one based on `streaming`.
 export function ChatInput({
   draft, onDraftChange, onSubmit, streaming, disabled, connectionState, attachments, onAttachmentsChange,
-  models, effectiveModel, onModelChange, executionPolicy, onExecutionPolicyChange, onClear, onReset
+  models, effectiveModel, onModelChange, executionPolicy, onExecutionPolicyChange, onClear, onReset,
+  agents, currentAgentId, onAgentChange, usage, onSendMessage
 }: ChatInputProps) {
   return (
     <div className="mt-3">
@@ -50,6 +56,11 @@ export function ChatInput({
         onExecutionPolicyChange={onExecutionPolicyChange}
         onClear={onClear}
         onReset={onReset}
+        agents={agents}
+        currentAgentId={currentAgentId}
+        onAgentChange={onAgentChange}
+        usage={usage}
+        onSendMessage={onSendMessage}
       />
     </div>
   );

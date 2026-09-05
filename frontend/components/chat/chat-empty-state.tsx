@@ -2,7 +2,7 @@
 
 import { FolderSearch, ListTodo, Sparkles } from "lucide-react";
 import { ChatComposer } from "@/components/chat/chat-composer";
-import type { Agent, Model, UploadedFile, ExecutionPolicy } from "@/types";
+import type { Agent, Model, UploadedFile, ExecutionPolicy, UsageSummary } from "@/types";
 
 interface ChatEmptyStateProps {
   currentAgent?: Agent;
@@ -19,6 +19,10 @@ interface ChatEmptyStateProps {
   onAttachmentsChange: (files: UploadedFile[]) => void;
   onClear?: () => void;
   onReset?: () => void;
+  agents?: Agent[];
+  onAgentChange?: (agentId: string) => void;
+  usage?: UsageSummary[];
+  onSendMessage?: (message: string) => void;
 }
 
 // Adapted from RuixenMoonChat (21st.dev / ruixen.ui): a moon-glow backdrop, a
@@ -30,7 +34,8 @@ import { useTranslation } from "@/lib/i18n";
 
 export function ChatEmptyState({
   currentAgent, models, effectiveModel, onModelChange, executionPolicy, onExecutionPolicyChange,
-  draft, onDraftChange, onSubmit, disabled, attachments, onAttachmentsChange, onClear, onReset
+  draft, onDraftChange, onSubmit, disabled, attachments, onAttachmentsChange, onClear, onReset,
+  agents, onAgentChange, usage, onSendMessage
 }: ChatEmptyStateProps) {
   const { t, locale, tx } = useTranslation();
 
@@ -89,6 +94,11 @@ export function ChatEmptyState({
           onExecutionPolicyChange={onExecutionPolicyChange}
           onClear={onClear}
           onReset={onReset}
+          agents={agents}
+          currentAgentId={currentAgent?.id}
+          onAgentChange={onAgentChange}
+          usage={usage}
+          onSendMessage={onSendMessage}
         />
 
         <div className="mt-5 flex flex-wrap items-center justify-center gap-2">

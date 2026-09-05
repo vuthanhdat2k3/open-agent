@@ -19,6 +19,7 @@ import {
   useChatRun,
   useApprovals,
   useUpdateAgent,
+  useUsageSummary,
 } from "@/hooks";
 import { useChatStore, useCanvasStore } from "@/stores";
 import {
@@ -50,6 +51,7 @@ export default function ChatPage() {
   const roles = useCurrentRoles();
   const agents = useAgents();
   const models = useModels();
+  const usageSummary = useUsageSummary();
   const {
     agentId,
     sessionId,
@@ -950,8 +952,9 @@ export default function ChatPage() {
     return () => window.removeEventListener("pagehide", markUnloading);
   }, []);
 
-  const send = async () => {
-    if ((!draft.trim() && attachments.length === 0) || !agentId) return;
+  const send = async (overrideMessage?: string) => {
+    const hasOverride = typeof overrideMessage === "string" && overrideMessage.trim().length > 0;
+    if ((!hasOverride && !draft.trim() && attachments.length === 0) || !agentId) return;
     if (roles.includes("operator") && !roles.includes("user")) {
       toast.error(
         tx(
@@ -961,7 +964,11 @@ export default function ChatPage() {
       );
       return;
     }
-    const sentDraft = draft.trim() ? draft : tx("Vui lòng xem lại (các) tệp đính kèm.", "Please review the attached file(s).");
+    const sentDraft = hasOverride
+      ? overrideMessage!.trim()
+      : draft.trim()
+        ? draft
+        : tx("Vui lòng xem lại (các) tệp đính kèm.", "Please review the attached file(s).");
     const userMsg: ChatMessage = {
       id: `u-${Date.now()}`,
       role: "user",
@@ -1241,8 +1248,13 @@ export default function ChatPage() {
                 setMessages([]);
                 setDraft("");
                 setAttachments([]);
-                window.location.href = "/chat";
+                changeAgent(agentId);
               }}
+              agents={agents.data}
+              currentAgentId={agentId ?? undefined}
+              onAgentChange={(nextAgentId: string) => changeAgent(nextAgentId)}
+              usage={usageSummary.data}
+              onSendMessage={(message: string) => void send(message)}
             />
           </div>
         )}
