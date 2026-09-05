@@ -96,6 +96,8 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 |---|---|---|---|
 | `dev` | `G:\open-agent` | Nhánh tích hợp chính — không code trực tiếp ở đây | — |
 
+> 2026-09-05: Đã merge PR #282 vào `dev` và deploy lên `deploy/dev` qua PR #283 (Lưu trạng thái mở Canvas và tệp xem dở qua reload bằng Zustand persist openagent-canvas; nâng cấp thanh kéo giãn Resizable Divider với nút Grab Pill nổi GripVertical trực quan ở giữa màn hình).
+
 > 2026-09-05: Đã merge PR #279 vào `dev` và deploy lên `deploy/dev` qua PR #280 (Toàn màn hình Canvas thoát khỏi stacking context bằng React Portal z-[100] không bị AppHeader che khuất, nút Thu nhỏ nổi bật kèm phím tắt Esc; bổ sung thanh Resizable Divider Handle kéo giãn trái/phải tùy chỉnh kích thước 25%-75%, nhấp đúp reset 50% và bảo vệ sự kiện chuột trên iframe).
 
 > 2026-09-05: Đã merge PR #277 vào `dev` và deploy lên `deploy/dev` qua PR #278 (Khắc phục lỗi tràn mép phải và cắt cụt Canvas Panel trên desktop: nhóm ChatThread và ChatCanvasPanel vào container dùng chung flex-row min-w-0 sau ChatSidebar, chia tỉ lệ 50/50 trên lg và 52/48 trên xl vừa khít 100% màn hình, thu gọn nhãn nút trên màn hình laptop tránh che tiêu đề).

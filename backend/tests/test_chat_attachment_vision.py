@@ -57,6 +57,8 @@ async def test_inline_attachments_vision_supported() -> None:
 
     file_record = MagicMock()
     file_record.original_name = "diagram.png"
+    file_record.size = len(b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR...")
+    file_record.content_type = "image/png"
     fake_png_data = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR..."
 
     with patch(
@@ -72,7 +74,14 @@ async def test_inline_attachments_vision_supported() -> None:
         )
 
         assert prompt == "Please examine the attached system architecture."
-        assert meta == [{"id": "file-123", "name": "diagram.png"}]
+        assert meta == [
+            {
+                "id": "file-123",
+                "name": "diagram.png",
+                "size": file_record.size,
+                "content_type": "image/png",
+            }
+        ]
         assert len(images) == 1
         assert images[0]["mime_type"] == "image/png"
         assert images[0]["data_b64"] == base64.b64encode(fake_png_data).decode("utf-8")
@@ -114,6 +123,8 @@ async def test_inline_attachments_vision_unsupported_notifies_and_warns() -> Non
 
     file_record = MagicMock()
     file_record.original_name = "screenshot.png"
+    file_record.size = len(b"\x89PNG...")
+    file_record.content_type = "image/png"
     fake_png_data = b"\x89PNG..."
 
     with (
@@ -139,6 +150,8 @@ async def test_inline_attachments_vision_unsupported_notifies_and_warns() -> Non
             {
                 "id": "file-img",
                 "name": "screenshot.png",
+                "size": file_record.size,
+                "content_type": "image/png",
                 "error": "Model does not support vision",
             }
         ]
