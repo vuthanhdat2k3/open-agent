@@ -59,7 +59,9 @@ export default function FilesPage() {
   const upload = useUploadFile();
   const del = useDeleteFile();
   const ingest = useIngestFile();
-  const canIngest = useCan("files:manage");
+  const canManageAllIngest = useCan("files:manage");
+  const canPersonalIngest = useCan("files:personal:manage");
+  const canIngest = canManageAllIngest || canPersonalIngest;
   const fileRef = React.useRef<HTMLInputElement>(null);
   const [collection, setCollection] = React.useState("default");
   const [page, setPage] = React.useState(1);
@@ -108,8 +110,15 @@ export default function FilesPage() {
     <div className="space-y-6">
       <PageHeader
         icon={FileText}
-        title={dict.pages.files.title}
-        description={tx("Tải lên và quản lý tài liệu, PDF, và tệp để tìm kiếm và truy xuất ngữ nghĩa.", "Upload and manage documents, PDFs, and files for semantic search and retrieval.")}
+        title={isOperator ? dict.pages.files.title : tx("Tài liệu của tôi", "My Documents")}
+        description={
+          isOperator
+            ? tx("Tải lên và quản lý tài liệu, PDF, và tệp để tìm kiếm và truy xuất ngữ nghĩa.", "Upload and manage documents, PDFs, and files for semantic search and retrieval.")
+            : tx(
+                "Tải lên và nạp tài liệu của riêng bạn. Chỉ bạn mới tìm kiếm được các tệp cá nhân này (cùng với các tài liệu dùng chung của tổ chức).",
+                "Upload and ingest your own documents. Only you can search these personal files (plus anything the org has shared).",
+              )
+        }
         actions={
           <>
             <Input

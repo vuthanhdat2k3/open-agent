@@ -14,6 +14,7 @@ export const vi: TranslationDictionary = {
     runWorkflow: 'Chạy workflow',
     automations: 'Tự động hóa',
     knowledgeBase: 'Kho tri thức',
+    myDocuments: 'Tài liệu của tôi',
     mcpServers: 'MCP Servers',
     channels: 'Kênh tin nhắn',
     myChannels: 'Kênh của tôi',

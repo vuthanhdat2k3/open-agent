@@ -243,10 +243,21 @@ async def test_compact_session_endpoints(client, async_session_factory):
         assert compaction_event is not None
         assert "surface_op" in compaction_event.data
 
-        # Check messages table has summary assistant message
+        # Check messages table preserves all older messages PLUS the compaction marker (DSH append-only pattern)
         msgs = (await db.execute(
             select(Message).where(Message.session_id == session_id).order_by(Message.position)
         )).scalars().all()
-        assert len(msgs) > 0
-        assert msgs[0].position == 0
-        assert msgs[0].meta.get("is_compaction") is True
+        # Original 6 messages + 1 compaction marker = 7 total messages preserved!
+        assert len(msgs) == 7
+        compaction_msg = next((m for m in msgs if m.role == "compaction" or (m.meta and m.meta.get("is_compaction"))), None)
+        assert compaction_msg is not None
+        assert compaction_msg.meta.get("is_compaction") is True
+        assert compaction_msg.meta.get("shadowed_messages_count") == 4
+        # Verify older messages 0..3 are preserved before the marker
+        assert msgs[0].id == "msg-compact-0"
+        assert msgs[3].id == "msg-compact-3"
+        # Marker is at index 4
+        assert msgs[4].id == compaction_msg.id
+        # Hot messages 4..5 are preserved after the marker
+        assert msgs[5].id == "msg-compact-4"
+        assert msgs[6].id == "msg-compact-5" 
