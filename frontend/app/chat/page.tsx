@@ -1048,8 +1048,8 @@ export default function ChatPage() {
       />
       <div
         className={cn(
-          "flex min-h-0 flex-col transition-all duration-200",
-          isCanvasOpen && !isCanvasFullscreen ? "w-full lg:w-[52%] xl:w-[55%]" : "flex-1",
+          "flex min-h-0 flex-1 flex-col transition-all duration-200",
+          isCanvasOpen && !isCanvasFullscreen && "lg:flex-initial lg:w-[52%] xl:w-[55%]",
           isCanvasFullscreen && "hidden",
         )}
       >
