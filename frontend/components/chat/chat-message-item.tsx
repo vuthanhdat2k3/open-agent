@@ -11,6 +11,7 @@ import { ReasoningRow } from "./blocks/reasoning-row";
 import { ToolCallCard } from "./blocks/tool-call-card";
 import { ToolCallChip } from "./blocks/tool-call-chip";
 import { StatsLine } from "./blocks/stats-line";
+import { CompactionItem } from "./compaction-item";
 import { FileAttachmentCard } from "./file-attachment-card";
 import { useTranslation } from "@/lib/i18n";
 
@@ -45,6 +46,11 @@ function ChatMessageItemBase({ message: m, debug, onApprovalDecision }: ChatMess
       // Ignore clipboard errors
     }
   }, []);
+
+  // 0. Compaction marker (DSH-compliant collapsible boundary pill)
+  if (m.role === "compaction") {
+    return <CompactionItem message={m} />;
+  }
 
   // 1. User message
   if (m.role === "user") {

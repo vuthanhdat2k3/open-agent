@@ -115,10 +115,39 @@ export function CommandInfoDialog({
   }, [currentAgent]);
 
   const { currentContextTokens, tokenSource } = React.useMemo(() => {
-    if (lastStats?.tokensIn != null && lastStats.tokensIn > 0) {
-      return { currentContextTokens: lastStats.tokensIn as number, tokenSource: "real" as const };
+    // Find latest compaction boundary if any
+    let lastCompactionIdx = -1;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if ((messages[i] as any).role === "compaction") {
+        lastCompactionIdx = i;
+        break;
+      }
     }
-    const messageChars = messages.reduce((acc, m: any) => {
+
+    // If lastStats happened BEFORE the compaction, invalidate it because the context window shrank
+    let validLastStats = lastStats;
+    if (lastCompactionIdx !== -1 && lastStats) {
+      let lastStatsIdx = -1;
+      for (let i = messages.length - 1; i >= 0; i--) {
+        const msg = messages[i] as any;
+        if (msg.role === "assistant" && Array.isArray(msg.blocks) && msg.blocks.some((b: any) => b.kind === "stats")) {
+          lastStatsIdx = i;
+          break;
+        }
+      }
+      if (lastStatsIdx !== -1 && lastStatsIdx < lastCompactionIdx) {
+        validLastStats = null;
+      }
+    }
+
+    if (validLastStats?.tokensIn != null && validLastStats.tokensIn > 0) {
+      return { currentContextTokens: validLastStats.tokensIn as number, tokenSource: "real" as const };
+    }
+
+    // Only count active messages (after the compaction point) + compaction summary
+    const relevantMessages = lastCompactionIdx !== -1 ? messages.slice(lastCompactionIdx) : messages;
+    const messageChars = relevantMessages.reduce((acc, m: any) => {
+      if (m.role === "compaction" && typeof m.summary === "string") return acc + m.summary.length;
       if (m.role === "user" && typeof m.content === "string") return acc + m.content.length;
       if (m.role === "assistant" && Array.isArray(m.blocks)) {
         const textLen = m.blocks

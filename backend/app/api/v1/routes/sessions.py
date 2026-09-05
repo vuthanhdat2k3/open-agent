@@ -410,35 +410,37 @@ async def compact_session(
             },
         )
 
-    # 2. Update Message table for UI hydration
+    # 2. Update Message table for UI hydration (DeepSeek Harness Checkpoint Marker Pattern - Append Only, NEVER Delete)
+    shadowed_messages_count = 0
+    shadowed_token_count = 0
     if len(messages) > hot_window:
         hot_messages = messages[-hot_window:]
         older_messages = messages[:-hot_window]
-        older_ids = [m.id for m in older_messages]
+        shadowed_messages_count = len(older_messages)
+        shadowed_token_count = max(100, sum(len(m.content or "") for m in older_messages) // 4)
+        compaction_pos = len(older_messages)
 
-        # Delete older messages
-        await db.execute(
-            delete(Message).where(Message.id.in_(older_ids))
-        )
-
-        # Insert a summary assistant message representing the compacted history
+        # Insert a compaction checkpoint marker between older history and hot active turns.
+        # DO NOT DELETE older messages — preserving full history like DeepSeek Harness.
         compaction_msg = Message(
             org_id=org_id,
             created_by_user_id=user.id,
             session_id=session_id,
-            role="assistant",
-            content=f"🧹 **Đã nén ngữ cảnh phiên hội thoại**:\n\n{warm_summary}",
+            role="compaction",
+            content=warm_summary,
             meta={
                 "is_compaction": True,
+                "summary": warm_summary,
+                "shadowed_messages_count": shadowed_messages_count,
+                "shadowed_token_count": shadowed_token_count,
                 "compacted_at": datetime.now(timezone.utc).isoformat(),
-                "compacted_messages_count": len(older_messages),
             },
-            position=0,
+            position=compaction_pos,
         )
         db.add(compaction_msg)
 
-        # Shift positions of hot messages
-        for idx, m in enumerate(hot_messages, start=1):
+        # Shift positions of hot messages by 1 so marker sits right at the boundary
+        for idx, m in enumerate(hot_messages, start=compaction_pos + 1):
             m.position = idx
 
     await db.commit()
@@ -448,4 +450,6 @@ async def compact_session(
         "compacted": True,
         "message": "Đã nén ngữ cảnh hội thoại thành công.",
         "summary": warm_summary,
+        "shadowed_messages_count": shadowed_messages_count,
+        "shadowed_token_count": shadowed_token_count,
     }

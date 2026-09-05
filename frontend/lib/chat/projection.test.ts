@@ -346,6 +346,33 @@ describe("applyChatEvent artifacts", () => {
   });
 });
 
+describe("messagesFromPersisted compaction", () => {
+  it("projects compaction row into CompactionMessage with summary and shadow counts", () => {
+    const rows = [
+      {
+        id: "msg-compaction-1",
+        role: "compaction",
+        content: "Ngữ cảnh được tóm tắt",
+        meta: {
+          is_compaction: true,
+          summary: "Tóm tắt cuộc trò chuyện trước đó...",
+          shadowed_messages_count: 5,
+          shadowed_token_count: 1200,
+        },
+      },
+    ];
+    const msgs = messagesFromPersisted(rows);
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0]).toMatchObject({
+      role: "compaction",
+      id: "msg-compaction-1",
+      summary: "Tóm tắt cuộc trò chuyện trước đó...",
+      shadowedItemCount: 5,
+      shadowedTokenCount: 1200,
+    });
+  });
+});
+
 describe("looksFailed", () => {
   it("detects legacy failure markers", () => {
     expect(looksFailed("Error: timeout")).toBe(true);
