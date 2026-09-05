@@ -98,6 +98,8 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 
 > 2026-09-05: Đã merge PR #282 vào `dev` và deploy lên `deploy/dev` qua PR #283 (Lưu trạng thái mở Canvas và tệp xem dở qua reload bằng Zustand persist openagent-canvas; nâng cấp thanh kéo giãn Resizable Divider với nút Grab Pill nổi GripVertical trực quan ở giữa màn hình).
 
+> 2026-09-05: Commit trực tiếp lên `dev` (8351255) và merge lên `deploy/dev` (3250a34) theo yêu cầu người dùng (Sửa triệt để lỗi treo write_file/run_code do idempotency_key vượt quá VARCHAR(128) — thêm migration 0070 nới cột lên 256; thêm pool_timeout=10s cho SQLAlchemy engine; giới hạn trần timeout sandbox 300s và đảm bảo dọn dẹp container Docker khi bị cancel; bổ sung cost_usd và cờ real/estimated cho mọi generation Langfuse, trace thêm Test Connection/Model Test; sửa lỗi login nuốt mất thông báo lỗi thật).
+
 > 2026-09-05: Đã merge PR #279 vào `dev` và deploy lên `deploy/dev` qua PR #280 (Toàn màn hình Canvas thoát khỏi stacking context bằng React Portal z-[100] không bị AppHeader che khuất, nút Thu nhỏ nổi bật kèm phím tắt Esc; bổ sung thanh Resizable Divider Handle kéo giãn trái/phải tùy chỉnh kích thước 25%-75%, nhấp đúp reset 50% và bảo vệ sự kiện chuột trên iframe).
 
 > 2026-09-05: Đã merge PR #277 vào `dev` và deploy lên `deploy/dev` qua PR #278 (Khắc phục lỗi tràn mép phải và cắt cụt Canvas Panel trên desktop: nhóm ChatThread và ChatCanvasPanel vào container dùng chung flex-row min-w-0 sau ChatSidebar, chia tỉ lệ 50/50 trên lg và 52/48 trên xl vừa khít 100% màn hình, thu gọn nhãn nút trên màn hình laptop tránh che tiêu đề).
