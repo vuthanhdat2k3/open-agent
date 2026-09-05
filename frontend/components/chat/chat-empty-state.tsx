@@ -3,6 +3,7 @@
 import { FolderSearch, ListTodo, Sparkles } from "lucide-react";
 import { ChatComposer } from "@/components/chat/chat-composer";
 import type { Agent, Model, UploadedFile, ExecutionPolicy, UsageSummary } from "@/types";
+import type { ChatMessage } from "@/lib/chat/projection";
 import { useTranslation } from "@/lib/i18n";
 
 interface ChatEmptyStateProps {
@@ -25,6 +26,7 @@ interface ChatEmptyStateProps {
   usage?: UsageSummary[];
   onSendMessage?: (message: string) => void;
   sessionId?: string;
+  messages?: ChatMessage[];
 }
 
 // Adapted from RuixenMoonChat (21st.dev / ruixen.ui): a moon-glow backdrop, a

@@ -193,6 +193,7 @@ export function ChatThread({
             usage={usage}
             onSendMessage={onSendMessage}
             sessionId={sessionId ?? undefined}
+            messages={messages}
           />
         ) : (
           <div className="mx-auto flex w-full max-w-[var(--dsh-chat-content-width,736px)] flex-1 flex-col gap-4">
