@@ -534,6 +534,9 @@ export interface TaskTreeNode {
 
 export interface TaskTree {
   root_run_id: string;
+  triggered_by_user_id?: string | null;
+  triggered_by_email?: string | null;
+  triggered_by_name?: string | null;
   tasks: TaskTreeNode[];
 }
 

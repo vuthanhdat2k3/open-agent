@@ -187,9 +187,18 @@ export default function FilesPage() {
                         {formatSize(f.size)}
                       </TableCell>
                       <TableCell>
-                        <Badge variant={statusVariant[f.status] || "secondary"} className="uppercase tracking-wider text-[10px]">
+                        <Badge
+                          variant={statusVariant[f.status] || "secondary"}
+                          className="uppercase tracking-wider text-[10px]"
+                          title={(f.status === "error" || f.status === "dead_letter") && f.error ? f.error : undefined}
+                        >
                           {statusLabel(f.status, t)}
                         </Badge>
+                        {(f.status === "error" || f.status === "dead_letter") && f.error && (
+                          <div className="mt-1 max-w-[220px] truncate text-[10px] text-destructive/80" title={f.error}>
+                            {f.error}
+                          </div>
+                        )}
                       </TableCell>
                       <TableCell className="text-muted-foreground font-mono text-xs">
                         {f.collection || "—"}
