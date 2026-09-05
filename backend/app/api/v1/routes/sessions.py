@@ -29,10 +29,29 @@ async def list_sessions(
     org_id: str = Depends(get_current_org_id), db: AsyncSession = Depends(get_db)
 ):
     stmt = scope_to_owner(
-        select(Session).where(Session.org_id == org_id), db, Session.created_by_user_id
+        select(Session, User)
+        .outerjoin(User, Session.created_by_user_id == User.id)
+        .where(Session.org_id == org_id),
+        db,
+        Session.created_by_user_id,
     ).order_by(Session.updated_at.desc())
     res = await db.execute(stmt)
-    return list(res.scalars().all())
+    sessions: list[SessionOut] = []
+    for session, user in res.all():
+        sessions.append(
+            SessionOut(
+                id=session.id,
+                agent_id=session.agent_id,
+                execution_policy=session.execution_policy,
+                title=session.title,
+                created_by_user_id=session.created_by_user_id,
+                creator_email=user.email if user else None,
+                creator_name=user.display_name if user else None,
+                created_at=session.created_at,
+                updated_at=session.updated_at,
+            )
+        )
+    return sessions
 
 
 @router.get("/{session_id}/messages", response_model=list[ChatMessageOut], dependencies=[Depends(require_permission("sessions:read"))])

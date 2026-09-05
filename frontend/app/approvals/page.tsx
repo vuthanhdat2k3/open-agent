@@ -16,6 +16,7 @@ import {
 import {
   useApprovals,
   useCurrentRole,
+  useCurrentRoles,
   useDecideApproval,
   useMe,
   useQuotaUsage,
@@ -61,7 +62,7 @@ function eventDetails(approval: ApprovalRequest, locale: string, tx: (vi: string
   };
 }
 
-function ApprovalCard({ approval, onOpen, onSubmit }: { approval: ApprovalRequest; onOpen: () => void; onSubmit: (decision: "approved" | "rejected") => Promise<void> }) {
+function ApprovalCard({ approval, onOpen, onSubmit, isOperator }: { approval: ApprovalRequest; onOpen: () => void; onSubmit: (decision: "approved" | "rejected") => Promise<void>; isOperator?: boolean }) {
   const { t, locale, tx } = useTranslation();
   const details = eventDetails(approval, locale, tx);
   const highRisk = approval.risk_level === "HIGH";
@@ -76,6 +77,11 @@ function ApprovalCard({ approval, onOpen, onSubmit }: { approval: ApprovalReques
             <div className="min-w-0">
               <h2 className="text-base font-semibold text-foreground">{approvalTitle(approval, locale, tx)}</h2>
               <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{details.summary}</p>
+              {isOperator && approval.requested_by && (
+                <p className="mt-0.5 text-[10px] text-muted-foreground/60">
+                  {tx("Yêu cầu bởi", "Requested by")}: {approval.requester_email || approval.requester_name || approval.requested_by.slice(0, 8)}
+                </p>
+              )}
             </div>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2 text-xs">
@@ -109,7 +115,9 @@ export default function ApprovalsPage() {
   const searchParams = useSearchParams();
   const highlightId = searchParams.get("id") || searchParams.get("approval_id");
   const role = useCurrentRole();
+  const roles = useCurrentRoles();
   const me = useMe();
+  const isOperator = roles.includes("operator");
   const isUserRole = role === "user";
   const orgId = me.data?.active_org_id || getActiveOrgId() || me.data?.memberships?.[0]?.org_id;
 
@@ -268,6 +276,7 @@ export default function ApprovalsPage() {
                     approval={approval}
                     onOpen={() => setSelected(approval)}
                     onSubmit={(decision) => submit(approval.id, decision)}
+                    isOperator={isOperator}
                   />
                 ))}
               </div>
