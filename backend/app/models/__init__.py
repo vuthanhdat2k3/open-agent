@@ -41,6 +41,7 @@ from app.models.membership import Membership
 from app.models.memory import AgentMemory, SessionMemory
 from app.models.message import Message
 from app.models.model import Model
+from app.models.notification import Notification
 from app.models.oauth_account import OAuthAccount
 from app.models.oidc_login_transaction import OidcLoginTransaction
 from app.models.ops_finding import OpsFinding
@@ -108,6 +109,7 @@ __all__ = [
     "Membership",
     "Message",
     "Model",
+    "Notification",
     "OAuthAccount",
     "OidcLoginTransaction",
     "OrgAgentSettings",
