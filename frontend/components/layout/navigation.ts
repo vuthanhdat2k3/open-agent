@@ -100,6 +100,7 @@ export const navGroups: NavGroup[] = [
       { href: "/channels", label: "My Channels", i18nKey: "nav.myChannels", icon: MessageSquare, roles: ["user"], permission: "channels:read" },
       { href: "/email-intelligence", label: "Email Intelligence", i18nKey: "nav.emailIntelligence", icon: Bell, roles: ["user"], permission: "ci:personal:manage" },
       { href: "/customer-intelligence", label: "Customer Intelligence", i18nKey: "nav.customerIntelligence", icon: Building2, roles: ["user"], permission: "ci:read" },
+      { href: "/files", label: "My Documents", i18nKey: "nav.myDocuments", icon: FolderKanban, roles: ["user"], permission: "files:read" },
       { href: "/workspace", label: "Sandbox", i18nKey: "nav.sandbox", icon: FolderKanban, roles: ["user"], permission: "files:read" },
       { href: "/approvals", label: "Approvals", i18nKey: "nav.approvals", icon: ShieldCheck, roles: ["user"], permission: "approvals:read" },
     ],

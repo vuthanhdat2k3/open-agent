@@ -14,6 +14,7 @@ export const en: TranslationDictionary = {
     runWorkflow: 'Run Workflow',
     automations: 'Automations',
     knowledgeBase: 'Knowledge Base',
+    myDocuments: 'My Documents',
     mcpServers: 'MCP Servers',
     channels: 'Messaging Channels',
     myChannels: 'My Channels',

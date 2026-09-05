@@ -3,7 +3,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authz.policy import PrincipalContext
-from app.dependencies import get_current_org_id, get_current_user, get_db, require_permission
+from app.dependencies import (
+    get_current_org_id,
+    get_current_user,
+    get_db,
+    require_any_permission,
+    require_permission,
+)
 from app.models.user import User
 from app.schemas.files import IngestJobOut, IngestJobRecord, IngestRequest, UploadedFileOut
 from app.services.file_ingestion_service import FileIngestionService
@@ -126,22 +132,28 @@ async def get_file_content(
     )
 
 
-@router.post("/{id}/ingest", response_model=IngestJobOut, status_code=202, dependencies=[Depends(require_permission("files:manage"))])
+@router.post("/{id}/ingest", response_model=IngestJobOut, status_code=202)
 async def ingest_file(
     id: str,
     body: IngestRequest,
     response: Response,
     org_id: str = Depends(get_current_org_id),
     current_user: User = Depends(get_current_user),
+    authz: PrincipalContext = Depends(require_any_permission("files:manage", "files:personal:manage")),
     db: AsyncSession = Depends(get_db),
 ):
     try:
         import uuid
 
+        # Staff (files:manage) may ingest any file in the org; a plain user
+        # with only files:personal:manage is scoped to files they own —
+        # same convention as list/download/delete in this router.
+        owner_user_id = None if authz.allows("files:manage") else authz.owner_user_id
         job, deduplicated = await FileIngestionService(db).create_job(
             org_id, id, current_user.id, collection=body.collection,
             chunk_size=body.chunk_size, chunk_overlap=body.chunk_overlap,
             tags=body.tags, correlation_id=str(uuid.uuid4()),
+            owner_user_id=owner_user_id,
         )
         if deduplicated and job.status == "succeeded":
             response.status_code = 200
