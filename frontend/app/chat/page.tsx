@@ -1258,6 +1258,7 @@ export default function ChatPage() {
               usage={usageSummary.data}
               onSendMessage={(message: string) => void send(message)}
               sessionId={sessionId ?? undefined}
+              messages={messages}
             />
           </div>
         )}

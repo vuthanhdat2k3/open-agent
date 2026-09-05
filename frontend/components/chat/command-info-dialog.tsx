@@ -106,12 +106,19 @@ export function CommandInfoDialog({
     return null;
   }, [messages]);
 
-  const currentContextTokens = React.useMemo(() => {
+  const baseAgentTokens = React.useMemo(() => {
+    const promptLen = currentAgent?.system_prompt?.length || 0;
+    const toolsCount = Array.isArray(currentAgent?.tools) ? currentAgent.tools.length : 6;
+    const promptTokens = promptLen > 0 ? Math.round(promptLen / 3.8) : 450;
+    const toolsTokens = toolsCount * 120;
+    return Math.max(300, promptTokens + toolsTokens);
+  }, [currentAgent]);
+
+  const { currentContextTokens, tokenSource } = React.useMemo(() => {
     if (lastStats?.tokensIn != null && lastStats.tokensIn > 0) {
-      return lastStats.tokensIn as number;
+      return { currentContextTokens: lastStats.tokensIn as number, tokenSource: "real" as const };
     }
-    if (messages.length === 0) return 0;
-    const totalChars = messages.reduce((acc, m: any) => {
+    const messageChars = messages.reduce((acc, m: any) => {
       if (m.role === "user" && typeof m.content === "string") return acc + m.content.length;
       if (m.role === "assistant" && Array.isArray(m.blocks)) {
         const textLen = m.blocks
@@ -121,8 +128,12 @@ export function CommandInfoDialog({
       }
       return acc;
     }, 0);
-    return Math.round(totalChars / 3.8);
-  }, [lastStats, messages]);
+    const messageTokens = Math.round(messageChars / 3.8);
+    return {
+      currentContextTokens: baseAgentTokens + messageTokens,
+      tokenSource: "estimated" as const,
+    };
+  }, [lastStats, messages, baseAgentTokens]);
   const contextWindowLimit = effectiveModel?.context_window || 128000;
   const contextUsagePercent = Math.min(100, Math.max(0, (currentContextTokens / contextWindowLimit) * 100));
   const remainingTokens = Math.max(0, contextWindowLimit - currentContextTokens);
@@ -264,22 +275,32 @@ export function CommandInfoDialog({
                     </div>
                   </div>
 
-                  <Badge
-                    variant={
-                      contextUsagePercent > 80
-                        ? "destructive"
+                  <div className="flex items-center gap-1.5">
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] font-medium px-2 py-0.5 border-border/70 text-muted-foreground"
+                    >
+                      {tokenSource === "real"
+                        ? tx("Lượt gần nhất", "Latest turn")
+                        : tx("Ước tính", "Estimated")}
+                    </Badge>
+                    <Badge
+                      variant={
+                        contextUsagePercent > 80
+                          ? "destructive"
+                          : contextUsagePercent > 50
+                          ? "warning"
+                          : "success"
+                      }
+                      className="text-[11px] font-semibold px-2.5 py-0.5"
+                    >
+                      {contextUsagePercent > 80
+                        ? tx("Sắp đầy ngữ cảnh", "High Usage")
                         : contextUsagePercent > 50
-                        ? "warning"
-                        : "success"
-                    }
-                    className="text-[11px] font-semibold px-2.5 py-0.5"
-                  >
-                    {contextUsagePercent > 80
-                      ? tx("Sắp đầy ngữ cảnh", "High Usage")
-                      : contextUsagePercent > 50
-                      ? tx("Mức trung bình", "Moderate")
-                      : tx("Tối ưu", "Optimal")}
-                  </Badge>
+                        ? tx("Mức trung bình", "Moderate")
+                        : tx("Tối ưu", "Optimal")}
+                    </Badge>
+                  </div>
                 </div>
 
                 <div className="flex flex-wrap items-baseline justify-between gap-2 my-2">
@@ -388,7 +409,13 @@ export function CommandInfoDialog({
                   <div className="bg-muted/40 p-2.5 rounded-lg border border-border/30">
                     <span className="text-[11px] text-muted-foreground block">{tx("Prompt Tokens gần nhất", "Last Prompt In")}</span>
                     <span className="text-sm font-bold font-mono text-foreground mt-0.5 block">
-                      {lastStats?.tokensIn != null ? lastStats.tokensIn.toLocaleString() : "—"}
+                      {lastStats?.tokensIn != null ? (
+                        lastStats.tokensIn.toLocaleString()
+                      ) : (
+                        <span className="text-muted-foreground text-xs font-normal">
+                          ~{currentContextTokens.toLocaleString()} ({tx("khởi tạo", "init")})
+                        </span>
+                      )}
                     </span>
                   </div>
 

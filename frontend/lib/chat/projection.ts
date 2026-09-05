@@ -579,12 +579,14 @@ export function messagesFromPersisted(rows: PersistedMessageRow[]): ChatMessage[
     const latencyMs = numOrUndef(meta.latency_ms);
     const model = strOrUndef(meta.model);
     const finalization = strOrUndef(meta.finalization);
-    if (costUsd != null || latencyMs != null || numOrUndef(meta.in_tokens) != null || model || finalization) {
+    const tokensIn = numOrUndef(meta.input_tokens) ?? numOrUndef(meta.in_tokens);
+    const tokensOut = numOrUndef(meta.output_tokens) ?? numOrUndef(meta.out_tokens);
+    if (costUsd != null || latencyMs != null || tokensIn != null || model || finalization) {
       blocks.push({
         kind: "stats",
         id: genId(),
-        tokensIn: numOrUndef(meta.in_tokens),
-        tokensOut: numOrUndef(meta.out_tokens),
+        tokensIn,
+        tokensOut,
         costUsd,
         latencyMs,
         model,
