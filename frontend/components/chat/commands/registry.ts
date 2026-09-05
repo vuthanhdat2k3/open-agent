@@ -131,8 +131,12 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     name: "compact",
     description: "Tóm tắt hội thoại để tiết kiệm context",
     icon: "sparkles",
-    execute: (_args: string, ctx: SlashCommandContext): boolean => {
+    execute: async (_args: string, ctx: SlashCommandContext): Promise<boolean> => {
       ctx.onDraftChange("");
+      if (ctx.onCompactSession) {
+        await ctx.onCompactSession();
+        return true;
+      }
       ctx.onSend(COMPACT_PROMPT);
       return true;
     },
@@ -197,8 +201,12 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     name: "clear",
     description: "Xóa lịch sử hội thoại hiện tại",
     icon: "trash",
-    execute: (_args: string, ctx: SlashCommandContext): boolean => {
+    execute: async (_args: string, ctx: SlashCommandContext): Promise<boolean> => {
       ctx.onDraftChange("");
+      if (ctx.onClearSession) {
+        await ctx.onClearSession();
+        return true;
+      }
       ctx.onClear();
       ctx.notify(ctx.tx("Đã xóa hội thoại", "Conversation cleared"), "success");
       return true;

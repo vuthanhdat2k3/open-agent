@@ -130,3 +130,123 @@ async def test_update_session_execution_policy_full_access(client, async_session
     data = response.json()
     assert data["execution_policy"] == "full-access"
 
+
+
+@pytest.mark.asyncio
+async def test_clear_session_messages(client, async_session_factory):
+    token, org_id = _register(client)
+    session_id = "session-clear-test"
+    agent_id = "agent-clear-test"
+
+    async with async_session_factory() as db:
+        db.add(Agent(id=agent_id, org_id=org_id, name="Clear test agent"))
+        db.add(Session(id=session_id, org_id=org_id, agent_id=agent_id, title="Clear me"))
+        db.add(
+            Message(
+                id="msg-clear-1",
+                org_id=org_id,
+                session_id=session_id,
+                role="user",
+                content="hello world",
+                position=0,
+            )
+        )
+        db.add(
+            SessionMemory(
+                id="mem-clear-1",
+                org_id=org_id,
+                session_id=session_id,
+                key="topic",
+                value="testing",
+            )
+        )
+        db.add(
+            SessionEvent(
+                id="ev-clear-1",
+                org_id=org_id,
+                session_id=session_id,
+                seq=1,
+                type=slog.USER_MESSAGE,
+                data={"content": "hello world"},
+            )
+        )
+        await db.commit()
+
+    response = client.post(
+        f"/api/sessions/{session_id}/clear",
+        headers={"Authorization": f"Bearer {token}", "X-Org-Id": org_id},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["ok"] is True
+
+    async with async_session_factory() as db:
+        # Session itself still exists
+        assert await db.scalar(select(Session).where(Session.id == session_id)) is not None
+        # But all messages, memory, and events are wiped clean
+        assert await db.scalar(select(Message).where(Message.session_id == session_id)) is None
+        assert await db.scalar(select(SessionMemory).where(SessionMemory.session_id == session_id)) is None
+        assert await db.scalar(select(SessionEvent).where(SessionEvent.session_id == session_id)) is None
+
+
+@pytest.mark.asyncio
+async def test_compact_session_endpoints(client, async_session_factory):
+    token, org_id = _register(client)
+    session_id = "session-compact-test"
+    agent_id = "agent-compact-test"
+
+    async with async_session_factory() as db:
+        db.add(Agent(id=agent_id, org_id=org_id, name="Compact test agent"))
+        db.add(Session(id=session_id, org_id=org_id, agent_id=agent_id, title="Compact me"))
+        # Add 6 conversation turns
+        for i in range(6):
+            role = "user" if i % 2 == 0 else "assistant"
+            db.add(
+                Message(
+                    id=f"msg-compact-{i}",
+                    org_id=org_id,
+                    session_id=session_id,
+                    role=role,
+                    content=f"Message turn {i} with some content to compress",
+                    position=i,
+                )
+            )
+            db.add(
+                SessionEvent(
+                    id=f"ev-compact-{i}",
+                    org_id=org_id,
+                    session_id=session_id,
+                    seq=i + 1,
+                    type=slog.USER_MESSAGE if role == "user" else slog.ASSISTANT_MESSAGE,
+                    data={"content": f"Message turn {i} with some content to compress"},
+                )
+            )
+        await db.commit()
+
+    response = client.post(
+        f"/api/sessions/{session_id}/compact",
+        headers={"Authorization": f"Bearer {token}", "X-Org-Id": org_id},
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["ok"] is True
+    assert data["compacted"] is True
+    assert len(data["summary"]) > 0
+
+    async with async_session_factory() as db:
+        # Check that COMPACTION_SUMMARY event was created
+        compaction_event = await db.scalar(
+            select(SessionEvent).where(
+                SessionEvent.session_id == session_id,
+                SessionEvent.type == slog.COMPACTION_SUMMARY,
+            )
+        )
+        assert compaction_event is not None
+        assert "surface_op" in compaction_event.data
+
+        # Check messages table has summary assistant message
+        msgs = (await db.execute(
+            select(Message).where(Message.session_id == session_id).order_by(Message.position)
+        )).scalars().all()
+        assert len(msgs) > 0
+        assert msgs[0].position == 0
+        assert msgs[0].meta.get("is_compaction") is True

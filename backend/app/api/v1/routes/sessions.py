@@ -12,6 +12,15 @@ from app.core.execution_policy import ExecutionPolicy, normalize_execution_polic
 from app.dependencies import get_current_org_id, get_current_user, get_db, require_permission
 from app.models.memory import SessionMemory
 from app.models.message import Message
+import logging
+from app.core import session_log as slog
+from app.core.memory.tiers import compact_tiered_memory
+from app.models.agent import Agent
+from app.models.model import Model
+from app.models.provider import Provider
+
+logger = logging.getLogger(__name__)
+
 from app.models.session import Session
 from app.models.session_event import SessionEvent
 from app.models.user import User
@@ -242,3 +251,201 @@ async def delete_session(
     await db.delete(s)
     await db.commit()
     return {"ok": True, "id": session_id}
+
+
+@router.post("/{session_id}/clear", dependencies=[Depends(require_permission("sessions:write"))])
+async def clear_session_messages(
+    session_id: str,
+    org_id: str = Depends(get_current_org_id),
+    db: AsyncSession = Depends(get_db),
+):
+    res = await db.execute(
+        scope_to_owner(
+            select(Session).where(Session.id == session_id, Session.org_id == org_id),
+            db,
+            Session.created_by_user_id,
+        )
+    )
+    s = res.scalar_one_or_none()
+    if s is None:
+        raise HTTPException(404, "session not found")
+
+    await db.execute(
+        delete(SessionMemory).where(
+            SessionMemory.session_id == session_id, SessionMemory.org_id == org_id
+        )
+    )
+    await db.execute(
+        delete(Message).where(Message.session_id == session_id, Message.org_id == org_id)
+    )
+    await db.execute(
+        delete(SessionEvent).where(
+            SessionEvent.session_id == session_id, SessionEvent.org_id == org_id
+        )
+    )
+    await db.commit()
+    return {"ok": True, "session_id": session_id, "message": "Session history cleared successfully"}
+
+
+@router.post("/{session_id}/compact", dependencies=[Depends(require_permission("sessions:write"))])
+async def compact_session(
+    session_id: str,
+    org_id: str = Depends(get_current_org_id),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    res = await db.execute(
+        scope_to_owner(
+            select(Session).where(Session.id == session_id, Session.org_id == org_id),
+            db,
+            Session.created_by_user_id,
+        )
+    )
+    s = res.scalar_one_or_none()
+    if s is None:
+        raise HTTPException(404, "session not found")
+
+    # Fetch existing messages
+    msg_res = await db.execute(
+        select(Message).where(Message.session_id == session_id, Message.org_id == org_id).order_by(Message.position)
+    )
+    messages = list(msg_res.scalars().all())
+
+    # Fetch existing session events
+    events = await slog.load_events(db, session_id)
+
+    # Need at least some conversation history to warrant compaction
+    if len(messages) <= 2 and len(events) <= 4:
+        return {
+            "ok": True,
+            "compacted": False,
+            "message": "Ngữ cảnh phiên còn quá ngắn, chưa cần nén.",
+            "summary": None,
+        }
+
+    # Resolve agent and model/provider
+    agent = None
+    if s.agent_id:
+        agent_res = await db.execute(
+            select(Agent).where(Agent.id == s.agent_id, Agent.org_id == org_id)
+        )
+        agent = agent_res.scalar_one_or_none()
+
+    model = None
+    provider = None
+    agent_model_id = getattr(agent, 'model_id', None)
+    if agent and agent_model_id:
+        model_res = await db.execute(
+            select(Model).where(Model.id == agent_model_id)
+        )
+        model = model_res.scalar_one_or_none()
+        if model:
+            prov_res = await db.execute(
+                select(Provider).where(Provider.id == model.provider_id)
+            )
+            provider = prov_res.scalar_one_or_none()
+
+    # Fallback to active model in org if needed
+    if not model or not provider:
+        fallback_model_res = await db.execute(
+            select(Model).where(Model.org_id == org_id, Model.active == True).limit(1)  # noqa: E712
+        )
+        model = fallback_model_res.scalar_one_or_none()
+        if model:
+            prov_res = await db.execute(
+                select(Provider).where(Provider.id == model.provider_id)
+            )
+            provider = prov_res.scalar_one_or_none()
+
+    warm_summary = ""
+    hot_window = 2  # Keep the last 2 messages uncompacted
+
+    if model and provider:
+        try:
+            tiered = await compact_tiered_memory(
+                session_id=session_id,
+                db=db,
+                agent_model=model,
+                provider=provider,
+                hot_window=hot_window,
+                agent_id=agent.id if agent else None,
+                org_id=org_id,
+                created_by_user_id=user.id,
+            )
+            warm_summary = tiered.get("warm") or tiered.get("combined") or ""
+        except Exception as exc:
+            logger.warning("compact_tiered_memory failed, falling back to extractive summary: %s", exc)
+
+    if not warm_summary:
+        # Fallback extractive summary when LLM summarization is unavailable
+        transcript_parts = []
+        older = messages[:-hot_window] if len(messages) > hot_window else messages
+        for m in older:
+            content_preview = (m.content or "").strip()
+            if len(content_preview) > 150:
+                content_preview = content_preview[:150] + "..."
+            transcript_parts.append(f"- {m.role}: {content_preview}")
+        joined_transcript = "\n".join(transcript_parts)
+        warm_summary = f"Bản tóm tắt lược trích các trao đổi trước đó:\n{joined_transcript}"
+
+    # 1. Update Session Event Log (Shadow old events)
+    if events and len(events) > 2:
+        events_to_shadow = events[:-2]
+        shadow_seqs = [e.seq for e in events_to_shadow]
+        start_seq = shadow_seqs[0]
+        end_seq = shadow_seqs[-1]
+        await slog.append_event(
+            db,
+            session_id=session_id,
+            org_id=org_id,
+            type_=slog.COMPACTION_SUMMARY,
+            data={
+                "content": f"[Tóm tắt ngữ cảnh trước đó]:\n{warm_summary}",
+                "source_seqs": shadow_seqs,
+                "surface_op": {
+                    "op": "replace",
+                    "start_seq": start_seq,
+                    "end_seq": end_seq,
+                },
+            },
+        )
+
+    # 2. Update Message table for UI hydration
+    if len(messages) > hot_window:
+        hot_messages = messages[-hot_window:]
+        older_messages = messages[:-hot_window]
+        older_ids = [m.id for m in older_messages]
+
+        # Delete older messages
+        await db.execute(
+            delete(Message).where(Message.id.in_(older_ids))
+        )
+
+        # Insert a summary assistant message representing the compacted history
+        compaction_msg = Message(
+            org_id=org_id,
+            created_by_user_id=user.id,
+            session_id=session_id,
+            role="assistant",
+            content=f"🧹 **Đã nén ngữ cảnh phiên hội thoại**:\n\n{warm_summary}",
+            meta={
+                "is_compaction": True,
+                "compacted_at": datetime.now(timezone.utc).isoformat(),
+                "compacted_messages_count": len(older_messages),
+            },
+            position=0,
+        )
+        db.add(compaction_msg)
+
+        # Shift positions of hot messages
+        for idx, m in enumerate(hot_messages, start=1):
+            m.position = idx
+
+    await db.commit()
+
+    return {
+        "ok": True,
+        "compacted": True,
+        "message": "Đã nén ngữ cảnh hội thoại thành công.",
+        "summary": warm_summary,
+    }
