@@ -117,7 +117,16 @@ export interface ErrorMessage {
   content: string;
 }
 
-export type ChatMessage = UserMessage | AssistantMessage | ApprovalMessage | ErrorMessage;
+export interface CompactionMessage {
+  role: "compaction";
+  id: string;
+  summary: string;
+  shadowedItemCount?: number;
+  shadowedTokenCount?: number;
+  compactedAt?: string;
+}
+
+export type ChatMessage = UserMessage | AssistantMessage | ApprovalMessage | ErrorMessage | CompactionMessage;
 
 /** Effects the page layer performs after reducing an event. */
 export interface ProjectionSide {
@@ -537,6 +546,17 @@ export interface PersistedMessageRow {
  */
 export function messagesFromPersisted(rows: PersistedMessageRow[]): ChatMessage[] {
   return rows.map((row): ChatMessage => {
+    const meta = (row.meta ?? {}) as Record<string, any>;
+    if (row.role === "compaction" || meta.is_compaction) {
+      return {
+        role: "compaction",
+        id: row.id,
+        summary: typeof meta.summary === "string" ? meta.summary : (row.content || ""),
+        shadowedItemCount: typeof meta.shadowed_messages_count === "number" ? meta.shadowed_messages_count : undefined,
+        shadowedTokenCount: typeof meta.shadowed_token_count === "number" ? meta.shadowed_token_count : undefined,
+        compactedAt: typeof meta.compacted_at === "string" ? meta.compacted_at : undefined,
+      };
+    }
     if (row.role === "user") {
       const rowMeta = (row.meta ?? {}) as Record<string, any>;
       const attachments: UserAttachment[] | undefined = Array.isArray(rowMeta.attachments)
@@ -544,7 +564,6 @@ export function messagesFromPersisted(rows: PersistedMessageRow[]): ChatMessage[
         : undefined;
       return { role: "user", id: row.id, content: row.content, ...(attachments?.length ? { attachments } : {}) };
     }
-    const meta = (row.meta ?? {}) as Record<string, any>;
     let n = 0;
     const genId = () => `${row.id}-p${n++}`;
     const reasoning = typeof meta.reasoning === "string" ? meta.reasoning : "";
