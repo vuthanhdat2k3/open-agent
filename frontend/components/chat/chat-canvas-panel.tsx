@@ -195,10 +195,10 @@ export function ChatCanvasPanel() {
   return (
     <div
       className={cn(
-        "flex flex-col border-l border-border/80 bg-background transition-all duration-200 z-20 shrink-0",
+        "flex flex-col bg-background transition-all duration-200 shrink-0",
         isFullscreen
           ? "fixed inset-0 z-50 w-screen h-screen border-l-0"
-          : "w-full lg:w-[48%] xl:w-[45%] h-full min-h-0",
+          : "fixed inset-0 z-40 w-full h-full border-l-0 lg:relative lg:inset-auto lg:z-20 lg:w-[48%] xl:w-[45%] lg:border-l lg:border-border/80 min-h-0",
       )}
     >
       {/* 1. Header Toolbar */}

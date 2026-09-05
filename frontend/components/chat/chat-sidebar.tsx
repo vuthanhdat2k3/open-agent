@@ -1,11 +1,13 @@
 "use client";
 
 import * as React from "react";
-import { MessageSquare, Plus, Trash2, PanelLeftClose, PanelLeft } from "lucide-react";
+import { MessageSquare, Plus, Trash2, PanelLeftClose, PanelLeft, History } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/lib/i18n";
 import { useCurrentRoles, useMe } from "@/hooks";
+import { useIsMobile } from "@/components/hooks/use-mobile";
 import type { Session } from "@/types";
 
 interface ChatSidebarProps {
@@ -26,10 +28,20 @@ export function ChatSidebar({
   const { t, locale, tx } = useTranslation();
   const roles = useCurrentRoles();
   const me = useMe();
+  const isMobile = useIsMobile();
   const currentUserId = me.data?.id;
   const isOperator = roles.includes("operator");
+  
   const [collapsed, setCollapsed] = React.useState(false);
+  const [mobileSheetOpen, setMobileSheetOpen] = React.useState(false);
   const [selectedUserFilter, setSelectedUserFilter] = React.useState<string>("all");
+
+  // Auto-collapse sidebar on mobile screen
+  React.useEffect(() => {
+    if (isMobile) {
+      setCollapsed(true);
+    }
+  }, [isMobile]);
 
   // Extract unique creators for filter dropdown
   const uniqueCreators = React.useMemo(() => {
@@ -51,54 +63,32 @@ export function ChatSidebar({
     return sessions.filter((s) => s.created_by_user_id === selectedUserFilter);
   }, [sessions, selectedUserFilter]);
 
-  if (collapsed) {
-    return (
-      <div className="flex h-full w-12 flex-col items-center border-r border-border/60 bg-muted/10 py-3">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => setCollapsed(false)}
-          className="h-8 w-8 text-muted-foreground hover:text-foreground"
-          aria-label={tx("Mở rộng Sidebar", "Expand Sidebar")}
-          title={tx("Mở rộng Sidebar", "Expand Sidebar")}
-        >
-          <PanelLeft className="h-4 w-4" aria-hidden="true" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onNewSession}
-          className="mt-4 h-8 w-8 text-muted-foreground hover:text-foreground"
-          aria-label={tx("Tạo phiên mới", "New session")}
-          title={tx("Tạo phiên mới", "New session")}
-        >
-          <Plus className="h-4 w-4" aria-hidden="true" />
-        </Button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex h-full w-64 flex-col border-r border-border/60 bg-muted/10">
-      <div className="flex h-14 shrink-0 items-center justify-between px-3 border-b border-border/60">
+  const renderSessionList = (onSelectCallback?: () => void) => (
+    <div className="flex h-full flex-col">
+      <div className="flex h-14 shrink-0 items-center justify-between border-b border-border/60 px-3">
         <Button
           variant="ghost"
           className="flex-1 justify-start gap-2 h-9 px-2 font-medium"
-          onClick={onNewSession}
+          onClick={() => {
+            onNewSession();
+            onSelectCallback?.();
+          }}
         >
           <Plus className="h-4 w-4" aria-hidden="true" />
           {tx("Tạo phiên mới", "New chat")}
         </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="ml-2 h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
-          onClick={() => setCollapsed(true)}
-          aria-label={tx("Thu gọn Sidebar", "Collapse Sidebar")}
-          title={tx("Thu gọn Sidebar", "Collapse Sidebar")}
-        >
-          <PanelLeftClose className="h-4 w-4" aria-hidden="true" />
-        </Button>
+        {!isMobile && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="ml-2 h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
+            onClick={() => setCollapsed(true)}
+            aria-label={tx("Thu gọn Sidebar", "Collapse Sidebar")}
+            title={tx("Thu gọn Sidebar", "Collapse Sidebar")}
+          >
+            <PanelLeftClose className="h-4 w-4" aria-hidden="true" />
+          </Button>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto p-2">
@@ -137,7 +127,10 @@ export function ChatSidebar({
                     "group relative flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground",
                     isActive ? "bg-accent text-accent-foreground font-medium" : "text-muted-foreground"
                   )}
-                  onClick={() => onSessionChange(s.id)}
+                  onClick={() => {
+                    onSessionChange(s.id);
+                    onSelectCallback?.();
+                  }}
                 >
                   <MessageSquare className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                   <div className="flex-1 min-w-0">
@@ -160,7 +153,7 @@ export function ChatSidebar({
                         "absolute right-1 flex h-6 w-6 items-center justify-center rounded-sm bg-background/50 text-muted-foreground/60 opacity-0 transition-opacity hover:bg-destructive hover:text-destructive-foreground focus:opacity-100 focus:outline-none group-hover:opacity-100",
                         isActive && "opacity-100"
                       )}
-                      aria-label={tx(`Xóa phiên ${s.title}`, `Delete session ${s.title}`)}
+                      aria-label={tx("Xóa phiên", "Delete session")}
                       title={tx("Xóa phiên", "Delete session")}
                     >
                       <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
@@ -172,6 +165,81 @@ export function ChatSidebar({
           </div>
         )}
       </div>
+    </div>
+  );
+
+  // Mobile rendering: compact icon bar that triggers a full slide-over Sheet
+  if (isMobile) {
+    return (
+      <>
+        <div className="flex h-full w-10 shrink-0 flex-col items-center border-r border-border/60 bg-muted/10 py-2.5 gap-2">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setMobileSheetOpen(true)}
+            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+            aria-label={tx("Lịch sử phiên trò chuyện", "Chat sessions history")}
+            title={tx("Lịch sử phiên trò chuyện", "Chat sessions history")}
+          >
+            <History className="h-4 w-4" aria-hidden="true" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onNewSession}
+            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+            aria-label={tx("Tạo phiên mới", "New session")}
+            title={tx("Tạo phiên mới", "New session")}
+          >
+            <Plus className="h-4 w-4" aria-hidden="true" />
+          </Button>
+        </div>
+
+        <Sheet open={mobileSheetOpen} onOpenChange={setMobileSheetOpen}>
+          <SheetContent side="left" className="w-[85vw] max-w-[320px] p-0 bg-background">
+            <SheetHeader className="sr-only">
+              <SheetTitle>{tx("Lịch sử phiên", "Sessions History")}</SheetTitle>
+              <SheetDescription>{tx("Danh sách các phiên trò chuyện đã lưu", "List of saved chat sessions")}</SheetDescription>
+            </SheetHeader>
+            {renderSessionList(() => setMobileSheetOpen(false))}
+          </SheetContent>
+        </Sheet>
+      </>
+    );
+  }
+
+  // Desktop / Tablet Collapsed state
+  if (collapsed) {
+    return (
+      <div className="flex h-full w-12 shrink-0 flex-col items-center border-r border-border/60 bg-muted/10 py-3">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setCollapsed(false)}
+          className="h-8 w-8 text-muted-foreground hover:text-foreground"
+          aria-label={tx("Mở rộng Sidebar", "Expand Sidebar")}
+          title={tx("Mở rộng Sidebar", "Expand Sidebar")}
+        >
+          <PanelLeft className="h-4 w-4" aria-hidden="true" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onNewSession}
+          className="mt-4 h-8 w-8 text-muted-foreground hover:text-foreground"
+          aria-label={tx("Tạo phiên mới", "New session")}
+          title={tx("Tạo phiên mới", "New session")}
+        >
+          <Plus className="h-4 w-4" aria-hidden="true" />
+        </Button>
+      </div>
+    );
+  }
+
+  // Desktop Expanded state
+  return (
+    <div className="flex h-full w-64 shrink-0 flex-col border-r border-border/60 bg-muted/10">
+      {renderSessionList()}
     </div>
   );
 }

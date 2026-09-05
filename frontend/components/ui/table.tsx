@@ -6,7 +6,7 @@ export const Table = React.forwardRef<
   React.HTMLAttributes<HTMLTableElement>
 >(({ className, ...props }, ref) => (
   <div className="w-full overflow-auto rounded-xl border border-border/60 bg-card/40 shadow-inner-edge">
-    <table ref={ref} className={cn("w-full caption-bottom text-sm", className)} {...props} />
+    <table ref={ref} className={cn("w-full min-w-[600px] caption-bottom text-sm", className)} {...props} />
   </div>
 ));
 Table.displayName = "Table";
