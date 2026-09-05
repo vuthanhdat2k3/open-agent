@@ -234,19 +234,43 @@ describe("Slash Commands Registry & Handlers", () => {
       expect(ctx.notify).toHaveBeenCalledWith(expect.stringContaining("Code Worker"), "success");
     });
 
-    it("/compact resets draft and sends prompt to agent", () => {
-      const ctx = createMockContext();
+    it("/compact triggers onCompactSession when available", async () => {
+      const ctx = {
+        ...createMockContext(),
+        onCompactSession: vi.fn().mockResolvedValue(undefined),
+      };
       const cmd = getCommand("compact");
-      const result = cmd?.execute("", ctx);
+      const result = await cmd?.execute("", ctx);
       expect(result).toBe(true);
       expect(ctx.onDraftChange).toHaveBeenCalledWith("");
-      expect(ctx.onSend).toHaveBeenCalledWith(expect.stringContaining("tóm tắt ngắn gọn"));
+      expect(ctx.onCompactSession).toHaveBeenCalled();
     });
 
-    it("/clear clears conversation history and notifies", () => {
+    it("/compact falls back to sending prompt when onCompactSession is not provided", async () => {
+      const ctx = createMockContext();
+      const cmd = getCommand("compact");
+      const result = await cmd?.execute("", ctx);
+      expect(result).toBe(true);
+      expect(ctx.onDraftChange).toHaveBeenCalledWith("");
+      expect(ctx.onSend).toHaveBeenCalledWith(expect.stringContaining("tóm tắt"));
+    });
+
+    it("/clear triggers onClearSession when available", async () => {
+      const ctx = {
+        ...createMockContext(),
+        onClearSession: vi.fn().mockResolvedValue(undefined),
+      };
+      const cmd = getCommand("clear");
+      const result = await cmd?.execute("", ctx);
+      expect(result).toBe(true);
+      expect(ctx.onDraftChange).toHaveBeenCalledWith("");
+      expect(ctx.onClearSession).toHaveBeenCalled();
+    });
+
+    it("/clear falls back to local onClear and notifies when onClearSession is not provided", async () => {
       const ctx = createMockContext();
       const cmd = getCommand("clear");
-      const result = cmd?.execute("", ctx);
+      const result = await cmd?.execute("", ctx);
       expect(result).toBe(true);
       expect(ctx.onDraftChange).toHaveBeenCalledWith("");
       expect(ctx.onClear).toHaveBeenCalled();
