@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { ChatComposer } from "@/components/chat/chat-composer";
 import { ChatConnectionBanner, type ConnectionState } from "@/components/chat/chat-connection-banner";
@@ -25,6 +25,7 @@ interface ChatInputProps {
   onAgentChange?: (agentId: string) => void;
   usage?: UsageSummary[];
   onSendMessage?: (message: string) => void;
+  sessionId?: string;
 }
 
 // Docked composer for an active conversation. `onSubmit` arrives already
@@ -34,7 +35,7 @@ interface ChatInputProps {
 export function ChatInput({
   draft, onDraftChange, onSubmit, streaming, disabled, connectionState, attachments, onAttachmentsChange,
   models, effectiveModel, onModelChange, executionPolicy, onExecutionPolicyChange, onClear, onReset,
-  agents, currentAgentId, onAgentChange, usage, onSendMessage
+  agents, currentAgentId, onAgentChange, usage, onSendMessage, sessionId
 }: ChatInputProps) {
   return (
     <div className="mt-3">
@@ -61,6 +62,7 @@ export function ChatInput({
         onAgentChange={onAgentChange}
         usage={usage}
         onSendMessage={onSendMessage}
+        sessionId={sessionId}
       />
     </div>
   );

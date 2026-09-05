@@ -1,8 +1,9 @@
-"use client";
+﻿"use client";
 
 import { FolderSearch, ListTodo, Sparkles } from "lucide-react";
 import { ChatComposer } from "@/components/chat/chat-composer";
 import type { Agent, Model, UploadedFile, ExecutionPolicy, UsageSummary } from "@/types";
+import { useTranslation } from "@/lib/i18n";
 
 interface ChatEmptyStateProps {
   currentAgent?: Agent;
@@ -23,6 +24,7 @@ interface ChatEmptyStateProps {
   onAgentChange?: (agentId: string) => void;
   usage?: UsageSummary[];
   onSendMessage?: (message: string) => void;
+  sessionId?: string;
 }
 
 // Adapted from RuixenMoonChat (21st.dev / ruixen.ui): a moon-glow backdrop, a
@@ -30,12 +32,10 @@ interface ChatEmptyStateProps {
 // quick-action pills grouped together near the bottom (not pinned to the
 // edge). The composer is the same ChatComposer used once a conversation is
 // active, so attach/send behave identically in both states.
-import { useTranslation } from "@/lib/i18n";
-
 export function ChatEmptyState({
   currentAgent, models, effectiveModel, onModelChange, executionPolicy, onExecutionPolicyChange,
   draft, onDraftChange, onSubmit, disabled, attachments, onAttachmentsChange, onClear, onReset,
-  agents, onAgentChange, usage, onSendMessage
+  agents, onAgentChange, usage, onSendMessage, sessionId
 }: ChatEmptyStateProps) {
   const { t, locale, tx } = useTranslation();
 
@@ -99,6 +99,7 @@ export function ChatEmptyState({
           onAgentChange={onAgentChange}
           usage={usage}
           onSendMessage={onSendMessage}
+          sessionId={sessionId}
         />
 
         <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
