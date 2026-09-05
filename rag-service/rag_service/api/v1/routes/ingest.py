@@ -73,6 +73,7 @@ async def ingest_file(
     force: bool = Form(False),
     svc=Depends(get_ingest_service),
 ) -> IngestFileResponse:
+    await _ensure_collection(svc, collection)
     raw = await file.read()
     tag_list = _parse_tags(tags)
     data = await svc.ingest_file(
