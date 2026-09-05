@@ -14,6 +14,7 @@ export interface TranslationDictionary {
     runWorkflow: string;
     automations: string;
     knowledgeBase: string;
+    myDocuments: string;
     mcpServers: string;
     channels: string;
     myChannels: string;

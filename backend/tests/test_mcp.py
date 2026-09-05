@@ -302,3 +302,181 @@ async def test_mcp_run_filters_rag_list_collections_result() -> None:
     assert "org-org-a-default" in result
     assert "ci-knowledge-org-a" in result
     assert "org-org-b-default" not in result
+
+
+# ---------------------------------------------------------------------------
+# Personal (per-user) RAG isolation within an org
+# ---------------------------------------------------------------------------
+
+
+def _user_auth_ctx(org_id: str, user_id: str):
+    from app.core.tools.authorization import ToolAuthorizationContext
+
+    return ToolAuthorizationContext(
+        org_id=org_id, principal_type="human", principal_id=user_id,
+        user_id=user_id, role="user", agent_id="agent-1", allowed_risk_tiers=(),
+    )
+
+
+@pytest.mark.asyncio
+async def test_mcp_run_routes_plain_user_ingest_to_personal_collection() -> None:
+    from app.core.tools.types import ToolContext
+    from app.mcp.client import _make_mcp_run
+    from app.models.mcp import McpServer
+
+    captured: dict = {}
+
+    class DummyClient:
+        async def call_tool(self, server, name, args):
+            captured["args"] = args
+            return "ok"
+
+    class FakeResult:
+        def scalar_one_or_none(self):
+            return McpServer(id="server-1", org_id="org-a", name="rag", connection_status="connected")
+
+    class FakeDb:
+        async def execute(self, _statement):
+            return FakeResult()
+
+    import app.mcp.client as client_module
+
+    client_module._MANAGER = DummyClient()  # type: ignore[assignment]
+    try:
+        run = _make_mcp_run("server-1", "rag_ingest_text")
+        ctx = ToolContext(
+            db=FakeDb(), org_id="org-a", user_id="user-9",
+            authorization=_user_auth_ctx("org-a", "user-9"),
+        )
+        result = await run({"text": "hello", "collection": "default"}, ctx)
+    finally:
+        client_module._MANAGER = None
+
+    assert result == "ok"
+    assert captured["args"]["collection"] == "org-org-a-user-user-9-default"
+
+
+@pytest.mark.asyncio
+async def test_mcp_run_staff_ingest_still_uses_shared_collection() -> None:
+    """operator/org_admin/platform_admin callers keep writing the shared org
+    collection — only a plain `user` role gets personal-scope routing."""
+    from app.core.tools.types import ToolContext
+    from app.mcp.client import _make_mcp_run
+    from app.models.mcp import McpServer
+
+    captured: dict = {}
+
+    class DummyClient:
+        async def call_tool(self, server, name, args):
+            captured["args"] = args
+            return "ok"
+
+    class FakeResult:
+        def scalar_one_or_none(self):
+            return McpServer(id="server-1", org_id="org-a", name="rag", connection_status="connected")
+
+    class FakeDb:
+        async def execute(self, _statement):
+            return FakeResult()
+
+    import app.mcp.client as client_module
+    from app.core.tools.authorization import ToolAuthorizationContext
+
+    client_module._MANAGER = DummyClient()  # type: ignore[assignment]
+    try:
+        run = _make_mcp_run("server-1", "rag_ingest_text")
+        ctx = ToolContext(
+            db=FakeDb(), org_id="org-a", user_id="operator-1",
+            authorization=ToolAuthorizationContext(
+                org_id="org-a", principal_type="human", principal_id="operator-1",
+                user_id="operator-1", role="operator", agent_id="agent-1", allowed_risk_tiers=(),
+            ),
+        )
+        result = await run({"text": "hello", "collection": "default"}, ctx)
+    finally:
+        client_module._MANAGER = None
+
+    assert result == "ok"
+    assert captured["args"]["collection"] == "org-org-a-default"
+
+
+@pytest.mark.asyncio
+async def test_mcp_run_rag_search_for_plain_user_merges_shared_and_personal() -> None:
+    """A plain user's `rag_search` scope is (org-shared) union (their own
+    personal) — it must never see another individual user's collection,
+    and must never be able to reach either by supplying `collection` itself."""
+    from app.core.tools.types import ToolContext
+    from app.mcp.client import _make_mcp_run
+    from app.models.mcp import McpServer
+
+    calls: list[dict] = []
+
+    class DummyClient:
+        async def call_tool(self, server, name, args):
+            calls.append(dict(args))
+            if args["collection"] == "org-org-a-default":
+                return 'Found 1 results for: "q"\n\n[1] Score: 0.9 | Source: file | Document: shared.pdf\nshared text\n'
+            return 'Found 1 results for: "q"\n\n[1] Score: 0.8 | Source: file | Document: mine.pdf\npersonal text\n'
+
+    class FakeResult:
+        def scalar_one_or_none(self):
+            return McpServer(id="server-1", org_id="org-a", name="rag", connection_status="connected")
+
+    class FakeDb:
+        async def execute(self, _statement):
+            return FakeResult()
+
+    import app.mcp.client as client_module
+
+    client_module._MANAGER = DummyClient()  # type: ignore[assignment]
+    try:
+        run = _make_mcp_run("server-1", "rag_search")
+        ctx = ToolContext(
+            db=FakeDb(), org_id="org-a", user_id="user-9",
+            authorization=_user_auth_ctx("org-a", "user-9"),
+        )
+        result = await run({"query": "q", "collection": "default"}, ctx)
+    finally:
+        client_module._MANAGER = None
+
+    called_collections = {c["collection"] for c in calls}
+    assert called_collections == {"org-org-a-default", "org-org-a-user-user-9-default"}
+    assert "shared.pdf" in result
+    assert "mine.pdf" in result
+    assert "Organization-shared results" in result
+    assert "Your personal results" in result
+
+
+@pytest.mark.asyncio
+async def test_mcp_run_rag_search_for_staff_stays_single_shared_call() -> None:
+    from app.core.tools.types import ToolContext
+    from app.mcp.client import _make_mcp_run
+    from app.models.mcp import McpServer
+
+    calls: list[dict] = []
+
+    class DummyClient:
+        async def call_tool(self, server, name, args):
+            calls.append(dict(args))
+            return "ok"
+
+    class FakeResult:
+        def scalar_one_or_none(self):
+            return McpServer(id="server-1", org_id="org-a", name="rag", connection_status="connected")
+
+    class FakeDb:
+        async def execute(self, _statement):
+            return FakeResult()
+
+    import app.mcp.client as client_module
+
+    client_module._MANAGER = DummyClient()  # type: ignore[assignment]
+    try:
+        run = _make_mcp_run("server-1", "rag_search")
+        result = await run({"query": "q", "collection": "default"}, ToolContext(db=FakeDb(), org_id="org-a"))
+    finally:
+        client_module._MANAGER = None
+
+    assert result == "ok"
+    assert len(calls) == 1
+    assert calls[0]["collection"] == "org-org-a-default"

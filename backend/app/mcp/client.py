@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import re
 from typing import Any
 
@@ -9,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.tools.risk_tier import RiskTier
 from app.core.tools.types import ToolContext, ToolSpec
 from app.models.mcp import McpServer, McpTool
+from app.services.rag_collections import resolve_rag_collection
 
 _CI_KNOWLEDGE_COLLECTION_PREFIX = "ci-knowledge-"
 _ORG_COLLECTION_PREFIX = "org-"
@@ -51,7 +53,7 @@ def _rag_collection_scope_error(
 
 
 def _namespace_rag_collection(collection: Any, org_id: str | None) -> Any:
-    """Isolate generic RAG collections per organization.
+    """Isolate generic RAG collections per organization (shared/org scope).
 
     The standalone rag-service has no tenant concept of its own — its
     ``Collection`` rows are keyed only by name. Every organization sharing
@@ -61,18 +63,10 @@ def _namespace_rag_collection(collection: Any, org_id: str | None) -> Any:
     at the trusted OpenAgent boundary, isolates each org without requiring
     any change to the rag-service. The CI knowledge namespace already
     carries its own per-org prefix (``ci-knowledge-<org_id>``) and is left
-    untouched.
+    untouched. See ``resolve_rag_collection`` for the further per-user
+    (personal) scope used by plain ``user`` callers.
     """
-    if not isinstance(collection, str) or not org_id:
-        return collection
-    if collection.startswith(_CI_KNOWLEDGE_COLLECTION_PREFIX):
-        return collection
-    own_prefix = f"{_ORG_COLLECTION_PREFIX}{org_id}-"
-    if collection.startswith(own_prefix):
-        # Already namespaced for this org (e.g. the model echoed back a
-        # collection name from a prior tool result) — do not double-prefix.
-        return collection
-    return f"{own_prefix}{collection}"
+    return resolve_rag_collection(collection, org_id, personal_user_id=None)
 
 
 _RAG_LIST_COLLECTIONS_BLOCK_RE = re.compile(
@@ -103,6 +97,25 @@ def _filter_rag_collections_output(text: str, org_id: str | None) -> str:
     if not visible:
         return "No collections found."
     return f"Collections ({len(visible)}):\n" + "".join(visible)
+
+
+def _merge_rag_search_results(shared_text: str, personal_text: str) -> str:
+    """Combine a plain user's shared-org and personal `rag_search` results.
+
+    Both calls hit the same rag-service tool independently (see
+    `_make_mcp_run`), so this only needs to present both plaintext blocks to
+    the model — it never parses rag-service's result format, which is free
+    to change without breaking isolation here.
+    """
+    empty_prefixes = ("No results found", "Search error")
+    sections = []
+    if not shared_text.startswith(empty_prefixes):
+        sections.append(f"=== Organization-shared results ===\n{shared_text}")
+    if not personal_text.startswith(empty_prefixes):
+        sections.append(f"=== Your personal results ===\n{personal_text}")
+    if not sections:
+        return shared_text
+    return "\n\n".join(sections)
 
 
 class McpClient:
@@ -217,23 +230,7 @@ def get_mcp_manager() -> McpManager:
 
 
 def _make_mcp_run(server_id: str, tool_name: str):
-    async def _run(args: dict[str, Any], ctx: ToolContext) -> str:
-        scope_error = _rag_collection_scope_error(
-            tool_name,
-            args.get("collection", "default"),
-            ctx.org_id,
-        )
-        if scope_error:
-            return scope_error
-        if tool_name in _RAG_COLLECTION_TOOLS:
-            # Copy rather than mutate the caller's dict: agent_loop/workflow
-            # engine may log or replay the original args after this call.
-            args = {
-                **args,
-                "collection": _namespace_rag_collection(
-                    args.get("collection", "default"), ctx.org_id
-                ),
-            }
+    async def _call(args: dict[str, Any], ctx: ToolContext) -> str:
         stmt = select(McpServer).where(McpServer.id == server_id)
         if ctx.org_id:
             stmt = stmt.where(McpServer.org_id == ctx.org_id)
@@ -244,9 +241,48 @@ def _make_mcp_run(server_id: str, tool_name: str):
         if server.connection_status != "connected":
             return "error: mcp server is disconnected"
         try:
-            result = await get_mcp_manager().call_tool(server, tool_name, args)
+            return await get_mcp_manager().call_tool(server, tool_name, args)
         except Exception as e:  # noqa: BLE001
             return f"error calling mcp tool: {e}"
+
+    async def _run(args: dict[str, Any], ctx: ToolContext) -> str:
+        base_collection = args.get("collection", "default")
+        scope_error = _rag_collection_scope_error(tool_name, base_collection, ctx.org_id)
+        if scope_error:
+            return scope_error
+
+        if tool_name in _RAG_COLLECTION_TOOLS:
+            # A plain `user` (no elevated role) is scoped to their own
+            # personal collection; operator/org_admin/platform_admin stay on
+            # the shared org collection — mirrors `PrincipalContext.owner_user_id`
+            # (personal only for role=="user"). Role/user_id come from the
+            # trusted server-side context, never from the LLM's tool args.
+            role = ctx.authorization.role if ctx.authorization else None
+            is_plain_user = role == "user" and bool(ctx.user_id)
+
+            if tool_name == "rag_search" and is_plain_user:
+                shared_collection = resolve_rag_collection(
+                    base_collection, ctx.org_id, personal_user_id=None
+                )
+                personal_collection = resolve_rag_collection(
+                    base_collection, ctx.org_id, personal_user_id=ctx.user_id
+                )
+                shared_result, personal_result = await asyncio.gather(
+                    _call({**args, "collection": shared_collection}, ctx),
+                    _call({**args, "collection": personal_collection}, ctx),
+                )
+                return _merge_rag_search_results(shared_result, personal_result)
+
+            target_collection = resolve_rag_collection(
+                base_collection,
+                ctx.org_id,
+                personal_user_id=ctx.user_id if is_plain_user else None,
+            )
+            # Copy rather than mutate the caller's dict: agent_loop/workflow
+            # engine may log or replay the original args after this call.
+            args = {**args, "collection": target_collection}
+
+        result = await _call(args, ctx)
         if tool_name == "rag_list_collections":
             result = _filter_rag_collections_output(result, ctx.org_id)
         return result
