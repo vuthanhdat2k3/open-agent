@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import * as React from "react";
 import { ArrowUp, Loader2, Paperclip, Square, X, Cpu, ShieldCheck, ChevronDown, Eye, AlertCircle } from "lucide-react";
@@ -18,8 +18,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { FileAttachmentCard } from "./file-attachment-card";
 import { SlashCommandMenu } from "./slash-command-menu";
+import { CommandInfoDialog } from "./command-info-dialog";
 import { filterCommands, getCommand } from "./commands/registry";
-import type { SlashCommand, SlashCommandOption, SlashCommandContext } from "./commands/types";
+import type { SlashCommand, SlashCommandOption, SlashCommandContext, CommandDialogType } from "./commands/types";
 import type { UploadedFile, Model, ExecutionPolicy, Agent, UsageSummary } from "@/types";
 
 interface ChatComposerProps {
@@ -55,6 +56,8 @@ interface ChatComposerProps {
   usage?: UsageSummary[];
   /** Callback to send a message programmatically (for /compact command) */
   onSendMessage?: (message: string) => void;
+  /** Current session id */
+  sessionId?: string;
 }
 
 // Shared by ChatEmptyState (centered, empty thread) and the docked composer
@@ -86,6 +89,7 @@ export function ChatComposer({
   onAgentChange,
   usage,
   onSendMessage,
+  sessionId,
 }: ChatComposerProps) {
   const { t, locale, tx } = useTranslation();
   const defaultPlaceholder = tx("Nhập tin nhắn… (Enter để gửi, Shift+Enter để xuống dòng). Gõ / để xem lệnh.", "Type a message… (Enter to send, Shift+Enter for newline). Type / for commands.");
@@ -100,6 +104,10 @@ export function ChatComposer({
   const [slashActiveIndex, setSlashActiveIndex] = React.useState(0);
   const [slashCommand, setSlashCommand] = React.useState<SlashCommand | null>(null);
   const [slashOptions, setSlashOptions] = React.useState<SlashCommandOption[]>([]);
+
+  // Command Info Dialog state (for /context, /usage, /help)
+  const [dialogOpen, setDialogOpen] = React.useState(false);
+  const [dialogTab, setDialogTab] = React.useState<CommandDialogType>("context");
 
   const adjustHeight = React.useCallback(() => {
     const el = textareaRef.current;
@@ -149,6 +157,7 @@ export function ChatComposer({
       executionPolicy,
       agents: agents || [],
       currentAgentId,
+      sessionId,
       usage: usage || [],
       onModelChange: onModelChange || (() => {}),
       onExecutionPolicyChange: onExecutionPolicyChange || (() => {}),
@@ -160,6 +169,10 @@ export function ChatComposer({
         onSendMessage?.(message);
       },
       onDraftChange,
+      openDialog: (type: CommandDialogType = "context") => {
+        setDialogTab(type);
+        setDialogOpen(true);
+      },
       notify: (message: string, kind?: "success" | "error" | "info") => {
         if (kind === "error") toast.error(message);
         else if (kind === "success") toast.success(message);
@@ -167,33 +180,35 @@ export function ChatComposer({
       },
       tx,
     };
-  }, [draft, models, effectiveModel, executionPolicy, agents, currentAgentId, usage, onModelChange, onExecutionPolicyChange, onClear, onReset, onAgentChange, onSendMessage, onDraftChange, tx]);
+  }, [draft, models, effectiveModel, executionPolicy, agents, currentAgentId, sessionId, usage, onModelChange, onExecutionPolicyChange, onClear, onReset, onAgentChange, onSendMessage, onDraftChange, tx]);
 
   const executeCommand = React.useCallback(
     async (cmd: SlashCommand, args: string) => {
       try {
+        onDraftChange("");
         await cmd.execute(args, buildContext());
       } catch (err) {
         console.error(`[slash-command] /${cmd.name} failed:`, err);
       }
       closeSlashMenu();
     },
-    [buildContext, closeSlashMenu]
+    [onDraftChange, buildContext, closeSlashMenu]
   );
 
   const handleSelectCommand = React.useCallback(
     (cmd: SlashCommand) => {
-      // If command has options, show them
+      // If command has options, show them and update draft to indicate parameter entry
       if (cmd.getOptions) {
         setSlashCommand(cmd);
         setSlashOptions(cmd.getOptions(buildContext()));
         setSlashActiveIndex(0);
+        onDraftChange(`/${cmd.name} `);
       } else {
         // Execute immediately
         executeCommand(cmd, "");
       }
     },
-    [buildContext, executeCommand]
+    [buildContext, executeCommand, onDraftChange]
   );
 
   const handleSelectOption = React.useCallback(
@@ -371,20 +386,31 @@ export function ChatComposer({
             // Handle slash menu navigation
             if (showSlashMenu) {
               const items = slashCommand ? slashOptions : filterCommands(slashQuery);
-              if (e.key === "ArrowDown") {
-                e.preventDefault();
-                setSlashActiveIndex((prev) => Math.min(prev + 1, items.length - 1));
-                return;
-              }
-              if (e.key === "ArrowUp") {
-                e.preventDefault();
-                setSlashActiveIndex((prev) => Math.max(prev - 1, 0));
-                return;
-              }
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                handleSend();
-                return;
+              if (items.length > 0) {
+                if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  // Wrap-around forward navigation
+                  setSlashActiveIndex((prev) => (prev + 1) % items.length);
+                  return;
+                }
+                if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  // Wrap-around backward navigation
+                  setSlashActiveIndex((prev) => (prev - 1 + items.length) % items.length);
+                  return;
+                }
+                if ((e.key === "Enter" && !e.shiftKey) || e.key === "Tab") {
+                  e.preventDefault();
+                  if (slashCommand && slashOptions.length > 0) {
+                    handleSelectOption(slashOptions[slashActiveIndex] || slashOptions[0]);
+                  } else {
+                    const cmds = filterCommands(slashQuery);
+                    if (cmds.length > 0) {
+                      handleSelectCommand(cmds[slashActiveIndex] || cmds[0]);
+                    }
+                  }
+                  return;
+                }
               }
               if (e.key === "Escape") {
                 e.preventDefault();
@@ -407,6 +433,7 @@ export function ChatComposer({
           <SlashCommandMenu
             commands={slashCommand ? [] : filterCommands(slashQuery)}
             activeIndex={slashActiveIndex}
+            onHighlightIndex={setSlashActiveIndex}
             options={slashOptions}
             showOptions={!!slashCommand}
             onSelectCommand={handleSelectCommand}
@@ -463,73 +490,85 @@ export function ChatComposer({
               </DropdownMenuContent>
             </DropdownMenu>
           )}
-        </div>
 
-        <div className="flex items-center gap-2">
-          {onModelChange && (
+          {models && models.length > 0 && effectiveModel && onModelChange && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  disabled={streaming || !models || models.length === 0}
-                  className="h-7 gap-1.5 rounded-full px-2.5 text-xs font-medium text-muted-foreground hover:text-foreground"
-                >
+                <Button type="button" variant="ghost" size="sm" disabled={streaming} className="h-7 gap-1.5 rounded-full px-2.5 text-xs font-medium text-muted-foreground hover:text-foreground">
                   <Cpu className="h-3.5 w-3.5" aria-hidden="true" />
-                  <span className="max-w-[4.5rem] sm:max-w-[8rem] md:max-w-[10rem] truncate font-mono">
-                    {effectiveModel?.display_name || effectiveModel?.name || tx("Mô hình", "Model")}
-                  </span>
-                  {effectiveModel?.supports_vision && (
-                    <span title={tx("Hỗ trợ Vision", "Vision supported")} className="flex items-center">
-                      <Eye className="h-3 w-3 text-primary shrink-0" aria-hidden="true" />
-                    </span>
-                  )}
+                  <span className="max-w-[8rem] sm:max-w-[12rem] truncate">{effectiveModel.display_name || effectiveModel.name}</span>
+                  {effectiveModel.supports_vision && <Eye className="h-3 w-3 text-sky-500" aria-hidden="true" />}
                   <ChevronDown className="h-3 w-3 opacity-60" aria-hidden="true" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-72">
-                <DropdownMenuLabel>{tx("Mô hình AI", "Model")}</DropdownMenuLabel>
+              <DropdownMenuContent align="start" className="w-64">
+                <DropdownMenuLabel>{tx("Mô hình hoạt động", "Active Model")}</DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                {models?.filter((m) => m.active).map((m) => (
+                {models.filter((m) => m.active).map((model) => (
                   <DropdownMenuItem
-                    key={m.id}
-                    onSelect={() => onModelChange(m.id)}
-                    className={cn(
-                      "flex items-center justify-between gap-2 py-1.5",
-                      m.id === effectiveModel?.id && "font-semibold text-foreground bg-accent/40"
-                    )}
+                    key={model.id}
+                    onSelect={() => onModelChange(model.id)}
+                    className={`flex items-center justify-between py-1.5 ${model.id === effectiveModel.id ? "font-semibold text-foreground bg-primary/10" : undefined}`}
                   >
-                    <span className="flex-1 truncate">{m.display_name || m.name}</span>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      {m.supports_vision && (
-                        <span className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[9px] font-medium bg-primary/10 text-primary border border-primary/20">
-                          <Eye className="h-2.5 w-2.5" />
-                          Vision
-                        </span>
-                      )}
-                      <span className="text-[9px] uppercase tracking-wider text-muted-foreground/60">{m.tier}</span>
+                    <div className="flex items-center gap-1.5 truncate">
+                      <span className="text-xs">{model.display_name || model.name}</span>
+                      {model.supports_vision && <Eye className="h-3 w-3 shrink-0 text-sky-500" aria-hidden="true" />}
                     </div>
+                    {model.tier && (
+                      <span className="text-[10px] text-muted-foreground uppercase">{model.tier}</span>
+                    )}
                   </DropdownMenuItem>
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
           )}
+        </div>
 
-          <Button
-            type="button"
-            size="icon"
-            onClick={streaming ? onStop : handleSend}
-            disabled={streaming ? false : disabled}
-            variant={streaming ? "outline" : "default"}
-            className="h-8 w-8 rounded-lg"
-            aria-label={streaming ? tx("Dừng phản hồi", "Stop streaming") : tx("Gửi tin nhắn", "Send message")}
-            title={streaming ? tx("Dừng phản hồi", "Stop streaming") : tx("Gửi tin nhắn", "Send message")}
-          >
-            {streaming ? <Square className="h-3.5 w-3.5" aria-hidden="true" /> : <ArrowUp className="h-4 w-4" aria-hidden="true" />}
-          </Button>
+        <div className="flex items-center gap-2">
+          {streaming ? (
+            <Button
+              type="button"
+              variant="destructive"
+              size="icon"
+              className="h-8 w-8 rounded-full"
+              onClick={onStop}
+              aria-label={tx("Dừng phản hồi", "Stop response")}
+              title={tx("Dừng phản hồi", "Stop response")}
+            >
+              <Square className="h-3.5 w-3.5 fill-current" aria-hidden="true" />
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              variant="default"
+              size="icon"
+              className="h-8 w-8 rounded-full"
+              onClick={handleSend}
+              disabled={disabled}
+              aria-label={tx("Gửi tin nhắn", "Send message")}
+              title={tx("Gửi tin nhắn", "Send message")}
+            >
+              <ArrowUp className="h-4 w-4" aria-hidden="true" />
+            </Button>
+          )}
         </div>
       </div>
+
+      {/* Rich Command Info Dialog for /context, /usage, /help */}
+      <CommandInfoDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        initialTab={dialogTab}
+        effectiveModel={effectiveModel}
+        currentAgent={agents?.find((a) => a.id === currentAgentId)}
+        executionPolicy={executionPolicy}
+        sessionId={sessionId}
+        usage={usage || []}
+        commands={filterCommands("")}
+        onSelectCommand={(cmd) => {
+          handleSelectCommand(cmd);
+        }}
+      />
     </div>
   );
 }

@@ -1257,6 +1257,7 @@ export default function ChatPage() {
               onAgentChange={(nextAgentId: string) => changeAgent(nextAgentId)}
               usage={usageSummary.data}
               onSendMessage={(message: string) => void send(message)}
+              sessionId={sessionId ?? undefined}
             />
           </div>
         )}
