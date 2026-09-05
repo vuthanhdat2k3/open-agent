@@ -15,6 +15,7 @@ from app.core.auth.password import hash_password
 from app.core.observability.audit import log_action
 from app.db.base import utc_now
 from app.db.session import get_db
+from app.core.authz.policy import PrincipalContext
 from app.dependencies import get_current_user, require_permission
 from app.models.api_key import ApiKey
 from app.models.application_session import ApplicationSession
@@ -78,7 +79,9 @@ async def _ensure_user_belongs_to_org(
     if await _is_platform_admin(db, user_id):
         return None
     res = await db.execute(
-        select(Membership).where(Membership.org_id == org_id, Membership.user_id == user_id)
+        select(Membership)
+        .where(Membership.org_id == org_id, Membership.user_id == user_id)
+        .limit(1)
     )
     membership = res.scalar_one_or_none()
     if not membership:
@@ -145,14 +148,22 @@ async def create_org(
                 target_user.hashed_password = hash_password(initial_pass)
                 target_user.must_change_password = True
             await db.flush()
-        invited_membership = Membership(
+        db.add(Membership(
             org_id=org.id,
             user_id=target_user.id,
             role=Role.org_admin,
             invited_by_user_id=current_user.id,
             provisioning_source="invite",
-        )
-        db.add(invited_membership)
+        ))
+        # org_admin is not involved in AI configuration - every org needs at
+        # least one operator, so the invited admin gets both roles up front.
+        db.add(Membership(
+            org_id=org.id,
+            user_id=target_user.id,
+            role=Role.operator,
+            invited_by_user_id=current_user.id,
+            provisioning_source="invite",
+        ))
 
         await ZitadelProvisioningService().provision_user(
             email=target_email,
@@ -297,10 +308,11 @@ async def list_org_members(
     ]
 
 
-@router.post("/{id}/members", response_model=OrgMemberOut, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_permission("orgs:manage"))])
+@router.post("/{id}/members", response_model=OrgMemberOut, status_code=status.HTTP_201_CREATED)
 async def add_org_member(
     id: str,
     body: InviteMemberRequest,
+    principal: PrincipalContext = Depends(require_permission("orgs:manage")),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -328,12 +340,6 @@ async def add_org_member(
             invited_user.must_change_password = True
         await db.flush()
 
-    res_mem = await db.execute(
-        select(Membership).where(Membership.org_id == id, Membership.user_id == invited_user.id)
-    )
-    if res_mem.scalar_one_or_none():
-        raise HTTPException(400, "User is already a member of this organization")
-
     role_val = {
         "org_admin": Role.org_admin,
         "operator": Role.operator,
@@ -341,6 +347,17 @@ async def add_org_member(
     }.get(body.role)
     if role_val is None:
         raise HTTPException(400, f"Invalid role: {body.role}")
+    if role_val == Role.org_admin and not principal.allows("orgs:grant-admin"):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only platform_admin can grant org_admin")
+
+    res_mem = await db.execute(
+        select(Membership).where(
+            Membership.org_id == id, Membership.user_id == invited_user.id, Membership.role == role_val
+        )
+    )
+    if res_mem.scalar_one_or_none():
+        raise HTTPException(400, "User already has this role in the organization")
+
     mem = Membership(
         org_id=id,
         user_id=invited_user.id,
@@ -388,11 +405,12 @@ async def remove_org_member(
     res_mem = await db.execute(
         select(Membership).where(Membership.org_id == id, Membership.user_id == user_id)
     )
-    mem = res_mem.scalar_one_or_none()
-    if not mem:
+    memberships = res_mem.scalars().all()
+    if not memberships:
         raise HTTPException(404, "Member not found in organization")
+    roles = {m.role for m in memberships}
 
-    if mem.role == Role.platform_admin:
+    if Role.platform_admin in roles:
         raise HTTPException(
             status.HTTP_403_FORBIDDEN,
             "platform_admin members cannot be removed",
@@ -402,7 +420,7 @@ async def remove_org_member(
             status.HTTP_400_BAD_REQUEST,
             "You cannot remove your own membership",
         )
-    if mem.role == Role.org_admin:
+    if Role.org_admin in roles:
         res_other_admins = await db.execute(
             select(Membership.user_id).where(
                 Membership.org_id == id,
@@ -417,7 +435,8 @@ async def remove_org_member(
                 "Cannot remove the last org_admin of the organization",
             )
 
-    await db.delete(mem)
+    for mem in memberships:
+        await db.delete(mem)
 
     # 1. Invalidate active sessions for this user within this organization
     await db.execute(
@@ -468,52 +487,54 @@ async def update_org_member_role(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Change an existing member's role (org_admin+, ``orgs:manage``)."""
+    """Change an existing member's functional role between operator/user
+    (org_admin+, ``orgs:manage``). Granting/revoking org_admin itself is a
+    separate, platform_admin-gated action (see POST/DELETE .../members) -
+    org_admin cannot promote itself or a peer to org_admin here."""
     new_role = {
-        "org_admin": Role.org_admin,
         "operator": Role.operator,
         "user": Role.user,
     }.get(body.role)
     if new_role is None:
-        raise HTTPException(400, f"Invalid role: {body.role}")
+        raise HTTPException(
+            400, f"Invalid role: {body.role} (use POST /members to grant org_admin)"
+        )
 
     await _ensure_user_belongs_to_org(db, current_user.id, id)
-    res_mem = await db.execute(
-        select(Membership).where(Membership.org_id == id, Membership.user_id == user_id)
-    )
-    mem = res_mem.scalar_one_or_none()
-    if not mem:
-        raise HTTPException(404, "Member not found in organization")
-    if mem.role == Role.platform_admin:
-        raise HTTPException(
-            status.HTTP_403_FORBIDDEN,
-            "The platform_admin role cannot be changed here",
-        )
     if user_id == current_user.id:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
             "You cannot change your own role",
         )
-    if mem.role == Role.org_admin and new_role != Role.org_admin:
-        res_other_admins = await db.execute(
-            select(Membership.user_id).where(
-                Membership.org_id == id,
-                Membership.user_id != user_id,
-                Membership.role == Role.org_admin,
-                Membership.lifecycle_status == "active",
-            )
+    res_mem = await db.execute(
+        select(Membership).where(Membership.org_id == id, Membership.user_id == user_id)
+    )
+    memberships = res_mem.scalars().all()
+    if not memberships:
+        raise HTTPException(404, "Member not found in organization")
+    if any(m.role == Role.platform_admin for m in memberships):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "The platform_admin role cannot be changed here",
         )
-        if res_other_admins.first() is None:
-            raise HTTPException(
-                status.HTTP_400_BAD_REQUEST,
-                "Cannot demote the last org_admin of the organization",
-            )
 
-    if mem.role != new_role:
-        old_role = mem.role.value
-        mem.role = new_role
+    functional = next((m for m in memberships if m.role in (Role.operator, Role.user)), None)
+    if functional is None:
+        old_role = None
+        functional = Membership(
+            org_id=id, user_id=user_id, role=new_role,
+            invited_by_user_id=current_user.id, provisioning_source="promotion",
+        )
+        db.add(functional)
+    elif functional.role != new_role:
+        old_role = functional.role.value
+        functional.role = new_role
+    else:
+        old_role = new_role.value
+
+    if old_role != new_role.value:
         await db.commit()
-        await db.refresh(mem)
+        await db.refresh(functional)
         await log_action(
             db,
             org_id=id,
@@ -524,13 +545,13 @@ async def update_org_member_role(
             metadata={"old_role": old_role, "new_role": new_role.value},
         )
 
-    member_user = await db.get(User, mem.user_id)
+    member_user = await db.get(User, user_id)
     return OrgMemberOut(
-        user_id=mem.user_id,
+        user_id=user_id,
         email=member_user.email if member_user else "",
         display_name=member_user.display_name if member_user else "",
-        role=mem.role.value,
-        created_at=mem.created_at,
+        role=functional.role.value,
+        created_at=functional.created_at,
     )
 
 

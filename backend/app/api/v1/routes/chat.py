@@ -124,7 +124,7 @@ async def chat(
                 org_id,
                 body,
                 user_id=current_user.id,
-                user_role=authz.role.value,
+                user_role=authz.tool_use_role.value,
                 root_run_id=body.run_id,
             )
         except ValueError as exc:

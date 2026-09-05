@@ -23,7 +23,7 @@ import {
   useDeleteWorkspaceArtifact,
   useDeleteSandboxExecution,
   useUrlSearchParam,
-  useCurrentRole,
+  useCurrentRoles,
   useMe,
 } from "@/hooks";
 import { Button } from "@/components/ui/button";
@@ -54,7 +54,6 @@ import {
 import { cn } from "@/lib/utils";
 import { streamSSEGet, api } from "@/lib/api";
 import { useTranslation } from "@/lib/i18n";
-import { isAdminRole, isOperatorOrAdmin } from "@/lib/roles";
 import type { WorkspaceArtifact, SandboxExecution } from "@/types";
 
 function formatBytes(bytes: number): string {
@@ -97,11 +96,10 @@ export default function WorkspacePage() {
   const runArtifact = useRunWorkspaceArtifact();
   const deleteArtifact = useDeleteWorkspaceArtifact();
   const deleteExecution = useDeleteSandboxExecution();
-  const role = useCurrentRole();
+  const roles = useCurrentRoles();
   const me = useMe();
   const currentUserId = me.data?.id;
-  const isAdmin = isAdminRole(role);
-  const isOperator = isOperatorOrAdmin(role);
+  const isOperator = roles.includes("operator");
 
   const [selectedUserFilter, setSelectedUserFilter] = React.useState<string>("all");
 

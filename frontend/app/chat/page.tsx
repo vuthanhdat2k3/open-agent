@@ -8,6 +8,7 @@ import { randomId } from "@/lib/utils";
 import {
   useAgents,
   useCurrentRole,
+  useCurrentRoles,
   useSessions,
   useSessionMessages,
   useUpdateSession,
@@ -31,7 +32,7 @@ import { ChatSidebar } from "@/components/chat/chat-sidebar";
 import { ChatThread } from "@/components/chat/chat-thread";
 import { ChatInput } from "@/components/chat/chat-input";
 import { useTranslation } from "@/lib/i18n";
-import { isAdminRole, isEndUser, isOperator } from "@/lib/roles";
+import { isEndUser } from "@/lib/roles";
 import type { ConnectionState } from "@/components/chat/chat-connection-banner";
 import type { ExecutionPolicy, UploadedFile } from "@/types";
 
@@ -43,6 +44,7 @@ export default function ChatPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const role = useCurrentRole();
+  const roles = useCurrentRoles();
   const agents = useAgents();
   const models = useModels();
   const {
@@ -995,7 +997,7 @@ export default function ChatPage() {
 
   const setDefaultModel = async (modelId: string) => {
     if (!agentId) return;
-    if (!isAdminRole(role) && !isOperator(role)) {
+    if (!roles.includes("operator")) {
       setPendingSessionModelId(modelId);
       toast.success((tx("Mô hình đã chọn cho cuộc trò chuyện này", "Model selected for this chat")));
       return;

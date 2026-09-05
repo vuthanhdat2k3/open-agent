@@ -123,10 +123,13 @@ def test_local_runtime_ignores_insecure_defaults(clean_settings_env: None) -> No
     assert settings.s3_access_key == "minioadmin"
 
 
-def test_operator_is_below_org_admin_and_above_user() -> None:
-    assert has_permission(Role.org_admin, "billing:manage")
+def test_operator_and_org_admin_are_non_overlapping() -> None:
+    # org_admin manages the org, not the AI stack; operator is the reverse -
+    # the two roles no longer form a hierarchy (see policy.py header comment).
+    assert has_permission(Role.org_admin, "orgs:manage")
+    assert not has_permission(Role.org_admin, "agents:update")
     assert has_permission(Role.operator, "agents:update")
-    assert not has_permission(Role.operator, "billing:manage")
+    assert not has_permission(Role.operator, "orgs:manage")
     assert not has_permission(Role.user, "agents:update")
 
 

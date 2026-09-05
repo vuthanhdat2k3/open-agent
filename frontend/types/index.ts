@@ -575,7 +575,11 @@ export interface UserMembership {
   org_id: string;
   org_name: string;
   org_slug: string;
+  // `role` is the highest-priority role for display; `roles` is the full
+  // set - a user can hold more than one (e.g. a self-registered founder
+  // gets both org_admin and operator).
   role: string;
+  roles: string[];
 }
 
 export interface UserProfile {
