@@ -91,7 +91,7 @@ OpenAgent phân chia 4 vai trò rõ rệt theo ma trận phân quyền:
 
 ## 5. Role 4: Platform Admin (System Super Admin)
 
-- **Tài khoản kiểm thử**: `zitadel-admin@zitadel.127.0.0.1.sslip.io` / `Protonx@2026`
+- **Tài khoản kiểm thử**: `zitadel-admin@zitadel.127.0.0.1.sslip.io` — mật khẩu là secret bootstrap của Zitadel (biến `ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORD` trong `.env`), **không phải** `Protonx@2026` (đó là mật khẩu của tài khoản test `user@protonx.com` ở mục khác, không dùng chung cho tài khoản này)
 - **Mục tiêu**: Quản trị viên cấp cao nhất của nền tảng quản lý danh sách Tổ chức (Tenants), tạo tổ chức mới, gán Org Admin ban đầu và giám sát sức khỏe toàn bộ 8 microservices.
 
 ### Test Cases & Kết quả Thực thi
