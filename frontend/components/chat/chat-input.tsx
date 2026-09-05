@@ -3,6 +3,7 @@
 import { ChatComposer } from "@/components/chat/chat-composer";
 import { ChatConnectionBanner, type ConnectionState } from "@/components/chat/chat-connection-banner";
 import type { Agent, Model, ExecutionPolicy, UploadedFile, UsageSummary } from "@/types";
+import type { ChatMessage } from "@/lib/chat/projection";
 
 interface ChatInputProps {
   draft: string;
@@ -26,6 +27,7 @@ interface ChatInputProps {
   usage?: UsageSummary[];
   onSendMessage?: (message: string) => void;
   sessionId?: string;
+  messages?: ChatMessage[];
 }
 
 // Docked composer for an active conversation. `onSubmit` arrives already

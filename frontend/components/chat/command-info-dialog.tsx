@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import * as React from "react";
 import {
@@ -23,15 +23,18 @@ import {
   Copy,
   Check,
   Terminal,
-  Info,
   ArrowRight,
   Eye,
   Sliders,
   RotateCcw,
   Trash2,
   Search,
+  Layers,
+  Activity,
+  AlertTriangle,
 } from "lucide-react";
 import type { Agent, ExecutionPolicy, Model, UsageSummary } from "@/types";
+import type { ChatMessage } from "@/lib/chat/projection";
 import type { SlashCommand, CommandDialogType } from "./commands/types";
 
 interface CommandInfoDialogProps {
@@ -42,6 +45,7 @@ interface CommandInfoDialogProps {
   currentAgent?: Agent;
   executionPolicy?: ExecutionPolicy;
   sessionId?: string;
+  messages?: ChatMessage[];
   usage: UsageSummary[];
   commands: SlashCommand[];
   onSelectCommand?: (cmd: SlashCommand) => void;
@@ -66,6 +70,7 @@ export function CommandInfoDialog({
   currentAgent,
   executionPolicy,
   sessionId,
+  messages = [],
   usage,
   commands,
   onSelectCommand,
@@ -75,7 +80,6 @@ export function CommandInfoDialog({
   const [copiedSession, setCopiedSession] = React.useState(false);
   const [searchQuery, setSearchQuery] = React.useState("");
 
-  // Sync tab when initialTab prop updates on re-open
   React.useEffect(() => {
     if (open) {
       setActiveTab(initialTab);
@@ -91,7 +95,40 @@ export function CommandInfoDialog({
     setTimeout(() => setCopiedSession(false), 2000);
   };
 
-  // Usage aggregate calculations
+  const lastStats = React.useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i] as any;
+      if (m.role === "assistant" && Array.isArray(m.blocks)) {
+        const stats = m.blocks.find((b: any) => b.kind === "stats");
+        if (stats) return stats;
+      }
+    }
+    return null;
+  }, [messages]);
+
+  const currentContextTokens = React.useMemo(() => {
+    if (lastStats?.tokensIn != null && lastStats.tokensIn > 0) {
+      return lastStats.tokensIn as number;
+    }
+    if (messages.length === 0) return 0;
+    const totalChars = messages.reduce((acc, m: any) => {
+      if (m.role === "user" && typeof m.content === "string") return acc + m.content.length;
+      if (m.role === "assistant" && Array.isArray(m.blocks)) {
+        const textLen = m.blocks
+          .filter((b: any) => b.kind === "text" || b.kind === "reasoning")
+          .reduce((sum: number, b: any) => sum + (b.content?.length || 0), 0);
+        return acc + textLen;
+      }
+      return acc;
+    }, 0);
+    return Math.round(totalChars / 3.8);
+  }, [lastStats, messages]);
+  const contextWindowLimit = effectiveModel?.context_window || 128000;
+  const contextUsagePercent = Math.min(100, Math.max(0, (currentContextTokens / contextWindowLimit) * 100));
+  const remainingTokens = Math.max(0, contextWindowLimit - currentContextTokens);
+  const userTurns = React.useMemo(() => messages.filter((m) => m.role === "user").length, [messages]);
+  const totalMessages = messages.length;
+
   const totalCost = React.useMemo(() => usage.reduce((acc, u) => acc + u.cost_usd, 0), [usage]);
   const totalCalls = React.useMemo(() => usage.reduce((acc, u) => acc + u.calls, 0), [usage]);
   const totalIn = React.useMemo(() => usage.reduce((acc, u) => acc + u.input_tokens, 0), [usage]);
@@ -128,34 +165,23 @@ export function CommandInfoDialog({
 
   const getCommandIcon = (icon?: string) => {
     switch (icon) {
-      case "cpu":
-        return <Cpu className="h-4 w-4 text-blue-500" />;
-      case "sliders":
-        return <Sliders className="h-4 w-4 text-indigo-500" />;
-      case "shield":
-        return <ShieldCheck className="h-4 w-4 text-emerald-500" />;
-      case "bot":
-        return <Bot className="h-4 w-4 text-purple-500" />;
-      case "sparkles":
-        return <Sparkles className="h-4 w-4 text-amber-500" />;
-      case "info":
-        return <Info className="h-4 w-4 text-sky-500" />;
-      case "chart":
-        return <BarChart2 className="h-4 w-4 text-teal-500" />;
-      case "trash":
-        return <Trash2 className="h-4 w-4 text-rose-500" />;
-      case "rotate":
-        return <RotateCcw className="h-4 w-4 text-orange-500" />;
+      case "cpu": return <Cpu className="h-4 w-4 text-blue-500" />;
+      case "sliders": return <Sliders className="h-4 w-4 text-indigo-500" />;
+      case "shield": return <ShieldCheck className="h-4 w-4 text-emerald-500" />;
+      case "bot": return <Bot className="h-4 w-4 text-purple-500" />;
+      case "sparkles": return <Sparkles className="h-4 w-4 text-amber-500" />;
+      case "info": return <Layers className="h-4 w-4 text-sky-500" />;
+      case "chart": return <BarChart2 className="h-4 w-4 text-teal-500" />;
+      case "trash": return <Trash2 className="h-4 w-4 text-rose-500" />;
+      case "rotate": return <RotateCcw className="h-4 w-4 text-orange-500" />;
       case "help":
-      default:
-        return <HelpCircle className="h-4 w-4 text-violet-500" />;
+      default: return <HelpCircle className="h-4 w-4 text-violet-500" />;
     }
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col p-0 overflow-hidden border border-border/80 bg-card/95 shadow-2xl backdrop-blur-xl">
-        {/* Header */}
         <DialogHeader className="px-6 pt-6 pb-4 border-b border-border/60">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-tr from-primary/20 via-primary/10 to-transparent border border-primary/20 text-primary shadow-sm">
@@ -167,14 +193,13 @@ export function CommandInfoDialog({
               </DialogTitle>
               <DialogDescription className="text-xs text-muted-foreground mt-0.5">
                 {tx(
-                  "Xem ngữ cảnh môi trường đang chạy, hạn mức tài nguyên và các phím tắt lệnh.",
-                  "Inspect the active runtime context, resource metrics, and available slash shortcuts."
+                  "Xem dung lượng ngữ cảnh token, hạn mức tài nguyên và các phím tắt lệnh.",
+                  "Inspect session context tokens, capacity usage, resource metrics, and slash shortcuts."
                 )}
               </DialogDescription>
             </div>
           </div>
 
-          {/* Tab Navigation Pill */}
           <div className="flex items-center gap-1.5 mt-4 p-1 rounded-lg bg-muted/60 border border-border/40 text-xs font-medium">
             <button
               type="button"
@@ -186,7 +211,7 @@ export function CommandInfoDialog({
                   : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
               )}
             >
-              <Info className="h-3.5 w-3.5" />
+              <Layers className="h-3.5 w-3.5" />
               <span>{tx("Ngữ cảnh phiên", "Context")}</span>
             </button>
             <button
@@ -218,116 +243,269 @@ export function CommandInfoDialog({
           </div>
         </DialogHeader>
 
-        {/* Content Body */}
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
-          {/* TAB 1: CONTEXT */}
+
           {activeTab === "context" && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-              {/* Active Agent Card */}
-              <div className="rounded-xl border border-border/70 bg-card p-4 shadow-sm hover:border-border transition-colors">
-                <div className="flex items-center justify-between pb-2 border-b border-border/40 mb-3">
+            <div className="space-y-4">
+              {/* HERO CARD: CONTEXT WINDOW & TOKEN USAGE METER */}
+              <div className="rounded-xl border border-border/80 bg-gradient-to-b from-card to-muted/20 p-4 shadow-sm relative overflow-hidden">
+                <div className="flex items-center justify-between gap-2 mb-3">
                   <div className="flex items-center gap-2">
-                    <Bot className="h-4 w-4 text-purple-500" />
-                    <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      {tx("Agent Đang Chạy", "Active Agent")}
-                    </span>
+                    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary border border-primary/20">
+                      <Activity className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block">
+                        {tx("Cửa Sổ Ngữ Cảnh (Context Window)", "Context Window Capacity")}
+                      </span>
+                      <span className="text-xs font-medium text-foreground">
+                        {effectiveModel?.display_name || effectiveModel?.name || "AI Model"}
+                      </span>
+                    </div>
                   </div>
-                  {currentAgent?.kind && (
-                    <Badge variant="outline" className="text-[10px] capitalize font-mono">
-                      {currentAgent.kind}
-                    </Badge>
-                  )}
-                </div>
-                <div className="text-base font-semibold text-foreground">
-                  {currentAgent?.name || tx("Mặc định / Không xác định", "Default / Unassigned")}
-                </div>
-                <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
-                  {currentAgent?.description ||
-                    tx("Trợ lý trí tuệ nhân tạo tương tác trực tiếp qua hội thoại.", "Conversational intelligent assistant in this session.")}
-                </p>
-              </div>
 
-              {/* Active Model Card */}
-              <div className="rounded-xl border border-border/70 bg-card p-4 shadow-sm hover:border-border transition-colors">
-                <div className="flex items-center justify-between pb-2 border-b border-border/40 mb-3">
-                  <div className="flex items-center gap-2">
-                    <Cpu className="h-4 w-4 text-blue-500" />
-                    <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      {tx("Mô Hình AI", "Active Model")}
+                  <Badge
+                    variant={
+                      contextUsagePercent > 80
+                        ? "destructive"
+                        : contextUsagePercent > 50
+                        ? "warning"
+                        : "success"
+                    }
+                    className="text-[11px] font-semibold px-2.5 py-0.5"
+                  >
+                    {contextUsagePercent > 80
+                      ? tx("Sắp đầy ngữ cảnh", "High Usage")
+                      : contextUsagePercent > 50
+                      ? tx("Mức trung bình", "Moderate")
+                      : tx("Tối ưu", "Optimal")}
+                  </Badge>
+                </div>
+
+                <div className="flex flex-wrap items-baseline justify-between gap-2 my-2">
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-2xl font-bold font-mono tracking-tight text-foreground">
+                      {currentContextTokens.toLocaleString()}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      / {contextWindowLimit.toLocaleString()} {tx("tokens đã nạp", "tokens loaded")}
                     </span>
                   </div>
-                  {effectiveModel?.tier && (
-                    <Badge variant="default" className="text-[10px] capitalize">
-                      {effectiveModel.tier}
-                    </Badge>
-                  )}
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-base font-semibold text-foreground">
-                    {effectiveModel?.display_name || effectiveModel?.name || tx("Chưa chọn mô hình", "No model")}
+                  <span className="text-lg font-bold font-mono text-primary">
+                    {contextUsagePercent.toFixed(1)}%
                   </span>
-                  {effectiveModel?.supports_vision && (
-                    <span title={tx("Hỗ trợ đọc ảnh (Vision)", "Supports Vision")}>
-                      <Eye className="h-3.5 w-3.5 text-sky-500" />
-                    </span>
-                  )}
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {effectiveModel?.name ? `ID: ${effectiveModel.name}` : tx("Kế thừa từ cấu hình mặc định của hệ thống.", "Inherited from system default settings.")}
-                </p>
-              </div>
 
-              {/* Execution Policy Card */}
-              <div className="rounded-xl border border-border/70 bg-card p-4 shadow-sm hover:border-border transition-colors">
-                <div className="flex items-center justify-between pb-2 border-b border-border/40 mb-3">
-                  <div className="flex items-center gap-2">
-                    <ShieldCheck className="h-4 w-4 text-emerald-500" />
-                    <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      {tx("Chính Sách Thực Thi", "Execution Policy")}
+                <div className="relative h-3 w-full bg-muted rounded-full overflow-hidden border border-border/50 shadow-inner">
+                  <div
+                    className={cn(
+                      "h-full rounded-full transition-all duration-500",
+                      contextUsagePercent > 80
+                        ? "bg-gradient-to-r from-amber-500 to-rose-500"
+                        : contextUsagePercent > 50
+                        ? "bg-gradient-to-r from-teal-500 to-amber-500"
+                        : "bg-gradient-to-r from-emerald-500 to-teal-500"
+                    )}
+                    style={{ width: `${Math.max(contextUsagePercent, 1.5)}%` }}
+                  />
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-border/40 text-center">
+                  <div className="bg-card/60 p-2 rounded-lg border border-border/40">
+                    <span className="text-[10px] text-muted-foreground uppercase tracking-wider block">
+                      {tx("Đã Dùng", "Context Used")}
+                    </span>
+                    <span className="text-xs font-bold font-mono text-foreground mt-0.5 block">
+                      {formatTokens(currentContextTokens)}
                     </span>
                   </div>
-                  {executionPolicy && (
-                    <Badge variant={policyLabels[executionPolicy]?.badge || "default"} className="text-[10px]">
-                      {policyLabels[executionPolicy]?.label || executionPolicy}
-                    </Badge>
-                  )}
-                </div>
-                <div className="text-sm font-semibold text-foreground">
-                  {executionPolicy ? policyLabels[executionPolicy]?.label : tx("Chưa thiết lập", "Not configured")}
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {executionPolicy ? policyLabels[executionPolicy]?.desc : "—"}
-                </p>
-              </div>
-
-              {/* Session ID Card */}
-              <div className="rounded-xl border border-border/70 bg-card p-4 shadow-sm hover:border-border transition-colors">
-                <div className="flex items-center justify-between pb-2 border-b border-border/40 mb-3">
-                  <div className="flex items-center gap-2">
-                    <Terminal className="h-4 w-4 text-amber-500" />
-                    <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      {tx("Mã Phiên Hội Thoại", "Session Identifier")}
+                  <div className="bg-card/60 p-2 rounded-lg border border-border/40">
+                    <span className="text-[10px] text-muted-foreground uppercase tracking-wider block">
+                      {tx("Còn Lại", "Remaining")}
+                    </span>
+                    <span className="text-xs font-bold font-mono text-emerald-600 dark:text-emerald-400 mt-0.5 block">
+                      {formatTokens(remainingTokens)}
                     </span>
                   </div>
-                  {sessionId && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleCopySession}
-                      className="h-6 px-2 text-[11px] gap-1 hover:bg-muted text-muted-foreground hover:text-foreground"
-                    >
-                      {copiedSession ? <Check className="h-3 w-3 text-emerald-500" /> : <Copy className="h-3 w-3" />}
-                      <span>{copiedSession ? tx("Đã chép", "Copied") : tx("Sao chép", "Copy")}</span>
-                    </Button>
-                  )}
+                  <div className="bg-card/60 p-2 rounded-lg border border-border/40">
+                    <span className="text-[10px] text-muted-foreground uppercase tracking-wider block">
+                      {tx("Giới Hạn Model", "Max Window")}
+                    </span>
+                    <span className="text-xs font-bold font-mono text-muted-foreground mt-0.5 block">
+                      {formatTokens(contextWindowLimit)}
+                    </span>
+                  </div>
                 </div>
-                <div className="font-mono text-xs text-foreground select-all truncate bg-muted/40 p-2 rounded-lg border border-border/40">
-                  {sessionId || tx("Phiên mới (chưa lưu)", "New conversation (unsaved)")}
+
+                {contextUsagePercent > 75 && (
+                  <div className="mt-3 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-between gap-3 text-xs text-amber-700 dark:text-amber-300">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
+                      <span className="truncate">
+                        {tx(
+                          "Ngữ cảnh đang lớn, hãy chạy /compact để tóm tắt và giải phóng tokens.",
+                          "Context is filling up. Run /compact to compress conversation history."
+                        )}
+                      </span>
+                    </div>
+                    {onSelectCommand && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const cmd = commands.find((c) => c.name === "compact");
+                          if (cmd) {
+                            onSelectCommand(cmd);
+                            onOpenChange(false);
+                          }
+                        }}
+                        className="h-6 px-2 text-[11px] font-medium border-amber-500/40 bg-amber-500/20 hover:bg-amber-500/30 text-amber-900 dark:text-amber-100 shrink-0"
+                      >
+                        <Sparkles className="h-3 w-3 mr-1" />
+                        {tx("Chạy /compact", "Run /compact")}
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* CONVERSATION STATS BREAKDOWN */}
+              <div className="rounded-xl border border-border/70 bg-card p-4 shadow-sm">
+                <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center justify-between">
+                  <span>{tx("Chi Tiết Phiên Hội Thoại", "Session Context Breakdown")}</span>
+                  <span className="text-[10px] text-muted-foreground">
+                    {userTurns} {tx("lượt hỏi", "turns")} · {totalMessages} {tx("tin nhắn", "messages")}
+                  </span>
                 </div>
-                <p className="text-[11px] text-muted-foreground mt-1">
-                  {tx("Dùng mã này để tra cứu logs và truy vết trên Langfuse / Audit Trail.", "Use this key to trace conversation executions in observability logs.")}
-                </p>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                  <div className="bg-muted/40 p-2.5 rounded-lg border border-border/30">
+                    <span className="text-[11px] text-muted-foreground block">{tx("Lượt hội thoại", "User Turns")}</span>
+                    <span className="text-sm font-bold font-mono text-foreground mt-0.5 block">{userTurns}</span>
+                  </div>
+
+                  <div className="bg-muted/40 p-2.5 rounded-lg border border-border/30">
+                    <span className="text-[11px] text-muted-foreground block">{tx("Prompt Tokens gần nhất", "Last Prompt In")}</span>
+                    <span className="text-sm font-bold font-mono text-foreground mt-0.5 block">
+                      {lastStats?.tokensIn != null ? lastStats.tokensIn.toLocaleString() : "—"}
+                    </span>
+                  </div>
+
+                  <div className="bg-muted/40 p-2.5 rounded-lg border border-border/30">
+                    <span className="text-[11px] text-muted-foreground block">{tx("Output Tokens gần nhất", "Last Output")}</span>
+                    <span className="text-sm font-bold font-mono text-foreground mt-0.5 block">
+                      {lastStats?.tokensOut != null ? lastStats.tokensOut.toLocaleString() : "—"}
+                    </span>
+                  </div>
+
+                  <div className="bg-muted/40 p-2.5 rounded-lg border border-border/30">
+                    <span className="text-[11px] text-muted-foreground block">{tx("Độ trễ lượt gần nhất", "Last Latency")}</span>
+                    <span className="text-sm font-bold font-mono text-foreground mt-0.5 block">
+                      {lastStats?.latencyMs != null ? `${lastStats.latencyMs}ms` : "—"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* RUNTIME ENVIRONMENT GRID */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                <div className="rounded-xl border border-border/70 bg-card p-3.5 shadow-sm">
+                  <div className="flex items-center justify-between pb-2 border-b border-border/40 mb-2">
+                    <div className="flex items-center gap-2">
+                      <Bot className="h-4 w-4 text-purple-500" />
+                      <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                        {tx("Agent Đang Chạy", "Active Agent")}
+                      </span>
+                    </div>
+                    {currentAgent?.kind && (
+                      <Badge variant="outline" className="text-[10px] capitalize font-mono">
+                        {currentAgent.kind}
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="text-sm font-semibold text-foreground">
+                    {currentAgent?.name || tx("Mặc định / Không xác định", "Default / Unassigned")}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
+                    {currentAgent?.description ||
+                      tx("Trợ lý trí tuệ nhân tạo tương tác trực tiếp.", "Conversational AI assistant.")}
+                  </p>
+                </div>
+
+                <div className="rounded-xl border border-border/70 bg-card p-3.5 shadow-sm">
+                  <div className="flex items-center justify-between pb-2 border-b border-border/40 mb-2">
+                    <div className="flex items-center gap-2">
+                      <Cpu className="h-4 w-4 text-blue-500" />
+                      <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                        {tx("Mô Hình Hoạt Động", "Active Model")}
+                      </span>
+                    </div>
+                    {effectiveModel?.tier && (
+                      <Badge variant="default" className="text-[10px] capitalize">
+                        {effectiveModel.tier}
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-foreground">
+                      {effectiveModel?.display_name || effectiveModel?.name || tx("Chưa chọn", "None")}
+                    </span>
+                    {effectiveModel?.supports_vision && (
+                      <span title={tx("Hỗ trợ đọc ảnh (Vision)", "Supports Vision")}>
+                        <Eye className="h-3.5 w-3.5 text-sky-500" />
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5 font-mono text-[11px]">
+                    Ctx: {contextWindowLimit.toLocaleString()} tk
+                  </p>
+                </div>
+
+                <div className="rounded-xl border border-border/70 bg-card p-3.5 shadow-sm">
+                  <div className="flex items-center justify-between pb-2 border-b border-border/40 mb-2">
+                    <div className="flex items-center gap-2">
+                      <ShieldCheck className="h-4 w-4 text-emerald-500" />
+                      <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                        {tx("Chính Sách Thực Thi", "Execution Policy")}
+                      </span>
+                    </div>
+                    {executionPolicy && (
+                      <Badge variant={policyLabels[executionPolicy]?.badge || "default"} className="text-[10px]">
+                        {policyLabels[executionPolicy]?.label || executionPolicy}
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="text-xs font-medium text-muted-foreground">
+                    {executionPolicy ? policyLabels[executionPolicy]?.desc : "—"}
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-border/70 bg-card p-3.5 shadow-sm">
+                  <div className="flex items-center justify-between pb-2 border-b border-border/40 mb-2">
+                    <div className="flex items-center gap-2">
+                      <Terminal className="h-4 w-4 text-amber-500" />
+                      <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                        {tx("Mã Phiên (Session ID)", "Session Identifier")}
+                      </span>
+                    </div>
+                    {sessionId && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleCopySession}
+                        className="h-5 px-1.5 text-[10px] gap-1 hover:bg-muted text-muted-foreground hover:text-foreground"
+                      >
+                        {copiedSession ? <Check className="h-3 w-3 text-emerald-500" /> : <Copy className="h-3 w-3" />}
+                        <span>{copiedSession ? tx("Đã chép", "Copied") : tx("Sao chép", "Copy")}</span>
+                      </Button>
+                    )}
+                  </div>
+                  <div className="font-mono text-xs text-foreground select-all truncate bg-muted/40 p-1.5 rounded border border-border/40">
+                    {sessionId || tx("Phiên mới (chưa lưu)", "New conversation (unsaved)")}
+                  </div>
+                </div>
               </div>
             </div>
           )}
@@ -335,7 +513,6 @@ export function CommandInfoDialog({
           {/* TAB 2: USAGE & COST */}
           {activeTab === "usage" && (
             <div className="space-y-4">
-              {/* 4 Metrics Highlight Cards */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div className="rounded-xl border border-border/70 bg-card p-3.5 shadow-sm">
                   <span className="text-[11px] font-medium text-muted-foreground block">
@@ -374,7 +551,6 @@ export function CommandInfoDialog({
                 </div>
               </div>
 
-              {/* Usage Breakdown */}
               <div className="rounded-xl border border-border/70 bg-card p-4 shadow-sm">
                 <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center justify-between">
                   <span>{tx("Chi Tiết Theo Agent & Mô Hình", "Usage Breakdown by Agent & Model")}</span>
@@ -431,7 +607,6 @@ export function CommandInfoDialog({
           {/* TAB 3: HELP & COMMANDS */}
           {activeTab === "help" && (
             <div className="space-y-3.5">
-              {/* Search input */}
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                 <input
@@ -443,7 +618,6 @@ export function CommandInfoDialog({
                 />
               </div>
 
-              {/* Commands List */}
               <div className="divide-y divide-border/40 rounded-xl border border-border/70 bg-card overflow-hidden">
                 {filteredCommands.length === 0 ? (
                   <div className="p-6 text-center text-xs text-muted-foreground">
@@ -492,7 +666,6 @@ export function CommandInfoDialog({
                 )}
               </div>
 
-              {/* Shortcuts Legend */}
               <div className="rounded-lg border border-border/50 bg-muted/30 p-2.5 text-[11px] text-muted-foreground flex flex-wrap items-center justify-between gap-2">
                 <span className="font-medium text-foreground">{tx("Phím tắt điều khiển:", "Quick keys:")}</span>
                 <div className="flex flex-wrap items-center gap-3">
