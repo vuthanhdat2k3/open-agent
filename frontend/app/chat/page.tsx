@@ -1201,6 +1201,8 @@ export default function ChatPage() {
           composerDisabled={!agentId || (!draft.trim() && attachments.length === 0)}
           attachments={attachments}
           onAttachmentsChange={setAttachments}
+          usage={usageSummary.data}
+          onSendMessage={(message: string) => void send(message)}
           scrollHostRef={scrollHostRef}
           bottomRef={bottomRef}
           onThreadScroll={onThreadScroll}
