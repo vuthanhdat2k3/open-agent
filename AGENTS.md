@@ -96,6 +96,8 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 |---|---|---|---|
 | `dev` | `G:\open-agent` | Nhánh tích hợp chính — không code trực tiếp ở đây | — |
 
+> 2026-09-05: Đã merge PR #288 vào `dev` và deploy lên `deploy/dev` qua PR #289 (Chuẩn hóa toàn diện cơ chế Slash Commands: khắc phục lỗi di chuyển phím mũi tên bằng scrollIntoView và wrap-around; hỗ trợ phím Tab và hover chuột; menu glassmorphism với icon badge cho 10 lệnh và footer phím tắt; thay thế popup toast Sonner của /context, /usage, /help bằng modal CommandInfoDialog chuyên nghiệp 3 tab gồm chi tiết Model/Agent/Policy/Session ID với nút copy, 4 metric cards tổng hợp chi phí USD/tokens và bảng tra cứu lệnh; tự động dọn sạch draft sau khi chạy lệnh; bổ sung 15 unit tests cho registry và command handlers).
+
 > 2026-09-05: Đã merge PR #282 vào `dev` và deploy lên `deploy/dev` qua PR #283 (Lưu trạng thái mở Canvas và tệp xem dở qua reload bằng Zustand persist openagent-canvas; nâng cấp thanh kéo giãn Resizable Divider với nút Grab Pill nổi GripVertical trực quan ở giữa màn hình).
 
 > 2026-09-05: Commit trực tiếp lên `dev` (8351255) và merge lên `deploy/dev` (3250a34) theo yêu cầu người dùng (Sửa triệt để lỗi treo write_file/run_code do idempotency_key vượt quá VARCHAR(128) — thêm migration 0070 nới cột lên 256; thêm pool_timeout=10s cho SQLAlchemy engine; giới hạn trần timeout sandbox 300s và đảm bảo dọn dẹp container Docker khi bị cancel; bổ sung cost_usd và cờ real/estimated cho mọi generation Langfuse, trace thêm Test Connection/Model Test; sửa lỗi login nuốt mất thông báo lỗi thật).

@@ -54,14 +54,17 @@ class ChannelService:
         org_id: str,
         provider: str | None = None,
         owner_user_id: str | None = None,
+        include_all: bool = False,
     ) -> list[ChannelConnection]:
         """List channel connections.
 
-        When `owner_user_id` is set, returns only personal connections owned
-        by that user. When None, returns shared org-wide connections.
+        When `include_all` is True, returns every connection in the org
+        (admin overview). Otherwise: when `owner_user_id` is set, returns
+        only personal connections owned by that user; when None, returns
+        shared org-wide connections.
         """
         return await self.repo.list_by_provider(
-            org_id, provider, owner_user_id=owner_user_id
+            org_id, provider, owner_user_id=owner_user_id, include_all=include_all
         )
 
     async def list_connections_by_guild(

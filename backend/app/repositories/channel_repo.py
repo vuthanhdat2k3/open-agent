@@ -28,20 +28,24 @@ class ChannelRepository(BaseRepository[ChannelConnection]):
         org_id: str,
         provider: str | None = None,
         owner_user_id: str | None = None,
+        include_all: bool = False,
     ) -> list[ChannelConnection]:
         """List channel connections.
 
-        When `owner_user_id` is set, returns personal connections for that
-        user (created_by_user_id = user_id). When None, returns shared
-        org-wide connections (created_by_user_id IS NULL).
+        When `include_all` is True, returns every connection in the org
+        (shared + every member's personal ones) - for admin overview.
+        Otherwise: when `owner_user_id` is set, returns personal connections
+        for that user (created_by_user_id = user_id); when None, returns
+        shared org-wide connections (created_by_user_id IS NULL).
         """
         filters = [ChannelConnection.org_id == org_id]
         if provider:
             filters.append(ChannelConnection.provider == provider)
-        if owner_user_id is not None:
-            filters.append(ChannelConnection.created_by_user_id == owner_user_id)
-        else:
-            filters.append(ChannelConnection.created_by_user_id.is_(None))
+        if not include_all:
+            if owner_user_id is not None:
+                filters.append(ChannelConnection.created_by_user_id == owner_user_id)
+            else:
+                filters.append(ChannelConnection.created_by_user_id.is_(None))
         res = await self.db.execute(
             select(ChannelConnection)
             .where(*filters)
