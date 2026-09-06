@@ -271,12 +271,12 @@ export default function OrganizationsPage() {
           <div className="grid gap-3 md:grid-cols-2">
             {paginatedOrgs.map((organization) => (
               <Card key={organization.id} glass>
-                <CardContent className="flex items-center justify-between gap-4 p-5">
+                <CardContent className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                   <div className="min-w-0">
                     <div className="truncate font-semibold">{organization.name}</div>
                     <div className="truncate font-mono text-xs text-muted-foreground">{organization.slug}</div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <Button
                       size="sm"
                       variant="outline"
