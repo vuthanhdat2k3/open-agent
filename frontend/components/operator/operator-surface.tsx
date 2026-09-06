@@ -2,16 +2,17 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Bot, ChevronRight, Send, Sparkles, X } from "lucide-react";
+import { Bot, ChevronRight, Loader2, MessageCircle, Send, Sparkles, X } from "lucide-react";
 import { ApprovalCarousel } from "./approval-carousel";
 import { EmailTriageAccordion, BriefingsAccordion } from "./micro-accordion-list";
+import type { CompanionApprovalPrompt, CompanionMessage } from "@/hooks/use-companion-chat";
 import type { ApprovalRequest, CustomerIntelligenceNotification, CustomerIntelligenceCase } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useTranslation } from "@/lib/i18n";
 
-export type OperatorTab = "approvals" | "inbox" | "reports";
+export type OperatorTab = "approvals" | "inbox" | "reports" | "chat";
 
 interface OperatorSurfaceProps {
   isOpen: boolean;
@@ -27,6 +28,11 @@ interface OperatorSurfaceProps {
   onOpenApprovalDetail?: (approval: ApprovalRequest) => void;
   onOpenEmailDetail?: (notification: CustomerIntelligenceNotification) => void;
   onSendDirection?: (prompt: string) => void;
+  chatMessages: CompanionMessage[];
+  chatStreaming: boolean;
+  chatPendingApproval: CompanionApprovalPrompt | null;
+  onSendChat: (text: string) => void;
+  onStopChat: () => void;
 }
 
 export function OperatorSurface({
@@ -43,10 +49,21 @@ export function OperatorSurface({
   onOpenApprovalDetail,
   onOpenEmailDetail,
   onSendDirection,
+  chatMessages,
+  chatStreaming,
+  chatPendingApproval,
+  onSendChat,
+  onStopChat,
 }: OperatorSurfaceProps) {
     const { locale, tx } = useTranslation();
     const resolvedCompanionName = companionName ?? tx("OpenAgent Operator", "OpenAgent Operator");
   const [activeTab, setActiveTab] = React.useState<OperatorTab>("approvals");
+  const chatScrollRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    if (activeTab !== "chat") return;
+    chatScrollRef.current?.scrollTo({ top: chatScrollRef.current.scrollHeight, behavior: "smooth" });
+  }, [chatMessages, activeTab]);
   const [directionPrompt, setDirectionPrompt] = React.useState("");
   const surfaceRef = React.useRef<HTMLDivElement>(null);
   const [pos, setPos] = React.useState<{ top: number; left: number; width: number; isAbove: boolean; arrowX: number }>({
@@ -115,7 +132,11 @@ export function OperatorSurface({
   const handleSubmitDirection = (e: React.FormEvent) => {
     e.preventDefault();
     if (!directionPrompt.trim()) return;
-    if (onSendDirection) onSendDirection(directionPrompt.trim());
+    if (activeTab === "chat") {
+      onSendChat(directionPrompt.trim());
+    } else if (onSendDirection) {
+      onSendDirection(directionPrompt.trim());
+    }
     setDirectionPrompt("");
   };
 
@@ -237,6 +258,19 @@ export function OperatorSurface({
               {cases.length || 4}
             </span>
           </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab("chat")}
+            className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-all ${
+              activeTab === "chat"
+                ? "bg-card font-semibold text-foreground shadow-sm border border-border/50"
+                : "text-muted-foreground hover:bg-muted/80 hover:text-foreground"
+            }`}
+          >
+            <MessageCircle className="h-3 w-3" />
+            <span>{tx("Trò chuyện", "Chat")}</span>
+          </button>
         </div>
       </div>
 
@@ -257,6 +291,52 @@ export function OperatorSurface({
           />
         )}
         {activeTab === "reports" && <BriefingsAccordion cases={cases} />}
+        {activeTab === "chat" && (
+          <div className="flex flex-col gap-2">
+            <div ref={chatScrollRef} className="flex max-h-72 min-h-[120px] flex-col gap-2.5 overflow-y-auto pr-1">
+              {chatMessages.length === 0 && (
+                <p className="py-6 text-center text-xs text-muted-foreground">
+                  {tx("Hỏi hoặc ra lệnh cho trợ lý — ví dụ: 'mở báo cáo tuần trước'.", "Ask or command the assistant — e.g. 'open last week's reports'.")}
+                </p>
+              )}
+              {chatMessages.map((m) => (
+                <div
+                  key={m.id}
+                  className={`max-w-[88%] rounded-xl px-3 py-2 text-xs leading-relaxed ${
+                    m.role === "user"
+                      ? "ml-auto bg-primary text-primary-foreground"
+                      : "mr-auto border border-border/70 bg-muted/50 text-foreground"
+                  }`}
+                >
+                  {m.text || (m.streaming ? "…" : "")}
+                </div>
+              ))}
+              {chatStreaming && chatMessages[chatMessages.length - 1]?.role !== "assistant" && (
+                <div className="mr-auto flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Loader2 className="h-3 w-3 animate-spin" /> {tx("Đang xử lý…", "Thinking…")}
+                </div>
+              )}
+            </div>
+            {chatPendingApproval && (
+              <div className="flex items-center justify-between gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-500">
+                <span>{tx(`Cần duyệt: ${chatPendingApproval.toolName}`, `Needs approval: ${chatPendingApproval.toolName}`)}</span>
+                <div className="flex gap-1.5">
+                  <Button size="sm" className="h-6 px-2 text-[11px]" onClick={() => onDecideApproval(chatPendingApproval.approvalId, "approved")}>
+                    {tx("Duyệt", "Approve")}
+                  </Button>
+                  <Button size="sm" variant="ghost" className="h-6 px-2 text-[11px]" onClick={() => onDecideApproval(chatPendingApproval.approvalId, "rejected")}>
+                    {tx("Từ chối", "Reject")}
+                  </Button>
+                </div>
+              </div>
+            )}
+            {chatStreaming && (
+              <Button type="button" size="sm" variant="ghost" className="h-6 self-start px-2 text-[11px] text-muted-foreground" onClick={onStopChat}>
+                {tx("Dừng", "Stop")}
+              </Button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Direction Input (Synchronized with Website Theme) */}
@@ -265,12 +345,17 @@ export function OperatorSurface({
           <Input
             value={directionPrompt}
             onChange={(e) => setDirectionPrompt(e.target.value)}
-            placeholder={tx("Lệnh operator trực tiếp: 'Duyệt tất cả', 'Tóm tắt Acme', 'Chuẩn bị họp ngày mai'...", "Direct operator: 'Approve all', 'Brief me on Acme', 'Prep tomorrow meeting'...")}
+            disabled={activeTab === "chat" && chatStreaming}
+            placeholder={
+              activeTab === "chat"
+                ? tx("Nhắn cho trợ lý...", "Message the assistant...")
+                : tx("Lệnh operator trực tiếp: 'Duyệt tất cả', 'Tóm tắt Acme', 'Chuẩn bị họp ngày mai'...", "Direct operator: 'Approve all', 'Brief me on Acme', 'Prep tomorrow meeting'...")
+            }
             className="h-8 border-0 bg-transparent px-0 text-xs text-foreground placeholder:text-muted-foreground focus-visible:ring-0"
           />
-          <Button type="submit" size="sm" className="h-7 px-3 text-xs font-semibold gap-1.5">
+          <Button type="submit" size="sm" disabled={activeTab === "chat" && chatStreaming} className="h-7 px-3 text-xs font-semibold gap-1.5">
             <Send className="h-3 w-3" />
-            {tx("Trực tiếp", "Direct")}</Button>
+            {activeTab === "chat" ? tx("Gửi", "Send") : tx("Trực tiếp", "Direct")}</Button>
         </div>
 
         {/* Quick Suggestion Chips */}
