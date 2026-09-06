@@ -12,7 +12,7 @@ from typing import Any
 
 import structlog
 from simpleeval import simple_eval
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import get_settings
@@ -37,6 +37,7 @@ from app.core.workflow import resume
 from app.core.workflow.replay import ReplayCursor, record_tool_call
 from app.db.base import utc_now
 from app.models.agent import Agent
+from app.models.model import Model
 from app.models.approval_request import ApprovalRequest
 from app.models.workflow import Workflow
 from app.models.workflow_node_run import WorkflowNodeRun
@@ -194,7 +195,7 @@ async def _run_agent_node(
     mode = cfg.get("mode")
     agent: Agent | None = None
     system_prompt = ""
-    model_id = cfg.get("model_id")
+    model_id = cfg.get("model_id") or node.get("model_id")
     tools: list[str] | None = None
     temperature: float | None = None
     max_iterations: int | None = None
@@ -210,7 +211,7 @@ async def _run_agent_node(
             raise RuntimeError(f"agent '{agent_id}' not found")
         agent = _runtime_agent(agent)
         system_prompt = cfg.get("system_prompt_override") or cfg.get("system_prompt") or agent.system_prompt or ""
-        model_id = cfg.get("model_id_override") or model_id
+        model_id = cfg.get("model_id_override") or cfg.get("model_id") or node.get("model_id") or model_id
         if "tools_override" in cfg:
             tools = cfg["tools_override"]
         if "temperature_override" in cfg:
@@ -248,6 +249,19 @@ async def _run_agent_node(
         temperature = cfg.get("temperature")
         max_iterations = cfg.get("max_iterations")
         enable_thinking = cfg.get("enable_thinking")
+
+    if db is not None and model_id:
+        target_model_stmt = (
+            select(Model)
+            .where(
+                Model.org_id == node.get("_org_id", ""),
+                or_(Model.id == model_id, Model.name == model_id),
+            )
+            .order_by(Model.active.desc())
+        )
+        target_model = (await db.execute(target_model_stmt)).scalars().first()
+        if target_model:
+            model_id = target_model.id
 
     if agent is None:
         agent = Agent(
