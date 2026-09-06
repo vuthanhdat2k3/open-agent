@@ -136,6 +136,7 @@ export interface CanvasItem {
   type?: "code" | "file" | "workflow";
   title: string;
   code?: string;
+  filePath?: string;
   contentUrl?: string;
   downloadUrl?: string;
   language?: string;

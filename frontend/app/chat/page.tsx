@@ -25,6 +25,7 @@ import { useChatStore, useCanvasStore } from "@/stores";
 import {
   type ChatMessage,
   type RunProjectionState,
+  type ToolCallBlock,
   createRunProjection,
   stopProjectionStreaming,
   applyChatEvent,
@@ -36,6 +37,7 @@ import { ChatThread } from "@/components/chat/chat-thread";
 import { ChatInput } from "@/components/chat/chat-input";
 import { ChatCanvasPanel } from "@/components/chat/chat-canvas-panel";
 import { useTranslation } from "@/lib/i18n";
+import { tryAutoOpenCanvasFromTool, tryAutoOpenCanvasFromArtifact } from "@/lib/chat/canvas-utils";
 import { isEndUser } from "@/lib/roles";
 import type { ConnectionState } from "@/components/chat/chat-connection-banner";
 import type { ExecutionPolicy, UploadedFile } from "@/types";
@@ -72,6 +74,7 @@ export default function ChatPage() {
   const {
     isOpen: isCanvasOpen,
     isFullscreen: isCanvasFullscreen,
+    openCanvas,
     closeCanvas,
     toggleFullscreen,
     panelWidthPercentage,
@@ -80,6 +83,7 @@ export default function ChatPage() {
 
   const splitContainerRef = React.useRef<HTMLDivElement>(null);
   const [isDraggingCanvas, setIsDraggingCanvas] = React.useState(false);
+  const lastAutoOpenedKeyRef = React.useRef<string | null>(null);
 
   React.useEffect(() => {
     if (!isDraggingCanvas) return;
@@ -718,6 +722,50 @@ export default function ChatPage() {
         toast.error((tx("Phát lại bản ghi bị lệch và đã dừng", "Run replay diverged and was stopped")));
       }
 
+      // Auto-open side canvas when a workflow or file is created or run
+      if (ev.event === "tool_call") {
+        const d = ev.data || {};
+        tryAutoOpenCanvasFromTool(
+          d.name,
+          d.args ?? d.arguments,
+          null,
+          { openCanvas, lastOpenedKeyRef: lastAutoOpenedKeyRef },
+        );
+      } else if (ev.event === "tool_result") {
+        const d = ev.data || {};
+        const idx = typeof d.index === "number" ? d.index : 0;
+        const targetTool = nextState.messages
+          .flatMap((m) => (m.role === "assistant" ? m.blocks : []))
+          .find((b): b is ToolCallBlock => b.kind === "tool_call" && b.callIndex === idx);
+        const name = d.name || targetTool?.name;
+        if (name) {
+          tryAutoOpenCanvasFromTool(
+            name,
+            targetTool?.argsText,
+            d.result ?? d.output,
+            { openCanvas, lastOpenedKeyRef: lastAutoOpenedKeyRef },
+          );
+        }
+      } else if (ev.event === "tool_progress") {
+        const d = ev.data || {};
+        if (d.stage === "subagent_tool_call" || d.stage === "subagent_tool_result") {
+          tryAutoOpenCanvasFromTool(
+            d.tool_name,
+            d.arguments,
+            d.result,
+            { openCanvas, lastOpenedKeyRef: lastAutoOpenedKeyRef },
+          );
+        }
+      } else if (ev.event === "message_done") {
+        const d = ev.data || {};
+        if (Array.isArray(d.artifacts) && d.artifacts.length > 0) {
+          tryAutoOpenCanvasFromArtifact(
+            d.artifacts[d.artifacts.length - 1],
+            { openCanvas, lastOpenedKeyRef: lastAutoOpenedKeyRef },
+          );
+        }
+      }
+
       // For tool calls and structural additions, commit immediately for crisp feedback
       if (ev.event === "tool_call" || ev.event === "tool_call_delta" || ev.event === "message_done" || ev.event === "error") {
         commit();
@@ -725,8 +773,48 @@ export default function ChatPage() {
         touch();
       }
     },
-    [changeSession, commit, refetchSessions, setStreaming, syncPersistedMessages, touch],
+    [changeSession, commit, openCanvas, refetchSessions, setStreaming, syncPersistedMessages, touch],
   );
+
+  // Reset auto-open key tracker when switching session
+  React.useEffect(() => {
+    lastAutoOpenedKeyRef.current = null;
+  }, [sessionId]);
+
+  // Auto-open canvas whenever an assistant message emits workflow or file tool calls during run
+  React.useEffect(() => {
+    if (!streaming) return;
+    const lastMsg = messages[messages.length - 1];
+    if (lastMsg?.role !== "assistant") return;
+
+    for (const b of lastMsg.blocks) {
+      if (b.kind === "tool_call") {
+        tryAutoOpenCanvasFromTool(
+          b.name,
+          b.argsText,
+          b.result,
+          { openCanvas, lastOpenedKeyRef: lastAutoOpenedKeyRef },
+        );
+        if (b.subagent?.tools) {
+          for (const st of b.subagent.tools) {
+            tryAutoOpenCanvasFromTool(
+              st.name,
+              st.args,
+              st.result,
+              { openCanvas, lastOpenedKeyRef: lastAutoOpenedKeyRef },
+            );
+          }
+        }
+      }
+    }
+
+    if (lastMsg.artifacts && lastMsg.artifacts.length > 0) {
+      tryAutoOpenCanvasFromArtifact(
+        lastMsg.artifacts[lastMsg.artifacts.length - 1],
+        { openCanvas, lastOpenedKeyRef: lastAutoOpenedKeyRef },
+      );
+    }
+  }, [messages, openCanvas, streaming]);
 
   const chatRunLoaded = Boolean(chatRun.data);
 
