@@ -2,7 +2,7 @@ import type { QueryClient, QueryKey } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import type { Agent, AgentToolInfo, McpServer, Model, Provider, Session, SandboxExecution, UploadedFile, UsageSummary, Workflow as WorkflowT, WorkspaceArtifact } from "@/types";
 import {
-  Bell, Bot, Bug, Building2, CalendarDays, Cpu, FileUp, FlaskConical, FolderKanban,
+  Bell, Bot, Bug, Building2, CalendarDays, Cpu, FileText, FileUp, FlaskConical, FolderKanban,
   Gauge, LayoutDashboard, MessageSquare, Plug, Search, Server, SlidersHorizontal, ShieldCheck, Users, Workflow, Zap,
   type LucideIcon,
 } from "lucide-react";
@@ -70,6 +70,7 @@ export const navGroups: NavGroup[] = [
       { href: "/agents", label: "Agents", i18nKey: "nav.agents", icon: Bot, roles: ["operator"], permission: "agents:read" },
       { href: "/providers", label: "Providers", i18nKey: "nav.providers", icon: Server, roles: ["operator"], permission: "providers:read" },
       { href: "/workflows", label: "Workflows", i18nKey: "nav.workflows", icon: Workflow, roles: ["operator"], permission: "workflows:read" },
+      { href: "/reports", label: "Reports", i18nKey: "nav.reports", icon: FileText, roles: ["operator"], permission: "workflows:read" },
       { href: "/mcp", label: "MCP Servers", i18nKey: "nav.mcpServers", icon: Plug, roles: ["operator"], permission: "mcp:read" },
       { href: "/channels", label: "Messaging Channels", i18nKey: "nav.channels", icon: MessageSquare, roles: ["operator", "user"], permission: "channels:read" },
       { href: "/files", label: "Knowledge Base", i18nKey: "nav.knowledgeBase", icon: FolderKanban, roles: ["operator"], permission: "files:read" },
@@ -96,10 +97,25 @@ export const navGroups: NavGroup[] = [
       { href: "/", label: "Overview", i18nKey: "nav.dashboard", icon: LayoutDashboard, roles: ["user"] },
       { href: "/chat", label: "Chat", i18nKey: "nav.chat", icon: MessageSquare, roles: ["user"] },
       { href: "/workflows", label: "Workflows", i18nKey: "nav.workflows", icon: Workflow, roles: ["user"], permission: "workflows:read" },
+      { href: "/reports", label: "Reports", i18nKey: "nav.reports", icon: FileText, roles: ["user"], permission: "workflows:read" },
+    ],
+  },
+  {
+    title: "Connect",
+    i18nKey: "nav.groups.connect",
+    roles: ["user"],
+    items: [
       { href: "/integrations", label: "Integrations", i18nKey: "nav.integrations", icon: Plug, roles: ["user"], permission: "ci:personal:manage" },
       { href: "/channels", label: "My Channels", i18nKey: "nav.myChannels", icon: MessageSquare, roles: ["user"], permission: "channels:read" },
       { href: "/email-intelligence", label: "Email Intelligence", i18nKey: "nav.emailIntelligence", icon: Bell, roles: ["user"], permission: "ci:personal:manage" },
       { href: "/customer-intelligence", label: "Customer Intelligence", i18nKey: "nav.customerIntelligence", icon: Building2, roles: ["user"], permission: "ci:read" },
+    ],
+  },
+  {
+    title: "Data",
+    i18nKey: "nav.groups.data",
+    roles: ["user"],
+    items: [
       { href: "/files", label: "My Documents", i18nKey: "nav.myDocuments", icon: FolderKanban, roles: ["user"], permission: "files:read" },
       { href: "/workspace", label: "Sandbox", i18nKey: "nav.sandbox", icon: FolderKanban, roles: ["user"], permission: "files:read" },
       { href: "/approvals", label: "Approvals", i18nKey: "nav.approvals", icon: ShieldCheck, roles: ["user"], permission: "approvals:read" },
