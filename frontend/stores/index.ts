@@ -52,7 +52,15 @@ export const useWorkflowStore = create<WorkflowState>()(
           activeRunStatus: null,
         }),
     }),
-    { name: "openagent-workflow-editor" },
+    {
+      name: "openagent-workflow-editor",
+      partialize: (state) => ({
+        activeWorkflowId: state.activeWorkflowId,
+        activeWorkflowName: state.activeWorkflowName,
+        nodes: state.activeWorkflowId ? state.nodes : [],
+        edges: state.activeWorkflowId ? state.edges : [],
+      }),
+    },
   ),
 );
 

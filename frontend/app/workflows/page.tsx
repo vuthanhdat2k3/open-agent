@@ -403,17 +403,24 @@ export default function WorkflowEditor() {
         loadWorkflow(wf);
       } else {
         didLoadEditRef.current = true;
-        newWorkflow();
+        newWorkflow({ silent: true });
       }
-    } else if (!didLoadEditRef.current) {
-      didLoadEditRef.current = true;
-      if (activeWorkflowId) {
-        if (activeWorkflowId === lastLoadedEditIdRef.current) return;
-        const wf = data.find((w) => w.id === activeWorkflowId);
-        if (wf) {
-          loadWorkflow(wf);
+    } else {
+      // User is at clean /workflows URL (no ?edit=...)
+      if (!didLoadEditRef.current) {
+        didLoadEditRef.current = true;
+        if (activeWorkflowId) {
+          if (activeWorkflowId === lastLoadedEditIdRef.current) return;
+          const wf = data.find((w) => w.id === activeWorkflowId);
+          if (wf) {
+            loadWorkflow(wf);
+          } else {
+            // Workflow does not belong to this user -> clean blank canvas
+            newWorkflow({ silent: true });
+          }
         } else {
-          newWorkflow();
+          // No active workflow selected: ensure clean blank canvas, clearing any dangling nodes from localStorage
+          newWorkflow({ silent: true });
         }
       }
     }
@@ -521,7 +528,8 @@ export default function WorkflowEditor() {
     );
   };
 
-  const newWorkflow = () => {
+  const newWorkflow = (options?: { silent?: boolean } | React.MouseEvent) => {
+    const silent = Boolean(options && "silent" in options && options.silent);
     reset();
     setWfName("");
     setEditId(null);
@@ -538,7 +546,9 @@ export default function WorkflowEditor() {
       url.searchParams.delete("run");
       window.history.replaceState(null, "", url.toString());
     }
-    toast.success(tx("Workflow mới — đã xóa canvas", "New workflow — canvas cleared"));
+    if (!silent) {
+      toast.success(tx("Workflow mới — đã xóa canvas", "New workflow — canvas cleared"));
+    }
   };
 
   const loadWorkflow = (wf: any) => {

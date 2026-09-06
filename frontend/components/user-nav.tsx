@@ -22,6 +22,10 @@ export function UserNav({ collapsed }: { collapsed?: boolean }) {
   async function handleLogout() {
     try { await api.post("/api/auth/logout"); } catch { /* local logout still clears the session */ }
     setAccessToken(null);
+    try {
+      localStorage.removeItem("openagent-workflow-editor");
+      localStorage.removeItem("openagent-canvas");
+    } catch {}
     window.location.href = "/login";
   }
 
