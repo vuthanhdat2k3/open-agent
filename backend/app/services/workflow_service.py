@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 
+import structlog
 from simpleeval import simple_eval
 from sqlalchemy import select
 
@@ -19,6 +20,8 @@ from app.repositories.agent_repo import AgentRepository
 from app.repositories.workflow_repo import WorkflowRepository
 from app.schemas.workflow import WorkflowValidationError
 
+logger = structlog.get_logger(__name__)
+
 _GENERATE_SYSTEM_PROMPT = """You design workflow graphs for a multi-agent automation platform.
 
 A workflow graph is JSON: {{"name": str, "description": str, "graph": {{"nodes": [...], "edges": [...]}}}}.
@@ -27,16 +30,16 @@ Node shape: {{"id": str, "kind": "input"|"agent"|"tool"|"merge"|"output"|"approv
 - Exactly one entry trigger node:
   * "input" for on-demand interactive requests (parameters: {{"input_field": str}}).
   * "scheduler" for recurring/scheduled automations (parameters: {{"frequency": "daily"|"weekdays"|"weekly"|"hourly"|"custom", "time": "HH:MM", "days_of_week": ["mon"...], "custom_cron": "0 6 * * *"}}).
-- At least one "output" node for returning results (parameters: {{"include": "all_inputs"}}).
-- "agent" nodes: if matching agents exist below, use their id with mode "inherit". Otherwise set parameters {{"mode": "custom", "system_prompt": str, "model_id": null}} (the system will bind a model).
-- "integration" nodes: connect to real data — parameters: {{"source": "google_drive"|"gmail"|"google_calendar"|"webhook", "operation": "list_new"|"search"|"list_events"|"list_files", "max_results": 20}}.
-- "triager" nodes: route/classify — parameters: {{"mode": "llm", "categories": "sales, support, spam"}} or {{"mode": "rules", "rules": [{{"pattern": str, "category": str}}]}}.
+- At least one "output" node for returning results — parameters: {{"include": "all_inputs", "save_as_file": bool, "file_name": str}}. Set "save_as_file": true + a "file_name" (e.g. "workflow-outputs/my-brief") only when the user explicitly wants the result saved as a file; every run always notifies whoever triggered it regardless of this setting, so it is NOT needed just to "notify" someone.
+- "agent" nodes: if matching agents exist below, use their id with mode "inherit". ALWAYS also set an "instructions" string — the specific task for THIS step (e.g. what to search for, what format to produce); it is layered onto the upstream data as the agent's task for this run, on top of the agent's own persona. Otherwise (no matching agent) set parameters {{"mode": "custom", "system_prompt": str, "model_id": null}} (the system will bind a model).
+- "integration" nodes: connect to real data — parameters: {{"source": "google_drive"|"gmail"|"google_calendar"|"webhook", "operation": "list_new"|"search"|"list_events"|"list_files", "max_results": 20}}. There is no time-range filter field for calendar/drive beyond max_results.
+- "triager" nodes: classify upstream text into EXACTLY ONE of a fixed category list — parameters: {{"mode": "llm", "categories": "sales, support, spam"}} or {{"mode": "rules", "rules": [{{"pattern": str, "category": str}}]}}. It cannot deduplicate, cluster, or rank a list of items — for that, give the downstream "agent" node's "instructions" that job instead and skip the triager.
 - "tool" nodes: invoke a registered tool — parameters: {{"tool": str, "arguments": dict}}.
-- "approval" nodes: pause for human sign-off — parameters: {{"title": str, "instructions": str}}.
+- "approval" nodes: pause for human sign-off — parameters: {{"title": str, "instructions": str, "approver_user_ids": [str]|[], "timeout_minutes": int}}. Empty approver_user_ids = anyone with approval permission may decide; timeout_minutes 0 = never auto-decline.
 - "sub_workflow" nodes: run another workflow — parameters: {{"workflow_id": str}}.
 - "merge" nodes: join parallel branches (merge_mode "all"|"any").
 
-Use "parameters" (NOT "config") for node configuration.
+Use "parameters" (NOT "config") for node configuration. Do not invent parameter names beyond what is listed above for each kind — unrecognized keys are silently dropped.
 
 Edge shape: {{"from_": node_id, "to": node_id, "condition": str|null}}.
 
@@ -49,6 +52,41 @@ Available agents in this organization:
 
 Respond with ONLY the JSON object, no markdown fences, no commentary.
 """
+
+
+def strip_unknown_node_parameters(graph: dict, *, org_id: str = "") -> list[dict]:
+    """Drop any node `parameters` key not declared in that node kind's
+    ``NODE_DEFINITIONS`` schema, mutating ``graph`` in place.
+
+    LLM-generated graphs (and hand-authored ones) sometimes invent
+    plausible-sounding field names — e.g. an "agent" node's own
+    "delivery_channel" — that the engine has never read, silently doing
+    nothing. Stripping them here surfaces the mismatch in the log instead of
+    shipping a workflow with dead configuration. Returns the list of
+    {node_id, kind, keys} entries that were stripped, for logging/testing.
+    """
+    stripped: list[dict] = []
+    for node in graph.get("nodes", []):
+        parameters = node.get("parameters")
+        if not isinstance(parameters, dict):
+            continue
+        definition = get_node_definition(node.get("kind"))
+        if definition is None:
+            continue
+        valid_names = {f.name for f in definition.fields}
+        unknown = [k for k in parameters if k not in valid_names]
+        for key in unknown:
+            parameters.pop(key, None)
+        if unknown:
+            stripped.append({"node_id": node.get("id"), "kind": node.get("kind"), "keys": unknown})
+            logger.warning(
+                "workflow_generate_stripped_unknown_params",
+                org_id=org_id,
+                node_id=node.get("id"),
+                kind=node.get("kind"),
+                keys=unknown,
+            )
+    return stripped
 
 
 class WorkflowService:
@@ -322,6 +360,8 @@ class WorkflowService:
 
         valid_agent_ids = {a.id for a in agents}
         first_agent_id = agents[0].id if agents else None
+
+        strip_unknown_node_parameters(graph, org_id=org_id)
 
         for node in graph.get("nodes", []):
             if node.get("kind") == "agent":

@@ -7,6 +7,7 @@ import json
 import re
 import time
 from collections.abc import AsyncIterator
+from datetime import timedelta
 from typing import Any
 
 import structlog
@@ -274,7 +275,14 @@ async def _run_agent_node(
         if enable_thinking is not None:
             agent.enable_thinking = enable_thinking
 
-    text = upstream_text or "Process workflow automation step."
+    upstream = upstream_text or "Process workflow automation step."
+    instructions = str(cfg.get("instructions") or "").strip()
+    # `instructions` is a common but non-schema field workflow authors (and
+    # workflow_generate) use for a per-step task ask, distinct from the
+    # agent's own persona in `system_prompt`. Layer it onto the upstream
+    # context as the user message rather than overwriting system_prompt, so
+    # the underlying agent's tool-use rules/persona still apply.
+    text = f"{instructions}\n\n---\nContext from previous step:\n{upstream}" if instructions else upstream
     loop = await run_agent_loop(
         agent,
         text,
@@ -285,6 +293,13 @@ async def _run_agent_node(
         user_role=actor_user_role,
         model_id=model_id,
     )
+    if loop.error:
+        # A terminal failure inside the agent loop (budget exceeded, provider
+        # error, etc.) surfaces here as an empty `content` with `error` set —
+        # never as a raised exception. Without this check the node reports
+        # "succeeded" with blank output and silently feeds that emptiness to
+        # every downstream node instead of stopping/retrying per onError.
+        raise RuntimeError(loop.error)
     data: dict[str, Any] = {"content": loop.content}
     usage = getattr(loop, "usage", None) or getattr(loop, "token_usage", None)
     if usage:
@@ -670,6 +685,80 @@ async def _integration_drive(
     return NodeOutput(text=text, data={"files": rows})
 
 
+async def _save_output_file(
+    workflow: Workflow, cfg: dict[str, Any], text: str, db: AsyncSession, user_id: str | None
+) -> None:
+    """Persist an output node's final text to the org's Sandbox workspace.
+
+    Reuses the same path-safety + WorkspaceArtifact tracking the `write_file`
+    tool uses, so a saved brief shows up on the existing Sandbox page instead
+    of needing a new storage mechanism.
+    """
+    from app.core.tools.paths import safe_resolve
+    from app.services.workspace_service import upsert_workspace_artifact
+
+    settings = get_settings()
+    raw_name = str(cfg.get("file_name") or "").strip() or f"workflow-outputs/{workflow.id}.md"
+    if not raw_name.endswith(".md"):
+        raw_name += ".md"
+    target = safe_resolve(settings.workspace_dir, raw_name)
+    if target is None:
+        logger.warning("workflow_output_save_path_escapes_workspace", file_name=raw_name)
+        return
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(text, encoding="utf-8")
+    await upsert_workspace_artifact(
+        db,
+        org_id=workflow.org_id,
+        path=target,
+        workspace_dir=settings.workspace_dir,
+        source_tool="workflow_output",
+        user_id=user_id,
+    )
+
+
+async def _deliver_output_to_channel(
+    workflow: Workflow, cfg: dict[str, Any], text: str, db: AsyncSession
+) -> None:
+    """Best-effort delivery of an output node's final text to a connected
+    Telegram/Discord channel — lets a scheduled workflow report straight
+    into a chat instead of only the Sandbox/notification surfaces.
+
+    Never raises: delivery is a side effect of an already-successful run,
+    so a broken channel connection must not fail the node.
+    """
+    connection_id = cfg.get("channel_connection_id")
+    recipient = cfg.get("channel_recipient")
+    if not connection_id or not recipient:
+        return
+    from app.channels.factory import build_channel_driver
+    from app.models.channel import ChannelConnection
+
+    res = await db.execute(
+        select(ChannelConnection).where(
+            ChannelConnection.id == connection_id,
+            ChannelConnection.org_id == workflow.org_id,
+            ChannelConnection.status == "active",
+        )
+    )
+    connection = res.scalar_one_or_none()
+    if connection is None:
+        logger.warning(
+            "workflow_output_channel_not_found", connection_id=connection_id, workflow_id=workflow.id
+        )
+        return
+    try:
+        driver = build_channel_driver(connection)
+        await driver.send_message(recipient=str(recipient), content=text)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "workflow_output_channel_delivery_failed",
+            error=str(exc),
+            connection_id=connection_id,
+            workflow_id=workflow.id,
+        )
+
+
 class WorkflowWaitingApproval(RuntimeError):
     def __init__(self, approval_id: str) -> None:
         super().__init__("workflow waiting for approval")
@@ -1032,13 +1121,23 @@ async def _run_workflow_events(
                 or node.get("label")
                 or "Scheduler Trigger"
             )
+            trigger_data = {
+                "cron": cron,
+                "timezone": cfg.get("timezone") or timezone_name or "UTC",
+                "schedule_label": label,
+            }
+            if cfg.get("emit_today_date"):
+                from datetime import datetime as _dt
+                from zoneinfo import ZoneInfo
+
+                try:
+                    tz = ZoneInfo(str(trigger_data["timezone"]))
+                except Exception:  # noqa: BLE001
+                    tz = ZoneInfo("UTC")
+                trigger_data["today_date"] = _dt.now(tz).date().isoformat()
             return NodeOutput(
                 text=input_text or f"[{label}] Automated trigger initiated (schedule: {cron}).",
-                data={
-                    "cron": cron,
-                    "timezone": cfg.get("timezone") or timezone_name or "UTC",
-                    "schedule_label": label,
-                },
+                data=trigger_data,
             )
         if kind == "triager":
             # Reuse the same trace id as the rest of this run (which is
@@ -1059,7 +1158,12 @@ async def _run_workflow_events(
         if kind == "merge":
             vals = [outputs[e["from_"]].text for e in incoming if e["from_"] in outputs]
             separator = str(cfg.get("separator") or "\n\n")
-            if node.get("merge_mode") == "any":
+            # merge_mode is normally the generic top-level per-node attribute
+            # (see workflow_service.py's graph docstring), but a "merge" kind
+            # node's own schema field of the same name lives under
+            # `parameters` instead — accept either so a value saved through
+            # the node's config form isn't silently ignored.
+            if (node.get("merge_mode") or cfg.get("merge_mode")) == "any":
                 for v in vals:
                     if v:
                         return NodeOutput(text=v, data={"merged": v})
@@ -1076,6 +1180,10 @@ async def _run_workflow_events(
             text = "\n\n".join(p for p in parts if p) or (
                 input_text or "Workflow execution completed successfully."
             )
+            if cfg.get("save_as_file"):
+                await _save_output_file(workflow, cfg, text, db, actor_user_id)
+            if cfg.get("channel_connection_id"):
+                await _deliver_output_to_channel(workflow, cfg, text, db)
             if cfg.get("format") == "json":
                 data = {e["from_"]: outputs[e["from_"]].data for e in incoming if e["from_"] in outputs}
                 return NodeOutput(text=text, data=data)
@@ -1268,6 +1376,12 @@ async def _run_workflow_events(
                         f"approval rejected: {existing.reason or 'no reason given'}"
                     )
                 raise WorkflowWaitingApproval(existing.id)
+            timeout_minutes = cfg.get("timeout_minutes")
+            expires_at = (
+                utc_now() + timedelta(minutes=int(timeout_minutes)) if timeout_minutes else None
+            )
+            raw_approvers = cfg.get("approver_user_ids") or []
+            approver_user_ids = [str(a) for a in raw_approvers] if isinstance(raw_approvers, list) else None
             approval = await request_approval(
                 db,
                 org_id=workflow.org_id,
@@ -1277,6 +1391,10 @@ async def _run_workflow_events(
                 tool_name=cfg.get("tool_name"),
                 args_snapshot=cfg,
                 requested_by=actor_user_id,
+                title=cfg.get("title") or node.get("label"),
+                instructions=str(cfg.get("instructions") or ""),
+                approver_user_ids=approver_user_ids,
+                expires_at=expires_at,
             )
             raise WorkflowWaitingApproval(approval.id)
         if kind == "sub_workflow":

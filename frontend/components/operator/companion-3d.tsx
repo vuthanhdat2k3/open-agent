@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { OperatorSurface } from "./operator-surface";
 import type { ApprovalRequest, CustomerIntelligenceNotification, CustomerIntelligenceCase } from "@/types";
-import { useApprovals, useDecideApproval, useCustomerIntelligenceNotifications, useCustomerIntelligenceCases } from "@/hooks";
+import { useApprovals, useDecideApproval, useCustomerIntelligenceNotifications, useCustomerIntelligenceCases, useNotifications } from "@/hooks";
 import { getWorkflowInstallations } from "@/lib/automations/api";
 import { getCompanionConfig, type CompanionConfig, DEFAULT_COMPANION_CONFIG } from "@/lib/operator/companion-config";
 import { createIdempotencyKey } from "@/lib/email-intelligence/idempotency";
@@ -38,6 +38,7 @@ export function Companion3D({
   const approvalsQuery = useApprovals(config.enableApprovals);
   const notificationsQuery = useCustomerIntelligenceNotifications({ unreadOnly: true });
   const casesQuery = useCustomerIntelligenceCases({ limit: 5 });
+  const reportNotificationsQuery = useNotifications(true, true);
   const installationsQuery = useQuery({
     queryKey: ["workflow-installations"],
     queryFn: getWorkflowInstallations,
@@ -48,6 +49,9 @@ export function Companion3D({
   const approvals = approvalsQuery.data || initialApprovals || [];
   const notifications = notificationsQuery.data?.items || initialNotifications || [];
   const cases = casesQuery.data || initialCases || [];
+  const reportNotifications = (reportNotificationsQuery.data || []).filter(
+    (n) => n.source_type === "workflow_run"
+  );
   const installations = installationsQuery.data || [];
   const activeRoutinesCount = installations.filter((i) => i.status === "enabled").length || installations.length || 7;
 
@@ -345,6 +349,24 @@ export function Companion3D({
               <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500 shadow-[0_0_8px_#f59e0b]" />
             </span>
             <span>{tx(`⚡ ${approvals.length} hành động cần xem lại →`, `⚡ ${approvals.length} action${approvals.length > 1 ? "s" : ""} need${approvals.length === 1 ? "s" : ""} review →`)}</span>
+          </div>
+        )}
+
+        {/* New workflow report bubble — only when nothing more urgent (an
+            approval) is already claiming this spot, so the two never stack. */}
+        {config.showThoughtBubbles && approvals.length === 0 && reportNotifications.length > 0 && (
+          <div
+            onClick={(e) => {
+              e.stopPropagation();
+              router.push("/reports");
+            }}
+            className="thought-bubble animate-bounce-subtle pointer-events-auto absolute -top-9 left-1/2 flex -translate-x-1/2 cursor-pointer items-center gap-2 whitespace-nowrap rounded-full border border-emerald-500/50 bg-card/95 px-3.5 py-1 text-[11px] font-semibold text-emerald-500 shadow-3d-floating backdrop-blur-xl transition-all hover:scale-105 hover:bg-card hover:border-emerald-400"
+          >
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500 shadow-[0_0_8px_#10b981]" />
+            </span>
+            <span>{tx(`📊 ${reportNotifications.length} báo cáo mới →`, `📊 ${reportNotifications.length} new report${reportNotifications.length > 1 ? "s" : ""} →`)}</span>
           </div>
         )}
 

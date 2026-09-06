@@ -28,6 +28,7 @@ import type {
   OrgModelTierMatrixUpdate,
   OrganizationQuota,
   Organization,
+  PlatformConfigEntry,
   OrgMember,
   Provider,
   ProviderTemplate,
@@ -41,6 +42,7 @@ import type {
   ChatRunDetail,
   ExecutionPolicy,
   WorkflowRunDetail,
+  WorkflowRunSummary,
   WorkspaceArtifact,
   UserProfile,
   CustomerIntelligenceCase,
@@ -602,6 +604,20 @@ export function useUpdateWorkflow() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["workflows"] }),
   });
 }
+export function useWorkflowRuns(options?: { workflowId?: string; status?: string; limit?: number; enabled?: boolean }) {
+  const params = new URLSearchParams();
+  if (options?.workflowId) params.set("workflow_id", options.workflowId);
+  if (options?.status) params.set("status", options.status);
+  if (options?.limit) params.set("limit", String(options.limit));
+  const qs = params.toString() ? `?${params.toString()}` : "";
+  return useQuery({
+    queryKey: ["workflow-runs", options?.workflowId, options?.status, options?.limit],
+    queryFn: () => api.get<WorkflowRunSummary[]>(`/api/workflows/runs${qs}`),
+    refetchInterval: (options?.enabled ?? true) ? 15000 : false,
+    refetchIntervalInBackground: false,
+    enabled: options?.enabled ?? true,
+  });
+}
 export function useGenerateWorkflow() {
   return useMutation({
     mutationFn: (body: { prompt: string; model_id: string }) =>
@@ -834,6 +850,31 @@ export function hasUiPermission(permissions: string[], permission: string) {
 
 export function useCan(permission: string) {
   return hasUiPermission(useCurrentPermissions(), permission);
+}
+
+export function usePlatformConfig(enabled = true) {
+  return useQuery({
+    queryKey: ["platform-config"],
+    enabled,
+    queryFn: () => api.get<PlatformConfigEntry[]>("/api/platform/config"),
+  });
+}
+
+export function useSetPlatformConfig() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ key, value }: { key: string; value: unknown }) =>
+      api.put<PlatformConfigEntry>(`/api/platform/config/${key}`, { value }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["platform-config"] }),
+  });
+}
+
+export function useResetPlatformConfig() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (key: string) => api.delete<{ ok: boolean }>(`/api/platform/config/${key}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["platform-config"] }),
+  });
 }
 
 export function useOrganizations(enabled = true) {
