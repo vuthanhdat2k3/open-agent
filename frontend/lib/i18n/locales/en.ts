@@ -11,6 +11,7 @@ export const en: TranslationDictionary = {
     chat: 'Chat',
     agents: 'Agents',
     workflows: 'Workflows',
+    reports: 'Reports',
     runWorkflow: 'Run Workflow',
     automations: 'Automations',
     knowledgeBase: 'Knowledge Base',
@@ -36,6 +37,8 @@ export const en: TranslationDictionary = {
     integrations: 'Integrations',
     groups: {
       workspace: 'Workspace',
+      connect: 'Connect',
+      data: 'Data',
       agenticWorkflows: 'Agentic Workflows',
       knowledgeTools: 'Knowledge & Tools',
       governanceAudit: 'Governance & Audit',

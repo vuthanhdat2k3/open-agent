@@ -11,6 +11,7 @@ export const vi: TranslationDictionary = {
     chat: 'Trò chuyện',
     agents: 'Agent',
     workflows: 'Workflow',
+    reports: 'Báo cáo',
     runWorkflow: 'Chạy workflow',
     automations: 'Tự động hóa',
     knowledgeBase: 'Kho tri thức',
@@ -36,6 +37,8 @@ export const vi: TranslationDictionary = {
     integrations: 'Tích hợp',
     groups: {
       workspace: 'Không gian làm việc',
+      connect: 'Kết nối & Kênh',
+      data: 'Dữ liệu & Phê duyệt',
       agenticWorkflows: 'Quy trình agentic',
       knowledgeTools: 'Tri thức & công cụ',
       governanceAudit: 'Quản trị & kiểm toán',

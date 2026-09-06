@@ -11,6 +11,7 @@ export interface TranslationDictionary {
     chat: string;
     agents: string;
     workflows: string;
+    reports: string;
     runWorkflow: string;
     automations: string;
     knowledgeBase: string;
@@ -36,6 +37,8 @@ export interface TranslationDictionary {
     integrations: string;
     groups: {
       workspace: string;
+      connect: string;
+      data: string;
       agenticWorkflows: string;
       knowledgeTools: string;
       governanceAudit: string;
