@@ -57,7 +57,7 @@ async def create_application_session(
         raw_session,
         httponly=True,
         secure=settings.cookie_secure,
-        samesite="lax",
+        samesite=settings.cookie_samesite,
         max_age=settings.application_session_absolute_hours * 3600,
         path="/",
     )
@@ -66,7 +66,7 @@ async def create_application_session(
         raw_csrf,
         httponly=False,
         secure=settings.cookie_secure,
-        samesite="lax",
+        samesite=settings.cookie_samesite,
         max_age=settings.application_session_absolute_hours * 3600,
         path="/",
     )
