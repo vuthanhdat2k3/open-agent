@@ -96,7 +96,7 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 |---|---|---|---|
 | `dev` | `G:\open-agent` | Nhánh tích hợp chính — không code trực tiếp ở đây | — |
 
-> 2026-09-06: Tự động mở Chat Side Canvas Panel (`ChatCanvasPanel`) khi AI Agent tạo/chạy workflow hoặc file/code: bổ sung cơ chế auto-open nhận diện `workflow_create`, `workflow_run`, `workflow_get`, `workflow_update`, `write_file`, `run_code`, `preview_web_artifact` và các tệp đính kèm (`ArtifactItem`) mà user không cần nhấp chuột thủ công; tự động kết nối `workflowRunId` hiển thị trạng thái thực thi thời gian thực; cơ chế `lastAutoOpenedKeyRef` ngăn lặp lại khi stream token.
+> 2026-09-06: Đã merge PR #302 vào `deploy/dev`: Tự động mở Chat Side Canvas Panel (`ChatCanvasPanel`) khi AI Agent tạo/chạy workflow hoặc file/code: bổ sung cơ chế auto-open nhận diện `workflow_create`, `workflow_run`, `workflow_get`, `workflow_update`, `write_file`, `run_code`, `preview_web_artifact` và các tệp đính kèm (`ArtifactItem`) mà user không cần nhấp chuột thủ công; tự động kết nối `workflowRunId` hiển thị trạng thái thực thi thời gian thực; cơ chế `lastAutoOpenedKeyRef` ngăn lặp lại khi stream token.
 
 > 2026-09-06: Mở rộng Chat Side Canvas Panel cho Workflow DAG: nhúng trực tiếp WorkflowCanvas tương tác (ReactFlow) vào Side Canvas cạnh Chat khi AI Agent tự tạo (workflow_create) hoặc chạy workflow (workflow_run); hỗ trợ 3 tabs DAG Graph, Cấu hình JSON có line numbers, Nhật ký chạy (Run Logs); thanh điều hướng nhanh mở Workflow Editor; tự động tính toán tọa độ phân tầng Topological DAG Layout (calculateDagLayout); tích hợp Workflow Canvas banner trên ToolCallCard và trigger mở Canvas từ các khối mã JSON workflow.
 
