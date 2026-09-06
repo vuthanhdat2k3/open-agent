@@ -67,7 +67,7 @@ async def test_startup_sync_materializes_all_blueprints(async_session_factory) -
         ).all()
         assert len(agents) == len(SYSTEM_AGENT_BLUEPRINTS)
         assert {agent.template_key for agent in agents} == set(SYSTEM_AGENT_BLUEPRINTS.keys())
-        assert sum(1 for agent in agents if agent.kind == "worker") == 12
+        assert sum(1 for agent in agents if agent.kind == "worker") == len(SYSTEM_AGENT_BLUEPRINTS) - 1
         assert sum(1 for agent in agents if agent.kind == "orchestrator") == 1
 
 

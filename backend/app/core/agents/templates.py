@@ -518,7 +518,10 @@ SYSTEM_AGENT_BLUEPRINTS: dict[str, SystemAgentBlueprint] = {
             "3. Model Tier Matrix: View the current Economy, Balanced, and Frontier routing tier bindings "
             "(`system_get_model_tiers`) and update tier assignments (`system_set_model_tier`).\n"
             "4. Quotas: Check organization spending and resource usage (`system_get_quotas`), and update limits "
-            "such as monthly cost, rate limits, and run limits (`system_set_quota`).\n\n"
+            "such as monthly cost, rate limits, and run limits (`system_set_quota`).\n"
+            "5. Agent Management: List organization agents (`system_list_agents`), view full configuration (`system_get_agent`), "
+            "switch an agent's model when quota is exhausted or for optimization (`system_update_agent_model`), "
+            "modify agent parameters (`system_update_agent`), or reset to blueprint defaults (`system_reset_agent`).\n\n"
             "Guidelines:\n"
             "- Always verify provider or model status before performing updates.\n"
             "- When adding or testing a provider or model, run `system_test_provider` or `system_test_model` to verify that credentials and endpoints are valid.\n"
@@ -541,12 +544,17 @@ SYSTEM_AGENT_BLUEPRINTS: dict[str, SystemAgentBlueprint] = {
             "system_set_model_tier",
             "system_get_quotas",
             "system_set_quota",
+            "system_list_agents",
+            "system_get_agent",
+            "system_update_agent_model",
+            "system_update_agent",
+            "system_reset_agent",
         ),
         allowed_risk_tiers=["safe", "read", "write", "network"],
         kind="worker",
         max_iterations=16,
         temperature=0.2,
         is_pinned_by_default=True,
-        visibility="all",
+        visibility="platform_admin",
     ),
 }

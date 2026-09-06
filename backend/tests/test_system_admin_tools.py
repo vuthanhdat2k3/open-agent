@@ -124,7 +124,7 @@ def test_system_admin_agent_blueprint():
     bp = SYSTEM_AGENT_BLUEPRINTS["system-admin"]
     assert bp.name == "System Administrator"
     assert bp.kind == "worker"
-    assert bp.visibility == "all"
+    assert bp.visibility == "platform_admin"
     assert bp.is_pinned_by_default is True
     assert set(bp.allowed_risk_tiers) == {"safe", "read", "write", "network"}
 
@@ -144,6 +144,11 @@ def test_system_admin_agent_blueprint():
         "system_set_model_tier",
         "system_get_quotas",
         "system_set_quota",
+        "system_list_agents",
+        "system_get_agent",
+        "system_update_agent_model",
+        "system_update_agent",
+        "system_reset_agent",
         "get_current_time",
         "save_memory",
         "call_memory",
@@ -300,3 +305,78 @@ async def test_test_connection_and_chat_tools(test_env):
         res = json.loads(await tool.run({"model_id": "gpt-4o-mini"}, ctx))
         assert res["test_result"]["ok"] is True
         assert res["test_result"]["sample_response"] == "OK"
+
+
+@pytest.mark.asyncio
+async def test_agent_management_tools(test_env):
+    db = test_env["db"]
+    ctx = ToolContext(db=db, org_id=test_env["org_id"], user_id=test_env["user_id"])
+
+    # 1. system_list_agents
+    tool = BUILTIN_TOOLS["system_list_agents"]
+    res = json.loads(await tool.run({}, ctx))
+    assert res["count"] > 0
+    agent_names = [a["name"] for a in res["agents"]]
+    assert "System Administrator" in agent_names
+
+    # Test filtering by kind
+    res_workers = json.loads(await tool.run({"kind": "worker"}, ctx))
+    for a in res_workers["agents"]:
+        assert a["kind"] == "worker"
+
+    # Test filtering by search
+    res_search = json.loads(await tool.run({"search": "System Administrator"}, ctx))
+    assert res_search["count"] >= 1
+    assert any("System Administrator" in a["name"] for a in res_search["agents"])
+
+    # 2. system_get_agent
+    tool_get = BUILTIN_TOOLS["system_get_agent"]
+    res_get = json.loads(await tool_get.run({"agent_id": "system-admin"}, ctx))
+    assert res_get["name"] == "System Administrator"
+    assert "tools" in res_get
+    assert "system_prompt" in res_get
+    assert "system_update_agent_model" in res_get["tools"]
+
+    # Test agent not found
+    res_not_found = json.loads(await tool_get.run({"agent_id": "non-existent-agent-id"}, ctx))
+    assert "error" in res_not_found
+
+    # 3. system_update_agent_model - switch to gpt-4o by slug
+    tool_model = BUILTIN_TOOLS["system_update_agent_model"]
+    res_update_model = json.loads(await tool_model.run({
+        "agent_id": "system-admin",
+        "model": "gpt-4o",
+    }, ctx))
+    assert "Successfully updated model" in res_update_model["message"]
+    assert res_update_model["new_model_name"] == "gpt-4o"
+    assert res_update_model["new_model_id"] == test_env["model_4o_id"]
+
+    # Verify via system_get_agent
+    res_verify = json.loads(await tool_get.run({"agent_id": "system-admin"}, ctx))
+    assert res_verify["model_id"] == test_env["model_4o_id"]
+    assert res_verify["model_name"] == "gpt-4o"
+
+    # Test update with non-existent model
+    res_bad_model = json.loads(await tool_model.run({
+        "agent_id": "system-admin",
+        "model": "claude-9-super-future",
+    }, ctx))
+    assert "error" in res_bad_model
+
+    # 4. system_update_agent - update parameters
+    tool_update = BUILTIN_TOOLS["system_update_agent"]
+    res_update = json.loads(await tool_update.run({
+        "agent_id": "system-admin",
+        "temperature": 0.5,
+        "max_iterations": 20,
+        "description": "Custom updated description for testing",
+    }, ctx))
+    assert "Successfully updated agent" in res_update["message"]
+    assert res_update["temperature"] == 0.5
+    assert res_update["max_iterations"] == 20
+
+    # 5. system_reset_agent - reset to template defaults
+    tool_reset = BUILTIN_TOOLS["system_reset_agent"]
+    res_reset = json.loads(await tool_reset.run({"agent_id": "system-admin"}, ctx))
+    assert "Successfully reset agent" in res_reset["message"]
+    assert res_reset["is_customized"] is False

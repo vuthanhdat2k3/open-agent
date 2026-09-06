@@ -10,7 +10,9 @@ from app.core.tools.registry import register
 from app.core.tools.risk_tier import RiskTier
 from app.core.tools.types import ToolContext, ToolSpec
 from app.models.model import Model
+from app.models.agent import Agent
 from app.models.provider import Provider
+from app.services.agent_service import AgentService
 from app.services.model_service import ModelService
 from app.services.provider_service import ProviderService
 from app.services.quota_service import QuotaService
@@ -40,6 +42,34 @@ async def _resolve_model(db, org_id: str, model_id_or_name: str) -> Model | None
     )
     res = await db.execute(stmt)
     return res.scalars().first()
+
+
+async def _resolve_agent(agent_service: AgentService, org_id: str, agent_id_or_name: str) -> Agent | None:
+    """Find an agent by exact ID, template_key, exact name, or substring name within the organization."""
+    # 1. Direct fetch by ID or template_key
+    agent = await agent_service.get(org_id, agent_id_or_name)
+    if agent is not None:
+        return agent
+
+    # 2. Search all agents
+    all_agents = await agent_service.list(org_id)
+    target = agent_id_or_name.strip().lower()
+
+    # Exact key / name matches
+    for a in all_agents:
+        if a.id.lower() == target:
+            return a
+        if getattr(a, "template_key", None) and a.template_key.lower() == target:
+            return a
+        if a.name.lower() == target:
+            return a
+
+    # Substring match on name
+    for a in all_agents:
+        if target in a.name.lower():
+            return a
+
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -874,5 +904,323 @@ register(
         },
         risk_tier=RiskTier.write,
         run=_system_set_quota,
+    )
+)
+
+
+
+# ---------------------------------------------------------------------------
+# 16. system_list_agents
+# ---------------------------------------------------------------------------
+async def _system_list_agents(args: dict[str, Any], ctx: ToolContext) -> str:
+    if not ctx.org_id:
+        return json.dumps({"error": "No active organization in context."})
+
+    agent_service = AgentService(ctx.db)
+    agents = await agent_service.list(ctx.org_id)
+
+    # Preload model lookup map
+    models_res = await ctx.db.execute(select(Model).where(Model.org_id == ctx.org_id))
+    model_map = {m.id: m.name for m in models_res.scalars().all()}
+
+    kind_filter = args.get("kind")
+    search_filter = args.get("search", "").strip().lower()
+    visibility_filter = args.get("visibility")
+
+    items = []
+    for a in agents:
+        if kind_filter and a.kind != kind_filter:
+            continue
+        if visibility_filter and getattr(a, "visibility", "all") != visibility_filter:
+            continue
+        if search_filter:
+            name_match = search_filter in a.name.lower()
+            desc_match = search_filter in (a.description or "").lower()
+            key_match = search_filter in (getattr(a, "template_key", None) or "").lower()
+            if not (name_match or desc_match or key_match):
+                continue
+
+        model_name = model_map.get(a.model_id) if a.model_id else None
+        items.append({
+            "id": a.id,
+            "name": a.name,
+            "description": a.description or "",
+            "kind": a.kind,
+            "visibility": getattr(a, "visibility", "all"),
+            "model_id": a.model_id,
+            "model_name": model_name,
+            "temperature": a.temperature,
+            "max_iterations": a.max_iterations,
+            "tools_count": len(a.tools or []),
+            "template_key": getattr(a, "template_key", None),
+            "is_customized": getattr(a, "is_customized", False),
+            "is_pinned": getattr(a, "is_pinned", False),
+        })
+
+    return json.dumps({
+        "count": len(items),
+        "agents": items,
+    }, ensure_ascii=False, indent=2)
+
+
+register(
+    ToolSpec(
+        name="system_list_agents",
+        description="List all AI agents in the organization with their current model, kind, visibility, and configuration.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "kind": {"type": "string", "enum": ["worker", "orchestrator"], "description": "Filter by kind"},
+                "search": {"type": "string", "description": "Keyword search across agent name, description, or template key"},
+                "visibility": {"type": "string", "description": "Filter by visibility (all, platform_admin, operator)"},
+            },
+            "additionalProperties": False,
+        },
+        risk_tier=RiskTier.read,
+        run=_system_list_agents,
+    )
+)
+
+
+# ---------------------------------------------------------------------------
+# 17. system_get_agent
+# ---------------------------------------------------------------------------
+async def _system_get_agent(args: dict[str, Any], ctx: ToolContext) -> str:
+    if not ctx.org_id:
+        return json.dumps({"error": "No active organization in context."})
+
+    agent_service = AgentService(ctx.db)
+    agent = await _resolve_agent(agent_service, ctx.org_id, args["agent_id"])
+    if not agent:
+        return json.dumps({"error": f"Agent '{args['agent_id']}' not found."})
+
+    model_name = None
+    if agent.model_id:
+        m = await ctx.db.scalar(select(Model).where(Model.id == agent.model_id))
+        if m:
+            model_name = m.name
+
+    return json.dumps({
+        "id": agent.id,
+        "name": agent.name,
+        "description": agent.description or "",
+        "system_prompt": agent.system_prompt,
+        "kind": agent.kind,
+        "visibility": getattr(agent, "visibility", "all"),
+        "model_id": agent.model_id,
+        "model_name": model_name,
+        "temperature": agent.temperature,
+        "max_iterations": agent.max_iterations,
+        "enable_thinking": getattr(agent, "enable_thinking", None),
+        "tools": list(agent.tools or []),
+        "allowed_risk_tiers": list(agent.allowed_risk_tiers or []),
+        "template_key": getattr(agent, "template_key", None),
+        "is_customized": getattr(agent, "is_customized", False),
+        "active_release_id": getattr(agent, "active_release_id", None),
+        "latest_release_number": getattr(agent, "latest_release_number", 0),
+    }, ensure_ascii=False, indent=2)
+
+
+register(
+    ToolSpec(
+        name="system_get_agent",
+        description="Retrieve full configuration details of an agent including system prompt, tools list, model, and release status.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "agent_id": {"type": "string", "description": "Agent ID, template key, or name"},
+            },
+            "required": ["agent_id"],
+            "additionalProperties": False,
+        },
+        risk_tier=RiskTier.read,
+        run=_system_get_agent,
+    )
+)
+
+
+# ---------------------------------------------------------------------------
+# 18. system_update_agent_model
+# ---------------------------------------------------------------------------
+async def _system_update_agent_model(args: dict[str, Any], ctx: ToolContext) -> str:
+    if not ctx.org_id:
+        return json.dumps({"error": "No active organization in context."})
+
+    agent_service = AgentService(ctx.db)
+    agent = await _resolve_agent(agent_service, ctx.org_id, args["agent_id"])
+    if not agent:
+        return json.dumps({"error": f"Agent '{args['agent_id']}' not found."})
+
+    target_model = await _resolve_model(ctx.db, ctx.org_id, args["model"])
+    if not target_model:
+        return json.dumps({"error": f"Model '{args['model']}' not found in organization."})
+    if not target_model.active:
+        return json.dumps({"error": f"Model '{target_model.name}' is inactive/disabled. Please enable it first or select an active model."})
+
+    old_model_id = agent.model_id
+    old_model_name = None
+    if old_model_id:
+        m = await ctx.db.scalar(select(Model).where(Model.id == old_model_id))
+        old_model_name = m.name if m else old_model_id
+
+    try:
+        updated = await agent_service.update(
+            ctx.org_id,
+            agent.id,
+            {"model_id": target_model.id},
+            user_id=ctx.user_id,
+        )
+        return json.dumps({
+            "message": f"Successfully updated model for agent '{updated.name}'.",
+            "agent_id": updated.id,
+            "agent_name": updated.name,
+            "previous_model": old_model_name,
+            "new_model_id": target_model.id,
+            "new_model_name": target_model.name,
+            "active_release_version": getattr(updated, "latest_release_number", 1),
+        }, ensure_ascii=False, indent=2)
+    except Exception as exc:
+        return json.dumps({"error": f"Failed to update agent model: {exc}"})
+
+
+register(
+    ToolSpec(
+        name="system_update_agent_model",
+        description="Switch the AI model used by an agent to an active model (e.g. when quota is exhausted). Supports model ID or model name slug.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "agent_id": {"type": "string", "description": "Agent ID, template key, or name to update"},
+                "model": {"type": "string", "description": "Target model ID or name slug (e.g. gpt-4o-mini, qwen3.8-max, gemini-2.0-flash)"},
+            },
+            "required": ["agent_id", "model"],
+            "additionalProperties": False,
+        },
+        risk_tier=RiskTier.write,
+        run=_system_update_agent_model,
+    )
+)
+
+
+# ---------------------------------------------------------------------------
+# 19. system_update_agent
+# ---------------------------------------------------------------------------
+async def _system_update_agent(args: dict[str, Any], ctx: ToolContext) -> str:
+    if not ctx.org_id:
+        return json.dumps({"error": "No active organization in context."})
+
+    agent_service = AgentService(ctx.db)
+    agent = await _resolve_agent(agent_service, ctx.org_id, args["agent_id"])
+    if not agent:
+        return json.dumps({"error": f"Agent '{args['agent_id']}' not found."})
+
+    update_data: dict[str, Any] = {}
+    for field in ("name", "description", "system_prompt", "temperature", "max_iterations", "kind", "enable_thinking"):
+        if field in args and args[field] is not None:
+            update_data[field] = args[field]
+
+    if "tools" in args and args["tools"] is not None:
+        update_data["tools"] = args["tools"]
+
+    if "allowed_risk_tiers" in args and args["allowed_risk_tiers"] is not None:
+        update_data["allowed_risk_tiers"] = args["allowed_risk_tiers"]
+
+    if "model" in args and args["model"] is not None:
+        target_model = await _resolve_model(ctx.db, ctx.org_id, args["model"])
+        if not target_model:
+            return json.dumps({"error": f"Model '{args['model']}' not found in organization."})
+        if not target_model.active:
+            return json.dumps({"error": f"Model '{target_model.name}' is inactive/disabled."})
+        update_data["model_id"] = target_model.id
+
+    if not update_data:
+        return json.dumps({"message": "No fields provided to update."})
+
+    try:
+        updated = await agent_service.update(
+            ctx.org_id,
+            agent.id,
+            update_data,
+            user_id=ctx.user_id,
+        )
+        return json.dumps({
+            "message": f"Successfully updated agent '{updated.name}'.",
+            "agent_id": updated.id,
+            "agent_name": updated.name,
+            "kind": updated.kind,
+            "model_id": updated.model_id,
+            "temperature": updated.temperature,
+            "max_iterations": updated.max_iterations,
+            "tools_count": len(updated.tools or []),
+            "active_release_version": getattr(updated, "latest_release_number", 1),
+        }, ensure_ascii=False, indent=2)
+    except Exception as exc:
+        return json.dumps({"error": f"Failed to update agent: {exc}"})
+
+
+register(
+    ToolSpec(
+        name="system_update_agent",
+        description="Update agent parameters such as system prompt, temperature, max iterations, kind, or tools.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "agent_id": {"type": "string", "description": "Agent ID, template key, or name to update"},
+                "name": {"type": "string", "description": "New display name"},
+                "description": {"type": "string", "description": "New description"},
+                "system_prompt": {"type": "string", "description": "New system prompt instructions"},
+                "model": {"type": "string", "description": "Model ID or name slug"},
+                "temperature": {"type": "number", "description": "Sampling temperature (0.0 to 2.0)"},
+                "max_iterations": {"type": "integer", "description": "Maximum agent reasoning iterations"},
+                "kind": {"type": "string", "enum": ["worker", "orchestrator"], "description": "Agent kind"},
+                "tools": {"type": "array", "items": {"type": "string"}, "description": "List of tool names"},
+            },
+            "required": ["agent_id"],
+            "additionalProperties": False,
+        },
+        risk_tier=RiskTier.write,
+        run=_system_update_agent,
+    )
+)
+
+
+# ---------------------------------------------------------------------------
+# 20. system_reset_agent
+# ---------------------------------------------------------------------------
+async def _system_reset_agent(args: dict[str, Any], ctx: ToolContext) -> str:
+    if not ctx.org_id:
+        return json.dumps({"error": "No active organization in context."})
+
+    agent_service = AgentService(ctx.db)
+    agent = await _resolve_agent(agent_service, ctx.org_id, args["agent_id"])
+    if not agent:
+        return json.dumps({"error": f"Agent '{args['agent_id']}' not found."})
+
+    try:
+        reset_agent = await agent_service.reset_to_template(ctx.org_id, agent.id)
+        return json.dumps({
+            "message": f"Successfully reset agent '{reset_agent.name}' to system blueprint defaults.",
+            "agent_id": reset_agent.id,
+            "template_key": getattr(reset_agent, "template_key", None),
+            "is_customized": False,
+        }, ensure_ascii=False, indent=2)
+    except Exception as exc:
+        return json.dumps({"error": f"Failed to reset agent: {exc}"})
+
+
+register(
+    ToolSpec(
+        name="system_reset_agent",
+        description="Reset a customized system blueprint agent back to its default blueprint configuration.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "agent_id": {"type": "string", "description": "Agent ID, template key, or name to reset"},
+            },
+            "required": ["agent_id"],
+            "additionalProperties": False,
+        },
+        risk_tier=RiskTier.write,
+        run=_system_reset_agent,
     )
 )
