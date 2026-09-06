@@ -47,10 +47,10 @@ from app.models.oidc_login_transaction import OidcLoginTransaction
 from app.models.ops_finding import OpsFinding
 from app.models.org_agent_settings import OrgAgentSettings
 from app.models.org_model_tier_config import OrgModelTierConfig
-from app.models.platform_config import PlatformConfig
 from app.models.organization import Organization
 from app.models.organization_quota import OrganizationQuota
 from app.models.outbox import OutboxEvent, ProcessedEvent
+from app.models.platform_config import PlatformConfig
 from app.models.provider import Provider
 from app.models.refresh_token import RefreshToken
 from app.models.role import Role
