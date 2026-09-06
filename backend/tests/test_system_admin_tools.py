@@ -124,7 +124,7 @@ def test_system_admin_agent_blueprint():
     bp = SYSTEM_AGENT_BLUEPRINTS["system-admin"]
     assert bp.name == "System Administrator"
     assert bp.kind == "worker"
-    assert bp.visibility == "platform_admin"
+    assert bp.visibility == "all"
     assert bp.is_pinned_by_default is True
     assert set(bp.allowed_risk_tiers) == {"safe", "read", "write", "network"}
 
