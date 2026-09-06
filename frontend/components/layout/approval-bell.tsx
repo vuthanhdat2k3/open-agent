@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Bell, ChevronRight, Clock3, ShieldAlert } from "lucide-react";
+import { ShieldCheck, ChevronRight, Clock3, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 import { useApprovals, useEmailIntelligenceNavigationSummary } from "@/hooks";
 import type { ApprovalRequest } from "@/types";
@@ -71,7 +71,7 @@ export function ApprovalBell() {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="icon" className="relative h-10 w-10 rounded-xl" aria-label={tx(`${pending} phê duyệt đang chờ${urgent ? `, ${urgent} khẩn cấp` : ""}`, `${pending} pending approvals${urgent ? `, ${urgent} urgent` : ""}`)}>
-          <Bell className="h-4 w-4" aria-hidden="true" />
+          <ShieldCheck className="h-4 w-4" aria-hidden="true" />
           {pending > 0 && <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-foreground px-1 text-[10px] font-bold text-background">{pending > 99 ? "99+" : pending}</span>}
           {urgent > 0 && <span className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full bg-destructive ring-2 ring-background" aria-hidden="true" />}
         </Button>

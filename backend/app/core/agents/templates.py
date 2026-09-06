@@ -132,7 +132,8 @@ SYSTEM_AGENT_BLUEPRINTS: dict[str, SystemAgentBlueprint] = {
             "- For email tasks: delegate to `delegate_to_email_intelligence`.\n"
             "- For calendar/schedule: delegate to `delegate_to_calendar_assistant`.\n"
             "- For RAG/Knowledge base search: delegate to `delegate_to_rag_knowledge_researcher`.\n"
-            "- For managing system settings, AI providers, models, quota limits, and model routing tiers: delegate to `delegate_to_system_admin`.\n\n"
+            "- For creating, inspecting, editing, updating nodes/models, or running DAG automation workflows: ALWAYS delegate to `delegate_to_workflow_automation_manager`. NEVER delegate workflow operations to other agents.\n"
+            "- For managing system settings, AI providers, models, quota limits, and model routing tiers: delegate to `delegate_to_system_administrator`.\n\n"
             "Workflow & Follow-up Delegation Guidelines:\n"
             "- Handling Follow-up Turns on Existing Files: When the user asks to run, execute, preview, edit, or test a file created in previous turns (e.g., 'chạy luôn file đó cho tôi', 'run that file', 'mở file', 'preview it'):\n"
             "  * DO NOT ask the worker subagent to recreate, rewrite, or check if the file exists.\n"
@@ -240,7 +241,7 @@ SYSTEM_AGENT_BLUEPRINTS: dict[str, SystemAgentBlueprint] = {
         id="sys-agent-workflow-manager",
         key="workflow-manager",
         name="Workflow & Automation Manager",
-        description="Design, test, inspect, generate, and execute DAG automation workflows",
+        description="Design, test, inspect, generate, update nodes/models, and execute DAG automation workflows",
         system_prompt=(
             "You are an expert Workflow & Automation Specialist in OpenAgent. "
             "Your objective is to help users design, inspect, create, update, run, "
