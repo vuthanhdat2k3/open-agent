@@ -23,7 +23,7 @@ import rehypeKatex from "rehype-katex";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import React from "react";
-import { PanelRightOpen } from "lucide-react";
+import { PanelRightOpen, Network } from "lucide-react";
 import { streamSSE } from "@/lib/api";
 import { inlineCodeHttpUrl, normalizeLatex } from "@/lib/chat/markdown-text";
 import { useTranslation } from "@/lib/i18n";
@@ -82,6 +82,19 @@ function CodeBlockWithAction({ className, children, ...props }: any) {
 
   const codeText = React.useMemo(() => extractCodeText(children), [children]);
 
+  const workflowJsonData = React.useMemo(() => {
+    if (lang !== "json") return null;
+    if (!codeText.includes('"nodes"') || !codeText.includes('"edges"')) return null;
+    try {
+      const parsed = JSON.parse(codeText);
+      if (Array.isArray(parsed.nodes) && Array.isArray(parsed.edges)) {
+        return parsed;
+      }
+    } catch {}
+    return null;
+  }, [lang, codeText]);
+  const isWorkflowJson = Boolean(workflowJsonData);
+
   React.useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [logs, exitCode, errorMessage]);
@@ -116,7 +129,7 @@ function CodeBlockWithAction({ className, children, ...props }: any) {
     );
   }
 
-  if (!isHtml && !isRunnable) {
+  if (!isHtml && !isRunnable && !isWorkflowJson) {
     return (
       <code className={`${className ?? ""} text-[10.5px] leading-relaxed`} {...props}>
         {children}
@@ -168,22 +181,46 @@ function CodeBlockWithAction({ className, children, ...props }: any) {
       <div className="flex items-center justify-between px-3 py-1 bg-muted/60 border border-border/40 border-b-0 rounded-t-lg text-[10px] font-mono text-muted-foreground">
         <span className="uppercase font-semibold tracking-wider text-[9px] text-foreground/70">{lang || "code"}</span>
         <div className="flex items-center gap-1.5">
-          <button
-            type="button"
-            onClick={() =>
-              openCanvas({
-                title: `${lang || "code"} snippet`,
-                code: codeText,
-                language: lang,
-                initialTab: isHtml ? "preview" : "code",
-              })
-            }
-            title={tx("Mở trong Canvas cạnh chat", "Open in side Canvas panel")}
-            className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-muted/80 text-muted-foreground hover:text-foreground hover:bg-muted border border-border/40 transition-colors cursor-pointer"
-          >
-            <PanelRightOpen className="h-3 w-3 text-primary" aria-hidden="true" />
-            <span>Canvas</span>
-          </button>
+          {isWorkflowJson ? (
+            <button
+              type="button"
+              onClick={() => {
+                const parsed = workflowJsonData;
+                openCanvas({
+                  type: "workflow",
+                  title: parsed?.name || tx("Quy trình DAG", "Workflow DAG"),
+                  workflowId: parsed?.id,
+                  workflowName: parsed?.name,
+                  workflowDescription: parsed?.description,
+                  workflowGraph: parsed ? { nodes: parsed.nodes, edges: parsed.edges } : undefined,
+                  code: codeText,
+                  language: "json",
+                });
+              }}
+              title={tx("Mở sơ đồ DAG trong Canvas", "Open DAG graph in Canvas")}
+              className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-[10px] font-medium bg-indigo-500/15 text-indigo-400 hover:bg-indigo-500/25 border border-indigo-500/30 transition-colors cursor-pointer"
+            >
+              <Network className="h-3 w-3 text-indigo-400 animate-pulse" aria-hidden="true" />
+              <span>{tx("Workflow Canvas", "Workflow Canvas")}</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() =>
+                openCanvas({
+                  title: `${lang || "code"} snippet`,
+                  code: codeText,
+                  language: lang,
+                  initialTab: isHtml ? "preview" : "code",
+                })
+              }
+              title={tx("Mở trong Canvas cạnh chat", "Open in side Canvas panel")}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-muted/80 text-muted-foreground hover:text-foreground hover:bg-muted border border-border/40 transition-colors cursor-pointer"
+            >
+              <PanelRightOpen className="h-3 w-3 text-primary" aria-hidden="true" />
+              <span>Canvas</span>
+            </button>
+          )}
           {isHtml && (
             <>
               <button

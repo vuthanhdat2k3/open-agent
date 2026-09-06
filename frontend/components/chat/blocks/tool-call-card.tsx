@@ -16,6 +16,8 @@ import {
   Loader2,
   Globe,
   ExternalLink,
+  Network,
+  Workflow as WorkflowIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +27,7 @@ import { WebArtifactPreviewDialog } from "@/components/shared";
 import type { ToolCallBlock } from "@/lib/chat/projection";
 import { useTranslation } from "@/lib/i18n";
 import { useUrlSearchParam } from "@/hooks";
+import { useCanvasStore } from "@/stores";
 
 const LazyMarkdownRenderer = React.lazy(() =>
   import("@/components/markdown-renderer").then((m) => ({ default: m.MarkdownRenderer })),
@@ -70,7 +73,10 @@ interface ToolCallCardProps {
 }
 
 export function ToolCallCard({ block, compact = false }: ToolCallCardProps) {
-    const { locale, tx } = useTranslation();
+  const { locale, tx } = useTranslation();
+  const { openCanvas } = useCanvasStore();
+
+  const isWorkflowTool = block.name.startsWith("workflow_");
   const isCodeTool = block.name === "run_code" || block.name === "write_file";
   const isSubagent = block.name === "call_agent" || block.name.startsWith("delegate_to_") || Boolean(block.subagent);
   const isSvg =
@@ -89,6 +95,53 @@ export function ToolCallCard({ block, compact = false }: ToolCallCardProps) {
   } catch {
     // Keep argsText
   }
+
+  // Extract workflow metadata if this is a workflow tool call
+  const workflowData = React.useMemo(() => {
+    if (!isWorkflowTool) return null;
+    const res: {
+      id?: string;
+      name?: string;
+      description?: string;
+      graph?: any;
+      runId?: string;
+      status?: string;
+      nodeCount?: number;
+      edgeCount?: number;
+    } = {};
+
+    try {
+      const args = JSON.parse(block.argsText);
+      if (args.name) res.name = args.name;
+      if (args.description) res.description = args.description;
+      if (args.graph) res.graph = args.graph;
+      if (args.workflow_id) res.id = args.workflow_id;
+      if (args.run_id) res.runId = args.run_id;
+    } catch {}
+
+    if (block.result) {
+      try {
+        const resultObj = JSON.parse(block.result);
+        if (resultObj.id) res.id = resultObj.id;
+        if (resultObj.workflow_id) res.id = resultObj.workflow_id;
+        if (resultObj.name) res.name = resultObj.name;
+        if (resultObj.workflow_name) res.name = resultObj.workflow_name;
+        if (resultObj.description) res.description = resultObj.description;
+        if (resultObj.graph) res.graph = resultObj.graph;
+        if (resultObj.run_id) res.runId = resultObj.run_id;
+        if (resultObj.status) res.status = resultObj.status;
+        if (resultObj.node_count != null) res.nodeCount = resultObj.node_count;
+        if (resultObj.edge_count != null) res.edgeCount = resultObj.edge_count;
+      } catch {}
+    }
+
+    if (res.graph?.nodes) {
+      res.nodeCount = res.graph.nodes.length;
+      res.edgeCount = res.graph.edges?.length || 0;
+    }
+
+    return res.id || res.name || res.graph || res.runId ? res : null;
+  }, [isWorkflowTool, block.argsText, block.result]);
 
   const [previewParam, setPreviewParam] = useUrlSearchParam("preview");
   const [showWebPreview, setShowWebPreview] = React.useState(false);
@@ -125,7 +178,9 @@ export function ToolCallCard({ block, compact = false }: ToolCallCardProps) {
       {/* Header */}
       <div className="flex items-center justify-between border-b border-border/60 bg-muted/30 px-3 py-1.5 text-[10px] font-semibold text-foreground">
         <div className="flex items-center gap-1.5 min-w-0">
-          {isSubagent ? (
+          {isWorkflowTool ? (
+            <Network className="h-3.5 w-3.5 shrink-0 text-indigo-500 animate-pulse" />
+          ) : isSubagent ? (
             <Bot className="h-3.5 w-3.5 shrink-0 text-indigo-400 animate-pulse" />
           ) : isCodeTool ? (
             <Terminal className="h-3.5 w-3.5 shrink-0 text-primary" />
@@ -133,7 +188,7 @@ export function ToolCallCard({ block, compact = false }: ToolCallCardProps) {
             <Wrench className="h-3.5 w-3.5 shrink-0 text-warning" />
           )}
           <span className="uppercase tracking-wider font-bold shrink-0">
-            {isSubagent ? tx("Gọi subagent", "Subagent Call") : isCodeTool ? tx("Thực thi mã", "Code Execution") : tx("Gọi tool", "Tool Call")}
+            {isWorkflowTool ? tx("Quy trình DAG", "Workflow DAG") : isSubagent ? tx("Gọi subagent", "Subagent Call") : isCodeTool ? tx("Thực thi mã", "Code Execution") : tx("Gọi tool", "Tool Call")}
           </span>
           <Badge variant="outline" className="font-mono text-[9px] bg-muted text-foreground border-border shrink-0 capitalize">
             {subagentDisplayName || block.name}
@@ -328,6 +383,75 @@ export function ToolCallCard({ block, compact = false }: ToolCallCardProps) {
           <pre className="block w-full min-h-[40px] max-h-60 overflow-y-auto overflow-x-auto p-3 font-mono text-[10.5px] text-foreground leading-relaxed scrollbar-thin whitespace-pre-wrap break-all bg-muted/20">
             {block.result}
           </pre>
+        </div>
+      )}
+
+      {/* Workflow Canvas Interactive Banner */}
+      {isWorkflowTool && workflowData && (
+        <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 px-3 bg-gradient-to-r from-indigo-500/15 via-purple-500/10 to-transparent border-t border-border/60">
+          <div className="flex items-center gap-2 text-xs font-medium text-foreground min-w-0">
+            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-indigo-500/15 text-indigo-500">
+              <Network className="h-3.5 w-3.5 animate-pulse" />
+            </div>
+            <div className="flex flex-col min-w-0">
+              <span className="font-semibold text-xs truncate max-w-[220px]">
+                {workflowData.name || tx("Quy trình DAG", "Workflow DAG")}
+              </span>
+              <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-mono">
+                {workflowData.nodeCount != null && (
+                  <span>{workflowData.nodeCount} {tx("bước", "nodes")}</span>
+                )}
+                {workflowData.edgeCount != null && (
+                  <span>• {workflowData.edgeCount} {tx("kết nối", "edges")}</span>
+                )}
+                {workflowData.runId && (
+                  <span className="text-indigo-400 font-semibold">• Run #{workflowData.runId.slice(0, 8)}</span>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5">
+            {workflowData.id && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-6 text-[11px] px-2 gap-1 text-muted-foreground hover:text-foreground border-border/60"
+                asChild
+              >
+                <a
+                  href={`/workflows?edit=${encodeURIComponent(workflowData.id)}${workflowData.runId ? `&run=${encodeURIComponent(workflowData.runId)}` : ""}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <ExternalLink className="h-3 w-3" />
+                  <span>Editor</span>
+                </a>
+              </Button>
+            )}
+            <Button
+              size="sm"
+              variant="default"
+              className="h-6 text-[11px] px-2.5 gap-1 bg-indigo-600 hover:bg-indigo-700 text-white font-medium shadow-sm"
+              onClick={() => {
+                openCanvas({
+                  type: "workflow",
+                  title: workflowData.name || tx("Quy trình DAG", "Workflow DAG"),
+                  workflowId: workflowData.id,
+                  workflowName: workflowData.name,
+                  workflowDescription: workflowData.description,
+                  workflowRunId: workflowData.runId,
+                  workflowGraph: workflowData.graph,
+                  code: workflowData.graph
+                    ? JSON.stringify(workflowData.graph, null, 2)
+                    : block.result || block.argsText,
+                  language: "json",
+                });
+              }}
+            >
+              <WorkflowIcon className="h-3 w-3" />
+              <span>{tx("Mở Canvas", "Open Canvas")}</span>
+            </Button>
+          </div>
         </div>
       )}
 

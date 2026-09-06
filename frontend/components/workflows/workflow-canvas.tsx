@@ -68,13 +68,13 @@ function toFlowNodes(
   onDelete: (id: string) => void,
   onInspect: (id: string) => void,
 ): Node<WorkflowNodeData>[] {
-  return nodes.map((n) => ({
+  return nodes.map((n: any) => ({
     id: n.id,
-    type: n.kind,
+    type: n.kind || n.type || "agent",
     position: n.position || { x: 0, y: 0 },
     data: {
-      label: n.label,
-      kind: n.kind,
+      label: n.label || n.name || n.id,
+      kind: n.kind || n.type || "agent",
       status: toFlowStatus(nodeStatus[n.id]),
       onDelete,
       onInspect,
@@ -88,14 +88,18 @@ function toFlowEdges(
   onDelete: (edgeId: string) => void,
   onEditCondition?: (edgeId: string) => void,
 ): Edge<WorkflowEdgeData>[] {
-  return edges.map((e, i) => ({
-    id: `${e.from_}->${e.to}#${i}`,
-    source: e.from_,
-    target: e.to,
-    type: "custom",
-    label: e.condition || undefined,
-    data: { sourceStatus: toFlowStatus(nodeStatus[e.from_]), onDelete, onEditCondition },
-  }));
+  return edges.map((e: any, i) => {
+    const fromId = e.from_ || e.from || e.source;
+    const toId = e.to || e.target;
+    return {
+      id: `${fromId}->${toId}#${i}`,
+      source: fromId,
+      target: toId,
+      type: "custom",
+      label: e.condition || undefined,
+      data: { sourceStatus: toFlowStatus(nodeStatus[fromId]), onDelete, onEditCondition },
+    };
+  });
 }
 
 function edgeIdToGraphEdge(edgeId: string): { from_: string; to: string } {
@@ -279,7 +283,7 @@ function WorkflowCanvasInner({
     <div
       ref={wrapperRef}
       className={cn(
-        "relative overflow-hidden rounded-2xl border border-border/80 bg-card/40 shadow-inner-edge",
+        "relative h-full w-full min-h-[300px] overflow-hidden rounded-2xl border border-border/80 bg-card/40 shadow-inner-edge",
         className,
       )}
       onDragOver={onDragOver}

@@ -133,12 +133,19 @@ export const useChatStore = create<ChatState>()(
 );
 
 export interface CanvasItem {
+  type?: "code" | "file" | "workflow";
   title: string;
   code?: string;
   contentUrl?: string;
   downloadUrl?: string;
   language?: string;
-  initialTab?: "code" | "preview";
+  initialTab?: "code" | "preview" | "workflow" | "console";
+  // Metadata for Workflow items
+  workflowId?: string;
+  workflowName?: string;
+  workflowDescription?: string;
+  workflowRunId?: string;
+  workflowGraph?: { nodes: GraphNode[]; edges: GraphEdge[] };
 }
 
 interface CanvasState {
