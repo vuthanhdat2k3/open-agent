@@ -41,6 +41,9 @@ class ApprovalOut(BaseModel):
     reason: str = ""
     created_at: datetime
     expires_at: datetime | None = None
+    title: str | None = None
+    instructions: str = ""
+    approver_user_ids: list[str] | None = None
     risk_level: str = "MEDIUM"
     approval_mode: str = "EXPLICIT"
     capabilities: dict[str, Any] = {}
@@ -81,7 +84,11 @@ async def list_approvals(
 
     result = []
     for approval in approvals:
-        owner = is_admin or approval.requested_by == current_user.id
+        owner = (
+            current_user.id in approval.approver_user_ids
+            if approval.approver_user_ids
+            else (is_admin or approval.requested_by == current_user.id)
+        )
         action = approval.tool_name or approval.node_id or approval.run_type
         risk_level = "HIGH" if approval.case_id or approval.tool_name else "MEDIUM"
         requester_email = user_map[approval.requested_by].email if approval.requested_by and approval.requested_by in user_map else None
@@ -106,6 +113,9 @@ async def list_approvals(
                 "case_id": approval.case_id,
                 "action": action,
                 "expires_at": approval.expires_at,
+                "title": approval.title,
+                "instructions": approval.instructions,
+                "approver_user_ids": approval.approver_user_ids,
                 "risk_level": risk_level,
                 "approval_mode": "EXPLICIT",
                 "capabilities": {
@@ -144,10 +154,16 @@ async def decide_approval(
     if requested_approval is None:
         raise HTTPException(status_code=404, detail="approval request not found")
 
+    if requested_approval.approver_user_ids:
+        # A workflow `approval` node named specific approvers: that allow-list
+        # is the whole point of the field, so it overrides the generic
+        # requested-by/admin rule below rather than adding to it.
+        if current_user.id not in requested_approval.approver_user_ids:
+            raise HTTPException(status_code=403, detail="You are not an authorized approver for this request")
     # Users may decide approvals they requested or that were triggered on their behalf
     # (for example, their own chat tool executions / email drafts);
     # admins with approvals:manage retain organization-wide decision authority.
-    if not authz.allows("approvals:manage"):
+    elif not authz.allows("approvals:manage"):
         owner_res = await db.execute(
             select(ApprovalRequest).where(
                 ApprovalRequest.id == approval_id,

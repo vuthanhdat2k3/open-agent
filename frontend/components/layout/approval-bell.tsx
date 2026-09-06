@@ -19,6 +19,7 @@ import {
 import { useTranslation } from "@/lib/i18n";
 
 function approvalTitle(item: ApprovalRequest, locale: string, tx: (vi: string, en: string) => string) {
+  if (item.title) return item.title;
   const args = item.args_snapshot || {};
   if (item.tool_name === "calendar_create_event" || args.start || args.attendees) return tx("Tạo sự kiện", "Create calendar event");
   if (item.tool_name === "drive_create_file") return tx("Lưu tài liệu", "Save research briefing");

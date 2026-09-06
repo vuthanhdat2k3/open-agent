@@ -16,6 +16,7 @@ from app.api.v1.routes import (
     models,
     notifications,
     orgs,
+    platform_config,
     providers,
     quotas,
     sandbox,
@@ -45,6 +46,7 @@ protected_router.include_router(trusted_rules.router)
 protected_router.include_router(users.router)
 protected_router.include_router(mcp.router)
 protected_router.include_router(notifications.router)
+protected_router.include_router(platform_config.router)
 protected_router.include_router(workflows.router)
 protected_router.include_router(workflow_catalog.router)
 protected_router.include_router(workflow_installations.router)

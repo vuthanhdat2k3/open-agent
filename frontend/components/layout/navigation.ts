@@ -37,6 +37,7 @@ export const navGroups: NavGroup[] = [
     items: [
       { href: "/", label: "Overview", i18nKey: "nav.dashboard", icon: LayoutDashboard, roles: ["platform_admin"], platformOnly: true },
       { href: "/organizations", label: "Organizations", i18nKey: "nav.organizations", icon: Users, roles: ["platform_admin"], platformOnly: true },
+      { href: "/admin/platform-config", label: "Platform Config", icon: SlidersHorizontal, roles: ["platform_admin"], permission: "platform:config:read", platformOnly: true },
     ],
   },
 

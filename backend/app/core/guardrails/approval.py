@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import select
@@ -25,6 +26,10 @@ async def request_approval(
     requested_by: str | None = None,
     owning_task_id: str | None = None,
     idempotency_key: str | None = None,
+    title: str | None = None,
+    instructions: str = "",
+    approver_user_ids: list[str] | None = None,
+    expires_at: datetime | None = None,
 ) -> ApprovalRequest:
     if idempotency_key:
         existing = await db.scalar(
@@ -48,11 +53,38 @@ async def request_approval(
         owning_task_id=owning_task_id,
         payload_hash=tool_args_hash(args_snapshot or {}) if tool_name else None,
         idempotency_key=idempotency_key,
+        title=title,
+        instructions=instructions,
+        approver_user_ids=approver_user_ids or None,
+        expires_at=expires_at,
     )
     db.add(approval)
     await db.commit()
     await db.refresh(approval)
     return approval
+
+
+async def sweep_expired_approvals(db: AsyncSession) -> list[ApprovalRequest]:
+    """Auto-decline pending approvals past their `expires_at` (workflow
+    `approval` node's `timeout_minutes`). Returns the rows just expired so
+    the caller can resume anything waiting on them (e.g. a paused workflow
+    run)."""
+    now = utc_now()
+    res = await db.execute(
+        select(ApprovalRequest).where(
+            ApprovalRequest.status == "pending",
+            ApprovalRequest.expires_at.is_not(None),
+            ApprovalRequest.expires_at < now,
+        )
+    )
+    expired = list(res.scalars().all())
+    for approval in expired:
+        approval.status = "rejected"
+        approval.reason = "auto-declined: timeout"
+        approval.decided_at = now
+    if expired:
+        await db.commit()
+    return expired
 
 
 async def resolve_approval(

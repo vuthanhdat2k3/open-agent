@@ -11,10 +11,10 @@ from app.core.authz.scope import scope_to_owner
 from app.core.quota.dependencies import agent_run_admission, enforce_resource_quota
 from app.core.tools.registry import BUILTIN_TOOLS
 from app.core.workflow.engine import create_workflow_run, run_workflow
+from app.core.workflow.jobs import run_workflow_detached
 from app.core.workflow.node_definitions import NODE_DEFINITIONS
 from app.core.workflow.queue import enqueue_workflow_run
 from app.db.base import utc_now
-from app.db.session import SessionLocal
 from app.dependencies import get_current_org_id, get_current_user, get_db, require_permission
 from app.models.model import Model
 from app.models.user import User
@@ -96,6 +96,18 @@ async def list_node_options(
             select(User).join(User.memberships).where(User.memberships.any(org_id=org_id))
         )
         return [{"name": u.email, "value": u.id} for u in rows.scalars().all()]
+    if type == "channels":
+        from app.models.channel import ChannelConnection
+
+        rows = await db.execute(
+            select(ChannelConnection).where(
+                ChannelConnection.org_id == org_id, ChannelConnection.status == "active"
+            )
+        )
+        return [
+            {"name": f"{c.provider} (@{c.bot_username or 'unknown'})", "value": c.id}
+            for c in rows.scalars().all()
+        ]
     if type == "categories":
         return []
     return []
@@ -116,30 +128,6 @@ async def list_tool_options():
             }
         )
     return tools
-
-
-async def _run_workflow_detached(workflow_id: str, org_id: str, workflow_run_id: str) -> None:
-    async with SessionLocal() as db:
-        wf = await WorkflowService(db).get(org_id, workflow_id)
-        run = await db.get(WorkflowRun, workflow_run_id)
-        if wf is None or run is None or run.org_id != org_id:
-            return
-        try:
-            await run_workflow(
-                wf,
-                str((run.input or {}).get("text", "")),
-                db,
-                stream=False,
-                workflow_run_id=workflow_run_id,
-                force_inline=True,
-                user_id=run.triggered_by_user_id,
-                timezone_name=(run.input or {}).get("timezone"),
-            )
-        except Exception as exc:  # noqa: BLE001
-            run.status = "failed"
-            run.error = str(exc)
-            run.finished_at = utc_now()
-            await db.commit()
 
 
 @router.get("", response_model=list[WorkflowOut], dependencies=[Depends(require_permission("workflows:read"))])
@@ -223,6 +211,53 @@ async def generate_workflow(
         return await WorkflowService(db).generate_graph(org_id, body.prompt, body.model_id)
     except ValueError as e:
         raise HTTPException(400, str(e))
+
+
+@router.get("/runs", dependencies=[Depends(require_permission("workflows:read"))])
+async def list_workflow_runs(
+    workflow_id: str | None = None,
+    status: str | None = None,
+    limit: int = 30,
+    offset: int = 0,
+    org_id: str = Depends(get_current_org_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Reports feed: every workflow run's final output, newest first.
+
+    Registered ahead of GET /{id} — a path-param route registered earlier
+    would otherwise swallow "/runs" as id="runs" before this ever matches.
+    """
+    limit = max(1, min(limit, 100))
+    stmt = select(WorkflowRun).where(WorkflowRun.org_id == org_id)
+    if workflow_id:
+        stmt = stmt.where(WorkflowRun.workflow_id == workflow_id)
+    if status:
+        stmt = stmt.where(WorkflowRun.status == status)
+    stmt = scope_to_owner(stmt, db, WorkflowRun.triggered_by_user_id)
+    stmt = stmt.order_by(WorkflowRun.started_at.desc()).offset(offset).limit(limit)
+    res = await db.execute(stmt)
+    runs = list(res.scalars().all())
+
+    workflow_ids = {r.workflow_id for r in runs}
+    workflow_names: dict[str, str] = {}
+    if workflow_ids:
+        wf_res = await db.execute(select(Workflow.id, Workflow.name).where(Workflow.id.in_(workflow_ids)))
+        workflow_names = dict(wf_res.all())
+
+    return [
+        {
+            "id": r.id,
+            "workflow_id": r.workflow_id,
+            "workflow_name": workflow_names.get(r.workflow_id, "(deleted workflow)"),
+            "status": r.status,
+            "output": r.output,
+            "error": r.error,
+            "started_at": r.started_at,
+            "finished_at": r.finished_at,
+            "trigger_type": r.trigger_type,
+        }
+        for r in runs
+    ]
 
 
 @router.get("/{id}", response_model=WorkflowOut, dependencies=[Depends(require_permission("workflows:read"))])
@@ -399,7 +434,7 @@ async def run_workflow_endpoint(
         await enqueue_workflow_run(run.id)
         run_status = "queued"
     else:
-        background_tasks.add_task(_run_workflow_detached, wf.id, org_id, run.id)
+        background_tasks.add_task(run_workflow_detached, run.id)
         run_status = "running"
 
     async def gen():

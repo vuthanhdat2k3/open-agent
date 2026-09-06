@@ -23,14 +23,20 @@ from app.core.security import allowed_origins
 from app.core.workflow.sync import sync_system_workflow_templates
 from app.db.session import SessionLocal, engine, get_db, init_db
 from app.schemas.common import HealthResponse
+from app.services.platform_config_service import PlatformConfigService
 
 logger = structlog.get_logger(__name__)
+
+
+async def _apply_platform_config_overrides(db: AsyncSession) -> int:
+    return await PlatformConfigService(db).apply_overrides_to_environ()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
     async with SessionLocal() as db:
+        await _apply_platform_config_overrides(db)
         await sync_system_providers_all_orgs(db)
         await sync_system_agents_all_orgs(db)
         await sync_system_workflow_templates(db)

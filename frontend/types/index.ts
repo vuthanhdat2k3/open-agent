@@ -237,6 +237,21 @@ export interface QuotaUsage {
   concurrent_run_limit: number;
 }
 
+export interface PlatformConfigEntry {
+  key: string;
+  label: string;
+  group: string;
+  type: "string" | "secret" | "boolean" | "number" | "options";
+  description: string;
+  options: string[] | null;
+  is_overridden: boolean;
+  // Present when type === "secret" (the raw value is never sent to the client).
+  is_set?: boolean;
+  masked_value?: string;
+  // Present when type !== "secret".
+  value?: string | number | boolean | null;
+}
+
 export interface AgentToolInfo {
   name: string;
   description: string;
@@ -327,7 +342,7 @@ export interface NodeField {
   description?: string;
   placeholder?: string;
   options?: Array<{ name: string; value: string; description?: string }>;
-  load_options_from?: "tools" | "models" | "agents" | "workflows" | "connections" | "users" | "categories";
+  load_options_from?: "tools" | "models" | "agents" | "workflows" | "connections" | "users" | "categories" | "channels";
   display?: { show?: Record<string, any[]>; hide?: Record<string, any[]> };
   type_options?: Record<string, any>;
   advanced?: boolean;
@@ -527,6 +542,9 @@ export interface ApprovalRequest {
   approval_mode?: string;
   capabilities?: Record<string, boolean | Record<string, string>>;
   server_time?: string | null;
+  title?: string | null;
+  instructions?: string;
+  approver_user_ids?: string[] | null;
 }
 
 export interface TaskTreeNode {
@@ -601,6 +619,18 @@ export interface WorkflowRunDetail {
     timing_ms?: number;
     data?: Record<string, unknown>;
   }>;
+}
+
+export interface WorkflowRunSummary {
+  id: string;
+  workflow_id: string;
+  workflow_name: string;
+  status: string;
+  output: Record<string, unknown>;
+  error: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  trigger_type: string | null;
 }
 
 export interface UserMembership {
