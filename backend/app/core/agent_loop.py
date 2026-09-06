@@ -1051,7 +1051,7 @@ async def _agent_stream(
     # this feature shipped).
     messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
     effective_session_id = session_id or parent_session_id
-    if effective_session_id:
+    if effective_session_id and depth == 0:
         events = await slog.load_events(db, effective_session_id)
         if events:
             messages.extend(derive_messages(events, repair_crash_tail=not bool(approval_resume_id)))
@@ -1109,7 +1109,7 @@ async def _agent_stream(
         elapsed_ms=round((time.monotonic() - phase_started_at) * 1000, 1),
     )
 
-    if session_id and not approval_resume_id and root_task is not None:
+    if session_id and not approval_resume_id and root_task is not None and depth == 0:
         defer_user_message(
             root_task.id,
             session_id=session_id,
@@ -2500,7 +2500,7 @@ async def _agent_stream(
                     "artifacts": artifacts_list,
                 },
             }
-            if session_id:
+            if session_id and depth == 0:
                 # Persist only the final assistant text. Tool calls/results
                 # are separate events and are projected into their own
                 # provider messages.
@@ -2526,7 +2526,7 @@ async def _agent_stream(
                 await rec.flush_progress(phase="done")
                 await rec.close()
             yield done_ev
-            if session_id:
+            if session_id and depth == 0:
                 await _persist(
                     db,
                     session_id,
