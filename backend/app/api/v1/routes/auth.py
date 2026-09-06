@@ -71,16 +71,37 @@ def _digest(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
+def _zitadel_forward_headers(**extra: str) -> dict[str, str]:
+    """Headers for a back-channel call routed via the internal Docker network.
+
+    These calls hit zitadel-api directly, bypassing the reverse proxy that
+    would normally set X-Forwarded-Proto. Without it, ZITADEL falls back to
+    the scheme of that internal (plain HTTP) hop and issues tokens whose
+    ``iss`` claim is ``http://...`` even when OPENAGENT_ZITADEL_ISSUER_URL
+    (and the audience validating against it) is ``https://`` - producing an
+    issuer mismatch that fails ID token validation.
+    """
+    parsed = urlsplit(get_settings().zitadel_issuer_url)
+    scheme = parsed.scheme or "http"
+    port = parsed.port or (443 if scheme == "https" else 80)
+    return {
+        "Host": parsed.netloc,
+        "X-Forwarded-Proto": scheme,
+        "X-Forwarded-Host": parsed.hostname or parsed.netloc,
+        "X-Forwarded-Port": str(port),
+        **extra,
+    }
+
+
 async def _oidc_discovery() -> dict[str, str]:
     issuer = get_settings().zitadel_issuer_url.rstrip("/")
     if not issuer:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "ZITADEL is not configured")
     discovery_base = (get_settings().zitadel_internal_url or issuer).rstrip("/")
-    public_host = issuer.removeprefix("http://").removeprefix("https://").split("/", 1)[0]
     async with httpx.AsyncClient(timeout=10.0) as client:
         response = await client.get(
             f"{discovery_base}/.well-known/openid-configuration",
-            headers={"Host": public_host},
+            headers=_zitadel_forward_headers(),
         )
     response.raise_for_status()
     return response.json()
@@ -159,11 +180,10 @@ async def oidc_callback(
     transaction.consumed_at = now
     discovery = await _oidc_discovery()
     internal_base = get_settings().zitadel_internal_url or get_settings().zitadel_issuer_url
-    public_host = get_settings().zitadel_issuer_url.removeprefix("http://").removeprefix("https://").split("/", 1)[0]
     async with httpx.AsyncClient(timeout=15.0) as client:
         token_response = await client.post(
             _internal_oidc_url(discovery["token_endpoint"], internal_base),
-            headers={"Host": public_host},
+            headers=_zitadel_forward_headers(),
             data={
                 "grant_type": "authorization_code",
                 "code": code,
@@ -185,7 +205,7 @@ async def oidc_callback(
         async with httpx.AsyncClient(timeout=10.0) as client:
             jwks_response = await client.get(
                 _internal_oidc_url(discovery["jwks_uri"], internal_base),
-                headers={"Host": public_host},
+                headers=_zitadel_forward_headers(),
             )
         jwks_response.raise_for_status()
         jwks = jwt.PyJWKSet.from_json(jwks_response.text)
@@ -215,7 +235,7 @@ async def oidc_callback(
         async with httpx.AsyncClient(timeout=10.0) as client:
             userinfo_response = await client.get(
                 _internal_oidc_url(discovery["userinfo_endpoint"], internal_base),
-                headers={"Host": public_host, "Authorization": f"Bearer {token['access_token']}"},
+                headers=_zitadel_forward_headers(Authorization=f"Bearer {token['access_token']}"),
             )
         if userinfo_response.is_success:
             claim_email = str(userinfo_response.json().get("email", "")).strip().lower()
@@ -326,7 +346,7 @@ def _set_refresh_cookie(response: Response, raw_refresh_token: str) -> None:
         value=raw_refresh_token,
         httponly=True,
         secure=settings.cookie_secure,
-        samesite="lax",
+        samesite=settings.cookie_samesite,
         max_age=settings.jwt_refresh_ttl_days * 24 * 60 * 60,
     )
 
@@ -717,7 +737,7 @@ async def switch_org(
         value=membership.org_id,
         httponly=True,
         secure=settings.cookie_secure,
-        samesite="lax",
+        samesite=settings.cookie_samesite,
         max_age=settings.jwt_refresh_ttl_days * 24 * 60 * 60,
     )
     return TokenResponse(access_token=access_token)

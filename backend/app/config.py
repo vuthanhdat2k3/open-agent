@@ -327,6 +327,17 @@ class Settings(BaseSettings):
     def platform_admin_email_set(self) -> set[str]:
         return {item.strip().lower() for item in self.platform_admin_emails.split(",") if item.strip()}
 
+    @property
+    def cookie_samesite(self) -> str:
+        """"none" lets the browser send our cookies on cross-site requests -
+        required when the frontend and API are on genuinely different
+        registrable domains (e.g. independent Cloudflare Tunnel hostnames),
+        where "lax" silently drops them on every fetch/XHR. Only safe with
+        Secure, so this only activates once cookie_secure is true; local dev
+        (same site, different port) keeps "lax".
+        """
+        return "none" if self.cookie_secure else "lax"
+
 
 @lru_cache
 def get_settings() -> Settings:
