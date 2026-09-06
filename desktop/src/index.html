@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+    />
+    <link rel="stylesheet" href="styles.css" />
+    <title>OpenAgent</title>
+    <script type="module" src="/main.js" defer></script>
+  </head>
+
+  <body>
+    <main class="card">
+      <img src="/assets/openagent-logo.png" class="logo" alt="OpenAgent" />
+      <h1>Kết nối tới server</h1>
+      <p class="subtitle">Nhập địa chỉ OpenAgent server (self-hosted hoặc production) để bắt đầu.</p>
+
+      <form id="connect-form" novalidate>
+        <label for="server-url-input">Server URL</label>
+        <input
+          id="server-url-input"
+          type="text"
+          inputmode="url"
+          autocomplete="url"
+          placeholder="https://app.your-domain.com"
+          aria-describedby="error-msg"
+        />
+        <p id="error-msg" class="error" role="alert"></p>
+        <button type="submit" id="connect-btn">
+          <span class="btn-label">Kết nối</span>
+        </button>
+      </form>
+    </main>
+  </body>
+</html>

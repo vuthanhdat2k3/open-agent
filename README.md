@@ -80,6 +80,7 @@ open-agent/
 ├── docs/                 # ARCHITECTURE, database-schema, api-reference, modules/*, agentos-v2/*
 ├── backend/              # FastAPI: app/{api,core,db,evals,mcp,models,repositories,schemas,services}
 ├── frontend/              # Next.js: app/, components/, lib/, stores/, hooks/, types/
+├── desktop/              # Tauri v2 desktop shell (thin client, points at a running server)
 ├── rag-service/           # Standalone RAG microservice (MCP server + REST admin API)
 ├── customer-intelligence-mcp/ # Stateless real email/calendar/Drive/research MCP connector
 ├── observability/         # Grafana dashboards + Prometheus config
