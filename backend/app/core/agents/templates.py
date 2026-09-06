@@ -133,7 +133,8 @@ SYSTEM_AGENT_BLUEPRINTS: dict[str, SystemAgentBlueprint] = {
             "- For calendar/schedule: delegate to `delegate_to_calendar_assistant`.\n"
             "- For RAG/Knowledge base search: delegate to `delegate_to_rag_knowledge_researcher`.\n"
             "- For creating, inspecting, editing, updating nodes/models, or running DAG automation workflows: ALWAYS delegate to `delegate_to_workflow_automation_manager`. NEVER delegate workflow operations to other agents.\n"
-            "- For managing system settings, AI providers, models, quota limits, and model routing tiers: delegate to `delegate_to_system_administrator`.\n\n"
+            "- For managing system settings, AI providers, models, quota limits, and model routing tiers: delegate to `delegate_to_system_administrator`.\n"
+            "- For controlling the app UI the user currently has open (navigating to a page, applying a filter, opening a panel, filling or submitting a form, or reading what is on their current screen): ALWAYS delegate to `delegate_to_app_operator`.\n\n"
             "Workflow & Follow-up Delegation Guidelines:\n"
             "- Handling Follow-up Turns on Existing Files: When the user asks to run, execute, preview, edit, or test a file created in previous turns (e.g., 'chạy luôn file đó cho tôi', 'run that file', 'mở file', 'preview it'):\n"
             "  * DO NOT ask the worker subagent to recreate, rewrite, or check if the file exists.\n"
@@ -555,6 +556,56 @@ SYSTEM_AGENT_BLUEPRINTS: dict[str, SystemAgentBlueprint] = {
         kind="worker",
         max_iterations=16,
         temperature=0.2,
+        is_pinned_by_default=True,
+        visibility="all",
+    ),
+    # --- 15. App Operator (Companion) ---
+    # Owns the ui_* Client Tool Bridge domain: every action that must run in
+    # the user's own browser (navigate, filter, open a panel, fill/submit a
+    # form) instead of on the server. See
+    # docs/companion-operator-agent-v2-spec.md for the full protocol.
+    "app-operator": SystemAgentBlueprint(
+        id="sys-agent-app-operator",
+        key="app-operator",
+        name="App Operator",
+        description="Điều khiển trực tiếp giao diện người dùng đang mở: điều hướng, lọc, mở panel, điền/gửi form",
+        system_prompt=(
+            "You are the App Operator agent. You control the OpenAgent web app that "
+            "the user currently has open in their browser — you are not a general "
+            "chatbot, you take real actions on their screen.\n\n"
+            "Core Responsibilities:\n"
+            "1. Always call `ui_read_screen` first when the user refers to 'this', "
+            "'the one I have open', 'here', or otherwise depends on their current "
+            "screen — never guess what they are looking at.\n"
+            "2. Move around the app with `ui_navigate`, narrow what is shown with "
+            "`ui_set_filter`, and open detail views with `ui_open_panel`.\n"
+            "3. `ui_fill_form` only fills a form for the user to review — it never "
+            "submits anything. Use `ui_submit_form` for a real submission; it "
+            "requires the user's explicit approval before it runs, so always tell "
+            "the user you are about to ask for their approval when you call it.\n"
+            "4. If a requested route, filter, panel, or form is not available on "
+            "the current page, say so plainly instead of calling the tool "
+            "speculatively — the bridge will reject anything outside what the "
+            "current page has registered.\n\n"
+            "Guidelines:\n"
+            "- Be concise. You are a companion at the corner of the screen, not a "
+            "full chat surface — confirm what you did in one or two sentences.\n"
+            "- Never fabricate a result if a ui_* tool call errors or times out; "
+            "report the failure plainly and suggest the user try again."
+        ),
+        recommended_tier="fast",
+        tools=_with_common(
+            "ui_read_screen",
+            "ui_navigate",
+            "ui_set_filter",
+            "ui_open_panel",
+            "ui_fill_form",
+            "ui_submit_form",
+        ),
+        allowed_risk_tiers=["safe", "read", "write"],
+        kind="worker",
+        max_iterations=12,
+        temperature=0.3,
         is_pinned_by_default=True,
         visibility="all",
     ),
