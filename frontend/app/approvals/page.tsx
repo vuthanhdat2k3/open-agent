@@ -58,7 +58,11 @@ function eventDetails(approval: ApprovalRequest, locale: string, tx: (vi: string
     start: args.start ? String(args.start) : null,
     end: args.end ? String(args.end) : null,
     attendees: Array.isArray(args.attendees) ? args.attendees.map(String) : [],
-    source: args.description ? String(args.description) : (tx("OpenAgent đã tạo yêu cầu này từ quy trình làm việc hoặc email của bạn.", "OpenAgent generated this request from your workflow or email.")),
+    source: approval.instructions
+      ? approval.instructions
+      : args.description
+        ? String(args.description)
+        : (tx("OpenAgent đã tạo yêu cầu này từ quy trình làm việc hoặc email của bạn.", "OpenAgent generated this request from your workflow or email.")),
   };
 }
 

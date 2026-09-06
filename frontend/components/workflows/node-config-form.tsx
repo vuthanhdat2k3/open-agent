@@ -349,12 +349,14 @@ export function NodeConfigForm({ node, onUpdate }: NodeConfigFormProps) {
   const [workflowOptions, setWorkflowOptions] = React.useState<Array<{ name: string; value: string }>>([]);
   const [connectionOptions, setConnectionOptions] = React.useState<Array<{ name: string; value: string }>>([]);
   const [userOptions, setUserOptions] = React.useState<Array<{ name: string; value: string }>>([]);
+  const [channelOptions, setChannelOptions] = React.useState<Array<{ name: string; value: string }>>([]);
 
   const models = useNodeOptions("models");
   const agents = useNodeOptions("agents");
   const workflows = useNodeOptions("workflows");
   const connections = useNodeOptions("connections");
   const users = useNodeOptions("users");
+  const channels = useNodeOptions("channels");
 
   React.useEffect(() => {
     setModelOptions(models.data ?? []);
@@ -371,6 +373,9 @@ export function NodeConfigForm({ node, onUpdate }: NodeConfigFormProps) {
   React.useEffect(() => {
     setUserOptions(users.data ?? []);
   }, [users.data]);
+  React.useEffect(() => {
+    setChannelOptions(channels.data ?? []);
+  }, [channels.data]);
 
   React.useEffect(() => {
     setShowAdvanced(false);
@@ -443,6 +448,8 @@ export function NodeConfigForm({ node, onUpdate }: NodeConfigFormProps) {
         return connectionOptions;
       case "users":
         return userOptions;
+      case "channels":
+        return channelOptions;
       default:
         return field.options ?? [];
     }

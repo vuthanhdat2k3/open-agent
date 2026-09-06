@@ -94,6 +94,31 @@ async def _ddg_search(query: str, max_results: int) -> list[dict[str, Any]]:
     return results
 
 
+TINYFISH_SEARCH_URL = "https://api.search.tinyfish.ai"
+
+
+async def _tinyfish_search(api_key: str, query: str, max_results: int) -> list[dict[str, Any]]:
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.get(
+            TINYFISH_SEARCH_URL,
+            params={"query": query},
+            headers={"X-API-Key": api_key},
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    results = []
+    for item in data.get("results", [])[:max_results]:
+        results.append(
+            {
+                "title": item.get("title", ""),
+                "url": item.get("url", ""),
+                "excerpt": item.get("snippet", ""),
+                "published_date": None,
+            }
+        )
+    return results
+
+
 async def _web_search(args: dict[str, Any], ctx: ToolContext) -> str:
     query = args.get("query", "")
     if not query:
@@ -106,23 +131,46 @@ async def _web_search(args: dict[str, Any], ctx: ToolContext) -> str:
     if ctx.emit:
         await ctx.emit({"stage": "searching", "query": query, "line": f"Searching web for: '{query}'...\n"})
 
-    searxng_url = get_settings().searxng_url
+    settings = get_settings()
+    searxng_url = settings.searxng_url
     if searxng_url:
         try:
             results = await _searxng_search(searxng_url, query, max_results)
-            if ctx.emit:
-                await ctx.emit({"stage": "found", "count": len(results), "line": f"Found {len(results)} results via SearXNG\n"})
-            return _format_results(results)
+            if results:
+                if ctx.emit:
+                    await ctx.emit({"stage": "found", "count": len(results), "line": f"Found {len(results)} results via SearXNG\n"})
+                return _format_results(results)
+            # SearXNG answers with HTTP 200 and an empty result list when
+            # every engine it aggregates is rate-limited/CAPTCHA'd — that's
+            # not an exception, so it silently skipped the fallback below
+            # in exactly the case that needs it most. Fall through instead
+            # of returning "No search results found" for a query that a
+            # differently-fingerprinted direct request might still answer.
         except Exception:  # noqa: BLE001
             pass  # fall through to the DDG fallback below
 
+    ddg_error: Exception | None = None
     try:
         results = await _ddg_search(query, max_results)
-        if ctx.emit:
-            await ctx.emit({"stage": "found", "count": len(results), "line": f"Found {len(results)} results via DuckDuckGo\n"})
-        return _format_results(results)
+        if results:
+            if ctx.emit:
+                await ctx.emit({"stage": "found", "count": len(results), "line": f"Found {len(results)} results via DuckDuckGo\n"})
+            return _format_results(results)
     except Exception as e:  # noqa: BLE001
-        return f"error searching the web: {e}"
+        ddg_error = e
+
+    if settings.tinyfish_api_key:
+        try:
+            results = await _tinyfish_search(settings.tinyfish_api_key, query, max_results)
+            if ctx.emit:
+                await ctx.emit({"stage": "found", "count": len(results), "line": f"Found {len(results)} results via TinyFish\n"})
+            return _format_results(results)
+        except Exception:  # noqa: BLE001
+            pass  # every tier exhausted; fall through to the summary below
+
+    if ddg_error is not None:
+        return f"error searching the web: {ddg_error}"
+    return "No search results found"
 
 
 register(

@@ -109,7 +109,7 @@ class Settings(BaseSettings):
     langfuse_base_url: str = ""
     langfuse_flush_timeout_seconds: float = 5.0
     log_format: Literal["json", "console"] = "json"
-    budget_max_tool_calls: int = 40
+    budget_max_tool_calls: int = 20
     budget_max_cost_usd: float = 2.0
     budget_max_wall_seconds: float = 300.0
     budget_max_repeated_call: int = 3
@@ -196,6 +196,10 @@ class Settings(BaseSettings):
     # Self-hosted SearXNG metasearch instance backing the web_search tool.
     # Empty string disables it and falls back to the DuckDuckGo HTML scrape.
     searxng_url: str = "http://searxng:8080"
+    # Optional 3rd-tier web_search fallback (after SearXNG and the DuckDuckGo
+    # scrape both come up empty/erroring) — TinyFish's keyless-tier Search API
+    # (docs.tinyfish.ai/search-api). Empty string keeps this tier inert.
+    tinyfish_api_key: str = ""
     # Self-hosted crawl4ai instance (JS-rendering crawler) backing web_fetch.
     # Empty string disables it and falls back to the plain httpx GET.
     crawler_url: str = "http://crawler:11235"

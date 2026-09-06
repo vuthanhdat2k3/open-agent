@@ -34,6 +34,7 @@ LoadOptionsSource = Literal[
     "connections",
     "users",
     "categories",
+    "channels",
 ]
 
 
@@ -274,6 +275,14 @@ def _build_definitions() -> dict[str, NodeDefinition]:
                     description="Optional ISO date (YYYY-MM-DD) to stop the schedule.",
                     advanced=True,
                 ),
+                NodeField(
+                    name="emit_today_date",
+                    label="Include today's date in output",
+                    type="boolean",
+                    default=False,
+                    description="Add today's date (in the schedule's timezone) to this node's output data as `today_date`.",
+                    advanced=True,
+                ),
             ]
         ),
     )
@@ -491,6 +500,13 @@ def _build_definitions() -> dict[str, NodeDefinition]:
                     default="You are a helpful workflow agent.",
                 ),
                 NodeField(
+                    name="instructions",
+                    label="Task instructions for this step",
+                    type="textarea",
+                    default="",
+                    description="What this node should do with the upstream data, layered onto it as the task message — kept separate from the agent's own system_prompt/persona above.",
+                ),
+                NodeField(
                     name="model_id",
                     label="Model",
                     type="options",
@@ -651,7 +667,7 @@ def _build_definitions() -> dict[str, NodeDefinition]:
         label="Output",
         description="Collects the final result of the workflow.",
         icon="log-out",
-        default_parameters={"include": "all_inputs", "format": "text"},
+        default_parameters={"include": "all_inputs", "format": "text", "save_as_file": False},
         fields=_with_common(
             [
                 NodeField(
@@ -682,6 +698,38 @@ def _build_definitions() -> dict[str, NodeDefinition]:
                         {"name": "Text", "value": "text"},
                         {"name": "JSON", "value": "json"},
                     ],
+                ),
+                NodeField(
+                    name="save_as_file",
+                    label="Save as workspace file",
+                    type="boolean",
+                    default=False,
+                    description="Write the final output to a markdown file in the org's Sandbox workspace on every run.",
+                ),
+                NodeField(
+                    name="file_name",
+                    label="File name",
+                    type="string",
+                    default="",
+                    placeholder="workflow-outputs/my-brief.md",
+                    description="Relative workspace path. Defaults to workflow-outputs/<workflow id>.md; each run overwrites it.",
+                    display={"show": {"save_as_file": [True]}},
+                ),
+                NodeField(
+                    name="channel_connection_id",
+                    label="Post to channel",
+                    type="options",
+                    default="",
+                    description="Send the final output to a connected Telegram/Discord channel on every run.",
+                    load_options_from="channels",
+                ),
+                NodeField(
+                    name="channel_recipient",
+                    label="Recipient (chat/channel ID)",
+                    type="string",
+                    default="",
+                    placeholder="e.g. -1001234567890",
+                    description="Telegram chat ID or Discord channel ID to deliver to. Only used when 'Post to channel' above is set.",
                 ),
             ]
         ),

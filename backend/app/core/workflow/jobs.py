@@ -42,7 +42,7 @@ async def _notify_run_finished(session, workflow: Workflow, workflow_run: Workfl
         body=(body or "")[:4000],
         source_type="workflow_run",
         source_id=workflow_run.id,
-        link_url="/workflows",
+        link_url="/reports",
     )
 
 

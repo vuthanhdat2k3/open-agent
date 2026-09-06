@@ -64,6 +64,11 @@ PERMISSIONS: dict[Role, set[str]] = {
         # as the only role that can reach the Ops agent at all, must be able
         # to decide the approvals it raises.
         "approvals:read", "approvals:manage",
+        # Deliberately org-independent: platform-wide operational config
+        # (optional integration API keys, observability toggles, sandbox
+        # tuning) — see platform_config.py for the exact allow-listed field
+        # set. Never core auth/DB/session secrets — those stay .env-only.
+        "platform:config:read", "platform:config:manage",
     },
     Role.org_admin: {
         "orgs:read", "orgs:manage", "quota:read", "quota:manage", "quota:usage",
