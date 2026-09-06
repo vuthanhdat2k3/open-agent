@@ -67,70 +67,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
-function calculateDagLayout(nodes: GraphNode[], edges: GraphEdge[]) {
-  if (nodes.length === 0) return {};
-  const adj: Record<string, string[]> = {};
-  const inDegree: Record<string, number> = {};
-  nodes.forEach((n) => {
-    adj[n.id] = [];
-    inDegree[n.id] = 0;
-  });
-  edges.forEach((e) => {
-    if (adj[e.from_]) adj[e.from_].push(e.to);
-    inDegree[e.to] = (inDegree[e.to] || 0) + 1;
-  });
-
-  const roots = nodes.filter((n) => inDegree[n.id] === 0 || ["input", "scheduler", "integration"].includes(n.kind));
-  const queue: { id: string; layer: number }[] = (roots.length > 0 ? roots : [nodes[0]]).map((n) => ({ id: n.id, layer: 0 }));
-
-  const layer: Record<string, number> = {};
-  queue.forEach((q) => (layer[q.id] = 0));
-  const visited = new Set<string>(queue.map((q) => q.id));
-
-  while (queue.length > 0) {
-    const { id: cur, layer: curL } = queue.shift()!;
-    (adj[cur] || []).forEach((nxt) => {
-      const nextL = curL + 1;
-      if (!layer[nxt] || nextL > layer[nxt]) {
-        layer[nxt] = nextL;
-      }
-      if (!visited.has(nxt)) {
-        visited.add(nxt);
-        queue.push({ id: nxt, layer: nextL });
-      }
-    });
-  }
-
-  nodes.forEach((n) => {
-    if (layer[n.id] == null) layer[n.id] = 0;
-  });
-
-  const perLayer: Record<number, GraphNode[]> = {};
-  nodes.forEach((n) => {
-    const l = layer[n.id] ?? 0;
-    (perLayer[l] = perLayer[l] || []).push(n);
-  });
-
-  const nodeWidth = 214;
-  const nodeGapX = 66;
-  const rankGapY = 170;
-  const centerX = 460;
-
-  const pos: Record<string, { x: number; y: number }> = {};
-  Object.entries(perLayer).forEach(([lStr, ns]) => {
-    const l = parseInt(lStr, 10);
-    const rowWidth = ns.length * nodeWidth + (ns.length - 1) * nodeGapX;
-    const startX = Math.max(40, centerX - rowWidth / 2);
-    ns.forEach((n, i) => {
-      pos[n.id] = {
-        x: Math.round(startX + i * (nodeWidth + nodeGapX)),
-        y: Math.round(40 + l * rankGapY),
-      };
-    });
-  });
-
-  return pos;
-}
+import { calculateDagLayout } from "@/lib/workflows/dag-layout";
 
 
 const marketplaceCategories = [

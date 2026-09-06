@@ -96,7 +96,7 @@ Theo đúng mức độ rủi ro — các lệnh sau **luôn cần xác nhận r
 |---|---|---|---|
 | `dev` | `G:\open-agent` | Nhánh tích hợp chính — không code trực tiếp ở đây | — |
 
-> 2026-09-06: Sửa triệt để lỗi workflow lạ hiển thị trên Canvas khi chưa load workflow nào (/workflows): partialize useWorkflowStore chỉ persist nodes/edges khi có activeWorkflowId; reset sạch canvas về trạng thái blank khi truy cập URL sạch /workflows mà activeWorkflowId không thuộc sở hữu của user; dọn dẹp openagent-workflow-editor trong localStorage khi đăng xuất ngăn rò rỉ đồ thị giữa các tài khoản dùng chung trình duyệt.
+> 2026-09-06: Mở rộng Chat Side Canvas Panel cho Workflow DAG: nhúng trực tiếp WorkflowCanvas tương tác (ReactFlow) vào Side Canvas cạnh Chat khi AI Agent tự tạo (workflow_create) hoặc chạy workflow (workflow_run); hỗ trợ 3 tabs DAG Graph, Cấu hình JSON có line numbers, Nhật ký chạy (Run Logs); thanh điều hướng nhanh mở Workflow Editor; tự động tính toán tọa độ phân tầng Topological DAG Layout (calculateDagLayout); tích hợp Workflow Canvas banner trên ToolCallCard và trigger mở Canvas từ các khối mã JSON workflow.
 
 > 2026-09-06: Tái thiết kế toàn diện trang Báo cáo (/reports) và phân cấp Sidebar theo chuẩn Linear/Vercel SaaS: triệt tiêu lớp xám đục bùn, chuẩn hóa bảng màu Light Mode (nền #FAFAFA, thẻ trắng #FFFFFF, border #E5E7EB, chữ #111827/#6B7280/#4B5563, link #6366F1), 4 thẻ thống kê số to 28-32px, status badges pastel (#ECFDF5/#FEF2F2), spacing chuẩn 4/8/12/16/20/24/32px; thu gọn sidebar còn 208px và phân 3 nhóm Workspace/Connect/Data; modal xem chi tiết report sắc nét; đã commit và đồng bộ dev, deploy/dev theo yêu cầu người dùng.
 

@@ -70,4 +70,34 @@ it("manages panel width percentage with clamping between 25 and 75", () => {
     useCanvasStore.getState().toggleFullscreen();
     expect(useCanvasStore.getState().isFullscreen).toBe(false);
   });
+
+  it("opens canvas with workflow item including nodes and edges graph", () => {
+    useCanvasStore.getState().openCanvas({
+      type: "workflow",
+      title: "Data Processing Pipeline",
+      workflowId: "wf-123",
+      workflowName: "Data Processing Pipeline",
+      workflowRunId: "run-456",
+      workflowGraph: {
+        nodes: [
+          { id: "node-1", kind: "input", label: "Input", config: {} },
+          { id: "node-2", kind: "agent", label: "Agent Summary", config: {} },
+        ],
+        edges: [
+          { from_: "node-1", to: "node-2" },
+        ],
+      },
+      code: '{"nodes": [], "edges": []}',
+      language: "json",
+    });
+
+    const state = useCanvasStore.getState();
+    expect(state.isOpen).toBe(true);
+    expect(state.activeItem?.type).toBe("workflow");
+    expect(state.activeItem?.workflowId).toBe("wf-123");
+    expect(state.activeItem?.workflowRunId).toBe("run-456");
+    expect(state.activeItem?.workflowGraph?.nodes).toHaveLength(2);
+    expect(state.activeItem?.workflowGraph?.edges).toHaveLength(1);
+  });
 });
+
