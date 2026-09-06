@@ -33,7 +33,7 @@ from app.db.session import SessionLocal
 from app.dependencies import get_current_org_id, get_current_user, get_db, require_permission
 from app.models.task import Task
 from app.models.user import User
-from app.schemas.chat import ChatRequest
+from app.schemas.chat import ChatRequest, UiActionResult
 from app.services.chat_service import ChatService
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
@@ -297,6 +297,43 @@ async def cancel_chat_run(
         if active_task is not None and active_task is not asyncio.current_task():
             active_task.cancel()
     return {"id": run_id, "status": task.status}
+
+
+@router.post("/runs/{run_id}/ui-result", dependencies=[Depends(require_permission("agents:run"))])
+async def post_ui_action_result(
+    run_id: str,
+    body: UiActionResult,
+    org_id: str = Depends(get_current_org_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Client Tool Bridge: deliver a ui_* tool's browser-side result.
+
+    A ui_* tool (see app/core/tools/ui_actions.py) is blocked in
+    ui_bridge.wait_for_result on ``body.call_id`` when this lands. Ownership
+    is checked against the run, not the call_id itself, so a caller cannot
+    resolve a bridge call belonging to someone else's run.
+    """
+    res = await db.execute(
+        scope_to_owner(
+            select(Task).where(
+                Task.root_run_id == run_id,
+                Task.org_id == org_id,
+                Task.parent_task_id.is_(None),
+            ),
+            db,
+            Task.triggered_by_user_id,
+        )
+    )
+    if res.scalars().first() is None:
+        raise HTTPException(404, "chat run not found")
+
+    from app.core.tools.ui_bridge import post_result
+
+    await post_result(
+        body.call_id,
+        {"ok": body.ok, "result": body.result, "error": body.error},
+    )
+    return {"ok": True}
 
 
 @router.get("/runs/{run_id}/events")

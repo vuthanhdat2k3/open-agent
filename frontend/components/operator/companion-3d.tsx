@@ -8,6 +8,7 @@ import type { ApprovalRequest, CustomerIntelligenceNotification, CustomerIntelli
 import { useApprovals, useDecideApproval, useCustomerIntelligenceNotifications, useCustomerIntelligenceCases, useNotifications } from "@/hooks";
 import { getWorkflowInstallations } from "@/lib/automations/api";
 import { getCompanionConfig, type CompanionConfig, DEFAULT_COMPANION_CONFIG } from "@/lib/operator/companion-config";
+import { useCompanionChat } from "@/hooks/use-companion-chat";
 import { createIdempotencyKey } from "@/lib/email-intelligence/idempotency";
 import { toast } from "sonner";
 import { useTranslation } from "@/lib/i18n";
@@ -45,6 +46,7 @@ export function Companion3D({
     refetchInterval: 30_000,
   });
   const decideApprovalMutation = useDecideApproval();
+  const companionChat = useCompanionChat();
 
   const approvals = approvalsQuery.data || initialApprovals || [];
   const notifications = notificationsQuery.data?.items || initialNotifications || [];
@@ -230,6 +232,7 @@ export function Companion3D({
           ? tx("Đã phê duyệt và điều phối hành động thành công!", "Action approved and dispatched successfully!")
           : tx("Đã từ chối hành động an toàn.", "Action rejected safely."),
       );
+      companionChat.clearApprovalPrompt();
     } catch (err: any) {
       toast.error(err.message || tx("Không thể xử lý phê duyệt.", "Failed to process approval."));
     }
@@ -496,6 +499,11 @@ export function Companion3D({
         onDecideApproval={handleDecideApproval}
         onBatchDecideAllApprovals={handleBatchDecideAll}
         onSendDirection={handleSendDirection}
+        chatMessages={companionChat.messages}
+        chatStreaming={companionChat.streaming}
+        chatPendingApproval={companionChat.pendingApproval}
+        onSendChat={companionChat.send}
+        onStopChat={companionChat.stop}
       />
     </>
   );

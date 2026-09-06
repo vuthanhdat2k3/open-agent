@@ -24,6 +24,15 @@ class ChatRequest(BaseModel):
     execution_policy: ExecutionPolicy | None = None
 
 
+class UiActionResult(BaseModel):
+    """Browser -> backend reply to a ui_action tool call (Client Tool Bridge)."""
+
+    call_id: str
+    ok: bool
+    result: dict[str, Any] | None = None
+    error: str | None = None
+
+
 class ChatMessageOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

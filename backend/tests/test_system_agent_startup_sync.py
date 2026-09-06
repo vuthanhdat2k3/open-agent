@@ -116,8 +116,10 @@ async def test_startup_sync_backfills_missing_workers_for_existing_orchestrator(
             db, org_id, orchestrator.id
         )
 
-    assert result.created == len(SYSTEM_AGENT_BLUEPRINTS) - 1
-    assert len(specs) == 12
+    worker_blueprints = [bp for bp in SYSTEM_AGENT_BLUEPRINTS.values() if bp.kind != "orchestrator"]
+    delegatable_workers = [bp for bp in worker_blueprints if bp.visibility != "platform_admin"]
+    assert result.created == len(worker_blueprints)
+    assert len(specs) == len(delegatable_workers)  # one delegate_to_* per non-platform_admin worker
     assert "Deep Web Researcher" in roster
     assert any(spec.name.startswith("delegate_to_") for spec in specs)
 
