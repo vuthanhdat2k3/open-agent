@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -6,16 +7,15 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import session_log as slog
 from app.core.authz.policy import PrincipalContext
 from app.core.authz.scope import scope_to_owner
 from app.core.execution_policy import ExecutionPolicy, normalize_execution_policy
+from app.core.memory.tiers import compact_tiered_memory
 from app.dependencies import get_current_org_id, get_current_user, get_db, require_permission
+from app.models.agent import Agent
 from app.models.memory import SessionMemory
 from app.models.message import Message
-import logging
-from app.core import session_log as slog
-from app.core.memory.tiers import compact_tiered_memory
-from app.models.agent import Agent
 from app.models.model import Model
 from app.models.provider import Provider
 
