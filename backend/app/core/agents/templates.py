@@ -131,7 +131,8 @@ SYSTEM_AGENT_BLUEPRINTS: dict[str, SystemAgentBlueprint] = {
             "- For web research/news/YouTube: delegate to `delegate_to_deep_web_researcher`.\n"
             "- For email tasks: delegate to `delegate_to_email_intelligence`.\n"
             "- For calendar/schedule: delegate to `delegate_to_calendar_assistant`.\n"
-            "- For RAG/Knowledge base search: delegate to `delegate_to_rag_knowledge_researcher`.\n\n"
+            "- For RAG/Knowledge base search: delegate to `delegate_to_rag_knowledge_researcher`.\n"
+            "- For managing system settings, AI providers, models, quota limits, and model routing tiers: delegate to `delegate_to_system_admin`.\n\n"
             "Workflow & Follow-up Delegation Guidelines:\n"
             "- Handling Follow-up Turns on Existing Files: When the user asks to run, execute, preview, edit, or test a file created in previous turns (e.g., 'chạy luôn file đó cho tôi', 'run that file', 'mở file', 'preview it'):\n"
             "  * DO NOT ask the worker subagent to recreate, rewrite, or check if the file exists.\n"
@@ -495,6 +496,65 @@ SYSTEM_AGENT_BLUEPRINTS: dict[str, SystemAgentBlueprint] = {
         max_iterations=16,
         temperature=0.3,
         is_pinned_by_default=False,
+        visibility="platform_admin",
+    ),
+    # --- 14. System Administrator ---
+    "system-admin": SystemAgentBlueprint(
+        id="sys-agent-system-admin",
+        key="system-admin",
+        name="System Administrator",
+        description="Quản trị hệ thống: quản lý AI providers, danh mục models, quota limits và bảng điều hướng model tier matrix",
+        system_prompt=(
+            "You are the System Administrator agent for this OpenAgent deployment. "
+            "You have authority to inspect and manage AI providers, models, "
+            "quotas, and tier routing matrices for the organization.\n\n"
+            "Core Responsibilities:\n"
+            "1. Providers: Inspect configured providers (`system_list_providers`, `system_get_provider`, `system_list_provider_templates`), "
+            "add or configure providers (`system_create_provider`, `system_update_provider`), "
+            "and verify connectivity (`system_test_provider`).\n"
+            "2. Models: View available models (`system_list_models`, `system_get_model`), enable or disable "
+            "models (`system_toggle_model`), update model configuration parameters such as context window and "
+            "pricing (`system_update_model`), and test chat completions (`system_test_model`).\n"
+            "3. Model Tier Matrix: View the current Economy, Balanced, and Frontier routing tier bindings "
+            "(`system_get_model_tiers`) and update tier assignments (`system_set_model_tier`).\n"
+            "4. Quotas: Check organization spending and resource usage (`system_get_quotas`), and update limits "
+            "such as monthly cost, rate limits, and run limits (`system_set_quota`).\n"
+            "5. Agent Management: List organization agents (`system_list_agents`), view full configuration (`system_get_agent`), "
+            "switch an agent's model when quota is exhausted or for optimization (`system_update_agent_model`), "
+            "modify agent parameters (`system_update_agent`), or reset to blueprint defaults (`system_reset_agent`).\n\n"
+            "Guidelines:\n"
+            "- Always verify provider or model status before performing updates.\n"
+            "- When adding or testing a provider or model, run `system_test_provider` or `system_test_model` to verify that credentials and endpoints are valid.\n"
+            "- Clearly summarize current states, configurations, or test outcomes in your responses."
+        ),
+        recommended_tier="standard",
+        tools=_with_common(
+            "system_list_provider_templates",
+            "system_list_providers",
+            "system_get_provider",
+            "system_create_provider",
+            "system_update_provider",
+            "system_test_provider",
+            "system_list_models",
+            "system_get_model",
+            "system_toggle_model",
+            "system_update_model",
+            "system_test_model",
+            "system_get_model_tiers",
+            "system_set_model_tier",
+            "system_get_quotas",
+            "system_set_quota",
+            "system_list_agents",
+            "system_get_agent",
+            "system_update_agent_model",
+            "system_update_agent",
+            "system_reset_agent",
+        ),
+        allowed_risk_tiers=["safe", "read", "write", "network"],
+        kind="worker",
+        max_iterations=16,
+        temperature=0.2,
+        is_pinned_by_default=True,
         visibility="platform_admin",
     ),
 }

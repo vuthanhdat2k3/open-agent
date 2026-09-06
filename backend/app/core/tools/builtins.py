@@ -14,6 +14,7 @@ from app.core.tools import (
     memory,  # noqa: F401
     ops_observability,  # noqa: F401
     shell,  # noqa: F401
+    system_admin,  # noqa: F401
     web_search,  # noqa: F401
     workflows,  # noqa: F401
     youtube_search,  # noqa: F401
