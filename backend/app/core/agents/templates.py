@@ -555,6 +555,6 @@ SYSTEM_AGENT_BLUEPRINTS: dict[str, SystemAgentBlueprint] = {
         max_iterations=16,
         temperature=0.2,
         is_pinned_by_default=True,
-        visibility="platform_admin",
+        visibility="all",
     ),
 }

@@ -442,6 +442,10 @@ async def _system_list_models(args: dict[str, Any], ctx: ToolContext) -> str:
         provider_id=resolved_provider_id,
     )
 
+    # Pre-fetch providers map to avoid async MissingGreenlet lazy load error
+    prov_res = await ctx.db.execute(select(Provider).where(Provider.org_id == ctx.org_id))
+    prov_map = {p.id: p.name for p in prov_res.scalars().all()}
+
     items = []
     for m in models:
         items.append({
@@ -449,7 +453,7 @@ async def _system_list_models(args: dict[str, Any], ctx: ToolContext) -> str:
             "name": m.name,
             "display_name": m.display_name,
             "provider_id": m.provider_id,
-            "provider_name": getattr(m.provider, "name", None) if getattr(m, "provider", None) else None,
+            "provider_name": prov_map.get(m.provider_id),
             "tier": m.tier,
             "active": m.active,
             "enabled": m.enabled,
