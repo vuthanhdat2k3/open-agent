@@ -117,7 +117,7 @@ async def test_startup_sync_backfills_missing_workers_for_existing_orchestrator(
         )
 
     assert result.created == len(SYSTEM_AGENT_BLUEPRINTS) - 1
-    assert len(specs) == 11
+    assert len(specs) == 12
     assert "Deep Web Researcher" in roster
     assert any(spec.name.startswith("delegate_to_") for spec in specs)
 

@@ -12,7 +12,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.core.guardrails.approval import request_approval, sweep_expired_approvals
 from app.db.base import Base, utc_now
-from app.models.approval_request import ApprovalRequest
 from app.services.workflow_service import strip_unknown_node_parameters
 
 
