@@ -33,7 +33,7 @@ from app.core.authz.policy import PERMISSIONS, primary_role
 from app.core.observability.audit import log_action
 from app.db.base import utc_now
 from app.db.session import get_db
-from app.dependencies import get_current_user
+from app.dependencies import get_current_org_id, get_current_user
 from app.models.membership import Membership
 from app.models.oauth_account import OAuthAccount
 from app.models.oidc_login_transaction import OidcLoginTransaction
@@ -528,6 +528,37 @@ async def refresh_token_route(
     await db.commit()
     _set_refresh_cookie(response, new_raw_rt)
     return TokenResponse(access_token=new_access_token)
+
+
+@router.get("/bridge-token", response_model=TokenResponse)
+async def bridge_token(
+    current_user: User = Depends(get_current_user),
+    org_id: str = Depends(get_current_org_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Mint a short-lived bearer JWT for the caller's already-authenticated
+    session, regardless of auth_provider.
+
+    A same-origin session cookie (the zitadel application_session) can't be
+    sent to the separate API domain that streamSSE/streamSSEGet call
+    directly to avoid Next's rewrite proxy, which doesn't reliably forward
+    incremental SSE chunks. A bearer token can be attached to that
+    cross-origin request explicitly instead.
+
+    GET (not POST): this mints a token but changes no state, so it isn't a
+    CSRF target (the response body can't be read cross-origin by an
+    attacker page) - it belongs in the same CSRF-exempt bucket
+    resolve_application_session already carves out for GET/HEAD/OPTIONS.
+    """
+    res = await db.execute(
+        select(Membership).where(Membership.user_id == current_user.id, Membership.org_id == org_id)
+    )
+    memberships = res.scalars().all()
+    if not memberships:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "User does not belong to this organization")
+    role = primary_role(frozenset(m.role for m in memberships))
+    access_token = create_access_token(user_id=current_user.id, org_id=org_id, role=role.value)
+    return TokenResponse(access_token=access_token)
 
 
 @router.post("/logout")
