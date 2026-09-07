@@ -89,6 +89,7 @@ export async function streamSSE(
   body: unknown,
   onEvent: (ev: SseEvent) => void,
   signal?: AbortSignal,
+  retried = false,
 ): Promise<void> {
   // Call the backend directly (not through next.config.mjs rewrites): Next's
   // rewrite proxy does not reliably forward incremental SSE chunks — it can
@@ -106,6 +107,10 @@ export async function streamSSE(
     body: JSON.stringify(body),
     signal,
   });
+  if (res.status === 401 && !retried) {
+    const refreshed = await refreshAccessToken();
+    if (refreshed) return streamSSE(path, body, onEvent, signal, true);
+  }
   if (!res.ok || !res.body) {
     throw new Error(`stream failed: ${res.status}`);
   }
@@ -149,6 +154,7 @@ export async function streamSSEGet(
   url: string,
   onEvent: (ev: SseEvent) => void,
   signal?: AbortSignal,
+  retried = false,
 ): Promise<void> {
   const res = await fetch(`${apiBaseUrl}${url}`, {
     credentials: "include",
@@ -159,6 +165,10 @@ export async function streamSSEGet(
     },
     signal,
   });
+  if (res.status === 401 && !retried) {
+    const refreshed = await refreshAccessToken();
+    if (refreshed) return streamSSEGet(url, onEvent, signal, true);
+  }
   if (!res.ok || !res.body) {
     throw new Error(`stream failed: ${res.status}`);
   }

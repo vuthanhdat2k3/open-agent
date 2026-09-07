@@ -77,6 +77,22 @@ export async function refreshAccessToken() {
     const session = await fetch("/api/auth/me", { credentials: "include" });
     if (session.ok) {
       markSessionAuthenticated(true);
+      if (process.env.NEXT_PUBLIC_AUTH_PROVIDER === "zitadel") {
+        // The zitadel session cookie only works same-origin, but streamSSE
+        // calls the API domain directly (bypassing Next's rewrite, which
+        // doesn't reliably forward incremental SSE chunks). Mint a real
+        // bearer token so that cross-origin call can still authenticate.
+        try {
+          const bridge = await fetch("/api/auth/bridge-token", { method: "GET", credentials: "include" });
+          if (bridge.ok) {
+            const data = (await bridge.json()) as { access_token: string };
+            setAccessToken(data.access_token);
+            return data.access_token;
+          }
+        } catch {
+          // fall through — still session-authenticated via cookie for same-origin calls
+        }
+      }
       return "__application_session__";
     }
     if (process.env.NEXT_PUBLIC_AUTH_PROVIDER === "zitadel") {
