@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { api, streamSSE, type SseEvent } from "@/lib/api";
+import { api, streamSSE, streamSSEGet, type SseEvent } from "@/lib/api";
 import { executeUiAction } from "@/lib/operator/ui-actions";
 
 export interface CompanionMessage {
@@ -131,6 +131,7 @@ export function useCompanionChat() {
       const runId = genId() + genId();
       activeRunIdRef.current = runId;
       abortRef.current = new AbortController();
+      const signal = abortRef.current.signal;
       try {
         await streamSSE(
           "/api/chat",
@@ -142,8 +143,35 @@ export function useCompanionChat() {
             timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
           },
           (ev) => handleEvent(runId, ev),
-          abortRef.current.signal,
+          signal,
         );
+        // POST /api/chat only ever streams session_start + chat_run_start
+        // then closes by design (see backend/app/api/v1/routes/chat.py's
+        // gen()) - the actual token/tool_progress/message_done events come
+        // from this separate GET follow endpoint, same as the reconnect
+        // loop in app/chat/page.tsx.
+        let lastSeq = 0;
+        let backoffMs = 500;
+        const terminalEvents = new Set(["message_done", "error", "approval_required"]);
+        while (!signal.aborted) {
+          let terminalSeen = false;
+          try {
+            await streamSSEGet(
+              `/api/chat/runs/${runId}/events?follow=true&after_seq=${lastSeq}`,
+              (ev) => {
+                if (typeof ev.data?.seq === "number") lastSeq = ev.data.seq;
+                if (terminalEvents.has(ev.event)) terminalSeen = true;
+                handleEvent(runId, ev);
+              },
+              signal,
+            );
+            if (terminalSeen) break;
+          } catch (err: any) {
+            if (signal.aborted || err?.name === "AbortError") break;
+            await new Promise((resolve) => setTimeout(resolve, backoffMs));
+            backoffMs = Math.min(backoffMs * 2, 5000);
+          }
+        }
       } catch (err: any) {
         if (err?.name !== "AbortError") {
           finishAssistantMessage();

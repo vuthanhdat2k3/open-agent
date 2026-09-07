@@ -37,25 +37,33 @@ async def get_current_user(
     # session. The cookie contains no role, org, or user claims.
     raw_session = request.cookies.get(settings.application_session_cookie_name)
     if raw_session:
-        user, membership, session = await resolve_application_session(
-            db, raw_token=raw_session, request=request
-        )
-        request.state.user_id = user.id
-        request.state.org_id = membership.org_id
-        request.state.membership_id = membership.id
-        request.state.session_id = session.id
-        user.role = getattr(membership.role, "value", str(membership.role))
-        mark_chat_phase(request, "auth_done", auth_method="application_session")
-        return user
+        try:
+            user, membership, session = await resolve_application_session(
+                db, raw_token=raw_session, request=request
+            )
+            request.state.user_id = user.id
+            request.state.org_id = membership.org_id
+            request.state.membership_id = membership.id
+            request.state.session_id = session.id
+            user.role = getattr(membership.role, "value", str(membership.role))
+            mark_chat_phase(request, "auth_done", auth_method="application_session")
+            return user
+        except HTTPException:
+            # A stale/expired/wrong-host cookie (e.g. a leftover session
+            # cookie for a domain that used to be called directly) must not
+            # block a still-valid bearer token below - fall through instead
+            # of failing outright on a cookie that just happens to be
+            # present but no longer resolves.
+            pass
 
-    if settings.auth_provider == "zitadel":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="ZITADEL authentication required",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    # 1. Check Bearer token or access_token cookie
+    # 1. Check Bearer token or access_token cookie. Tried for every provider
+    # (including zitadel): these are self-issued, HMAC-signed tokens
+    # (jwt_secret_key) minted by this backend itself — e.g. via
+    # /api/auth/bridge-token for a browser that already holds a valid
+    # application_session — not an alternative, weaker login path. A
+    # zitadel deployment with neither an application_session cookie nor one
+    # of these still falls through to the explicit "ZITADEL authentication
+    # required" error below.
     token = None
     if bearer and bearer.credentials:
         token = bearer.credentials
@@ -172,6 +180,13 @@ async def get_current_user(
                 if user:
                     mark_chat_phase(request, "auth_done", auth_method="api_key")
                     return user
+
+    if settings.auth_provider == "zitadel":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="ZITADEL authentication required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
