@@ -1,4 +1,4 @@
-from sqlalchemy import JSON, DateTime, ForeignKey, String, UniqueConstraint
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, String, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, gen_id, utc_now
@@ -6,7 +6,7 @@ from app.db.base import Base, gen_id, utc_now
 
 class Workflow(Base):
     __tablename__ = "workflows"
-    __table_args__ = (UniqueConstraint("org_id", "name", name="uq_workflows_org_name"),)
+    __table_args__ = (UniqueConstraint("org_id", "created_by_user_id", "name", name="uq_workflows_org_user_name"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=gen_id)
     org_id: Mapped[str] = mapped_column(
@@ -19,6 +19,8 @@ class Workflow(Base):
     description: Mapped[str] = mapped_column(String(512), default="")
     # DAG: {"nodes": [...], "edges": [...]}
     graph: Mapped[dict] = mapped_column(JSON, default=dict)
+    template_key: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    is_customized: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
 
     created_at: Mapped["utc_now"] = mapped_column(DateTime, default=utc_now)
     updated_at: Mapped["utc_now"] = mapped_column(DateTime, default=utc_now, onupdate=utc_now)

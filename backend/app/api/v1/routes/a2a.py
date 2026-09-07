@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.a2a.server import get_exposed_agent_card, validate_a2a_agent_access
 from app.core.agent_loop import run_agent_loop
+from app.core.authz.policy import PrincipalContext
 from app.core.authz.scope import scope_to_owner
 from app.db.base import gen_id, utc_now
 from app.db.session import get_db
@@ -48,7 +49,7 @@ async def create_a2a_task(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
     org_id: str = Depends(get_current_org_id),
-    _: None = Depends(require_permission("agents:run")),
+    authz: PrincipalContext = Depends(require_permission("agents:run")),
 ) -> A2ATaskResponse:
     """Executes a task on an exposed agent via A2A protocol.
 
@@ -64,6 +65,12 @@ async def create_a2a_task(
         agent_id=agent.id,
         agent_release_id=getattr(agent, "active_release_id", None),
         triggered_by_user_id=current_user.id,
+        execution_principal={
+            "principal_type": "human",
+            "principal_id": current_user.id,
+            "user_id": current_user.id,
+            "role": authz.role.value,
+        },
         goal=payload.input,
         status="running",
         started_at=utc_now(),
@@ -81,6 +88,7 @@ async def create_a2a_task(
             message=payload.input,
             db=db,
             user_id=current_user.id,
+            user_role=authz.role.value,
             actor_agent_identity_id=actor_agent_identity_id,
             delegation_chain=delegation_chain,
             current_task_id=task.id,

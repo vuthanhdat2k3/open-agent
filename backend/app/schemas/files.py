@@ -14,6 +14,9 @@ class UploadedFileOut(BaseModel):
     visibility: str = "personal"
     collection: str | None = None
     error: str | None = None
+    created_by_user_id: str | None = None
+    creator_email: str | None = None
+    creator_name: str | None = None
     created_at: datetime
     updated_at: datetime
 

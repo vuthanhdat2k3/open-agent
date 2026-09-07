@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     zitadel_project_id: str = ""
     zitadel_client_id: str = ""
     zitadel_client_secret: str = ""
+    zitadel_admin_pat: str = ""
+    zitadel_pat_path: str = "/zitadel/bootstrap/login-client.pat"
     zitadel_redirect_uri: str = "http://127.0.0.1.sslip.io:8000/api/auth/callback"
     zitadel_post_logout_redirect_uri: str = "http://127.0.0.1.sslip.io:3000/"
     zitadel_required_org_claim: str = "urn:zitadel:iam:org:id"
@@ -47,6 +49,12 @@ class Settings(BaseSettings):
     # disconnect surfaces as a clean reconnect instead of a stale-connection
     # error under load.
     db_pool_recycle_seconds: int = 1800
+    # Bound how long a checkout waits for a free connection when the pool is
+    # exhausted. SQLAlchemy's own default (30s) let a starved checkout inside
+    # a long-running chat/tool call block silently for a long time with no
+    # error — indistinguishable from a genuine hang. Fail fast and loud
+    # instead so callers (agent loop, approval gate) surface a clear error.
+    db_pool_timeout_seconds: int = 10
 
     # Auth / JWT / OAuth configuration
     jwt_secret_key: str = "dev-secret-key-change-in-production"
@@ -66,7 +74,16 @@ class Settings(BaseSettings):
     max_agent_depth: int = 5
     max_iterations: int = 12
     workflow_execution_mode: Literal["inline", "queued"] = "inline"
+    workflow_max_concurrency: int = 8
+    # Safety net so a hung provider call cannot pin a run forever: a node with
+    # no explicit timeout_s is bounded by this. Generous enough for long agent
+    # runs, short enough that a wedged worker is reclaimed by the orphan sweep.
+    workflow_node_default_timeout_s: int = 900
+    workflow_webhook_shared_token: str = ""
     redis_url: str = "redis://127.0.0.1:6379/0"
+    # Public URL for webhooks (e.g., https://your-domain.com or https://xxxx.ngrok.io)
+    # Required for Telegram/Discord webhook setup
+    public_url: str = ""
     quota_requests_per_minute: int = 600
     quota_agent_runs_per_minute: int = 60
     quota_max_concurrent_runs: int = 10
@@ -92,7 +109,7 @@ class Settings(BaseSettings):
     langfuse_base_url: str = ""
     langfuse_flush_timeout_seconds: float = 5.0
     log_format: Literal["json", "console"] = "json"
-    budget_max_tool_calls: int = 40
+    budget_max_tool_calls: int = 20
     budget_max_cost_usd: float = 2.0
     budget_max_wall_seconds: float = 300.0
     budget_max_repeated_call: int = 3
@@ -102,8 +119,16 @@ class Settings(BaseSettings):
 
     # Docker-isolated code execution (run_code tool)
     sandbox_enabled: bool = True
-    sandbox_docker_image_python: str = "python:3.11-slim"
+    sandbox_docker_image_python: str = Field(
+        default="openagent-sandbox-python:local",
+        validation_alias=AliasChoices(
+            "OPENAGENT_SANDBOX_DOCKER_IMAGE_PYTHON",
+            "OPENAGENT_SANDBOX_PYTHON_IMAGE",
+            "SANDBOX_DOCKER_IMAGE_PYTHON",
+        ),
+    )
     sandbox_docker_image_bash: str = "bash:5"
+    sandbox_docker_image_node: str = "node:20-alpine"
     sandbox_memory: str = "256m"
     sandbox_cpus: float = 1.0
     sandbox_default_timeout: float = 30.0
@@ -122,12 +147,28 @@ class Settings(BaseSettings):
         default="http://rag-service:8100",
         validation_alias=AliasChoices("OPENAGENT_RAG_SERVICE_URL", "RAG_SERVICE_URL"),
     )
+    # The rag-service exposes its REST admin API and its MCP-SSE endpoint on
+    # two different ports of the same container (see rag-service/rag_service/
+    # config.py: rest_port=8100, mcp_port=8101). `rag_service_url` above is
+    # the REST port; this is the MCP port every agent's `rag_*` tools connect
+    # through (registered per-org as an McpServer - see
+    # app/services/rag_mcp_bootstrap.py).
+    rag_mcp_url: str = Field(
+        default="http://rag-service:8101/sse",
+        validation_alias=AliasChoices("OPENAGENT_RAG_MCP_URL", "RAG_MCP_URL"),
+    )
     rag_api_key: str = Field(
         default="",
         validation_alias=AliasChoices("OPENAGENT_RAG_API_KEY", "RAG_API_KEY"),
     )
     rag_ingest_connect_timeout_seconds: float = 10.0
     rag_ingest_read_timeout_seconds: float = 180.0
+    # Extracts text from a chat attachment (pdf/docx/pptx) for this turn only —
+    # never writes to the RAG index. Empty disables extraction for those types.
+    docling_service_url: str = Field(
+        default="http://docling-service:8080",
+        validation_alias=AliasChoices("OPENAGENT_DOCLING_SERVICE_URL", "DOCLING_SERVICE_URL"),
+    )
     file_ingest_max_attempts: int = 5
     file_ingest_lease_seconds: int = 300
     file_ingest_retry_base_seconds: int = 5
@@ -155,6 +196,10 @@ class Settings(BaseSettings):
     # Self-hosted SearXNG metasearch instance backing the web_search tool.
     # Empty string disables it and falls back to the DuckDuckGo HTML scrape.
     searxng_url: str = "http://searxng:8080"
+    # Optional 3rd-tier web_search fallback (after SearXNG and the DuckDuckGo
+    # scrape both come up empty/erroring) — TinyFish's keyless-tier Search API
+    # (docs.tinyfish.ai/search-api). Empty string keeps this tier inert.
+    tinyfish_api_key: str = ""
     # Self-hosted crawl4ai instance (JS-rendering crawler) backing web_fetch.
     # Empty string disables it and falls back to the plain httpx GET.
     crawler_url: str = "http://crawler:11235"
@@ -224,6 +269,11 @@ class Settings(BaseSettings):
         ".py",
         ".yaml",
         ".yml",
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".gif",
+        ".webp",
     ]
 
     log_level: str = "INFO"
@@ -245,9 +295,48 @@ class Settings(BaseSettings):
                 )
         return self
 
+    @model_validator(mode="after")
+    def validate_production_secrets(self) -> "Settings":
+        """Fail closed on insecure defaults that are only safe for local dev.
+
+        These settings ship with permissive defaults so a fresh checkout runs
+        without any `.env` at all. That convenience becomes a real exposure
+        the moment `OPENAGENT_RUNTIME=production` — a deployment that forgets
+        to override them would otherwise sign JWTs with a public secret,
+        drop the `Secure` cookie flag, and/or talk to object storage with the
+        published MinIO default credentials.
+        """
+        if self.runtime.lower() not in {"production", "prod"}:
+            return self
+        errors: list[str] = []
+        if self.jwt_secret_key == "dev-secret-key-change-in-production" or len(self.jwt_secret_key) < 32:
+            errors.append(
+                "OPENAGENT_JWT_SECRET_KEY must be set to a random secret of at least 32 characters"
+            )
+        if not self.cookie_secure:
+            errors.append("OPENAGENT_COOKIE_SECURE must be true (cookies require HTTPS in production)")
+        if self.s3_access_key == "minioadmin" or self.s3_secret_key == "minioadmin":
+            errors.append(
+                "OPENAGENT_S3_ACCESS_KEY / OPENAGENT_S3_SECRET_KEY must not use the default MinIO credentials"
+            )
+        if errors:
+            raise ValueError("Production configuration is insecure: " + "; ".join(errors))
+        return self
+
     @property
     def platform_admin_email_set(self) -> set[str]:
         return {item.strip().lower() for item in self.platform_admin_emails.split(",") if item.strip()}
+
+    @property
+    def cookie_samesite(self) -> str:
+        """"none" lets the browser send our cookies on cross-site requests -
+        required when the frontend and API are on genuinely different
+        registrable domains (e.g. independent Cloudflare Tunnel hostnames),
+        where "lax" silently drops them on every fetch/XHR. Only safe with
+        Secure, so this only activates once cookie_secure is true; local dev
+        (same site, different port) keeps "lax".
+        """
+        return "none" if self.cookie_secure else "lax"
 
 
 @lru_cache

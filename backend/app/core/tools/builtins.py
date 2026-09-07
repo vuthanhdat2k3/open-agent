@@ -1,3 +1,4 @@
+import asyncio
 from datetime import timezone
 from typing import Any
 
@@ -11,14 +12,27 @@ from app.core.runtime_context import now_in_timezone
 from app.core.tools import (
     filesystem,  # noqa: F401
     memory,  # noqa: F401
+    ops_observability,  # noqa: F401
     shell,  # noqa: F401
+    system_admin,  # noqa: F401
+    ui_actions,  # noqa: F401
     web_search,  # noqa: F401
+    workflows,  # noqa: F401
     youtube_search,  # noqa: F401
 )
 from app.core.tools.paths import safe_resolve, safe_url
 from app.core.tools.registry import register
 from app.core.tools.risk_tier import RiskTier
 from app.core.tools.types import ToolContext, ToolSpec
+
+
+def _register_channel_tools_late() -> None:
+    """Lazy-register channel tools to avoid circular imports at module load."""
+    from app.channels.tools import register_channel_tools
+    register_channel_tools()
+
+_register_channel_tools_late()
+
 from app.customer_intelligence.tools import register_customer_intelligence_tools  # noqa: F401
 
 settings = get_settings()
@@ -68,6 +82,27 @@ async def _read_attachment(args: dict[str, Any], ctx: ToolContext) -> str:
 
 
 MAX_FETCH_REDIRECTS = 5
+
+def _sanitize_html_to_markdown(html: str) -> str:
+    """Strip script, style, navigation and extract clean readable text/markdown."""
+    if not html or ("<" not in html and ">" not in html):
+        return html
+    import html as html_lib
+    import re
+    # Strip dangerous/irrelevant blocks
+    text = re.sub(r"<(script|style|noscript|svg|header|footer|nav)[\s\S]*?</\\1>", " ", html, flags=re.IGNORECASE)
+    text = re.sub(r"<!--[\s\S]*?-->", " ", text)
+    # Headings and lists
+    text = re.sub(r"<h[1-6][^>]*>(.*?)</h[1-6]>", r"\n\n# \\1\n", text, flags=re.IGNORECASE | re.DOTALL)
+    text = re.sub(r"<li[^>]*>(.*?)</li>", r"\n- \\1", text, flags=re.IGNORECASE | re.DOTALL)
+    text = re.sub(r"<p[^>]*>", "\n\n", text, flags=re.IGNORECASE)
+    text = re.sub(r"<br\s*/?>", "\n", text, flags=re.IGNORECASE)
+    # Strip other tags
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = html_lib.unescape(text)
+    lines = [re.sub(r"[ \t]+", " ", line).strip() for line in text.splitlines()]
+    return "\n".join(line for line in lines if line)
+
 
 
 async def _crawler_fetch(crawler_url: str, url: str, api_token: str = "") -> str | None:
@@ -238,6 +273,16 @@ async def _call_agent(args: dict[str, Any], ctx: ToolContext) -> str:
         agent_id=agent.id,
         agent_release_id=agent.active_release_id,
         triggered_by_user_id=ctx.user_id,
+        execution_principal={
+            "principal_type": (
+                ctx.authorization.principal_type if ctx.authorization else "system"
+            ),
+            "principal_id": (
+                ctx.authorization.principal_id if ctx.authorization else "openagent:internal-runtime"
+            ),
+            "user_id": ctx.user_id,
+            "role": (ctx.authorization.role if ctx.authorization and ctx.authorization.is_human else None),
+        },
         goal=instruction,
         status="running",
         progress={"model_id": ctx.model_id},
@@ -248,17 +293,113 @@ async def _call_agent(args: dict[str, Any], ctx: ToolContext) -> str:
     await ctx.db.commit()
     await ctx.db.refresh(task)
 
+    async def _handle_subagent_event(ev: dict[str, Any]) -> None:
+        if not ctx.emit:
+            return
+        ev_type = ev.get("event")
+        ev_data = ev.get("data", {})
+        if ev_type == "reasoning":
+            text = ev_data.get("content", "")
+            await ctx.emit({
+                "stage": "subagent_reasoning",
+                "agent_name": agent.name,
+                "agent_id": agent.id,
+                "content": text,
+                "line": text,
+            })
+        elif ev_type == "token":
+            text = ev_data.get("content", "")
+            await ctx.emit({
+                "stage": "subagent_token",
+                "agent_name": agent.name,
+                "agent_id": agent.id,
+                "content": text,
+                "line": text,
+            })
+        elif ev_type == "approval_required":
+            await ctx.emit({
+                "stage": "subagent_approval_required",
+                "agent_name": agent.name,
+                "agent_id": agent.id,
+                "approval_id": ev_data.get("approval_id"),
+                "tool_name": ev_data.get("tool_name"),
+                "line": f"\n[Subagent '{agent.name}' requires approval for {ev_data.get('tool_name')}]\n",
+            })
+        elif ev_type == "tool_call":
+            tool_name = ev_data.get("name", "")
+            tool_args = ev_data.get("arguments", {})
+            await ctx.emit({
+                "stage": "subagent_tool_call",
+                "agent_name": agent.name,
+                "agent_id": agent.id,
+                "tool_name": tool_name,
+                "arguments": tool_args,
+                "line": f"\n[Subagent '{agent.name}' calling tool: {tool_name}]\n",
+            })
+        elif ev_type == "tool_progress":
+            await ctx.emit({
+                "stage": "subagent_tool_progress",
+                "agent_name": agent.name,
+                "agent_id": agent.id,
+                **ev_data,
+            })
+        elif ev_type == "tool_result":
+            tool_name = ev_data.get("name", "")
+            tool_result_content = ev_data.get("result", "")
+            await ctx.emit({
+                "stage": "subagent_tool_result",
+                "agent_name": agent.name,
+                "agent_id": agent.id,
+                "tool_name": tool_name,
+                "result": tool_result_content,
+                "line": f"[Subagent '{agent.name}' tool {tool_name} completed]\n",
+            })
+        elif ev_type == "message_done":
+            await ctx.emit({
+                "stage": "subagent_done",
+                "agent_name": agent.name,
+                "agent_id": agent.id,
+                "line": f"\n[Subagent '{agent.name}' finished response]\n",
+            })
+        elif ev_type == "error":
+            error_msg = str(ev_data.get("message") or "subagent execution failed")
+            await ctx.emit({
+                "stage": "subagent_error",
+                "agent_name": agent.name,
+                "agent_id": agent.id,
+                "error": error_msg,
+                "line": f"\n[Subagent error: {error_msg}]\n",
+            })
+
     try:
-        loop_result = await run_agent_loop(
-            agent,
-            instruction,
-            ctx.db,
-            depth=ctx.depth + 1,
-            current_task_id=task.id,
-            root_run_id=task.root_run_id,
-            user_id=ctx.user_id,
-            model_id=ctx.model_id,
-            timezone_name=ctx.timezone_name,
+        if ctx.emit:
+            await ctx.emit({
+                "stage": "subagent_start",
+                "agent_name": agent.name,
+                "agent_id": agent.id,
+                "line": f"Starting subagent '{agent.name}'...\n",
+            })
+
+        loop_result = await asyncio.wait_for(
+            run_agent_loop(
+                agent,
+                instruction,
+                ctx.db,
+                depth=ctx.depth + 1,
+                session_id=ctx.session_id or ctx.parent_session_id,
+                current_task_id=task.id,
+                root_run_id=task.root_run_id,
+                user_id=ctx.user_id,
+                user_role=(ctx.authorization.role if ctx.authorization and ctx.authorization.is_human else None),
+                model_id=ctx.model_id,
+                timezone_name=ctx.timezone_name,
+                actor_agent_identity_id=ctx.actor_agent_identity_id,
+                delegation_chain=ctx.delegation_chain,
+                execution_policy=(ctx.authorization.execution_policy if ctx.authorization else None),
+                parent_session_id=ctx.session_id or ctx.parent_session_id,
+                on_event=_handle_subagent_event,
+            ),
+            timeout=180.0,
         )
     except Exception as exc:  # noqa: BLE001
         task.status = "failed"
@@ -276,19 +417,8 @@ async def _call_agent(args: dict[str, Any], ctx: ToolContext) -> str:
     )
     approval = pending.scalar_one_or_none()
     if approval is not None:
-        # The root run (agent_loop._agent_stream) is the one the UI resumes
-        # via /api/approvals — it detects this same pending approval right
-        # after this call returns and puts itself into waiting_approval.
-        # This sub-task must NOT also claim waiting_approval: a decide-approval
-        # resume re-runs the *root* run from its original message, it never
-        # re-enters this delegated sub-task, so leaving it at waiting_approval
-        # would strand it there forever (and previously made the approval
-        # decision endpoint's `Task.status == "waiting_approval"` query
-        # ambiguous between this row and the root task, resuming whichever
-        # one the query happened to return first — often the wrong one).
-        task.status = "succeeded"
+        task.status = "waiting_approval"
         task.result = f"approval required for {approval.tool_name} (approval_id: {approval.id})"
-        task.finished_at = utc_now()
         await ctx.db.commit()
         return f"approval required for {approval.tool_name} (approval_id: {approval.id})"
 
@@ -376,7 +506,8 @@ register(
             "required": ["target_agent_id", "instruction"],
         },
         run=_call_agent,
-        risk_tier=RiskTier.execute,
+        risk_tier=RiskTier.safe,
+        timeout_s=300.0,
     )
 )
 

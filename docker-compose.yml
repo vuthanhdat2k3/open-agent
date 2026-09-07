@@ -7,7 +7,11 @@ services:
       POSTGRES_PASSWORD: ${OPENAGENT_POSTGRES_PASSWORD:?Set OPENAGENT_POSTGRES_PASSWORD in .env to a random secret}
       POSTGRES_DB: ${OPENAGENT_POSTGRES_DB:-openagent}
     ports:
-      - "5433:5432"
+      # Bound to loopback only: this is a data-plane store, never a public
+      # endpoint. Reachable from other containers via the compose network
+      # regardless; the host-port mapping exists only for admin tooling
+      # (psql, backups) run on the host itself.
+      - "127.0.0.1:5433:5432"
     volumes:
       - openagent_pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -121,7 +125,11 @@ services:
     environment:
       ZITADEL_API_URL: http://zitadel-api:8080
       NEXT_PUBLIC_BASE_PATH: /ui/v2/login
-      CUSTOM_REQUEST_HEADERS: Host:127.0.0.1.sslip.io
+      # Must track ZITADEL_EXTERNALDOMAIN above - the login v2 UI validates
+      # the Host header against the domain ZITADEL was configured with, so a
+      # mismatch here breaks the OIDC login flow the moment a real domain is
+      # set via ZITADEL_DOMAIN.
+      CUSTOM_REQUEST_HEADERS: Host:${ZITADEL_DOMAIN:-127.0.0.1.sslip.io}
       NODE_ENV: production
       ZITADEL_SERVICE_USER_TOKEN_FILE: /zitadel/bootstrap/login-client.pat
     volumes:
@@ -130,11 +138,18 @@ services:
       zitadel-api:
         condition: service_healthy
 
+  # Host port is configurable because Caddy (the `tls` profile, below) also
+  # wants host port 80/443. The host binding here is *only* for a browser
+  # reaching this container directly (e.g. the no-TLS/VPN-only deployment
+  # mode) - Caddy always reaches it over the internal Docker network by
+  # service name regardless of this value. When deploying with `--profile
+  # tls`, set ZITADEL_PROXY_HOST_PORT to an unused port (or leave 80 free by
+  # not running this without Caddy) so Caddy can own 80/443 on the host.
   zitadel-proxy:
     profiles: ["identity"]
     image: nginx:1.27-alpine
     ports:
-      - "80:80"
+      - "${ZITADEL_PROXY_HOST_PORT:-80}:80"
     volumes:
       - ./identity/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
@@ -145,10 +160,14 @@ services:
 
   redis:
     image: redis:7
+    command: ["redis-server", "--requirepass", "${OPENAGENT_REDIS_PASSWORD:?Set OPENAGENT_REDIS_PASSWORD in .env to a random secret}"]
     ports:
-      - "6379:6379"
+      # Loopback-only - see the postgres comment above for rationale.
+      - "127.0.0.1:6379:6379"
+    environment:
+      REDIS_AUTH: ${OPENAGENT_REDIS_PASSWORD:?Set OPENAGENT_REDIS_PASSWORD in .env to a random secret}
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a $$REDIS_AUTH ping"]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -160,8 +179,9 @@ services:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      # Loopback-only - see the postgres comment above for rationale.
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
     volumes:
       - minio-data:/data
     healthcheck:
@@ -314,13 +334,30 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
 
-  api:
+  # Python Sandbox Image Builder
+  # Builds the feature-packed Python sandbox (pandas, numpy, matplotlib, fpdf2, reportlab, pandoc)
+  # used by run_code.
+  sandbox-python:
+    image: ${OPENAGENT_SANDBOX_PYTHON_IMAGE:-openagent-sandbox-python:local}
     build:
       context: ./backend
+      dockerfile: sandbox/Dockerfile.python
+    restart: "no"
+
+  api:
+    image: ${OPENAGENT_API_IMAGE:-openagent-api:local}
+    build:
+      context: ./backend
+    volumes:
+      - openagent_workspace:/app/workspace:rw
     environment:
+      OPENAGENT_SANDBOX_DOCKER_IMAGE_PYTHON: ${OPENAGENT_SANDBOX_PYTHON_IMAGE:-openagent-sandbox-python:local}
       RAG_API_KEY: ${RAG_API_KEY:-}
       OPENAGENT_RAG_SERVICE_URL: ${RAG_SERVICE_URL:-http://rag-service:8100}
+      OPENAGENT_RAG_MCP_URL: ${RAG_MCP_URL:-http://rag-service:8101/sse}
+      OPENAGENT_DOCLING_SERVICE_URL: ${DOCLING_SERVICE_URL:-http://docling-service:8080}
       OPENAGENT_HOST: 0.0.0.0
+      OPENAGENT_CORS_ORIGINS: ${OPENAGENT_CORS_ORIGINS:-http://127.0.0.1.sslip.io:3000,http://localhost:3000}
       OPENAGENT_RUNTIME: ${OPENAGENT_RUNTIME:-local}
       OPENAGENT_AUTH_PROVIDER: ${OPENAGENT_AUTH_PROVIDER:-local}
       OPENAGENT_PLATFORM_ADMIN_EMAILS: ${OPENAGENT_PLATFORM_ADMIN_EMAILS:-zitadel-admin@localhost}
@@ -329,10 +366,11 @@ services:
       OPENAGENT_ZITADEL_PROJECT_ID: ${OPENAGENT_ZITADEL_PROJECT_ID:-}
       OPENAGENT_ZITADEL_CLIENT_ID: ${OPENAGENT_ZITADEL_CLIENT_ID:-}
       OPENAGENT_ZITADEL_CLIENT_SECRET: ${OPENAGENT_ZITADEL_CLIENT_SECRET:-}
+      OPENAGENT_ZITADEL_ADMIN_PAT: ${OPENAGENT_ZITADEL_ADMIN_PAT:-}
       OPENAGENT_ZITADEL_REDIRECT_URI: ${OPENAGENT_ZITADEL_REDIRECT_URI:-http://127.0.0.1.sslip.io:8000/api/auth/callback}
       OPENAGENT_ZITADEL_POST_LOGOUT_REDIRECT_URI: ${OPENAGENT_ZITADEL_POST_LOGOUT_REDIRECT_URI:-http://127.0.0.1.sslip.io:3000/}
       OPENAGENT_DB_URL: ${OPENAGENT_DB_URL:?Set OPENAGENT_DB_URL in .env (see .env.example)}
-      OPENAGENT_REDIS_URL: redis://redis:6379/0
+      OPENAGENT_REDIS_URL: redis://:${OPENAGENT_REDIS_PASSWORD:?Set OPENAGENT_REDIS_PASSWORD in .env to a random secret}@redis:6379/0
       OPENAGENT_WORKFLOW_EXECUTION_MODE: ${OPENAGENT_WORKFLOW_EXECUTION_MODE:-inline}
       OPENAGENT_JWT_SECRET_KEY: ${OPENAGENT_JWT_SECRET_KEY:?Set OPENAGENT_JWT_SECRET_KEY in .env to a random 32-byte secret}
       OPENAGENT_CREDENTIAL_ENCRYPTION_KEY: ${OPENAGENT_CREDENTIAL_ENCRYPTION_KEY:-}
@@ -366,6 +404,7 @@ services:
       OPENAGENT_CRAWLER_URL: ${OPENAGENT_CRAWLER_URL:-http://crawler:11235}
       OPENAGENT_CRAWLER_API_TOKEN: ${CRAWLER_API_TOKEN:?Set CRAWLER_API_TOKEN in .env to a random 32-byte secret}
       OPENAGENT_YOUTUBE_API_KEY: ${OPENAGENT_YOUTUBE_API_KEY:-}
+      OPENAGENT_TINYFISH_API_KEY: ${OPENAGENT_TINYFISH_API_KEY:-}
       DOCKER_HOST: tcp://docker-socket-proxy:2375
     ports:
       - "8000:8000"
@@ -384,15 +423,22 @@ services:
       test: ["CMD", "curl", "-fsS", "http://localhost:8000/readyz"]
       interval: 10s
       timeout: 5s
-      retries: 12
+      retries: 5
+      start_period: 15s
 
   worker:
     restart: unless-stopped
+    image: ${OPENAGENT_API_IMAGE:-openagent-api:local}
     build:
       context: ./backend
+    volumes:
+      - openagent_workspace:/app/workspace:rw
     environment:
+      OPENAGENT_SANDBOX_DOCKER_IMAGE_PYTHON: ${OPENAGENT_SANDBOX_PYTHON_IMAGE:-openagent-sandbox-python:local}
       RAG_API_KEY: ${RAG_API_KEY:-}
       OPENAGENT_RAG_SERVICE_URL: ${RAG_SERVICE_URL:-http://rag-service:8100}
+      OPENAGENT_RAG_MCP_URL: ${RAG_MCP_URL:-http://rag-service:8101/sse}
+      OPENAGENT_DOCLING_SERVICE_URL: ${DOCLING_SERVICE_URL:-http://docling-service:8080}
       OPENAGENT_RUNTIME: ${OPENAGENT_RUNTIME:-local}
       OPENAGENT_AUTH_PROVIDER: ${OPENAGENT_AUTH_PROVIDER:-local}
       OPENAGENT_PLATFORM_ADMIN_EMAILS: ${OPENAGENT_PLATFORM_ADMIN_EMAILS:-zitadel-admin@localhost}
@@ -401,10 +447,11 @@ services:
       OPENAGENT_ZITADEL_PROJECT_ID: ${OPENAGENT_ZITADEL_PROJECT_ID:-}
       OPENAGENT_ZITADEL_CLIENT_ID: ${OPENAGENT_ZITADEL_CLIENT_ID:-}
       OPENAGENT_ZITADEL_CLIENT_SECRET: ${OPENAGENT_ZITADEL_CLIENT_SECRET:-}
+      OPENAGENT_ZITADEL_ADMIN_PAT: ${OPENAGENT_ZITADEL_ADMIN_PAT:-}
       OPENAGENT_ZITADEL_REDIRECT_URI: ${OPENAGENT_ZITADEL_REDIRECT_URI:-http://127.0.0.1.sslip.io:8000/api/auth/callback}
       OPENAGENT_ZITADEL_POST_LOGOUT_REDIRECT_URI: ${OPENAGENT_ZITADEL_POST_LOGOUT_REDIRECT_URI:-http://127.0.0.1.sslip.io:3000/}
       OPENAGENT_DB_URL: ${OPENAGENT_DB_URL:?Set OPENAGENT_DB_URL in .env (see .env.example)}
-      OPENAGENT_REDIS_URL: redis://redis:6379/0
+      OPENAGENT_REDIS_URL: redis://:${OPENAGENT_REDIS_PASSWORD:?Set OPENAGENT_REDIS_PASSWORD in .env to a random secret}@redis:6379/0
       OPENAGENT_JWT_SECRET_KEY: ${OPENAGENT_JWT_SECRET_KEY:?Set OPENAGENT_JWT_SECRET_KEY in .env to a random 32-byte secret}
       OPENAGENT_CREDENTIAL_ENCRYPTION_KEY: ${OPENAGENT_CREDENTIAL_ENCRYPTION_KEY:-}
       OPENAGENT_OBSERVABILITY_ENABLED: ${OPENAGENT_OBSERVABILITY_ENABLED:-false}
@@ -423,10 +470,15 @@ services:
       CI_COMPANY_PROVIDER: ${CI_COMPANY_PROVIDER:-mcp}
       OPENAGENT_CI_GOOGLE_OAUTH_CLIENT_ID: ${OPENAGENT_CI_GOOGLE_OAUTH_CLIENT_ID:-}
       OPENAGENT_CI_GOOGLE_OAUTH_CLIENT_SECRET: ${OPENAGENT_CI_GOOGLE_OAUTH_CLIENT_SECRET:-}
+      OPENAGENT_COOKIE_SECURE: ${OPENAGENT_COOKIE_SECURE:-false}
+      OPENAGENT_S3_ENDPOINT_URL: http://minio:9000
+      OPENAGENT_S3_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      OPENAGENT_S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
       OPENAGENT_SEARXNG_URL: ${OPENAGENT_SEARXNG_URL:-http://searxng:8080}
       OPENAGENT_CRAWLER_URL: ${OPENAGENT_CRAWLER_URL:-http://crawler:11235}
       OPENAGENT_CRAWLER_API_TOKEN: ${CRAWLER_API_TOKEN:?Set CRAWLER_API_TOKEN in .env to a random 32-byte secret}
       OPENAGENT_YOUTUBE_API_KEY: ${OPENAGENT_YOUTUBE_API_KEY:-}
+      OPENAGENT_TINYFISH_API_KEY: ${OPENAGENT_TINYFISH_API_KEY:-}
       DOCKER_HOST: tcp://docker-socket-proxy:2375
     command: ["arq", "app.worker.WorkerSettings"]
     healthcheck:
@@ -455,6 +507,7 @@ services:
       test: ["CMD", "arq", "app.worker.ClassificationWorkerSettings", "--check"]
 
   frontend:
+    image: ${OPENAGENT_FRONTEND_IMAGE:-openagent-frontend:local}
     build:
       context: ./frontend
       args:
@@ -477,14 +530,50 @@ services:
       api:
         condition: service_healthy
 
+  # Opt-in TLS termination (profile "tls"). Terminates real HTTPS via Caddy's
+  # automatic Let's Encrypt issuance and reverse-proxies to frontend/api/
+  # zitadel-proxy over the internal compose network. sslip.io subdomains
+  # (e.g. app.203.0.113.10.sslip.io) resolve to the host's real public IP,
+  # so Let's Encrypt's HTTP-01 challenge works against them exactly like a
+  # normal domain - no wildcard DNS record needed. Requires ports 80/443
+  # reachable from the internet (80 for the ACME challenge + HTTP->HTTPS
+  # redirect, 443 for HTTPS/HTTP-3). Enable alongside the `identity` profile
+  # in production: `docker compose --profile identity --profile tls up -d`.
+  # Cannot be exercised end-to-end in a sandboxed/offline environment - ACME
+  # issuance needs a real, internet-reachable host and DNS. See
+  # docs/deployment-runbook.md.
+  caddy:
+    profiles: ["tls"]
+    image: caddy:2.9.1-alpine
+    restart: unless-stopped
+    environment:
+      OPENAGENT_APP_DOMAIN: ${OPENAGENT_APP_DOMAIN:?Set OPENAGENT_APP_DOMAIN in .env when using the tls profile, e.g. app.<host-ip>.sslip.io}
+      OPENAGENT_API_DOMAIN: ${OPENAGENT_API_DOMAIN:?Set OPENAGENT_API_DOMAIN in .env when using the tls profile, e.g. api.<host-ip>.sslip.io}
+      OPENAGENT_AUTH_DOMAIN: ${OPENAGENT_AUTH_DOMAIN:?Set OPENAGENT_AUTH_DOMAIN in .env when using the tls profile, e.g. auth.<host-ip>.sslip.io}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      frontend:
+        condition: service_started
+      api:
+        condition: service_healthy
+
   qdrant:
     image: qdrant/qdrant:v1.12.4
     ports:
-      - "6333:6333"
+      # Loopback-only - see the postgres comment above for rationale.
+      - "127.0.0.1:6333:6333"
     volumes:
       - qdrant-data:/qdrant/storage
 
   rag-service:
+    image: ${OPENAGENT_RAG_IMAGE:-openagent-rag-service:local}
     build:
       context: ./rag-service
     environment:
@@ -504,6 +593,7 @@ services:
       - qdrant
 
   docling-service:
+    image: ${OPENAGENT_DOCLING_IMAGE:-openagent-docling-service:local}
     build:
       context: ./docling-service
       args:
@@ -519,6 +609,7 @@ services:
       retries: 5
 
   customer-intelligence-mcp:
+    image: ${OPENAGENT_CI_MCP_IMAGE:-openagent-customer-intelligence-mcp:local}
     build:
       context: ./customer-intelligence-mcp
     environment:
@@ -532,7 +623,7 @@ services:
       - "8301"
 
   searxng:
-    image: searxng/searxng:latest
+    image: searxng/searxng:2026.8.29-d226b78bc
     environment:
       SEARXNG_BASE_URL: http://searxng:8080/
     volumes:
@@ -541,7 +632,7 @@ services:
       - "8080"
 
   crawler:
-    image: unclecode/crawl4ai:latest
+    image: unclecode/crawl4ai:0.9.2
     environment:
       # The image refuses a non-loopback bind (see crawler/config.yml) unless
       # this is set - required so the API isn't open/unauthenticated to
@@ -591,6 +682,8 @@ services:
       - "4318:4318"
 
 volumes:
+  openagent_workspace:
+    name: openagent_workspace
   openagent_pgdata:
     name: openagent_pgdata
   zitadel_pgdata:
@@ -602,3 +695,5 @@ volumes:
   langfuse-postgres-data:
   langfuse-clickhouse-data:
   langfuse-redis-data:
+  caddy_data:
+  caddy_config:

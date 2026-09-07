@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import os
 import socket
@@ -9,6 +9,7 @@ from arq.connections import RedisSettings
 from sqlalchemy import select
 
 from app.config import get_settings
+from app.core.channels.jobs import process_channel_message
 from app.core.chat_events import fail_orphaned_chat_runs
 from app.core.observability.llm_trace import NoopSink, set_default_sink
 from app.core.outbox import publish_pending_outbox
@@ -55,6 +56,10 @@ async def _resume_orphaned_runs(ctx: dict) -> None:
 async def _startup(ctx: dict) -> None:
     global _langfuse_sink, _worker_id
     _worker_id = f"{socket.gethostname()}-{os.getpid()}"
+    async with SessionLocal() as db:
+        from app.services.platform_config_service import PlatformConfigService
+
+        await PlatformConfigService(db).apply_overrides_to_environ()
     await _resume_orphaned_runs(ctx)
     settings = get_settings()
     if settings.observability_enabled and settings.langfuse_enabled:
@@ -90,6 +95,23 @@ async def _fail_orphaned_chat_runs(ctx: dict) -> None:
             await logger.awarning("chat_runs_marked_failed", count=len(failed), run_ids=failed)
 
 
+async def _platform_config_sync_tick(ctx: dict) -> None:
+    """Re-apply platform_config DB overrides to this process's environ.
+
+    The API process applies a saved change to its own environ immediately
+    on save; this worker process only sees it once this tick re-reads the
+    table — good enough for instance-wide operational config that isn't
+    latency-sensitive, without needing a pub/sub invalidation channel.
+    """
+    from app.services.platform_config_service import PlatformConfigService
+
+    async with SessionLocal() as db:
+        try:
+            await PlatformConfigService(db).apply_overrides_to_environ()
+        except Exception as exc:  # noqa: BLE001
+            await logger.aerror("platform_config_sync_failed", error=str(exc))
+
+
 async def _ci_scheduler_tick(ctx: dict) -> None:
     """Run due Customer-Intelligence sync schedules with a DB lease."""
     from app.core.scheduling.job_keys import JobKey
@@ -120,6 +142,59 @@ async def _workflow_scheduler_tick(ctx: dict) -> None:
             lease_seconds=50,
             worker_id=_worker_identity(),
             run=lambda: run_due_workflows(db),
+        )
+
+
+async def _approval_timeout_sweep_tick(ctx: dict) -> None:
+    """Auto-decline workflow approval nodes past their configured timeout,
+    then resume the run so it fails the node per the pending onError policy
+    instead of waiting forever."""
+    from app.core.guardrails.approval import sweep_expired_approvals
+    from app.core.scheduling.tick import run_leased_tick
+    from app.core.workflow.queue import enqueue_workflow_run
+    from app.models.workflow_run import WorkflowRun
+
+    async with SessionLocal() as db:
+        async def _sweep() -> dict:
+            expired = await sweep_expired_approvals(db)
+            resumed = 0
+            for approval in expired:
+                if approval.run_type not in {"workflow", "workflow.tool"} or not approval.run_id:
+                    continue
+                run = await db.get(WorkflowRun, approval.run_id)
+                if run is None or run.status not in {"waiting_approval", "queued"}:
+                    continue
+                run.status = "running"
+                run.error = None
+                await db.commit()
+                await enqueue_workflow_run(run.id)
+                resumed += 1
+            return {"expired": len(expired), "resumed": resumed}
+
+        await run_leased_tick(
+            db,
+            job_key="approval_timeout_sweep_tick",
+            interval_seconds=60,
+            lease_seconds=50,
+            worker_id=_worker_identity(),
+            run=_sweep,
+        )
+
+
+async def _ops_agent_sweep_tick(ctx: dict) -> None:
+    """Run the Ops & Reliability agent's scan sweep for every org that has it."""
+    from app.core.agents.ops_sweep import run_ops_agent_sweep
+    from app.core.scheduling.job_keys import JobKey
+    from app.core.scheduling.tick import run_leased_tick
+
+    async with SessionLocal() as db:
+        await run_leased_tick(
+            db,
+            job_key=JobKey.OPS_AGENT_SWEEP,
+            interval_seconds=900,
+            lease_seconds=600,
+            worker_id=_worker_identity(),
+            run=lambda: run_ops_agent_sweep(db),
         )
 
 
@@ -390,14 +465,18 @@ async def process_outbox_event(ctx: dict, event_id: str) -> None:
 
 
 class WorkerSettings:
-    functions = [run_workflow, run_chat, run_provider_discovery, run_ci_research, process_outbox_event]
+    functions = [run_workflow, run_chat, run_provider_discovery, run_ci_research, process_outbox_event, process_channel_message]
     redis_settings = RedisSettings.from_dsn(get_settings().redis_url)
     on_startup = _startup
     on_shutdown = _shutdown
     cron_jobs = [
+        cron(_platform_config_sync_tick, minute=set(range(0, 60, 1)), run_at_startup=False),
         cron(_auto_rollback_sweep, minute=set(range(0, 60, 5))),
+        cron(_resume_orphaned_runs, minute=set(range(2, 60, 5)), run_at_startup=False),
         cron(_fail_orphaned_chat_runs, minute=set(range(0, 60, 2)), run_at_startup=False),
         cron(_ci_scheduler_tick, minute=set(range(0, 60, 5)), run_at_startup=False),
+        cron(_ops_agent_sweep_tick, minute=set(range(0, 60, 15)), run_at_startup=False),
+        cron(_approval_timeout_sweep_tick, minute=set(range(0, 60, 1)), run_at_startup=False),
         cron(_workflow_scheduler_tick, minute=set(range(0, 60, 1)), run_at_startup=False),
         cron(_ci_retry_due_cases_tick, minute=set(range(0, 60, 1)), run_at_startup=False),
         cron(_ci_dispatch_ingested_tick, minute=set(range(0, 60, 1)), run_at_startup=False),

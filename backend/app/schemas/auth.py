@@ -27,6 +27,10 @@ class UserMembershipOut(BaseModel):
     org_name: str
     org_slug: str
     role: str
+    # A user can hold more than one role in the same org (e.g. a
+    # self-registered founder gets both org_admin and operator) - `role` is
+    # the highest-priority one for display, `roles` is the full set.
+    roles: list[str] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -36,6 +40,7 @@ class MeResponse(BaseModel):
     email: str
     display_name: str
     is_active: bool
+    must_change_password: bool = False
     created_at: datetime
     memberships: list[UserMembershipOut]
     permissions_by_org: dict[str, list[str]] = Field(default_factory=dict)
@@ -46,7 +51,12 @@ class MeResponse(BaseModel):
 
 class InviteMemberRequest(BaseModel):
     email: EmailStr
-    role: str = "developer"
+    role: str = "user"
+    initial_password: str | None = None
+
+
+class UpdateMemberRoleRequest(BaseModel):
+    role: str
 
 
 class ApiKeyCreateRequest(BaseModel):

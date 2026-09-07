@@ -92,7 +92,9 @@ class EvaluationSuiteOut(BaseModel):
     description: str
     agent_id: str
     dataset_version: int
-    created_by_user_id: str | None
+    created_by_user_id: str | None = None
+    creator_email: str | None = None
+    creator_name: str | None = None
     created_at: datetime
     updated_at: datetime
     cases: list[EvaluationCaseOut] = Field(default_factory=list)

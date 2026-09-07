@@ -1,7 +1,7 @@
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 from app.core.providers.constants import DEFAULT_CONTEXT_WINDOW
 
@@ -18,6 +18,18 @@ class ModelBase(BaseModel):
     output_cost_per_1k: float = 0.0
     active: bool = True
     enabled: bool | None = None
+    supports_vision: bool | None = None
+
+    @field_validator("tier", mode="before")
+    @classmethod
+    def normalize_tier(cls, v: Any) -> str:
+        if v == "fast":
+            return "economy"
+        if isinstance(v, str):
+            v_lower = v.lower()
+            if v_lower in {"frontier", "balanced", "economy"}:
+                return v_lower
+        return "balanced"
 
 
 class ModelCreate(ModelBase):
@@ -34,6 +46,20 @@ class ModelUpdate(BaseModel):
     output_cost_per_1k: float | None = None
     active: bool | None = None
     enabled: bool | None = None
+    supports_vision: bool | None = None
+
+    @field_validator("tier", mode="before")
+    @classmethod
+    def normalize_tier(cls, v: Any) -> str | None:
+        if v is None:
+            return None
+        if v == "fast":
+            return "economy"
+        if isinstance(v, str):
+            v_lower = v.lower()
+            if v_lower in {"frontier", "balanced", "economy"}:
+                return v_lower
+        return "balanced"
 
 
 class ModelOut(BaseModel):
@@ -60,6 +86,17 @@ class ModelOut(BaseModel):
     supports_vision: bool | None = None
     created_at: datetime
 
+    @field_validator("tier", mode="before")
+    @classmethod
+    def normalize_tier(cls, v: Any) -> str:
+        if v == "fast":
+            return "economy"
+        if isinstance(v, str):
+            v_lower = v.lower()
+            if v_lower in {"frontier", "balanced", "economy"}:
+                return v_lower
+        return "balanced"
+
 
 class ModelTestResult(BaseModel):
     ok: bool
@@ -67,3 +104,23 @@ class ModelTestResult(BaseModel):
     message: str
     sample_response: str | None = None
     model_name: str | None = None
+
+
+class OrgModelTierConfigOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    org_id: str
+    tier: Tier
+    model_id: str | None = None
+    model: ModelOut | None = None
+    updated_at: datetime
+
+
+class OrgModelTierMatrixUpdate(BaseModel):
+    tier_mappings: dict[Tier, str | None]
+
+
+class OrgModelTierMatrixResponse(BaseModel):
+    tiers: dict[Tier, ModelOut | None]
+

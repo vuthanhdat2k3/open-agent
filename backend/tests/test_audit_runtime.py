@@ -88,7 +88,7 @@ def _fake_stream(tool_name: str | None):
     """stream() replacement: one tool call, then a final answer."""
     calls = {"n": 0}
 
-    async def stream(self, messages, tools=None, temperature=0.7, tool_choice=None):  # noqa: ANN001
+    async def stream(self, messages, tools=None, temperature=0.7, tool_choice=None, thinking=None):  # noqa: ANN001
         calls["n"] += 1
         if calls["n"] == 1 and tool_name:
             yield {"type": "tool_calls", "tool_calls": [_tool_call_delta(tool_name, "{}")]}

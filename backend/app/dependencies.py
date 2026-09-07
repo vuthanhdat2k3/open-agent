@@ -11,12 +11,13 @@ from app.config import get_settings
 from app.core.auth.api_key import hash_api_key
 from app.core.auth.application_session import resolve_application_session
 from app.core.auth.jwt import verify_access_token
-from app.core.authz.policy import PrincipalContext, has_permission
+from app.core.authz.policy import PrincipalContext, has_permission, primary_role
 from app.core.authz.scope import set_ownership_scope
 from app.core.observability.chat_timing import mark_chat_phase
 from app.db.session import get_db
 from app.models.api_key import ApiKey
 from app.models.membership import Membership
+from app.models.role import Role
 from app.models.user import User
 
 DEFAULT_ORG_ID = "default-org-id"  # disposable local/test compatibility only
@@ -36,24 +37,33 @@ async def get_current_user(
     # session. The cookie contains no role, org, or user claims.
     raw_session = request.cookies.get(settings.application_session_cookie_name)
     if raw_session:
-        user, membership, session = await resolve_application_session(
-            db, raw_token=raw_session, request=request
-        )
-        request.state.user_id = user.id
-        request.state.org_id = membership.org_id
-        request.state.membership_id = membership.id
-        request.state.session_id = session.id
-        mark_chat_phase(request, "auth_done", auth_method="application_session")
-        return user
+        try:
+            user, membership, session = await resolve_application_session(
+                db, raw_token=raw_session, request=request
+            )
+            request.state.user_id = user.id
+            request.state.org_id = membership.org_id
+            request.state.membership_id = membership.id
+            request.state.session_id = session.id
+            user.role = getattr(membership.role, "value", str(membership.role))
+            mark_chat_phase(request, "auth_done", auth_method="application_session")
+            return user
+        except HTTPException:
+            # A stale/expired/wrong-host cookie (e.g. a leftover session
+            # cookie for a domain that used to be called directly) must not
+            # block a still-valid bearer token below - fall through instead
+            # of failing outright on a cookie that just happens to be
+            # present but no longer resolves.
+            pass
 
-    if settings.auth_provider == "zitadel":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="ZITADEL authentication required",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    # 1. Check Bearer token or access_token cookie
+    # 1. Check Bearer token or access_token cookie. Tried for every provider
+    # (including zitadel): these are self-issued, HMAC-signed tokens
+    # (jwt_secret_key) minted by this backend itself — e.g. via
+    # /api/auth/bridge-token for a browser that already holds a valid
+    # application_session — not an alternative, weaker login path. A
+    # zitadel deployment with neither an application_session cookie nor one
+    # of these still falls through to the explicit "ZITADEL authentication
+    # required" error below.
     token = None
     if bearer and bearer.credentials:
         token = bearer.credentials
@@ -89,6 +99,14 @@ async def get_current_user(
                     user = res.scalar_one_or_none()
                     if user:
                         request.state.user_id = user.id
+                        if not org_id:
+                            m_res = await db.execute(
+                                select(Membership.org_id).where(
+                                    Membership.user_id == user.id,
+                                    Membership.lifecycle_status == "active",
+                                ).order_by(Membership.created_at.asc()).limit(1)
+                            )
+                            org_id = m_res.scalar_one_or_none()
                         if not org_id and get_settings().auth_provider != "zitadel":
                             org_id = DEFAULT_ORG_ID
                         if not org_id:
@@ -109,6 +127,14 @@ async def get_current_user(
                     user = res.scalar_one_or_none()
                     if user:
                         request.state.user_id = user.id
+                        if not org_id:
+                            m_res = await db.execute(
+                                select(Membership.org_id).where(
+                                    Membership.user_id == user.id,
+                                    Membership.lifecycle_status == "active",
+                                ).order_by(Membership.created_at.asc()).limit(1)
+                            )
+                            org_id = m_res.scalar_one_or_none()
                         if not org_id and get_settings().auth_provider != "zitadel":
                             org_id = DEFAULT_ORG_ID
                         if not org_id:
@@ -155,6 +181,13 @@ async def get_current_user(
                     mark_chat_phase(request, "auth_done", auth_method="api_key")
                     return user
 
+    if settings.auth_provider == "zitadel":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="ZITADEL authentication required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -178,6 +211,25 @@ async def get_current_org_id(
     state_org = getattr(request.state, "org_id", None)
     user_id = getattr(request.state, "user_id", None)
 
+    # 1. If state_org is not yet populated, attempt to resolve via application session cookie
+    if not state_org:
+        raw_session = request.cookies.get(settings.application_session_cookie_name)
+        if raw_session:
+            try:
+                user, membership, session = await resolve_application_session(
+                    db, raw_token=raw_session, request=request
+                )
+                request.state.user_id = user.id
+                request.state.org_id = membership.org_id
+                request.state.membership_id = membership.id
+                request.state.session_id = session.id
+                user.role = getattr(membership.role, "value", str(membership.role))
+                state_org = membership.org_id
+                user_id = user.id
+            except Exception:
+                pass
+
+    # 2. If still not set, resolve via Authorization header or access_token cookie
     if not state_org:
         auth_header = request.headers.get("Authorization")
         token = None
@@ -190,7 +242,6 @@ async def get_current_org_id(
             try:
                 import jwt as pyjwt
 
-                settings = get_settings()
                 raw_payload = pyjwt.decode(
                     token,
                     settings.jwt_secret_key,
@@ -200,16 +251,21 @@ async def get_current_org_id(
                 if raw_payload.get("org_id"):
                     state_org = raw_payload.get("org_id")
                     request.state.org_id = state_org
+                if raw_payload.get("sub"):
+                    user_id = raw_payload.get("sub")
+                    request.state.user_id = user_id
             except Exception:
                 pass
 
+    # 3. If header_org is provided and user is authenticated, verify membership
     if user_id and header_org:
         if header_org != state_org:
             res = await db.execute(
-                select(Membership).where(
+                select(Membership.id).where(
                     Membership.org_id == header_org,
                     Membership.user_id == user_id,
-                )
+                    Membership.lifecycle_status == "active",
+                ).limit(1)
             )
             membership = res.scalar_one_or_none()
             if not membership:
@@ -217,10 +273,24 @@ async def get_current_org_id(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail=f"User does not belong to organization '{header_org}'",
                 )
+        request.state.org_id = header_org
         return header_org
 
     if state_org:
         return state_org
+
+    # 4. Fallback to user's first active membership if user is known
+    if user_id:
+        res = await db.execute(
+            select(Membership.org_id).where(
+                Membership.user_id == user_id,
+                Membership.lifecycle_status == "active",
+            ).order_by(Membership.created_at.asc()).limit(1)
+        )
+        fallback_org = res.scalar_one_or_none()
+        if fallback_org:
+            request.state.org_id = fallback_org
+            return fallback_org
 
     if header_org:
         return header_org
@@ -228,6 +298,21 @@ async def get_current_org_id(
     if settings.auth_provider == "local":
         return DEFAULT_ORG_ID
     raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Organization context required")
+
+
+async def _global_platform_admin_roles(db: AsyncSession, user_id: str) -> frozenset[Role]:
+    """platform_admin's membership row lives in the special 'platform' org,
+    not in every tenant org - so its break-glass read-only access can't be
+    resolved from a target-org membership lookup alone. Returns
+    {Role.platform_admin} if this user holds that role anywhere, else empty."""
+    res = await db.execute(
+        select(Membership.id).where(
+            Membership.user_id == user_id,
+            Membership.role == Role.platform_admin,
+            Membership.lifecycle_status == "active",
+        ).limit(1)
+    )
+    return frozenset({Role.platform_admin}) if res.scalar_one_or_none() else frozenset()
 
 
 def require_permission(permission: str):
@@ -248,25 +333,35 @@ def require_permission(permission: str):
             select(Membership).where(
                 Membership.org_id == org_id,
                 Membership.user_id == current_user.id,
+                Membership.lifecycle_status == "active",
             )
         )
-        membership = res.scalar_one_or_none()
-        if membership is None or membership.lifecycle_status != "active":
+        memberships = res.scalars().all()
+        roles = frozenset(m.role for m in memberships)
+        if not roles:
+            # No row in this specific org - a global platform_admin still
+            # gets its break-glass read-only permissions here.
+            roles = await _global_platform_admin_roles(db, current_user.id)
+        if not roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="User does not belong to this organization",
             )
-        if not has_permission(membership.role, permission):
+        if not any(has_permission(role, permission) for role in roles):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Permission denied: {permission}",
             )
+        display_role = primary_role(roles)
+        current_user.role = display_role.value
+        display_membership = next((m for m in memberships if m.role == display_role), None)
         principal = PrincipalContext(
             user_id=current_user.id,
             principal_id=current_user.id,
-            role=membership.role,
+            role=display_role,
+            roles=roles,
             organization_id=org_id,
-            membership_id=membership.id,
+            membership_id=display_membership.id if display_membership else None,
             session_id=getattr(request.state, "session_id", None),
         )
         request.state.principal = principal
@@ -290,20 +385,29 @@ def require_any_permission(*permissions: str):
             select(Membership).where(
                 Membership.org_id == org_id,
                 Membership.user_id == current_user.id,
+                Membership.lifecycle_status == "active",
             )
         )
-        membership = res.scalar_one_or_none()
-        if membership is None or not any(has_permission(membership.role, permission) for permission in permissions):
+        memberships = res.scalars().all()
+        roles = frozenset(m.role for m in memberships)
+        if not roles:
+            roles = await _global_platform_admin_roles(db, current_user.id)
+        if not roles or not any(
+            has_permission(role, permission) for role in roles for permission in permissions
+        ):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Permission denied: {' or '.join(permissions)}",
             )
+        display_role = primary_role(roles)
+        display_membership = next((m for m in memberships if m.role == display_role), None)
         principal = PrincipalContext(
             user_id=current_user.id,
             principal_id=current_user.id,
-            role=membership.role,
+            role=display_role,
+            roles=roles,
             organization_id=org_id,
-            membership_id=membership.id,
+            membership_id=display_membership.id if display_membership else None,
             session_id=getattr(request.state, "session_id", None),
         )
         request.state.principal = principal

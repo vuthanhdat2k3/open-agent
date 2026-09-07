@@ -1,32 +1,64 @@
-"use client";
+﻿"use client";
 
 import { FolderSearch, ListTodo, Sparkles } from "lucide-react";
 import { ChatComposer } from "@/components/chat/chat-composer";
-import type { Agent, Model, UploadedFile } from "@/types";
+import type { Agent, Model, UploadedFile, ExecutionPolicy, UsageSummary } from "@/types";
+import type { ChatMessage } from "@/lib/chat/projection";
+import { useTranslation } from "@/lib/i18n";
 
 interface ChatEmptyStateProps {
   currentAgent?: Agent;
+  models?: Model[];
   effectiveModel?: Model;
+  onModelChange: (modelId: string) => void;
+  executionPolicy: ExecutionPolicy;
+  onExecutionPolicyChange: (policy: ExecutionPolicy) => void;
   draft: string;
   onDraftChange: (value: string) => void;
   onSubmit: () => void;
   disabled: boolean;
   attachments: UploadedFile[];
   onAttachmentsChange: (files: UploadedFile[]) => void;
+  onClear?: () => void;
+  onReset?: () => void;
+  agents?: Agent[];
+  onAgentChange?: (agentId: string) => void;
+  usage?: UsageSummary[];
+  onSendMessage?: (message: string) => void;
+  sessionId?: string;
+  messages?: ChatMessage[];
 }
-
-const QUICK_ACTIONS = [
-  { icon: FolderSearch, label: "List recent files", prompt: "List the 5 most recently modified files I have access to." },
-  { icon: ListTodo, label: "Summarize my day", prompt: "Summarize what needs my attention today." },
-  { icon: Sparkles, label: "What can you do?", prompt: "What can you help me with?" },
-];
 
 // Adapted from RuixenMoonChat (21st.dev / ruixen.ui): a moon-glow backdrop, a
 // heading block that floats in the upper area (flex-1), and a composer +
 // quick-action pills grouped together near the bottom (not pinned to the
 // edge). The composer is the same ChatComposer used once a conversation is
 // active, so attach/send behave identically in both states.
-export function ChatEmptyState({ currentAgent, effectiveModel, draft, onDraftChange, onSubmit, disabled, attachments, onAttachmentsChange }: ChatEmptyStateProps) {
+export function ChatEmptyState({
+  currentAgent, models, effectiveModel, onModelChange, executionPolicy, onExecutionPolicyChange,
+  draft, onDraftChange, onSubmit, disabled, attachments, onAttachmentsChange, onClear, onReset,
+  agents, onAgentChange, usage, onSendMessage, sessionId
+}: ChatEmptyStateProps) {
+  const { t, locale, tx } = useTranslation();
+
+  const quickActions = [
+    {
+      icon: FolderSearch,
+      label: t("pages.chat.emptyStateRecentFiles", "Tệp tài liệu gần đây"),
+      prompt: t("pages.chat.emptyStateRecentFilesPrompt", "Liệt kê 5 tệp tài liệu tôi đã tải lên hoặc truy cập gần nhất."),
+    },
+    {
+      icon: ListTodo,
+      label: t("pages.chat.emptyStateTasks", "Tóm tắt công việc"),
+      prompt: t("pages.chat.emptyStateTasksPrompt", "Tóm tắt những việc quan trọng cần tôi xử lý hôm nay."),
+    },
+    {
+      icon: Sparkles,
+      label: t("pages.chat.emptyStateCapabilities", "Khả năng của bạn"),
+      prompt: t("pages.chat.emptyStateCapabilitiesPrompt", "Bạn có thể giúp tôi làm những tác vụ nào?"),
+    },
+  ];
+
   return (
     <div className="relative m-auto flex min-h-0 w-full flex-1 flex-col items-center overflow-hidden">
       <div
@@ -43,8 +75,7 @@ export function ChatEmptyState({ currentAgent, effectiveModel, draft, onDraftCha
           {currentAgent?.name ?? "OpenAgent"}
         </h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          Build something amazing — just start typing below.
-          {effectiveModel && <span className="ml-1 font-mono text-xs text-foreground/60">({effectiveModel.display_name || effectiveModel.name})</span>}
+          {tx("Xây dựng mọi ý tưởng — bắt đầu gửi tin nhắn ngay bên dưới.", "Build something amazing — just start typing below.")}
         </p>
       </div>
 
@@ -57,11 +88,24 @@ export function ChatEmptyState({ currentAgent, effectiveModel, draft, onDraftCha
           attachments={attachments}
           onAttachmentsChange={onAttachmentsChange}
           variant="floating"
-          placeholder="Type your request…"
+          placeholder={tx("Nhập yêu cầu của bạn… (gõ / để xem lệnh)", "Type your request… (type / for commands)")}
+          models={models}
+          effectiveModel={effectiveModel}
+          onModelChange={onModelChange}
+          executionPolicy={executionPolicy}
+          onExecutionPolicyChange={onExecutionPolicyChange}
+          onClear={onClear}
+          onReset={onReset}
+          agents={agents}
+          currentAgentId={currentAgent?.id}
+          onAgentChange={onAgentChange}
+          usage={usage}
+          onSendMessage={onSendMessage}
+          sessionId={sessionId}
         />
 
         <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
-          {QUICK_ACTIONS.map(({ icon: Icon, label, prompt }) => (
+          {quickActions.map(({ icon: Icon, label, prompt }) => (
             <button
               key={label}
               type="button"

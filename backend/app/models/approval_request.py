@@ -40,7 +40,7 @@ class ApprovalRequest(Base):
     )
     expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     payload_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    idempotency_key: Mapped[str | None] = mapped_column(String(256), nullable=True)
 
     # The Task that actually issued the gated tool call — the root task for a
     # direct approval, or the (possibly deeply nested) delegated sub-task for
@@ -53,3 +53,11 @@ class ApprovalRequest(Base):
     owning_task_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True, index=True
     )
+
+    # --- Workflow `approval` node config (see engine.py's "approval" kind) ---
+    title: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    instructions: Mapped[str] = mapped_column(Text, default="")
+    # Empty/None = anyone with approval permission may decide (existing
+    # requested_by-or-approvals:manage rule); a non-empty list restricts
+    # deciding this specific request to only these user ids.
+    approver_user_ids: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)

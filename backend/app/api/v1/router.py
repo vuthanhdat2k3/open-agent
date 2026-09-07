@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends
+﻿from fastapi import APIRouter, Depends
 
 from app.api.v1.routes import (
     a2a,
     agents,
     approvals,
     auth,
+    channels,
     chat,
     customer_intelligence,
     debug,
@@ -13,14 +14,18 @@ from app.api.v1.routes import (
     files,
     mcp,
     models,
+    notifications,
     orgs,
+    platform_config,
     providers,
     quotas,
     sandbox,
     sessions,
     trusted_rules,
+    users,
     workflow_catalog,
     workflow_installations,
+    workflow_webhooks,
     workflows,
     workspace,
 )
@@ -38,11 +43,15 @@ protected_router.include_router(approvals.router)
 protected_router.include_router(customer_intelligence.router)
 protected_router.include_router(email_intelligence_admin.router)
 protected_router.include_router(trusted_rules.router)
+protected_router.include_router(users.router)
 protected_router.include_router(mcp.router)
+protected_router.include_router(notifications.router)
+protected_router.include_router(platform_config.router)
 protected_router.include_router(workflows.router)
 protected_router.include_router(workflow_catalog.router)
 protected_router.include_router(workflow_installations.router)
 protected_router.include_router(chat.router)
+protected_router.include_router(channels.router)
 protected_router.include_router(debug.router)
 protected_router.include_router(evaluations.router)
 protected_router.include_router(files.router)
@@ -52,4 +61,6 @@ protected_router.include_router(workspace.router)
 protected_router.include_router(a2a.router)
 api_router.include_router(customer_intelligence.oauth_router)
 api_router.include_router(customer_intelligence.webhook_router)
+api_router.include_router(workflow_webhooks.router)
+api_router.include_router(channels.webhook_router)
 api_router.include_router(protected_router)

@@ -42,7 +42,7 @@ plug in over the MCP protocol without backend provider code.
   repository layer (every query is scoped by `org_id`).
 - **AuthN/AuthZ**: JWT access + rotating refresh tokens, OAuth2/OIDC login,
   API keys for machine-to-machine, static role→permission matrix
-  (`owner` / `admin` / `developer` / `viewer`).
+  (`platform_admin` / `org_admin` / `operator` / `user`).
 - **Guardrails**: prompt-injection filter, secret/PII scanner, loop &
   cost/wall-clock circuit breakers, human-in-the-loop approval gate, append-only
   audit log.
@@ -80,6 +80,7 @@ open-agent/
 ├── docs/                 # ARCHITECTURE, database-schema, api-reference, modules/*, agentos-v2/*
 ├── backend/              # FastAPI: app/{api,core,db,evals,mcp,models,repositories,schemas,services}
 ├── frontend/              # Next.js: app/, components/, lib/, stores/, hooks/, types/
+├── desktop/              # Tauri v2 desktop shell (thin client, points at a running server)
 ├── rag-service/           # Standalone RAG microservice (MCP server + REST admin API)
 ├── customer-intelligence-mcp/ # Stateless real email/calendar/Drive/research MCP connector
 ├── observability/         # Grafana dashboards + Prometheus config

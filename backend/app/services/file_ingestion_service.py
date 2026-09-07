@@ -14,6 +14,7 @@ from app.db.base import utc_now
 from app.models.file_ingest_job import FileIngestJob
 from app.models.files import UploadedFile
 from app.models.outbox import OutboxEvent
+from app.services.rag_collections import resolve_rag_collection
 from app.services.rag_ingest_client import RagIngestClient, RagIngestError
 
 ACTIVE = {"queued", "processing", "retrying"}
@@ -38,10 +39,16 @@ class FileIngestionService:
     async def create_job(
         self, org_id: str, file_id: str, user_id: str | None, *, collection: str,
         chunk_size: int, chunk_overlap: int, tags: list[str], correlation_id: str,
+        owner_user_id: str | None = None,
     ) -> tuple[FileIngestJob, bool]:
-        record = await self.db.scalar(
-            select(UploadedFile).where(UploadedFile.id == file_id, UploadedFile.org_id == org_id)
-        )
+        # `owner_user_id` scopes a plain `user` caller to files they own —
+        # the same convention as FileService.list/download/delete — so a
+        # user with only `files:personal:manage` can't trigger ingestion of
+        # someone else's (or the org-shared) files. Staff callers pass None.
+        stmt = select(UploadedFile).where(UploadedFile.id == file_id, UploadedFile.org_id == org_id)
+        if owner_user_id is not None:
+            stmt = stmt.where(UploadedFile.created_by_user_id == owner_user_id)
+        record = await self.db.scalar(stmt)
         if record is None:
             raise FileNotFoundError("file not found")
         key = _idempotency_key(record, collection, chunk_size, chunk_overlap, tags)
@@ -105,9 +112,19 @@ class FileIngestionService:
         body = None
         try:
             body = await asyncio.to_thread(self._download, record.stored_path)
+            # The file's own visibility/owner (not the operator who clicked
+            # "ingest") decides the tenant scope, so a staff-triggered ingest
+            # of a user's personal upload still lands in that user's own
+            # collection rather than the shared org one.
+            personal_user_id = (
+                record.created_by_user_id if record.visibility == "personal" else None
+            )
+            collection = resolve_rag_collection(
+                job.collection, job.org_id, personal_user_id=personal_user_id
+            )
             result = await RagIngestClient(self.settings).ingest(
                 body, filename=record.original_name, content_type=record.content_type,
-                collection=job.collection, chunk_size=job.chunk_size, chunk_overlap=job.chunk_overlap,
+                collection=collection, chunk_size=job.chunk_size, chunk_overlap=job.chunk_overlap,
                 tags=job.tags, correlation_id=job.correlation_id,
             )
             current = await self.db.scalar(select(FileIngestJob).where(

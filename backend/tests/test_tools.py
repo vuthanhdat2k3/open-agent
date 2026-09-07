@@ -67,7 +67,7 @@ async def test_run_shell_echo(tmp_path: Path, monkeypatch) -> None:
             return next(self._lines, b"")
 
     class FakeWriter:
-        async def write(self, _b: bytes) -> None:
+        def write(self, _b: bytes) -> None:
             return None
 
         async def drain(self) -> None:
@@ -115,8 +115,21 @@ async def test_all_builtins_registered() -> None:
         "youtube_search",
         "save_memory",
         "call_memory",
+        "preview_web_artifact",
     }:
         assert expected in names
+
+
+async def test_preview_web_artifact(tmp_path: Path) -> None:
+    ctx = _ctx(str(tmp_path))
+    (tmp_path / "app.html").write_text("<!DOCTYPE html><html><body><h1>Hello 3D</h1></body></html>", encoding="utf-8")
+    res = await get_tool("preview_web_artifact").run({"path": "app.html"}, ctx)
+    assert "Live interactive web preview ready" in res
+
+    # Rejects non-web extensions
+    (tmp_path / "script.py").write_text("print('test')", encoding="utf-8")
+    res_py = await get_tool("preview_web_artifact").run({"path": "script.py"}, ctx)
+    assert "error" in res_py and "only supports web artifacts" in res_py
 
 
 async def test_save_and_call_memory() -> None:
@@ -139,3 +152,4 @@ async def test_save_and_call_memory() -> None:
         res3 = await get_tool("call_memory").run({}, ctx)
         assert "Dat" in res3 and "Python" in res3
     await engine.dispose()
+

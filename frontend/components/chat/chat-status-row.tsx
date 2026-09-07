@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import type { Model } from "@/types";
+import { useTranslation } from "@/lib/i18n";
 
 interface ChatStatusRowProps {
   statusPhase: string;
@@ -9,19 +10,20 @@ interface ChatStatusRowProps {
 }
 
 export function ChatStatusRow({ statusPhase, effectiveModel }: ChatStatusRowProps) {
+  const { tx } = useTranslation();
   const modelName = effectiveModel?.display_name || effectiveModel?.name;
   const label =
     statusPhase === "approval"
-      ? "Waiting for approval…"
+      ? tx("Đang chờ phê duyệt…", "Waiting for approval…")
       : statusPhase.startsWith("tool:")
-        ? `Running ${statusPhase.slice(5)}…`
+        ? tx(`Đang chạy ${statusPhase.slice(5)}…`, `Running ${statusPhase.slice(5)}…`)
         : statusPhase === "result"
-          ? "Processing result…"
+          ? tx("Đang xử lý kết quả…", "Processing result…")
           : statusPhase === "answering"
-            ? "Writing response…"
+            ? tx("Đang soạn phản hồi…", "Writing response…")
             : modelName
-              ? `${modelName} is thinking…`
-              : "Thinking…";
+              ? tx(`${modelName} đang suy nghĩ…`, `${modelName} is thinking…`)
+              : tx("Đang suy nghĩ…", "Thinking…");
 
   return (
     <div className="flex w-full max-w-[min(525px,85%)] items-center self-start py-1 text-[13px] font-medium leading-6 select-none">

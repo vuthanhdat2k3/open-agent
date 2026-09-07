@@ -27,6 +27,7 @@ export const modelCreate = z.object({
   output_cost_per_1k: z.number().min(0),
   active: z.boolean().optional(),
   enabled: z.boolean().optional(),
+  supports_vision: z.boolean().nullable().optional(),
 });
 export type ModelCreate = z.infer<typeof modelCreate>;
 
@@ -93,5 +94,6 @@ export const runWorkflowRequest = z.object({
   input: z.string().min(1),
   stream: z.boolean().optional().default(true),
   timezone: z.string().optional(),
+  trigger_node_id: z.string().optional(),
 });
 export type RunWorkflowRequest = z.infer<typeof runWorkflowRequest>;

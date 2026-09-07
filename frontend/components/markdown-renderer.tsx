@@ -23,8 +23,11 @@ import rehypeKatex from "rehype-katex";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import React from "react";
+import { PanelRightOpen, Network } from "lucide-react";
 import { streamSSE } from "@/lib/api";
 import { inlineCodeHttpUrl, normalizeLatex } from "@/lib/chat/markdown-text";
+import { useTranslation } from "@/lib/i18n";
+import { useCanvasStore } from "@/stores";
 
 // content is LLM output, which is attacker-influenceable via prompt
 // injection (e.g. from ingested documents). rehype-raw turns raw HTML in
@@ -60,6 +63,8 @@ function extractCodeText(children: React.ReactNode): string {
 }
 
 function CodeBlockWithAction({ className, children, ...props }: any) {
+  const { locale, tx } = useTranslation();
+  const { openCanvas } = useCanvasStore();
   const isBlock = Boolean(className?.includes("language-") || className?.includes("math"));
   const match = /language-(\w+)/.exec(className || "");
   const lang = match ? match[1].toLowerCase() : "";
@@ -76,6 +81,19 @@ function CodeBlockWithAction({ className, children, ...props }: any) {
   const logEndRef = React.useRef<HTMLDivElement>(null);
 
   const codeText = React.useMemo(() => extractCodeText(children), [children]);
+
+  const workflowJsonData = React.useMemo(() => {
+    if (lang !== "json") return null;
+    if (!codeText.includes('"nodes"') || !codeText.includes('"edges"')) return null;
+    try {
+      const parsed = JSON.parse(codeText);
+      if (Array.isArray(parsed.nodes) && Array.isArray(parsed.edges)) {
+        return parsed;
+      }
+    } catch {}
+    return null;
+  }, [lang, codeText]);
+  const isWorkflowJson = Boolean(workflowJsonData);
 
   React.useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -111,7 +129,7 @@ function CodeBlockWithAction({ className, children, ...props }: any) {
     );
   }
 
-  if (!isHtml && !isRunnable) {
+  if (!isHtml && !isRunnable && !isWorkflowJson) {
     return (
       <code className={`${className ?? ""} text-[10.5px] leading-relaxed`} {...props}>
         {children}
@@ -147,12 +165,12 @@ function CodeBlockWithAction({ className, children, ...props }: any) {
             const code = ev.data?.code ?? 0;
             setExitCode(code);
           } else if (ev.event === "error") {
-            setErrorMessage(ev.data?.message || "Execution error");
+            setErrorMessage(ev.data?.message || tx("Lỗi thực thi", "Execution error"));
           }
         },
       );
     } catch (e: any) {
-      setErrorMessage(e.message || "Execution error");
+      setErrorMessage(e.message || tx("Lỗi thực thi", "Execution error"));
     } finally {
       setIsRunning(false);
     }
@@ -161,43 +179,85 @@ function CodeBlockWithAction({ className, children, ...props }: any) {
   return (
     <div className="relative group/code my-2">
       <div className="flex items-center justify-between px-3 py-1 bg-muted/60 border border-border/40 border-b-0 rounded-t-lg text-[10px] font-mono text-muted-foreground">
-        <span className="uppercase font-semibold tracking-wider text-[9px] text-foreground/70">{lang}</span>
-        {isHtml && (
-          <div className="flex items-center gap-1.5">
+        <span className="uppercase font-semibold tracking-wider text-[9px] text-foreground/70">{lang || "code"}</span>
+        <div className="flex items-center gap-1.5">
+          {isWorkflowJson ? (
             <button
-              onClick={() => setShowPreview((v) => !v)}
               type="button"
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-primary/10 text-primary hover:bg-primary/20 transition-colors cursor-pointer"
+              onClick={() => {
+                const parsed = workflowJsonData;
+                openCanvas({
+                  type: "workflow",
+                  title: parsed?.name || tx("Quy trình DAG", "Workflow DAG"),
+                  workflowId: parsed?.id,
+                  workflowName: parsed?.name,
+                  workflowDescription: parsed?.description,
+                  workflowGraph: parsed ? { nodes: parsed.nodes, edges: parsed.edges } : undefined,
+                  code: codeText,
+                  language: "json",
+                });
+              }}
+              title={tx("Mở sơ đồ DAG trong Canvas", "Open DAG graph in Canvas")}
+              className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-[10px] font-medium bg-indigo-500/15 text-indigo-400 hover:bg-indigo-500/25 border border-indigo-500/30 transition-colors cursor-pointer"
             >
-              {showPreview ? "▶ Hide Preview" : "▶ Preview"}
+              <Network className="h-3 w-3 text-indigo-400 animate-pulse" aria-hidden="true" />
+              <span>{tx("Workflow Canvas", "Workflow Canvas")}</span>
             </button>
+          ) : (
             <button
-              onClick={handleOpenNewTab}
               type="button"
-              title="Mở trang HTML trong tab mới"
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-muted/60 text-foreground/80 hover:bg-muted transition-colors cursor-pointer"
+              onClick={() =>
+                openCanvas({
+                  title: `${lang || "code"} snippet`,
+                  code: codeText,
+                  language: lang,
+                  initialTab: isHtml ? "preview" : "code",
+                })
+              }
+              title={tx("Mở trong Canvas cạnh chat", "Open in side Canvas panel")}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-muted/80 text-muted-foreground hover:text-foreground hover:bg-muted border border-border/40 transition-colors cursor-pointer"
             >
-              ↗ Mở tab mới
+              <PanelRightOpen className="h-3 w-3 text-primary" aria-hidden="true" />
+              <span>Canvas</span>
             </button>
-          </div>
-        )}
-        {isRunnable && (
-          <button
-            onClick={handleRunBackend}
-            disabled={isRunning}
-            type="button"
-            className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-[10px] font-medium bg-success/15 text-success hover:bg-success/25 border border-success/30 disabled:opacity-50 transition-colors cursor-pointer"
-          >
-            {isRunning ? (
-              <>
-                <span className="h-1.5 w-1.5 rounded-full bg-success animate-ping" />
-                Running...
-              </>
-            ) : (
-              "▶ Run"
-            )}
-          </button>
-        )}
+          )}
+          {isHtml && (
+            <>
+              <button
+                onClick={() => setShowPreview((v) => !v)}
+                type="button"
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-primary/10 text-primary hover:bg-primary/20 transition-colors cursor-pointer"
+              >
+                {showPreview ? tx("▶ Ẩn xem trước", "▶ Hide Preview") : tx("▶ Xem trước", "▶ Preview")}
+              </button>
+              <button
+                onClick={handleOpenNewTab}
+                type="button"
+                title={tx("Mở trang HTML trong tab mới", "Open HTML page in a new tab")}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-muted/60 text-foreground/80 hover:bg-muted transition-colors cursor-pointer"
+              >
+                {tx("↗ Mở tab mới", "↗ Open new tab")}
+              </button>
+            </>
+          )}
+          {isRunnable && (
+            <button
+              onClick={handleRunBackend}
+              disabled={isRunning}
+              type="button"
+              className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-[10px] font-medium bg-success/15 text-success hover:bg-success/25 border border-success/30 disabled:opacity-50 transition-colors cursor-pointer"
+            >
+              {isRunning ? (
+                <>
+                  <span className="h-1.5 w-1.5 rounded-full bg-success animate-ping" />
+                  {tx("Đang chạy...", "Running...")}
+                </>
+              ) : (
+                tx("▶ Chạy", "▶ Run")
+              )}
+            </button>
+          )}
+        </div>
       </div>
 
       <code className={`${className ?? ""} text-[10.5px] leading-relaxed block border border-border/40 border-t-0 rounded-b-lg bg-muted/30 p-3 overflow-x-auto`} {...props}>
@@ -207,14 +267,14 @@ function CodeBlockWithAction({ className, children, ...props }: any) {
       {isHtml && showPreview && (
         <div className="mt-2 rounded-lg border border-border/60 overflow-hidden bg-white dark:bg-card">
           <div className="bg-muted/40 px-3 py-1 text-[10px] font-mono text-muted-foreground border-b border-border/40 flex items-center justify-between">
-            <span>HTML Sandbox Preview</span>
-            <span className="text-[9px] opacity-70">iframe sandbox=&quot;allow-scripts&quot;</span>
+            <span>{tx("Xem trước HTML Sandbox", "HTML Sandbox Preview")}</span>
+            <span className="text-[9px] opacity-70">{tx("iframe sandbox=&quot;allow-scripts&quot;", "iframe sandbox=&quot;allow-scripts&quot;")}</span>
           </div>
           <iframe
             srcDoc={codeText}
             sandbox="allow-scripts"
             className="w-full h-64 border-0 bg-white"
-            title="HTML Preview"
+            title={tx("Xem trước HTML", "HTML Preview")}
           />
         </div>
       )}
@@ -224,11 +284,10 @@ function CodeBlockWithAction({ className, children, ...props }: any) {
           <div className="bg-muted/40 px-3 py-1 text-[10px] text-muted-foreground border-b border-border/40 flex items-center justify-between">
             <span className="font-semibold text-foreground flex items-center gap-1.5">
               <span className={`h-2 w-2 rounded-full ${isRunning ? "bg-warning animate-pulse" : exitCode === 0 ? "bg-success" : "bg-destructive"}`} />
-              Output Console
-            </span>
+              {tx("Bảng xuất", "Output Console")}</span>
             {exitCode !== null && (
               <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${exitCode === 0 ? "bg-success/20 text-success" : "bg-destructive/20 text-destructive"}`}>
-                exit code: {exitCode}
+                {tx("mã thoát:", "exit code:")}{exitCode}
               </span>
             )}
           </div>
@@ -241,7 +300,7 @@ function CodeBlockWithAction({ className, children, ...props }: any) {
             )}
             {exitCode !== null && (
               <span className={`block font-bold mt-1.5 pt-1.5 border-t border-white/10 ${exitCode === 0 ? "text-success" : "text-destructive"}`}>
-                [exit code: {exitCode}]
+                {tx("[mã thoát:", "[exit code:")}{exitCode}]
               </span>
             )}
             <div ref={logEndRef} />
@@ -257,6 +316,7 @@ interface Props {
 }
 
 function MarkdownRendererBase({ content }: Props) {
+    const { locale, tx } = useTranslation();
   const normalized = React.useMemo(() => normalizeLatex(content), [content]);
 
   return (

@@ -122,6 +122,24 @@ describe("applyChatEvent", () => {
     expect(assistantOf(state).blocks[0]).toMatchObject({ progress: "file.txt\ndir/\n", status: "running" });
   });
 
+  it("attaches subagent thinking, tokens, and tools to the tool block", () => {
+    const { state } = reduce([
+      ["tool_call", { index: 0, name: "call_agent", args: { target_agent_id: "researcher", instruction: "Search news" } }],
+      ["tool_progress", { index: 0, stage: "subagent_start", agent_name: "Researcher" }],
+      ["tool_progress", { index: 0, stage: "subagent_reasoning", agent_name: "Researcher", content: "I should search for news." }],
+      ["tool_progress", { index: 0, stage: "subagent_tool_call", agent_name: "Researcher", tool_name: "web_search" }],
+      ["tool_progress", { index: 0, stage: "subagent_tool_result", agent_name: "Researcher", tool_name: "web_search" }],
+      ["tool_progress", { index: 0, stage: "subagent_token", agent_name: "Researcher", content: "Here are the top headlines:" }],
+    ]);
+    const block = assistantOf(state).blocks[0] as any;
+    expect(block.subagent).toMatchObject({
+      agentName: "Researcher",
+      thinking: "I should search for news.",
+      response: "Here are the top headlines:",
+      tools: [{ name: "web_search", status: "done" }],
+    });
+  });
+
   it("marks noAnswer and keeps an empty anchor when done without content", () => {
     const { state } = reduce([["message_done", { cost_usd: 0.01 }]]);
     const a = assistantOf(state);
@@ -196,6 +214,18 @@ describe("applyChatEvent", () => {
     expect(sides[1].phase).toBeNull();
     expect(sides[2]).toMatchObject({ terminal: true, sessionId: "s1", phase: null });
   });
+
+  it("routes attachment_warning to side.warningMessage without terminating stream", () => {
+    const { sides, state } = reduce([
+      ["message_start", {}],
+      ["attachment_warning", { message: "could not read 'bad.pdf': timed out" }],
+      ["token", { content: "I am answering..." }],
+    ]);
+    expect(sides[1].warningMessage).toBe("could not read 'bad.pdf': timed out");
+    expect(sides[1].terminal).toBeUndefined();
+    const a = assistantOf(state);
+    expect(a.blocks[0]).toMatchObject({ kind: "text", content: "I am answering...", streaming: true });
+  });
 });
 
 describe("messagesFromPersisted", () => {
@@ -223,6 +253,123 @@ describe("messagesFromPersisted", () => {
     expect(a.blocks.map((b) => b.kind)).toEqual(["reasoning", "tool_call", "text", "stats"]);
     expect(a.blocks[1]).toMatchObject({ name: "write_file", status: "done", result: "<svg>cat</svg>" });
     expect(a.blocks[3]).toMatchObject({ tokensIn: 20, tokensOut: 30, costUsd: 0.02, model: "gpt-x", toolCount: 1 });
+  });
+
+  it("hydrates tokens from input_tokens and output_tokens when in_tokens is omitted", () => {
+    const rows = [
+      {
+        id: "m2",
+        role: "assistant",
+        content: "Here you go.",
+        meta: {
+          input_tokens: 1540,
+          output_tokens: 320,
+          cost_usd: 0.005,
+          latency_ms: 1200,
+          model: "qwen3.6",
+        },
+      },
+    ];
+    const msgs = messagesFromPersisted(rows);
+    const a = msgs[0] as AssistantMessage;
+    const stats = a.blocks.find((b) => b.kind === "stats");
+    expect(stats).toMatchObject({
+      tokensIn: 1540,
+      tokensOut: 320,
+      costUsd: 0.005,
+      latencyMs: 1200,
+      model: "qwen3.6",
+    });
+  });
+
+  it("hydrates artifacts from assistant message meta", () => {
+    const rows = [
+      {
+        id: "a1",
+        role: "assistant",
+        content: "Here is your report",
+        meta: {
+          artifacts: [
+            {
+              id: "art-1",
+              path: "report.pdf",
+              filename: "report.pdf",
+              content_type: "application/pdf",
+              size: 1024,
+              download_url: "/api/workspace/artifacts/art-1/download",
+              content_url: "/api/workspace/artifacts/art-1/download?inline=true",
+              source_tool: "run_code",
+            },
+          ],
+        },
+      },
+    ];
+    const msgs = messagesFromPersisted(rows);
+    const a = msgs[0] as AssistantMessage;
+    expect(a.artifacts).toBeDefined();
+    expect(a.artifacts).toHaveLength(1);
+    expect(a.artifacts?.[0]).toMatchObject({
+      id: "art-1",
+      filename: "report.pdf",
+      content_type: "application/pdf",
+    });
+  });
+});
+
+describe("applyChatEvent artifacts", () => {
+  it("attaches artifacts emitted in message_done event", () => {
+    const { state } = reduce([
+      ["token", { content: "File ready." }],
+      [
+        "message_done",
+        {
+          artifacts: [
+            {
+              id: "art-2",
+              path: "output.png",
+              filename: "output.png",
+              content_type: "image/png",
+              size: 2048,
+              download_url: "/api/workspace/artifacts/art-2/download",
+            },
+          ],
+        },
+      ],
+    ]);
+    const a = assistantOf(state);
+    expect(a.artifacts).toHaveLength(1);
+    expect(a.artifacts?.[0]).toMatchObject({
+      id: "art-2",
+      filename: "output.png",
+      content_type: "image/png",
+    });
+  });
+});
+
+describe("messagesFromPersisted compaction", () => {
+  it("projects compaction row into CompactionMessage with summary and shadow counts", () => {
+    const rows = [
+      {
+        id: "msg-compaction-1",
+        role: "compaction",
+        content: "Ngữ cảnh được tóm tắt",
+        meta: {
+          is_compaction: true,
+          summary: "Tóm tắt cuộc trò chuyện trước đó...",
+          shadowed_messages_count: 5,
+          shadowed_token_count: 1200,
+        },
+      },
+    ];
+    const msgs = messagesFromPersisted(rows);
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0]).toMatchObject({
+      role: "compaction",
+      id: "msg-compaction-1",
+      summary: "Tóm tắt cuộc trò chuyện trước đó...",
+      shadowedItemCount: 5,
+      shadowedTokenCount: 1200,
+    });
   });
 });
 

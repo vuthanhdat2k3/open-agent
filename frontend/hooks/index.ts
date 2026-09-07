@@ -1,14 +1,17 @@
 "use client";
 
+import * as React from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "@/lib/api";
-import { getAccessToken, getActiveOrgId } from "@/lib/auth";
+import { getAccessToken, getActiveOrgId, getCsrfToken, setActiveOrgId } from "@/lib/auth";
 import type {
   Agent,
   AgentRelease,
   AgentToolInfo,
   ApiKey,
   ApiKeyCreateResponse,
+  AppNotification,
   ApprovalRequest,
   EvaluationCase,
   EvaluationCaseInput,
@@ -21,8 +24,11 @@ import type {
   Message,
   Model,
   ModelTestResult,
+  OrgModelTierMatrixResponse,
+  OrgModelTierMatrixUpdate,
   OrganizationQuota,
   Organization,
+  PlatformConfigEntry,
   OrgMember,
   Provider,
   ProviderTemplate,
@@ -34,7 +40,9 @@ import type {
   UsageSummary,
   Workflow,
   ChatRunDetail,
+  ExecutionPolicy,
   WorkflowRunDetail,
+  WorkflowRunSummary,
   WorkspaceArtifact,
   UserProfile,
   CustomerIntelligenceCase,
@@ -44,6 +52,10 @@ import type {
   CustomerIntelligenceSchedule,
   CustomerIntelligenceNotificationPage,
   EmailIntelligenceNavigationSummary,
+  NodeDefinition,
+  NodeOption,
+  ChannelConnection,
+  ChannelMessage,
 } from "@/types";
 
 import { emailIntelligenceQueryKeys } from "@/lib/email-intelligence/query-keys";
@@ -180,6 +192,7 @@ export function useCreateManualCustomerIntelligenceCase() {
 export interface CustomerIntelligenceNotificationFilters {
   unreadOnly?: boolean;
   cursor?: string | null;
+  limit?: number;
   query?: string;
   receivedAfter?: string;
   receivedBefore?: string;
@@ -188,7 +201,8 @@ export interface CustomerIntelligenceNotificationFilters {
 
 export function useCustomerIntelligenceNotifications(filters: CustomerIntelligenceNotificationFilters = {}) {
   const orgId = getActiveOrgId();
-  const params = new URLSearchParams({ limit: "25" });
+  const limitStr = filters.limit ? String(filters.limit) : "8";
+  const params = new URLSearchParams({ limit: limitStr });
   if (filters.unreadOnly) params.set("unread_only", "true");
   if (filters.cursor) params.set("cursor", filters.cursor);
   if (filters.query) params.set("q", filters.query);
@@ -196,7 +210,15 @@ export function useCustomerIntelligenceNotifications(filters: CustomerIntelligen
   if (filters.receivedBefore) params.set("received_before", filters.receivedBefore);
   if (filters.notificationType) params.set("notification_type", filters.notificationType);
   return useQuery({
-    queryKey: emailIntelligenceQueryKeys(orgId).notifications(filters),
+    queryKey: [
+      ...emailIntelligenceQueryKeys(orgId).notifications(filters.cursor ?? null),
+      filters.unreadOnly ?? false,
+      limitStr,
+      filters.query ?? "",
+      filters.receivedAfter ?? "",
+      filters.receivedBefore ?? "",
+      filters.notificationType ?? "",
+    ],
     queryFn: () => api.get<CustomerIntelligenceNotificationPage>(`/api/customer-intelligence/notifications?${params.toString()}`),
     refetchInterval: 30_000,
   });
@@ -345,6 +367,26 @@ export function useTestModel() {
   });
 }
 
+export function useModelTierMatrix(enabled: boolean = true) {
+  return useQuery({
+    queryKey: ["model-tier-matrix"],
+    queryFn: () => api.get<OrgModelTierMatrixResponse>("/api/models/tier-matrix"),
+    enabled,
+  });
+}
+
+export function useUpdateModelTierMatrix() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: OrgModelTierMatrixUpdate) => api.put<OrgModelTierMatrixResponse>("/api/models/tier-matrix", body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["model-tier-matrix"] });
+      qc.invalidateQueries({ queryKey: ["agents"] });
+    },
+  });
+}
+
+
 export function useAgents() {
   return useQuery({ queryKey: ["agents"], queryFn: () => api.get<Agent[]>("/api/agents") });
 }
@@ -463,6 +505,41 @@ export function useCreateEvaluationRun() {
   });
 }
 
+// Channel hooks
+export function useChannelConnections(enabled: boolean = true) {
+  return useQuery({ queryKey: ["channels"], queryFn: () => api.get<ChannelConnection[]>("/api/channels"), enabled });
+}
+export function useCreateChannelConnection() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { provider: "telegram" | "discord"; bot_token: string; bot_username?: string; config?: Record<string, any> }) =>
+      api.post<ChannelConnection>("/api/channels", body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["channels"] }),
+  });
+}
+export function useDeleteChannelConnection() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.delete<void>(`/api/channels/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["channels"] }),
+  });
+}
+export function useUpdateChannelConnection() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...body }: { id: string; bot_token?: string; bot_username?: string; config?: Record<string, any>; status?: string }) =>
+      api.patch<ChannelConnection>(`/api/channels/${id}`, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["channels"] }),
+  });
+}
+export function useTestChannelConnection() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.post<{ ok: boolean; message: string }>(`/api/channels/${id}/test`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["channels"] }),
+  });
+}
+
 export function useMcpServers(enabled: boolean = true) {
   return useQuery({ queryKey: ["mcp"], queryFn: () => api.get<McpServer[]>("/api/mcp/servers"), enabled });
 }
@@ -503,14 +580,42 @@ export function useDisconnectMcp() {
   });
 }
 
-export function useWorkflows() {
-  return useQuery({ queryKey: ["workflows"], queryFn: () => api.get<Workflow[]>("/api/workflows") });
+export function useWorkflows(options?: { all?: boolean }) {
+  const roles = useCurrentRoles();
+  const isOperator = roles.includes("operator");
+  const shouldFetchAll = options?.all ?? isOperator;
+  const queryKey = shouldFetchAll ? ["workflows", "all"] : ["workflows"];
+  return useQuery({
+    queryKey,
+    queryFn: () => api.get<Workflow[]>(shouldFetchAll ? "/api/workflows?all=true" : "/api/workflows"),
+  });
 }
 export function useCreateWorkflow() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: any) => api.post<Workflow>("/api/workflows", body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["workflows"] }),
+  });
+}
+export function useUpdateWorkflow() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: any }) => api.put<Workflow>(`/api/workflows/${id}`, data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["workflows"] }),
+  });
+}
+export function useWorkflowRuns(options?: { workflowId?: string; status?: string; limit?: number; enabled?: boolean }) {
+  const params = new URLSearchParams();
+  if (options?.workflowId) params.set("workflow_id", options.workflowId);
+  if (options?.status) params.set("status", options.status);
+  if (options?.limit) params.set("limit", String(options.limit));
+  const qs = params.toString() ? `?${params.toString()}` : "";
+  return useQuery({
+    queryKey: ["workflow-runs", options?.workflowId, options?.status, options?.limit],
+    queryFn: () => api.get<WorkflowRunSummary[]>(`/api/workflows/runs${qs}`),
+    refetchInterval: (options?.enabled ?? true) ? 15000 : false,
+    refetchIntervalInBackground: false,
+    enabled: options?.enabled ?? true,
   });
 }
 export function useGenerateWorkflow() {
@@ -526,9 +631,28 @@ export function useDeleteWorkflow() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["workflows"] }),
   });
 }
+export function useResetWorkflowTemplate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.post<Workflow>(`/api/workflows/${id}/reset-template`, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["workflows"] }),
+  });
+}
 
 export function useSessions() {
   return useQuery({ queryKey: ["sessions"], queryFn: () => api.get<Session[]>("/api/sessions") });
+}
+export function useUpdateSession() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...data }: { id: string; execution_policy?: ExecutionPolicy; title?: string }) =>
+      api.patch<Session>(`/api/sessions/${id}`, data),
+    onSuccess: (updated) => {
+      qc.setQueriesData<Session[]>({ queryKey: ["sessions"] }, (old) =>
+        old ? old.map((s) => (s.id === updated.id ? { ...s, ...updated } : s)) : [updated],
+      );
+    },
+  });
 }
 export function useDeleteSession() {
   const qc = useQueryClient();
@@ -586,10 +710,16 @@ export function useUploadFile() {
       const form = new FormData();
       form.append("file", file);
       const token = getAccessToken();
+      const csrf = getCsrfToken();
+      const orgId = getActiveOrgId();
       const res = await fetch("/api/files/upload", {
         method: "POST",
         body: form,
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(csrf ? { "X-CSRF-Token": csrf } : {}),
+          ...(orgId ? { "X-Org-Id": orgId } : {}),
+        },
         credentials: "include",
       });
       if (!res.ok) {
@@ -670,8 +800,15 @@ export function useDeleteSandboxExecution() {
 export function useMe(enabled: boolean = true) {
   return useQuery({
     queryKey: ["auth-me"],
-    queryFn: () =>
-      api.get<UserProfile>("/api/auth/me"),
+    queryFn: async () => {
+      const data = await api.get<UserProfile>("/api/auth/me");
+      if (data.active_org_id) {
+        setActiveOrgId(data.active_org_id);
+      } else if (data.memberships?.[0]?.org_id && !getActiveOrgId()) {
+        setActiveOrgId(data.memberships[0].org_id);
+      }
+      return data;
+    },
     enabled,
   });
 }
@@ -679,14 +816,26 @@ export function useMe(enabled: boolean = true) {
 // Fails closed: an unresolved role (loading, no membership found for the
 // active org) is treated as "user" rather than "admin" so admin-only UI
 // never flashes open before the real role is known.
-export function useCurrentRole(): "platform_admin" | "admin" | "operator" | "user" {
+import type { Role } from "@/lib/roles";
+import { normalizeRole } from "@/lib/roles";
+
+export function useCurrentRole(): Role {
   const me = useMe();
   const orgId = me.data?.active_org_id || getActiveOrgId();
   const membership = me.data?.memberships?.find((m) => m.org_id === orgId) ?? me.data?.memberships?.[0];
-  if (membership?.role === "platform_admin") return "platform_admin";
-  if (membership?.role === "admin" || membership?.role === "org_admin") return "admin";
-  if (membership?.role === "operator") return "operator";
-  return "user";
+  return normalizeRole(membership?.role);
+}
+
+// The full set of roles held in the active org - a user can hold more than
+// one (e.g. a self-registered founder gets both org_admin and operator).
+// Use this (not useCurrentRole) for "is any of my roles X" gating; a single
+// primary role can't tell a founder apart from a plain org_admin.
+export function useCurrentRoles(): Role[] {
+  const me = useMe();
+  const orgId = me.data?.active_org_id || getActiveOrgId();
+  const membership = me.data?.memberships?.find((m) => m.org_id === orgId) ?? me.data?.memberships?.[0];
+  const roles = membership?.roles?.length ? membership.roles : membership?.role ? [membership.role] : [];
+  return roles.map(normalizeRole);
 }
 
 export function useCurrentPermissions(): string[] {
@@ -703,6 +852,31 @@ export function useCan(permission: string) {
   return hasUiPermission(useCurrentPermissions(), permission);
 }
 
+export function usePlatformConfig(enabled = true) {
+  return useQuery({
+    queryKey: ["platform-config"],
+    enabled,
+    queryFn: () => api.get<PlatformConfigEntry[]>("/api/platform/config"),
+  });
+}
+
+export function useSetPlatformConfig() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ key, value }: { key: string; value: unknown }) =>
+      api.put<PlatformConfigEntry>(`/api/platform/config/${key}`, { value }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["platform-config"] }),
+  });
+}
+
+export function useResetPlatformConfig() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (key: string) => api.delete<{ ok: boolean }>(`/api/platform/config/${key}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["platform-config"] }),
+  });
+}
+
 export function useOrganizations(enabled = true) {
   return useQuery({
     queryKey: ["organizations"],
@@ -714,7 +888,23 @@ export function useOrganizations(enabled = true) {
 export function useCreateOrganization() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: { name: string }) => api.post<Organization>("/api/orgs", body),
+    mutationFn: (body: { name: string; admin_email?: string; initial_password?: string }) => api.post<Organization>("/api/orgs", body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["organizations"] }),
+  });
+}
+
+export function useRenameOrganization() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ orgId, name }: { orgId: string; name: string }) => api.patch<Organization>(`/api/orgs/${orgId}`, { name }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["organizations"] }),
+  });
+}
+
+export function useDeleteOrganization() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (orgId: string) => api.delete(`/api/orgs/${orgId}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["organizations"] }),
   });
 }
@@ -730,7 +920,7 @@ export function useMembers(orgId?: string) {
 export function useInviteMember(orgId?: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: { email: string; role: string }) =>
+    mutationFn: (body: { email: string; role: string; initial_password?: string }) =>
       api.post<OrgMember>(`/api/orgs/${orgId}/members`, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["members", orgId] }),
   });
@@ -799,14 +989,63 @@ export function useUpdateOrganizationQuota(orgId?: string) {
   });
 }
 
-export function useApprovals(enabled: boolean = true) {
+export function useApprovals(enabled: boolean = true, includeChat: boolean = true, runId?: string | null) {
   const orgId = getActiveOrgId();
+  const queryParams = new URLSearchParams();
+  if (includeChat) queryParams.set("include_chat", "true");
+  if (runId) queryParams.set("run_id", runId);
+  const qs = queryParams.toString() ? `?${queryParams.toString()}` : "";
+
   return useQuery({
-    queryKey: emailIntelligenceQueryKeys(orgId).approvals(),
-    queryFn: () => api.get<ApprovalRequest[]>("/api/approvals"),
-    refetchInterval: enabled ? 60000 : false,
+    queryKey: [...emailIntelligenceQueryKeys(orgId).approvals(), { includeChat, runId }],
+    queryFn: () => api.get<ApprovalRequest[]>(`/api/approvals${qs}`),
+    // Poll frequently while approval handling is active so the chat page
+    // and approvals dashboard discover new approval gates promptly.
+    refetchInterval: enabled ? 5000 : false,
     refetchIntervalInBackground: false,
     enabled,
+  });
+}
+
+export function useNotifications(enabled: boolean = true, unreadOnly: boolean = false) {
+  const orgId = getActiveOrgId();
+  const qs = unreadOnly ? "?unread_only=true" : "";
+  return useQuery({
+    queryKey: ["notifications", orgId, { unreadOnly }],
+    queryFn: () => api.get<AppNotification[]>(`/api/notifications${qs}`),
+    // Same cadence as useEmailIntelligenceNavigationSummary — frequent
+    // enough to feel live for a background workflow result, cheap enough
+    // to leave on for every page.
+    refetchInterval: enabled ? 30000 : false,
+    refetchIntervalInBackground: false,
+    enabled,
+  });
+}
+
+export function useUnreadNotificationCount(enabled: boolean = true) {
+  const orgId = getActiveOrgId();
+  return useQuery({
+    queryKey: ["notifications", orgId, "unread-count"],
+    queryFn: () => api.get<{ count: number }>("/api/notifications/unread-count"),
+    refetchInterval: enabled ? 30000 : false,
+    refetchIntervalInBackground: false,
+    enabled,
+  });
+}
+
+export function useMarkNotificationRead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.post(`/api/notifications/${id}/read`, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications"] }),
+  });
+}
+
+export function useMarkAllNotificationsRead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.post("/api/notifications/read-all", {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications"] }),
   });
 }
 
@@ -816,9 +1055,14 @@ export function useDecideApproval() {
   return useMutation({
     mutationFn: ({ id, decision, reason = "", idempotencyKey }: { id: string; decision: "approved" | "rejected"; reason?: string; idempotencyKey: string }) =>
       api.post<ApprovalRequest>(`/api/approvals/${id}/decide`, { decision, reason }, { headers: { "Idempotency-Key": idempotencyKey } }),
-    onSuccess: () => {
+    onSuccess: (data) => {
+      void qc.invalidateQueries({ queryKey: ["approvals"] });
+      void qc.invalidateQueries({ queryKey: ["workflow-run"] });
       void qc.invalidateQueries({ queryKey: emailIntelligenceQueryKeys(orgId).approvals() });
       void qc.invalidateQueries({ queryKey: emailIntelligenceQueryKeys(orgId).navigation });
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("approval-decided", { detail: data }));
+      }
     },
   });
 }
@@ -838,10 +1082,35 @@ export function useWorkflowRun(runId: string | null) {
     queryFn: () => api.get<WorkflowRunDetail>(`/api/workflows/runs/${runId}`),
     refetchInterval: (query) => {
       const status = query.state.data?.status;
-      return status && ["succeeded", "failed", "diverged", "cancelled", "waiting_approval"].includes(status)
+      return status && ["succeeded", "failed", "diverged", "cancelled"].includes(status)
         ? false
         : 2000;
     },
+  });
+}
+
+export function useNodeDefinitions() {
+  return useQuery({
+    queryKey: ["workflow-node-definitions"],
+    queryFn: () => api.get<Record<string, NodeDefinition>>("/api/workflows/node-definitions"),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useNodeOptions(type: string) {
+  return useQuery({
+    queryKey: ["workflow-node-options", type],
+    enabled: !!type,
+    queryFn: () => api.get<NodeOption[]>(`/api/workflows/node-options?type=${encodeURIComponent(type)}`),
+    staleTime: 60 * 1000,
+  });
+}
+
+export function useToolOptions() {
+  return useQuery({
+    queryKey: ["workflow-tool-options"],
+    queryFn: () => api.get<NodeOption[]>("/api/workflows/tool-options"),
+    staleTime: 60 * 1000,
   });
 }
 
@@ -859,7 +1128,13 @@ export function useChatRun(runId: string | null) {
     },
     refetchInterval: (query) => {
       const status = query.state.data?.status;
-      return status && ["succeeded", "failed", "diverged", "cancelled", "waiting_approval"].includes(status)
+      // Keep polling at a shorter cadence during waiting_approval so the
+      // frontend discovers when the root task transitions back to "queued" /
+      // "running" after the user decides an approval (whether inline or via
+      // the /approvals page). Without this the hook stops polling the moment
+      // it first sees waiting_approval and never learns about the resumed run.
+      if (status === "waiting_approval") return 3000;
+      return status && ["succeeded", "failed", "diverged", "cancelled"].includes(status)
         ? false
         : 2000;
     },
@@ -874,11 +1149,46 @@ export function useProfile(enabled: boolean = true) {
   });
 }
 
+// One searchParam mirrored as component state: reading returns the current
+// value, the setter rewrites the query string in place (no history entries).
+// Selection params (suite, case, run...) use this so deep links and the
+// back/forward buttons behave like navigation.
+export function useUrlSearchParam(key: string): [string | null, (value: string | null) => void] {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const value = searchParams.get(key);
+
+  const setValue = React.useCallback(
+    (next: string | null) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (next) params.set(key, next);
+      else params.delete(key);
+      const qs = params.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    },
+    [key, pathname, router, searchParams],
+  );
+
+  return [value, setValue];
+}
+
 export function useUpdateProfile() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: { display_name?: string; old_password?: string; new_password?: string }) =>
       api.patch<UserProfile>("/api/auth/me", body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["profile"] }),
+    // useMe and useProfile both share the "auth-me" key; invalidating the
+    // previous ("profile") key kept the sidebar / nav stale for up to gcTime.
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["auth-me"] }),
+  });
+}
+
+export function useUpdateMemberRole(orgId?: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, role }: { userId: string; role: "org_admin" | "operator" | "user" }) =>
+      api.patch<OrgMember>(`/api/orgs/${orgId}/members/${userId}`, { role }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["members", orgId] }),
   });
 }

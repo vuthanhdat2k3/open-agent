@@ -14,6 +14,7 @@ class AgentBase(BaseModel):
     kind: Literal["worker", "orchestrator"] = "worker"
     max_iterations: int = 12
     temperature: float = 0.7
+    enable_thinking: bool | None = None
     a2a_exposed: bool = False
 
 
@@ -31,6 +32,7 @@ class AgentUpdate(BaseModel):
     kind: Literal["worker", "orchestrator"] | None = None
     max_iterations: int | None = None
     temperature: float | None = None
+    enable_thinking: bool | None = None
     a2a_exposed: bool | None = None
 
 
@@ -39,6 +41,8 @@ class AgentToolInfo(BaseModel):
     description: str
     available: bool
     risk_tier: str | None = None
+    allowed_for_orchestrator: bool = False
+    allowed_for_worker: bool = True
 
 
 class AgentOut(AgentBase):
@@ -48,7 +52,13 @@ class AgentOut(AgentBase):
     id: str
     a2a_exposed: bool = False
     active_release_id: str | None = None
-    latest_release_number: int = 0
+    latest_release_number: int | None = 0
+    template_key: str | None = None
+    is_customized: bool = True
+    is_pinned: bool = False
+    created_by_user_id: str | None = None
+    creator_email: str | None = None
+    creator_name: str | None = None
     created_at: datetime
     updated_at: datetime
 

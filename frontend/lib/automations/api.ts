@@ -17,7 +17,7 @@ export type WorkflowCatalogItem = {
   side_effect_policy: "none" | "approval_required" | "trusted_rule_eligible" | string;
   recommendation: { recommended: boolean; reason_code: string | null; params: Record<string, unknown> };
   installed: boolean;
-  capabilities: { can_view: boolean; can_install: boolean };
+  capabilities: { can_view: boolean; can_install: boolean; can_delete?: boolean };
   blocked_reasons: Record<string, string[]>;
 };
 
@@ -88,4 +88,18 @@ export function runWorkflowInstallation(id: string) {
 
 export function deleteWorkflowInstallation(id: string) {
   return api.delete<void>(`/api/workflow-catalog/installations/${id}`);
+}
+
+export function publishWorkflowToCatalog(body: {
+  workflow_id: string;
+  category?: string;
+  description?: string;
+  outcome?: string;
+  icon?: string;
+}) {
+  return api.post<WorkflowCatalogItem>("/api/workflow-catalog/publish", body);
+}
+
+export function unpublishWorkflowFromCatalog(key: string) {
+  return api.delete<{ ok: boolean }>(`/api/workflow-catalog/templates/${key}`);
 }

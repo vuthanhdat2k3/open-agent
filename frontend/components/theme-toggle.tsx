@@ -3,8 +3,10 @@
 import * as React from "react";
 import { Moon, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useTranslation } from "@/lib/i18n";
 
 export function ThemeToggle() {
+  const { tx } = useTranslation();
   const [isDark, setIsDark] = React.useState(true);
   const [mounted, setMounted] = React.useState(false);
 
@@ -28,7 +30,7 @@ export function ThemeToggle() {
       variant="ghost"
       size="icon"
       onClick={toggle}
-      aria-label={mounted ? (isDark ? "Switch to light mode" : "Switch to dark mode") : "Toggle theme"}
+      aria-label={mounted ? (isDark ? tx("Chuyển sang giao diện sáng", "Switch to light mode") : tx("Chuyển sang giao diện tối", "Switch to dark mode")) : tx("Đổi giao diện", "Toggle theme")}
     >
       {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
     </Button>

@@ -56,6 +56,7 @@ async def _run_shell(args: dict[str, Any], ctx: ToolContext) -> str:
         timeout = float(args.get("timeout", DEFAULT_TIMEOUT))
     except (TypeError, ValueError):
         timeout = DEFAULT_TIMEOUT
+    timeout = min(max(timeout, 0.1), sandbox.MAX_SANDBOX_TIMEOUT_SECONDS)
 
     if not sandbox._docker_available():
         msg = (
@@ -74,7 +75,7 @@ async def _run_shell(args: dict[str, Any], ctx: ToolContext) -> str:
         return msg
 
     cname = f"oa-sandbox-{uuid.uuid4().hex[:12]}"
-    docker_args = sandbox.build_docker_args("bash", "run_shell.sh", stdin_mode="archive", name=cname)
+    docker_args = sandbox.build_docker_args("bash", "run_shell.sh", stdin_mode="archive", name=cname, rm=False)
 
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -84,7 +85,7 @@ async def _run_shell(args: dict[str, Any], ctx: ToolContext) -> str:
             stderr=asyncio.subprocess.STDOUT,
         )
         if proc.stdin:
-            await proc.stdin.write(archive)
+            proc.stdin.write(archive)
             await proc.stdin.drain()
             proc.stdin.close()
 
@@ -94,45 +95,54 @@ async def _run_shell(args: dict[str, Any], ctx: ToolContext) -> str:
         total_chars = 0
         lines: list[str] = []
         if proc.stdout:
-            while True:
-                remaining = deadline - loop.time()
-                if remaining <= 0:
-                    timed_out = True
-                    break
-                try:
-                    line_bytes = await asyncio.wait_for(
-                        proc.stdout.readline(),
-                        timeout=max(0.1, remaining),
-                    )
-                except TimeoutError:
-                    timed_out = True
-                    break
-                if not line_bytes:
-                    break
-                line = line_bytes.decode("utf-8", errors="replace")
-                total_chars += len(line)
-                if total_chars > MAX_SHELL_OUTPUT:
-                    overflow = total_chars - MAX_SHELL_OUTPUT
-                    if overflow < len(line):
-                        line = line[:-overflow] + "\n...[truncated]"
-                    else:
-                        line = "\n...[truncated]"
+            try:
+                while True:
+                    remaining = deadline - loop.time()
+                    if remaining <= 0:
+                        timed_out = True
+                        break
+                    try:
+                        line_bytes = await asyncio.wait_for(
+                            proc.stdout.readline(),
+                            timeout=max(0.1, remaining),
+                        )
+                    except TimeoutError:
+                        timed_out = True
+                        break
+                    if not line_bytes:
+                        break
+                    line = line_bytes.decode("utf-8", errors="replace")
+                    total_chars += len(line)
+                    if total_chars > MAX_SHELL_OUTPUT:
+                        overflow = total_chars - MAX_SHELL_OUTPUT
+                        if overflow < len(line):
+                            line = line[:-overflow] + "\n...[truncated]"
+                        else:
+                            line = "\n...[truncated]"
+                        lines.append(line)
+                        if ctx.emit:
+                            await ctx.emit({"kind": "stdout", "line": line})
+                        try:
+                            proc.kill()
+                            await proc.wait()
+                        except Exception:  # noqa: BLE001
+                            pass
+                        break
                     lines.append(line)
                     if ctx.emit:
                         await ctx.emit({"kind": "stdout", "line": line})
-                    await sandbox._kill_container(cname)
-                    try:
-                        proc.kill()
-                        await proc.wait()
-                    except Exception:  # noqa: BLE001
-                        pass
-                    break
-                lines.append(line)
-                if ctx.emit:
-                    await ctx.emit({"kind": "stdout", "line": line})
+            except asyncio.CancelledError:
+                # See sandbox._run_code's identical guard: an external
+                # cancellation (tool-call wrapper timeout, run cancel) must
+                # still reap the container instead of leaking it.
+                try:
+                    proc.kill()
+                    await proc.wait()
+                except Exception:  # noqa: BLE001
+                    pass
+                raise
 
         if timed_out:
-            await sandbox._kill_container(cname)
             try:
                 proc.kill()
                 await proc.wait()
@@ -147,6 +157,18 @@ async def _run_shell(args: dict[str, Any], ctx: ToolContext) -> str:
         if len(text) > MAX_SHELL_OUTPUT:
             text = text[:MAX_SHELL_OUTPUT] + "\n...[truncated]"
         text += f"\n[exit code: {proc.returncode}]"
+
+        if proc.returncode == 0:
+            synced = await sandbox.sync_sandbox_artifacts(
+                cname,
+                ctx.workspace_dir,
+                script_filename="run_shell.sh",
+                ctx=ctx,
+                source_tool="run_shell",
+            )
+            if synced:
+                text += f"\n[artifacts synced to workspace: {', '.join(synced)}]"
+
         await finish_execution_record(
             ctx.db,
             execution,
@@ -156,15 +178,15 @@ async def _run_shell(args: dict[str, Any], ctx: ToolContext) -> str:
         )
         return text
     except FileNotFoundError:
-        await sandbox._kill_container(cname)
         msg = "error: docker CLI not found on the backend host"
         await finish_execution_record(ctx.db, execution, status="failed", output=msg, error=msg)
         return msg
     except Exception as e:  # noqa: BLE001
-        await sandbox._kill_container(cname)
         msg = f"error executing command: {e}"
         await finish_execution_record(ctx.db, execution, status="failed", output=msg, error=str(e))
         return msg
+    finally:
+        await sandbox._kill_container(cname)
 
 register(
     ToolSpec(
@@ -195,5 +217,6 @@ register(
         run=_run_shell,
         risk_tier=RiskTier.dangerous,
         requires_approval=True,
+        timeout_s=sandbox.MAX_SANDBOX_TIMEOUT_SECONDS + 15.0,
     )
 )

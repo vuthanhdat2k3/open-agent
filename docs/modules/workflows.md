@@ -36,9 +36,14 @@ agents (researcher + writer + critic).
 | kind | meaning | config |
 |------|---------|--------|
 | `input` | seed values / static inputs | `{ "inputs": {k:v} }` |
+| `scheduler` | automated trigger (cron presets or custom cron) | `{ "cron": "daily" \| "<cron expr>" }` |
+| `integration` | fetch real data (Gmail / Google Calendar / Drive / webhook) | `{ "source": "gmail", "operation": "list_new", "max_results": 20 }` |
 | `agent` | run an Agent (`ref` = id/name) | `{ "prompt_template"?: str }` (may interpolate upstream outputs) |
 | `tool` | run a single builtin/MCP tool (advanced) | `{ "tool": "web_fetch", "args": {...} }` |
+| `triager` | classify + route by rules or LLM | `{ "rules": [...], "output_format"?: str }` |
 | `merge` | combine N inbound outputs | `{ "mode": "concat|summary" }` |
+| `approval` | human-in-the-loop gate (run pauses at `waiting_approval`) | `{}` |
+| `sub_workflow` | invoke another workflow | `{ "workflow_id": "..." }` (nesting capped at 3) |
 | `output` | terminal result node | `{}` |
 
 ### Edge
@@ -53,6 +58,30 @@ agents (researcher + writer + critic).
 | POST | `/api/workflows` | `WorkflowCreate` (graph JSON) | created |
 | GET/PUT/DELETE | `/api/workflows/{id}` | `WorkflowUpdate` | one |
 | POST | `/api/workflows/{id}/run` | `{ "inputs"?, "stream": true }` | run (SSE) |
+| POST | `/api/workflows/runs/{run_id}/cancel` | — | flips a live run to `cancelled` (cooperative) |
+
+## Durable execution
+- **Approval gate**: when a run hits an `approval` node it parks at
+  `waiting_approval` and an `ApprovalRequest` is created. Deciding the approval
+  re-drives the run (queued → enqueue, inline → detached task); on re-entry the
+  engine consults the decided request — `approved` continues downstream,
+  `rejected` fails the run with the reason in `run.error`.
+- **Cancel**: `POST /runs/{run_id}/cancel` marks the run `cancelled`; the engine
+  checks the persisted status at the top of every node and stops at the next
+  boundary. The UI shows a Cancel button while a run is live.
+- **Leases & resume**: runs take a DB lease, snapshots `graph_hash` at start,
+  and resume from succeeded `node_run`s (bounded by `resume_count`). An orphan
+  sweeper re-drives abandoned runs periodically, not only at startup.
+- **Timeouts**: each node is bounded by `workflow_node_default_timeout_s`
+  (default 900s) unless the node sets `timeout_s` — a hung provider can no
+  longer pin a run forever.
+- **Installation gating**: scheduler triggers and workflow webhooks skip
+  workflows whose marketplace installation is paused/archived.
+- **Webhooks**: `X-Idempotency-Key` dedupes replays (`trigger_occurrence_key`),
+  plus a per-workflow rate guard (60 runs/min) against runaway callers.
+- **Gmail delta**: an `integration` node with `source: gmail` persists the
+  durable Gmail checkpoint (`history_id`) as `data.cursor` on its node run and
+  starts the next run from that checkpoint instead of re-reading the mailbox.
 
 ## Execution Algorithm (`core/workflow/engine.py`)
 ```

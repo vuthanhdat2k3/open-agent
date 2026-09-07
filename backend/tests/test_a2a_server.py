@@ -101,7 +101,7 @@ async def test_a2a_create_task_happy_path(client: TestClient, async_session_fact
 
     async with async_session_factory() as db:
         user = User(id="user-a2a", email="a2a@example.com", display_name="A2A User", is_active=True)
-        mem = Membership(org_id="org-a2a", user_id="user-a2a", role="admin")
+        mem = Membership(org_id="org-a2a", user_id="user-a2a", role="user")
         prov = Provider(id="p-a2a", org_id="org-a2a", key="test-p", name="test-p", base_url="http://test")
         mdl = Model(id="m-a2a", org_id="org-a2a", provider_id="p-a2a", name="test-m", display_name="test-m")
         agent = Agent(
@@ -210,7 +210,7 @@ async def test_a2a_task_execution_with_agent_token_and_audit(async_session_facto
 
     async with async_session_factory() as db:
         user = User(id="u-token", email="token@example.com", display_name="Token User", is_active=True)
-        mem = Membership(org_id="org-token", user_id="u-token", role="admin")
+        mem = Membership(org_id="org-token", user_id="u-token", role="user")
         prov = Provider(id="p-token", org_id="org-token", key="t-p", name="t-p", base_url="http://test", api_key="sk-test-fake")
         mdl = Model(id="m-token", org_id="org-token", provider_id="p-token", name="t-m", display_name="t-m")
         agent = Agent(
@@ -306,7 +306,7 @@ async def test_a2a_guardrail_secret_audit_delegation(async_session_factory):
 
     async with async_session_factory() as db:
         user = User(id="u-sec", email="sec@example.com", display_name="Sec User", is_active=True)
-        mem = Membership(org_id="org-sec", user_id="u-sec", role="admin")
+        mem = Membership(org_id="org-sec", user_id="u-sec", role="user")
         prov = Provider(id="p-sec", org_id="org-sec", key="t-sec", name="t-sec", base_url="http://test", api_key="sk-test-fake")
         mdl = Model(id="m-sec", org_id="org-sec", provider_id="p-sec", name="t-m", display_name="t-m")
         agent = Agent(

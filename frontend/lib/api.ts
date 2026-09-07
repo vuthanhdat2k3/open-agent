@@ -1,6 +1,6 @@
 // API client — calls are relative (/api/...) because next.config.mjs proxies
 // /api/* to the FastAPI backend on :8000.
-import { getAccessToken, getCsrfToken, refreshAccessToken } from "@/lib/auth";
+import { getAccessToken, getActiveOrgId, getCsrfToken, refreshAccessToken } from "@/lib/auth";
 import { apiBaseUrl } from "@/lib/utils";
 
 export interface SseEvent {
@@ -29,6 +29,7 @@ export type ApiRequestOptions = { headers?: HeadersInit };
 async function request<T>(path: string, init?: RequestInit, retried = false): Promise<T> {
   const token = getAccessToken();
   const csrf = getCsrfToken();
+  const orgId = getActiveOrgId();
   const res = await fetch(path, {
     ...init,
     credentials: "include",
@@ -36,6 +37,7 @@ async function request<T>(path: string, init?: RequestInit, retried = false): Pr
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(csrf && init?.method && !["GET", "HEAD", "OPTIONS"].includes(init.method) ? { "X-CSRF-Token": csrf } : {}),
+      ...(orgId ? { "X-Org-Id": orgId } : {}),
       ...(init?.headers || {}),
     },
   });
@@ -87,6 +89,7 @@ export async function streamSSE(
   body: unknown,
   onEvent: (ev: SseEvent) => void,
   signal?: AbortSignal,
+  retried = false,
 ): Promise<void> {
   // Call the backend directly (not through next.config.mjs rewrites): Next's
   // rewrite proxy does not reliably forward incremental SSE chunks — it can
@@ -99,10 +102,15 @@ export async function streamSSE(
       "Content-Type": "application/json",
       ...(getAccessToken() ? { Authorization: `Bearer ${getAccessToken()}` } : {}),
       ...(getCsrfToken() ? { "X-CSRF-Token": getCsrfToken()! } : {}),
+      ...(getActiveOrgId() ? { "X-Org-Id": getActiveOrgId()! } : {}),
     },
     body: JSON.stringify(body),
     signal,
   });
+  if (res.status === 401 && !retried) {
+    const refreshed = await refreshAccessToken();
+    if (refreshed) return streamSSE(path, body, onEvent, signal, true);
+  }
   if (!res.ok || !res.body) {
     throw new Error(`stream failed: ${res.status}`);
   }
@@ -146,15 +154,21 @@ export async function streamSSEGet(
   url: string,
   onEvent: (ev: SseEvent) => void,
   signal?: AbortSignal,
+  retried = false,
 ): Promise<void> {
   const res = await fetch(`${apiBaseUrl}${url}`, {
     credentials: "include",
     headers: {
       ...(getAccessToken() ? { Authorization: `Bearer ${getAccessToken()}` } : {}),
       ...(getCsrfToken() ? { "X-CSRF-Token": getCsrfToken()! } : {}),
+      ...(getActiveOrgId() ? { "X-Org-Id": getActiveOrgId()! } : {}),
     },
     signal,
   });
+  if (res.status === 401 && !retried) {
+    const refreshed = await refreshAccessToken();
+    if (refreshed) return streamSSEGet(url, onEvent, signal, true);
+  }
   if (!res.ok || !res.body) {
     throw new Error(`stream failed: ${res.status}`);
   }

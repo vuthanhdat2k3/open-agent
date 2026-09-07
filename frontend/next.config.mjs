@@ -2,6 +2,16 @@
 const apiBaseUrl = process.env.API_INTERNAL_URL || "http://localhost:8000";
 
 const nextConfig = {
+  // Next's built-in gzip compression buffers the whole response before
+  // writing anything out — fine for normal pages, but it defeats every
+  // proxied /api/* SSE stream (chat, workflow runs): the browser sees
+  // nothing until the backend closes the connection, however long that
+  // takes. That's invisible for plain streaming text (it just arrives less
+  // "live"), but it breaks the Client Tool Bridge outright: a ui_* tool
+  // blocks server-side waiting for the browser to answer a ui_action event
+  // it never actually received in time, and times out. Real compression
+  // still happens at Cloudflare/Caddy in front of this process.
+  compress: false,
   async rewrites() {
     return [
       { source: "/api/:path*", destination: `${apiBaseUrl}/api/:path*` },

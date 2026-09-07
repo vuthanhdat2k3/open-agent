@@ -184,7 +184,7 @@ def test_user_reads_only_owned_workspace_approvals_and_quota_usage(
     assert executions.status_code == 200, executions.text
     assert [item["command"] for item in executions.json()] == ["user"]
 
-    approvals = client.get("/api/approvals", headers=user_headers)
+    approvals = client.get("/api/approvals?include_chat=true", headers=user_headers)
     assert approvals.status_code == 200, approvals.text
     assert len(approvals.json()) == 1
     assert approvals.json()[0]["requested_by"] == user_id
@@ -326,3 +326,11 @@ def test_user_cannot_read_other_users_sessions_or_runs(
     assert client.get(
         "/api/workflows/runs/admin-workflow-run", headers=user_headers
     ).status_code == 404
+
+    user_list = client.get("/api/workflows/runs", headers=user_headers)
+    assert user_list.status_code == 200, user_list.text
+    assert [row["id"] for row in user_list.json()] == ["user-workflow-run"]
+
+    admin_list = client.get("/api/workflows/runs", headers=_headers(admin_token, org_id))
+    assert admin_list.status_code == 200, admin_list.text
+    assert {row["id"] for row in admin_list.json()} == {"admin-workflow-run", "user-workflow-run"}

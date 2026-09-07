@@ -24,6 +24,9 @@ router = APIRouter(prefix="/api/workspace", tags=["workspace"])
 _LANG_BY_SUFFIX = {
     ".py": "python",
     ".sh": "bash",
+    ".js": "node",
+    ".mjs": "node",
+    ".cjs": "node",
 }
 
 
@@ -82,6 +85,7 @@ async def read_artifact(
 )
 async def download_artifact(
     artifact_id: str,
+    inline: bool = False,
     org_id: str = Depends(get_current_org_id),
     db: AsyncSession = Depends(get_db),
 ):
@@ -91,12 +95,24 @@ async def download_artifact(
         raise HTTPException(404, str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(404, str(exc)) from exc
-    return FileResponse(target, filename=target.name)
+
+    import mimetypes
+    media_type, _ = mimetypes.guess_type(target.name)
+    if not media_type:
+        media_type = "application/octet-stream"
+
+    content_disposition_type = "inline" if inline else "attachment"
+    return FileResponse(
+        target,
+        filename=target.name,
+        media_type=media_type,
+        content_disposition_type=content_disposition_type,
+    )
 
 
 @router.delete(
     "/artifacts/{artifact_id}",
-    dependencies=[Depends(require_permission("files:manage"))],
+    dependencies=[Depends(require_permission("files:write"))],
 )
 async def delete_artifact(
     artifact_id: str,
@@ -182,7 +198,7 @@ async def delete_execution(
     "/artifacts/{artifact_id}/run",
     response_model=SandboxRunOut,
     status_code=202,
-    dependencies=[Depends(require_permission("files:manage"))],
+    dependencies=[Depends(require_permission("files:write"))],
 )
 async def run_artifact(
     artifact_id: str,
@@ -198,7 +214,7 @@ async def run_artifact(
 
     language = _infer_language(str(target))
     if language is None:
-        raise HTTPException(400, "unsupported artifact type (use .py or .sh)")
+        raise HTTPException(400, "unsupported artifact type (supported: .py, .sh, .js)")
 
     try:
         live = await live_run.start_live_run(
@@ -248,7 +264,7 @@ async def stream_execution(
 
 @router.post(
     "/executions/{execution_id}/stop",
-    dependencies=[Depends(require_permission("files:manage"))],
+    dependencies=[Depends(require_permission("files:write"))],
 )
 async def stop_execution(
     execution_id: str,

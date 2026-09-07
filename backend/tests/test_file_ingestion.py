@@ -98,3 +98,65 @@ async def test_transient_failure_moves_job_to_retrying(async_session_factory, mo
         assert refreshed.status == "retrying"
         assert refreshed.error_code == "RAG_UNAVAILABLE"
         assert refreshed.attempt_count == 1
+
+
+@pytest.mark.asyncio
+async def test_process_job_namespaces_collection_by_org_for_shared_file(async_session_factory, monkeypatch):
+    """Files-UI ingest must land in the same org-namespaced collection as the
+    chat-tool path (`app.mcp.client`), not the raw, cross-org-colliding name
+    stored on the job."""
+    async with async_session_factory() as db:
+        db.add(UploadedFile(
+            id="file-3", org_id="org-3", original_name="guide.pdf", filename="guide.pdf",
+            stored_path="org-3/guide.pdf", size=10, file_sha256="c" * 64,
+            visibility="organization", created_by_user_id="operator-1",
+        ))
+        await db.commit()
+        service = FileIngestionService(db)
+        job, _ = await service.create_job(
+            "org-3", "file-3", "operator-1", collection="default", chunk_size=800,
+            chunk_overlap=150, tags=[], correlation_id="corr-3",
+        )
+        captured = {}
+
+        async def fake_ingest(_self, *_args, **kwargs):
+            captured["collection"] = kwargs["collection"]
+            from app.services.rag_ingest_client import RagIngestResult
+            return RagIngestResult("doc-1", 1, {})
+
+        monkeypatch.setattr("app.services.file_ingestion_service.RagIngestClient.ingest", fake_ingest)
+        monkeypatch.setattr(service, "_download", lambda _key: io.BytesIO(b"x"))
+        await service.process_job(job.id, "worker-1")
+
+        assert captured["collection"] == "org-org-3-default"
+
+
+@pytest.mark.asyncio
+async def test_process_job_namespaces_personal_file_to_its_owner(async_session_factory, monkeypatch):
+    """A `user`-uploaded personal file must ingest into that user's own
+    collection, even if an operator is the one who triggers the ingest job —
+    the file's own visibility/owner decides scope, not the caller."""
+    async with async_session_factory() as db:
+        db.add(UploadedFile(
+            id="file-4", org_id="org-3", original_name="notes.pdf", filename="notes.pdf",
+            stored_path="org-3/notes.pdf", size=10, file_sha256="d" * 64,
+            visibility="personal", created_by_user_id="user-42",
+        ))
+        await db.commit()
+        service = FileIngestionService(db)
+        job, _ = await service.create_job(
+            "org-3", "file-4", "operator-1", collection="default", chunk_size=800,
+            chunk_overlap=150, tags=[], correlation_id="corr-4",
+        )
+        captured = {}
+
+        async def fake_ingest(_self, *_args, **kwargs):
+            captured["collection"] = kwargs["collection"]
+            from app.services.rag_ingest_client import RagIngestResult
+            return RagIngestResult("doc-2", 1, {})
+
+        monkeypatch.setattr("app.services.file_ingestion_service.RagIngestClient.ingest", fake_ingest)
+        monkeypatch.setattr(service, "_download", lambda _key: io.BytesIO(b"x"))
+        await service.process_job(job.id, "worker-1")
+
+        assert captured["collection"] == "org-org-3-user-user-42-default"

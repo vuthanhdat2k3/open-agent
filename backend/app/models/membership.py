@@ -15,7 +15,10 @@ if TYPE_CHECKING:
 
 class Membership(Base):
     __tablename__ = "memberships"
-    __table_args__ = (UniqueConstraint("org_id", "user_id", name="uq_membership_org_user"),)
+    # A user may hold more than one role in the same org (e.g. a self-
+    # registered founder gets both org_admin and operator) - uniqueness is
+    # per role-row, not per (org, user).
+    __table_args__ = (UniqueConstraint("org_id", "user_id", "role", name="uq_membership_org_user_role"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=gen_id)
     org_id: Mapped[str] = mapped_column(

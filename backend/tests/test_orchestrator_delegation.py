@@ -492,6 +492,7 @@ async def test_orchestrator_sequential_delegation() -> None:
             # recursive lookup inside the call_agent tool.
             result = await run_agent_loop(
                 agent=orchestrator, message="Research and summarize", db=session, user_id="u-orch",
+                user_role="user",
             )
 
         assert result.content == "Done: fact is blue, summarized."
@@ -538,6 +539,7 @@ async def test_orchestrator_parallel_delegation() -> None:
         ):
             result = await run_agent_loop(
                 agent=orchestrator, message="Do A and B in parallel", db=session, user_id="u-orch",
+                user_role="user",
             )
 
         # Both delegated calls happened within a single orchestrator turn

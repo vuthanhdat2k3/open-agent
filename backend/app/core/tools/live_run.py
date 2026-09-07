@@ -81,7 +81,7 @@ async def _spawn_process(docker_args: list[str], archive: bytes) -> Any:
         stderr=asyncio.subprocess.STDOUT,
     )
     if proc.stdin:
-        await proc.stdin.write(archive)
+        proc.stdin.write(archive)
         await proc.stdin.drain()
         proc.stdin.close()
     return proc

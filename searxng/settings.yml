@@ -14,3 +14,15 @@ search:
   formats:
     - html
     - json
+
+# The upstream defaults only enable duckduckgo/google cse/startpage/brave/
+# wikipedia for general web search — a single burst of testing can get all
+# five rate-limited or CAPTCHA'd at once (observed live), leaving zero
+# redundancy. mojeek and yahoo are independent, keyless indexes not covered
+# by that same anti-bot exposure; enabling them gives the aggregator other
+# engines to fall back on when the defaults are throttled.
+engines:
+  - name: mojeek
+    disabled: false
+  - name: yahoo
+    disabled: false

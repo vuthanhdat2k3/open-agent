@@ -10,11 +10,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.sse import format_sse
 from app.config import get_settings
-from app.core.agent_loop import await_deferred_user_write, fail_chat_run
+from app.core import session_log as slog
+from app.core.agent_loop import _persist, await_deferred_user_write, fail_chat_run
 from app.core.authz.policy import PrincipalContext
 from app.core.authz.scope import scope_to_owner
 from app.core.chat_events import (
     TERMINAL_EVENTS,
+    ChatEventRecorder,
     iter_run_events,
     list_events,
     observe_delivery,
@@ -31,7 +33,7 @@ from app.db.session import SessionLocal
 from app.dependencies import get_current_org_id, get_current_user, get_db, require_permission
 from app.models.task import Task
 from app.models.user import User
-from app.schemas.chat import ChatRequest
+from app.schemas.chat import ChatRequest, UiActionResult
 from app.services.chat_service import ChatService
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
@@ -82,6 +84,19 @@ async def run_chat_detached(payload: dict) -> None:
             task = res.scalar_one_or_none()
             if task is not None:
                 await fail_chat_run(db, task, exc)
+                # Emit a durable error event so the SSE drain delivers the full
+                # provider error (e.g. quota exhausted, rate-limited) to the
+                # client instead of a silent stream close.
+                try:
+                    rec = ChatEventRecorder(
+                        org_id=payload["org_id"],
+                        run_id=request.run_id,
+                    )
+                    error_msg = str(exc)
+                    await rec.record({"event": "error", "data": {"message": error_msg}})
+                    await rec.close()
+                except Exception:  # noqa: BLE001
+                    pass
         finally:
             await await_deferred_user_write(request.run_id)
             if _ACTIVE_CHAT_TASKS.get(request.run_id) is active_task:
@@ -109,7 +124,7 @@ async def chat(
                 org_id,
                 body,
                 user_id=current_user.id,
-                user_role=authz.role.value,
+                user_role=authz.tool_use_role.value,
                 root_run_id=body.run_id,
             )
         except ValueError as exc:
@@ -231,11 +246,94 @@ async def cancel_chat_run(
             "phase": "cancelled",
             "updated_at": utc_now().isoformat(),
         }
+
+        # Snapshot any partial text/reasoning accumulated so far into durable messages
+        session_id = (task.progress or {}).get("session_id")
+        if session_id:
+            events = await list_events(db, run_id, org_id)
+            tokens = []
+            reasoning_parts = []
+            for ev in events:
+                if ev.event == "token" and isinstance(ev.data, dict) and "content" in ev.data:
+                    tokens.append(str(ev.data["content"]))
+                elif ev.event == "reasoning" and isinstance(ev.data, dict) and "content" in ev.data:
+                    reasoning_parts.append(str(ev.data["content"]))
+
+            partial_content = "".join(tokens)
+            partial_reasoning = "".join(reasoning_parts)
+
+            if partial_content or partial_reasoning:
+                meta = {
+                    "interrupted": True,
+                    "reasoning": partial_reasoning,
+                    "finalization": "cancelled_by_user",
+                }
+                try:
+                    await slog.append_event(
+                        db,
+                        session_id=session_id,
+                        org_id=org_id,
+                        type_=slog.ASSISTANT_MESSAGE,
+                        data={
+                            "content": partial_content,
+                            "reasoning": partial_reasoning,
+                        },
+                    )
+                except Exception:
+                    pass
+
+                await _persist(
+                    db,
+                    session_id,
+                    "assistant",
+                    partial_content,
+                    meta,
+                    org_id=org_id,
+                    created_by_user_id=task.triggered_by_user_id,
+                )
+
         await db.commit()
         active_task = _ACTIVE_CHAT_TASKS.get(run_id)
         if active_task is not None and active_task is not asyncio.current_task():
             active_task.cancel()
     return {"id": run_id, "status": task.status}
+
+
+@router.post("/runs/{run_id}/ui-result", dependencies=[Depends(require_permission("agents:run"))])
+async def post_ui_action_result(
+    run_id: str,
+    body: UiActionResult,
+    org_id: str = Depends(get_current_org_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Client Tool Bridge: deliver a ui_* tool's browser-side result.
+
+    A ui_* tool (see app/core/tools/ui_actions.py) is blocked in
+    ui_bridge.wait_for_result on ``body.call_id`` when this lands. Ownership
+    is checked against the run, not the call_id itself, so a caller cannot
+    resolve a bridge call belonging to someone else's run.
+    """
+    res = await db.execute(
+        scope_to_owner(
+            select(Task).where(
+                Task.root_run_id == run_id,
+                Task.org_id == org_id,
+                Task.parent_task_id.is_(None),
+            ),
+            db,
+            Task.triggered_by_user_id,
+        )
+    )
+    if res.scalars().first() is None:
+        raise HTTPException(404, "chat run not found")
+
+    from app.core.tools.ui_bridge import post_result
+
+    await post_result(
+        body.call_id,
+        {"ok": body.ok, "result": body.result, "error": body.error},
+    )
+    return {"ok": True}
 
 
 @router.get("/runs/{run_id}/events")

@@ -8,12 +8,15 @@ import {
   useAgents,
   useCreateEvaluationRun,
   useCreateEvaluationSuite,
+  useCurrentRoles,
   useEvaluationRuns,
   useEvaluationSuites,
+  useUrlSearchParam,
 } from "@/hooks";
 import type { EvaluationSuite } from "@/types";
 import { PageHeader } from "@/components/page-header";
-import { EmptyState, ErrorState, LoadingSkeleton } from "@/components/shared";
+import { useTranslation } from "@/lib/i18n";
+import { EmptyState, ErrorState, LoadingSkeleton, DataPagination } from "@/components/shared";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input, Label, Textarea } from "@/components/ui/input";
@@ -35,6 +38,9 @@ const EMPTY_SUITE = {
 };
 
 export default function EvaluationsPage() {
+  const { t, dict, locale, tx } = useTranslation();
+  const roles = useCurrentRoles();
+  const isOperator = roles.includes("operator");
   const suites = useEvaluationSuites();
   const agents = useAgents();
   const createSuite = useCreateEvaluationSuite();
@@ -42,16 +48,23 @@ export default function EvaluationsPage() {
   const createRun = useCreateEvaluationRun();
   const [suiteDialog, setSuiteDialog] = React.useState(false);
   const [caseSuite, setCaseSuite] = React.useState<EvaluationSuite | null>(null);
-  const [selectedSuiteId, setSelectedSuiteId] = React.useState<string | null>(null);
+  const [selectedSuiteId, setSelectedSuiteId] = useUrlSearchParam("suite");
   const runs = useEvaluationRuns(selectedSuiteId);
   const [form, setForm] = React.useState(EMPTY_SUITE);
   const [caseForm, setCaseForm] = React.useState({ input: "", expected_output: "" });
+  const [suitePage, setSuitePage] = React.useState(1);
+  const [suitePageSize, setSuitePageSize] = React.useState(5);
+
+  const paginatedSuites = React.useMemo(() => {
+    const start = (suitePage - 1) * suitePageSize;
+    return (suites.data || []).slice(start, start + suitePageSize);
+  }, [suites.data, suitePage, suitePageSize]);
 
   React.useEffect(() => {
     if (!selectedSuiteId && suites.data?.length) {
       setSelectedSuiteId(suites.data[0].id);
     }
-  }, [selectedSuiteId, suites.data]);
+  }, [selectedSuiteId, setSelectedSuiteId, suites.data]);
 
   React.useEffect(() => {
     if (!form.agent_id && agents.data?.length) {
@@ -72,7 +85,7 @@ export default function EvaluationsPage() {
       setSuiteDialog(false);
       setSelectedSuiteId(created.id);
       setForm({ ...EMPTY_SUITE, agent_id: form.agent_id });
-      toast.success("Evaluation suite created");
+      toast.success(tx("Đã tạo bộ đánh giá", "Evaluation suite created"));
     } catch (error: any) {
       toast.error(error.message);
     }
@@ -88,7 +101,7 @@ export default function EvaluationsPage() {
       });
       setCaseSuite(null);
       setCaseForm({ input: "", expected_output: "" });
-      toast.success("Test case added");
+      toast.success(tx("Đã thêm test case", "Test case added"));
     } catch (error: any) {
       toast.error(error.message);
     }
@@ -97,7 +110,7 @@ export default function EvaluationsPage() {
   const runSuite = async (suite: EvaluationSuite, mode: "live" | "recorded") => {
     const agent = agents.data?.find((item) => item.id === suite.agent_id);
     if (!agent?.active_release_id) {
-      toast.error("Agent has no active release");
+      toast.error(tx("Agent chưa có bản phát hành hoạt động", "Agent has no active release"));
       return;
     }
     try {
@@ -121,7 +134,7 @@ export default function EvaluationsPage() {
       });
       setSelectedSuiteId(suite.id);
       toast.success(
-        `Evaluation complete: ${(run.pass_rate * 100).toFixed(0)}% passed`
+        tx(`Đánh giá hoàn tất: ${(run.pass_rate * 100).toFixed(0)}% đạt`, `Evaluation complete: ${(run.pass_rate * 100).toFixed(0)}% passed`)
       );
     } catch (error: any) {
       toast.error(error.message);
@@ -132,19 +145,18 @@ export default function EvaluationsPage() {
     <div className="space-y-6">
       <PageHeader
         icon={FlaskConical}
-        title="Evaluations"
-        description="Versioned test suites and release quality gates"
+        title={dict.pages.evaluations.title}
+        description={tx("Chạy bộ benchmark, theo dõi tỷ lệ đạt và xác minh chất lượng mô hình.", "Run benchmark test suites, track pass rates, and verify model quality.")}
         actions={
           <Button className="gap-2 active-tactile transition-transform" onClick={() => setSuiteDialog(true)}>
-            <Plus className="h-4 w-4" /> New Suite
-          </Button>
+            <Plus className="h-4 w-4" /> {tx("Suite mới", "New Suite")}</Button>
         }
       />
 
-      {suites.isLoading ? <LoadingSkeleton variant="table" /> : suites.isError ? <ErrorState title="Unable to load evaluation suites" description="Evaluation data could not be loaded." onRetry={() => void suites.refetch()} /> : suites.data?.length ? (
+      {suites.isLoading ? <LoadingSkeleton variant="table" /> : suites.isError ? <ErrorState title={tx("Không thể tải các evaluation suite", "Unable to load evaluation suites")} description={tx("Không thể tải dữ liệu đánh giá.", "Evaluation data could not be loaded.")} onRetry={() => void suites.refetch()} /> : suites.data?.length ? (
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px] stagger">
           <div className="space-y-4">
-            {suites.data.map((suite) => {
+            {paginatedSuites.map((suite) => {
               const agent = agents.data?.find((item) => item.id === suite.agent_id);
               return (
                 <Card
@@ -159,8 +171,13 @@ export default function EvaluationsPage() {
                         <Badge variant="outline" className="font-mono text-[10px]">v{suite.dataset_version}</Badge>
                       </div>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        {suite.description || "No description"} · <span className="font-medium text-foreground">{agent?.name ?? "Unknown agent"}</span>
+                        {suite.description || tx("Chưa có mô tả", "No description")} · <span className="font-medium text-foreground">{agent?.name ?? tx("Agent không xác định", "Unknown agent")}</span>
                       </p>
+                      {isOperator && suite.created_by_user_id && (
+                        <p className="mt-0.5 text-[10px] text-muted-foreground/60">
+                          {tx("Tạo bởi", "Created by")}: {suite.creator_email || suite.creator_name || suite.created_by_user_id.slice(0, 8)}
+                        </p>
+                      )}
                     </div>
                     <div className="flex gap-2">
                       <Button
@@ -172,8 +189,7 @@ export default function EvaluationsPage() {
                           setSelectedSuiteId(suite.id);
                         }}
                       >
-                        <Plus className="h-3.5 w-3.5" /> Case
-                      </Button>
+                        <Plus className="h-3.5 w-3.5" /> {tx("Ca kiểm thử", "Case")}</Button>
                       <Button
                         size="sm"
                         variant="outline"
@@ -181,16 +197,14 @@ export default function EvaluationsPage() {
                         onClick={() => runSuite(suite, "recorded")}
                         disabled={createRun.isPending || !suite.cases.length}
                       >
-                        <Database className="h-3.5 w-3.5" /> Baseline
-                      </Button>
+                        <Database className="h-3.5 w-3.5" /> {tx("Baseline", "Baseline")}</Button>
                       <Button
                         size="sm"
                         className="gap-1.5 active-tactile transition-transform text-xs"
                         onClick={() => runSuite(suite, "live")}
                         disabled={createRun.isPending || !suite.cases.length}
                       >
-                        <Play className="h-3.5 w-3.5" /> Live
-                      </Button>
+                        <Play className="h-3.5 w-3.5" /> {tx("Live", "Live")}</Button>
                     </div>
                   </div>
                   <div className="overflow-hidden rounded-xl border border-border/60 bg-muted/20">
@@ -211,19 +225,25 @@ export default function EvaluationsPage() {
                     ))}
                     {!suite.cases.length && (
                       <p className="px-4 py-4 text-xs text-muted-foreground text-center">
-                        No test cases.
-                      </p>
+                        {tx("Không có ca kiểm thử.", "No test cases.")}</p>
                     )}
                   </div>
                 </Card>
               );
             })}
+            <DataPagination
+              page={suitePage}
+              pageSize={suitePageSize}
+              totalItems={suites.data.length}
+              onPageChange={setSuitePage}
+              onPageSizeChange={setSuitePageSize}
+              pageSizeOptions={[3, 5, 10, 20]}
+            />
           </div>
 
           <aside className="rounded-xl border border-border/80 bg-card/45 p-5 space-y-4 backdrop-blur-xl shadow-3d-card">
             <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground/80">
-              Recent runs
-            </h2>
+              {tx("Lượt chạy gần đây", "Recent runs")}</h2>
             <div className="space-y-3">
               {runs.data?.map((run) => (
                 <div
@@ -244,12 +264,12 @@ export default function EvaluationsPage() {
                     <Badge variant="outline" className="font-mono text-[10px]">{run.execution_mode}</Badge>
                   </div>
                   <p className="text-[11px] font-mono text-muted-foreground">
-                    {run.passed_cases}/{run.total_cases} cases · {run.average_latency_ms.toFixed(0)}ms · ${run.total_cost_usd.toFixed(4)}
+                    {run.passed_cases}/{run.total_cases} {tx("ca ·", "cases ·")}{run.average_latency_ms.toFixed(0)}{tx("ms · $", "ms · $")}{run.total_cost_usd.toFixed(4)}
                   </p>
                 </div>
               ))}
               {!runs.data?.length && (
-                <p className="text-xs text-muted-foreground/80 py-4 text-center">No runs recorded.</p>
+                <p className="text-xs text-muted-foreground/80 py-4 text-center">{tx("Chưa ghi nhận lượt chạy nào.", "No runs recorded.")}</p>
               )}
             </div>
           </aside>
@@ -257,12 +277,11 @@ export default function EvaluationsPage() {
       ) : (
         <EmptyState
           icon={FlaskConical}
-          title="No evaluation suites"
-          description="Create a repeatable quality gate for an agent release."
+          title={tx("Chưa có evaluation suite", "No evaluation suites")}
+          description={tx("Tạo cổng chất lượng có thể lặp lại cho bản phát hành agent.", "Create a repeatable quality gate for an agent release.")}
           action={
             <Button className="gap-2 active-tactile transition-transform" onClick={() => setSuiteDialog(true)}>
-              <Plus className="h-4 w-4" /> New Suite
-            </Button>
+              <Plus className="h-4 w-4" /> {tx("Suite mới", "New Suite")}</Button>
           }
         />
       )}
@@ -270,18 +289,18 @@ export default function EvaluationsPage() {
       <Dialog open={suiteDialog} onOpenChange={setSuiteDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>New evaluation suite</DialogTitle>
+            <DialogTitle>{tx("Evaluation suite mới", "New evaluation suite")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-1">
             <div className="space-y-1.5">
-              <Label>Name</Label>
+              <Label>{tx("Tên", "Name")}</Label>
               <Input
                 value={form.name}
                 onChange={(event) => setForm({ ...form, name: event.target.value })}
               />
             </div>
             <div className="space-y-1.5">
-              <Label>Agent</Label>
+              <Label>{tx("Agent", "Agent")}</Label>
               <Select
                 value={form.agent_id}
                 onChange={(event) =>
@@ -290,13 +309,13 @@ export default function EvaluationsPage() {
               >
                 {agents.data?.map((agent) => (
                   <option key={agent.id} value={agent.id}>
-                    {agent.name} | v{agent.latest_release_number}
+                    {agent.name} {tx("| v", "| v")}{agent.latest_release_number}
                   </option>
                 ))}
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label>Description</Label>
+              <Label>{tx("Mô tả", "Description")}</Label>
               <Input
                 value={form.description}
                 onChange={(event) =>
@@ -306,14 +325,14 @@ export default function EvaluationsPage() {
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
-                <Label>First input</Label>
+                <Label>{tx("Đầu vào đầu tiên", "First input")}</Label>
                 <Textarea
                   value={form.input}
                   onChange={(event) => setForm({ ...form, input: event.target.value })}
                 />
               </div>
               <div className="space-y-1.5">
-                <Label>Expected output</Label>
+                <Label>{tx("Kết quả mong đợi", "Expected output")}</Label>
                 <Textarea
                   value={form.expected_output}
                   onChange={(event) =>
@@ -327,7 +346,7 @@ export default function EvaluationsPage() {
               onClick={submitSuite}
               disabled={createSuite.isPending || !form.name || !form.agent_id}
             >
-              {createSuite.isPending ? "Creating..." : "Create suite"}
+              {createSuite.isPending ? tx("Đang tạo...", "Creating...") : tx("Tạo bộ đánh giá", "Create suite")}
             </Button>
           </div>
         </DialogContent>
@@ -336,11 +355,11 @@ export default function EvaluationsPage() {
       <Dialog open={!!caseSuite} onOpenChange={(value) => !value && setCaseSuite(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add case to {caseSuite?.name}</DialogTitle>
+            <DialogTitle>{tx("Thêm ca vào", "Add case to")}{caseSuite?.name}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-1">
             <div className="space-y-1.5">
-              <Label>Input</Label>
+              <Label>{tx("Đầu vào", "Input")}</Label>
               <Textarea
                 value={caseForm.input}
                 onChange={(event) =>
@@ -349,7 +368,7 @@ export default function EvaluationsPage() {
               />
             </div>
             <div className="space-y-1.5">
-              <Label>Expected output</Label>
+              <Label>{tx("Kết quả mong đợi", "Expected output")}</Label>
               <Textarea
                 value={caseForm.expected_output}
                 onChange={(event) =>
@@ -362,7 +381,7 @@ export default function EvaluationsPage() {
               onClick={submitCase}
               disabled={addCase.isPending || !caseForm.input}
             >
-              {addCase.isPending ? "Adding..." : "Add case"}
+              {addCase.isPending ? tx("Đang thêm...", "Adding...") : tx("Thêm test case", "Add case")}
             </Button>
           </div>
         </DialogContent>

@@ -1,8 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { Bot, Bug, Trash2 } from "lucide-react";
-import { useCurrentRole } from "@/hooks";
+import { ArrowDown, Bot, Bug, Trash2 } from "lucide-react";
+import { useCurrentRoles } from "@/hooks";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { ChatMessageItem } from "@/components/chat/chat-message-item";
@@ -10,7 +10,8 @@ import { ChatEmptyState } from "@/components/chat/chat-empty-state";
 import { ChatStatusRow } from "@/components/chat/chat-status-row";
 import { ChatHeaderControls } from "@/components/chat/chat-header-controls";
 import type { ChatMessage } from "@/lib/chat/projection";
-import type { Agent, Model, Session, UploadedFile } from "@/types";
+import type { Agent, ExecutionPolicy, Model, Session, UploadedFile, UsageSummary } from "@/types";
+import { useTranslation } from "@/lib/i18n";
 
 interface ChatThreadProps {
   messages: ChatMessage[];
@@ -19,19 +20,18 @@ interface ChatThreadProps {
   statusPhase: string;
   agents?: Agent[];
   models?: Model[];
-  sessions?: Session[];
   agentId: string | null;
   sessionId: string | null;
   currentAgent?: Agent;
   currentAgentModel?: Model;
   effectiveModel?: Model;
   pendingSessionModelId: string;
+  pendingExecutionPolicy: ExecutionPolicy;
   updateAgentPending: boolean;
   onAgentChange: (agentId: string) => void;
   onDefaultModelChange: (modelId: string) => void;
-  onSessionChange: (sessionId: string) => void;
+  onExecutionPolicyChange: (policy: ExecutionPolicy) => void;
   onNewSession: () => void;
-  onDeleteSession: (sessionId: string) => Promise<void>;
   onToggleDebug: () => void;
   onClearMessages: () => void;
   onApprovalDecision: (messageId: string, decision: "approved" | "rejected") => void;
@@ -41,9 +41,18 @@ interface ChatThreadProps {
   composerDisabled: boolean;
   attachments: UploadedFile[];
   onAttachmentsChange: (files: UploadedFile[]) => void;
+  /** Usage summary rows (for /usage slash command in the empty-state composer) */
+  usage?: UsageSummary[];
+  /** Send a message programmatically (for /compact slash command) */
+  onSendMessage?: (message: string) => void;
   scrollHostRef: React.RefObject<HTMLDivElement | null>;
   bottomRef: React.RefObject<HTMLDivElement | null>;
   onThreadScroll: () => void;
+  onThreadWheel?: (e: React.WheelEvent<HTMLDivElement>) => void;
+  onThreadTouchStart?: (e: React.TouchEvent<HTMLDivElement>) => void;
+  onThreadTouchMove?: (e: React.TouchEvent<HTMLDivElement>) => void;
+  showScrollBottom?: boolean;
+  onScrollToBottom?: () => void;
 }
 
 export function ChatThread({
@@ -53,19 +62,18 @@ export function ChatThread({
   statusPhase,
   agents,
   models,
-  sessions,
   agentId,
   sessionId,
   currentAgent,
   currentAgentModel,
   effectiveModel,
   pendingSessionModelId,
+  pendingExecutionPolicy,
   updateAgentPending,
   onAgentChange,
   onDefaultModelChange,
-  onSessionChange,
+  onExecutionPolicyChange,
   onNewSession,
-  onDeleteSession,
   onToggleDebug,
   onClearMessages,
   onApprovalDecision,
@@ -75,63 +83,78 @@ export function ChatThread({
   composerDisabled,
   attachments,
   onAttachmentsChange,
+  usage,
+  onSendMessage,
   scrollHostRef,
   bottomRef,
   onThreadScroll,
+  onThreadWheel,
+  onThreadTouchStart,
+  onThreadTouchMove,
+  showScrollBottom,
+  onScrollToBottom,
 }: ChatThreadProps) {
+    const { locale, tx } = useTranslation();
   const hasPendingApproval = messages.some((m) => m.role === "approval" && m.status === "pending");
   const lastMessage = messages[messages.length - 1];
+  // Hide the global ChatStatusRow when the last assistant message is already
+  // showing a loading indicator inline — either a streaming text/reasoning block,
+  // or a tool_call chip that is still "running".  Both render their own spinner,
+  // so showing the status row on top would result in two loading indicators.
   const inMessageStreaming =
     lastMessage?.role === "assistant" &&
-    lastMessage.blocks.some((b) => "streaming" in b && b.streaming);
+    lastMessage.blocks.some(
+      (b) =>
+        (b.kind === "text" || b.kind === "reasoning") && "streaming" in b && b.streaming ||
+        (b.kind === "tool_call" && b.status === "running"),
+    );
   const showStatusRow =
     (streaming || statusPhase === "approval") && !hasPendingApproval && !inMessageStreaming;
-  const role = useCurrentRole();
-  const canSwitchAgent = role === "admin" || role === "platform_admin" || role === "operator";
-  const canSwitchModel = Boolean(models?.some((model) => model.active));
+
+  const roles = useCurrentRoles();
+  const canSwitchAgent = roles.includes("operator");
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="relative flex min-h-0 flex-1 flex-col">
       <div className="sticky top-0 z-10 flex shrink-0 items-center gap-2 border-b border-border/60 bg-background px-2 py-1.5 sm:px-4">
         <ChatHeaderControls
           canSwitchAgent={canSwitchAgent}
-          canSwitchModel={canSwitchModel}
           agents={agents}
-          models={models}
-          sessions={sessions}
           agentId={agentId}
-          sessionId={sessionId}
           currentAgent={currentAgent}
-          currentAgentModel={currentAgentModel}
-          pendingSessionModelId={pendingSessionModelId}
-          streaming={streaming}
-          updateAgentPending={updateAgentPending}
           onAgentChange={onAgentChange}
-          onDefaultModelChange={onDefaultModelChange}
-          onSessionChange={onSessionChange}
-          onNewSession={onNewSession}
-          onDeleteSession={onDeleteSession}
         />
         <div className="ml-auto flex items-center gap-1">
           <Button
             type="button"
             variant={debug ? "secondary" : "ghost"}
             size="sm"
-            className={`h-7 gap-1 px-2 text-[10px] ${debug ? "font-semibold text-primary" : "text-muted-foreground"}`}
+            className={`h-7 gap-1 px-2 text-[10px] transition-colors ${
+              debug
+                ? "bg-secondary font-semibold text-primary shadow-sm border border-primary/30"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
             onClick={onToggleDebug}
-            title="Toggle debug trace (thinking, tool calls, results)"
+            aria-pressed={debug}
+            title={
+              debug
+                ? tx("Chế độ Debug đang BẬT (mở rộng thẻ tool, đếm token & timing chính xác). Bấm để chuyển sang chế độ Clean.", "Debug mode is ON (expanded tool cards, exact token counts & timings). Click to switch to Clean mode.")
+                : tx("Chế độ Debug đang TẮT (chip tool gọn & văn bản sạch). Bấm để bật chế độ Debug.", "Debug mode is OFF (compact tool chips & clean text). Click to enable Debug mode.")
+            }
           >
-            <Bug className="h-3.5 w-3.5" aria-hidden="true" /> Debug
+            <Bug className={`h-3.5 w-3.5 ${debug ? "text-primary" : ""}`} aria-hidden="true" />
+            <span>{tx("Debug", "Debug")}</span>
+            {debug && <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-hidden="true" />}
           </Button>
-          {messages.length > 0 && (
+          {sessionId && (
             <Button
               type="button"
               variant="ghost"
               size="icon"
               className="h-8 w-8 text-muted-foreground hover:text-destructive"
               onClick={onClearMessages}
-              aria-label="Clear conversation"
-              title="Clear conversation"
+              aria-label={tx("Đóng phiên hội thoại", "Close session")}
+              title={tx("Đóng phiên hội thoại", "Close session")}
             >
               <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
             </Button>
@@ -142,6 +165,10 @@ export function ChatThread({
       <div
         ref={scrollHostRef}
         onScroll={onThreadScroll}
+        onWheel={onThreadWheel}
+        onTouchStart={onThreadTouchStart}
+        onTouchMove={onThreadTouchMove}
+        style={{ overflowAnchor: "none" }}
         role="log"
         aria-live="polite"
         aria-relevant="additions text"
@@ -150,13 +177,23 @@ export function ChatThread({
         {messages.length === 0 ? (
           <ChatEmptyState
             currentAgent={currentAgent}
+            models={models}
             effectiveModel={effectiveModel}
+            onModelChange={onDefaultModelChange}
+            executionPolicy={pendingExecutionPolicy}
+            onExecutionPolicyChange={onExecutionPolicyChange}
             draft={draft}
             onDraftChange={onDraftChange}
             onSubmit={onSubmit}
             disabled={composerDisabled}
             attachments={attachments}
             onAttachmentsChange={onAttachmentsChange}
+            agents={agents}
+            onAgentChange={onAgentChange}
+            usage={usage}
+            onSendMessage={onSendMessage}
+            sessionId={sessionId ?? undefined}
+            messages={messages}
           />
         ) : (
           <div className="mx-auto flex w-full max-w-[var(--dsh-chat-content-width,736px)] flex-1 flex-col gap-4">
@@ -182,6 +219,20 @@ export function ChatThread({
           </div>
         )}
       </div>
+
+      {showScrollBottom && onScrollToBottom && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={onScrollToBottom}
+          className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 h-7 gap-1.5 rounded-full border border-border/80 bg-background/95 px-3 text-[11px] font-medium text-foreground shadow-md backdrop-blur transition-all hover:bg-muted active:scale-95"
+          aria-label={tx("Cuộn xuống dưới", "Scroll to bottom")}
+        >
+          <ArrowDown className="h-3 w-3 text-primary animate-bounce" aria-hidden="true" />
+          <span>{tx("Cuộn xuống dưới", "Scroll to bottom")}</span>
+        </Button>
+      )}
     </div>
   );
 }

@@ -25,6 +25,22 @@ export interface TextBlock {
   streaming: boolean;
 }
 
+export interface SubagentToolCall {
+  name: string;
+  status: "running" | "done" | "error";
+  args?: string;
+  result?: string;
+}
+
+export interface SubagentActivity {
+  agentName?: string;
+  agentId?: string;
+  stage?: string;
+  thinking?: string;
+  response?: string;
+  tools?: SubagentToolCall[];
+}
+
 export interface ToolCallBlock {
   kind: "tool_call";
   id: string;
@@ -34,6 +50,7 @@ export interface ToolCallBlock {
   result?: string;
   progress?: string;
   status: ToolCallStatus;
+  subagent?: SubagentActivity;
 }
 
 export interface StatsBlock {
@@ -52,16 +69,37 @@ export interface StatsBlock {
 
 export type AssistantBlock = ReasoningBlock | TextBlock | ToolCallBlock | StatsBlock;
 
+export interface UserAttachment {
+  id: string;
+  name: string;
+  size?: number;
+  content_type?: string;
+  error?: string;
+}
+
 export interface UserMessage {
   role: "user";
   id: string;
   content: string;
+  attachments?: UserAttachment[];
+}
+
+export interface ArtifactItem {
+  id: string;
+  path: string;
+  filename: string;
+  content_type: string;
+  size: number;
+  download_url: string;
+  content_url?: string;
+  source_tool?: string;
 }
 
 export interface AssistantMessage {
   role: "assistant";
   id: string;
   blocks: AssistantBlock[];
+  artifacts?: ArtifactItem[];
 }
 
 export interface ApprovalMessage {
@@ -79,7 +117,16 @@ export interface ErrorMessage {
   content: string;
 }
 
-export type ChatMessage = UserMessage | AssistantMessage | ApprovalMessage | ErrorMessage;
+export interface CompactionMessage {
+  role: "compaction";
+  id: string;
+  summary: string;
+  shadowedItemCount?: number;
+  shadowedTokenCount?: number;
+  compactedAt?: string;
+}
+
+export type ChatMessage = UserMessage | AssistantMessage | ApprovalMessage | ErrorMessage | CompactionMessage;
 
 /** Effects the page layer performs after reducing an event. */
 export interface ProjectionSide {
@@ -89,6 +136,7 @@ export interface ProjectionSide {
   /** message_done seen — run reached its natural end. */
   terminal?: boolean;
   errorMessage?: string;
+  warningMessage?: string;
   budgetReason?: string;
   diverged?: boolean;
 }
@@ -114,6 +162,8 @@ const KNOWN_EVENTS = new Set([
   "tool_result",
   "message_done",
   "error",
+  "attachment_warning",
+  "warning",
   "approval_required",
   "approval_rejected",
   "budget_exceeded",
@@ -125,6 +175,30 @@ export function createRunProjection(
   messages: ChatMessage[] = [],
 ): RunProjectionState {
   return { messages, assistantId, nextId: 0 };
+}
+
+/**
+ * Marks all in-flight streaming blocks (text, reasoning) as non-streaming
+ * without dropping any partial content. Used when user cancels or stops.
+ */
+export function stopProjectionStreaming(state: RunProjectionState): RunProjectionState {
+  const messages = state.messages.map((m) => {
+    if (m.role !== "assistant") return m;
+    const hasStreaming = m.blocks.some(
+      (b) => (b.kind === "text" || b.kind === "reasoning") && b.streaming,
+    );
+    if (!hasStreaming) return m;
+    return {
+      ...m,
+      blocks: m.blocks.map((b) => {
+        if (b.kind === "text" || b.kind === "reasoning") {
+          return { ...b, streaming: false };
+        }
+        return b;
+      }),
+    };
+  });
+  return { ...state, messages };
 }
 
 /**
@@ -191,6 +265,15 @@ export function applyChatEvent(
     return undefined;
   };
 
+  const resolvePriorApprovals = () => {
+    for (let i = 0; i < messages.length; i++) {
+      const m = messages[i];
+      if (m.role === "approval" && m.status === "pending") {
+        messages[i] = { ...m, status: "approved" };
+      }
+    }
+  };
+
   switch (ev.event) {
     case "message_start": {
       ensureMsg();
@@ -199,18 +282,21 @@ export function applyChatEvent(
     }
 
     case "reasoning": {
+      resolvePriorApprovals();
       appendToKind("reasoning", String(d.content ?? ""));
       side.phase = "thinking";
       break;
     }
 
     case "token": {
+      resolvePriorApprovals();
       appendToKind("text", String(d.delta ?? d.content ?? ""));
       side.phase = null;
       break;
     }
 
     case "tool_call_delta": {
+      resolvePriorApprovals();
       ensureMsg();
       const idx = typeof d.index === "number" ? d.index : 0;
       const existing = findTool(idx, true);
@@ -234,6 +320,7 @@ export function applyChatEvent(
     }
 
     case "tool_call": {
+      resolvePriorApprovals();
       ensureMsg();
       const idx = typeof d.index === "number" ? d.index : 0;
       const name = String(d.name || "tool");
@@ -251,16 +338,48 @@ export function applyChatEvent(
     }
 
     case "tool_progress": {
+      resolvePriorApprovals();
       const idx = typeof d.index === "number" ? d.index : 0;
       const target = findTool(idx, true) ?? findTool(idx, false);
       if (target) {
-        replaceBlock(target.id, { ...target, progress: (target.progress ?? "") + String(d.line ?? "") });
+        let subagent = target.subagent;
+        const stage = typeof d.stage === "string" ? d.stage : undefined;
+        const agentName = typeof d.agent_name === "string" ? d.agent_name : undefined;
+        const agentId = typeof d.agent_id === "string" ? d.agent_id : undefined;
+
+        if (stage?.startsWith("subagent_") || agentName) {
+          subagent = { ...(subagent ?? {}) };
+          if (agentName) subagent.agentName = agentName;
+          if (agentId) subagent.agentId = agentId;
+          if (stage) subagent.stage = stage;
+
+          if (stage === "subagent_reasoning" && d.content) {
+            subagent.thinking = (subagent.thinking ?? "") + String(d.content);
+          } else if (stage === "subagent_token" && d.content) {
+            subagent.response = (subagent.response ?? "") + String(d.content);
+          } else if (stage === "subagent_tool_call" && d.tool_name) {
+            const currentTools = subagent.tools ?? [];
+            const argsStr = d.arguments ? (typeof d.arguments === "string" ? d.arguments : JSON.stringify(d.arguments, null, 2)) : undefined;
+            subagent.tools = [...currentTools, { name: String(d.tool_name), status: "running", args: argsStr }];
+          } else if (stage === "subagent_tool_result" && d.tool_name) {
+            const resultStr = d.result != null ? (typeof d.result === "string" ? d.result : JSON.stringify(d.result, null, 2)) : undefined;
+            const currentTools = (subagent.tools ?? []).map((t) =>
+              t.name === d.tool_name && t.status === "running" ? { ...t, status: "done" as const, result: resultStr } : t,
+            );
+            subagent.tools = currentTools;
+          }
+        }
+
+        const line = d.line != null ? String(d.line) : d.message != null ? String(d.message) : "";
+        const progress = (target.progress ?? "") + line;
+        replaceBlock(target.id, { ...target, progress, subagent });
       }
       if (d.name) side.phase = `tool:${String(d.name)}`;
       break;
     }
 
     case "tool_result": {
+      resolvePriorApprovals();
       const idx = typeof d.index === "number" ? d.index : 0;
       const result = String(d.result ?? d.output ?? "");
       const target = findTool(idx, true) ?? findTool(idx, false);
@@ -272,6 +391,7 @@ export function applyChatEvent(
     }
 
     case "message_done": {
+      resolvePriorApprovals();
       // A run can die before emitting any content (crash after bootstrap);
       // still materialize the assistant so stats/noAnswer render.
       const assistant = ensureMsg();
@@ -306,6 +426,9 @@ export function applyChatEvent(
       const statsIdx = assistant.blocks.findIndex((b) => b.kind === "stats");
       if (statsIdx >= 0) assistant.blocks[statsIdx] = { ...stats, id: (assistant.blocks[statsIdx] as StatsBlock).id };
       else assistant.blocks.push(stats);
+      if (Array.isArray(d.artifacts) && d.artifacts.length > 0) {
+        assistant.artifacts = d.artifacts as ArtifactItem[];
+      }
       side.terminal = true;
       side.phase = null;
       const sid = strOrUndef(d.session_id);
@@ -325,6 +448,15 @@ export function applyChatEvent(
       }
       side.errorMessage = message;
       side.phase = null;
+      break;
+    }
+
+    case "attachment_warning":
+    case "warning": {
+      const message = String(d.message ?? "");
+      if (message) {
+        side.warningMessage = message;
+      }
       break;
     }
 
@@ -414,10 +546,24 @@ export interface PersistedMessageRow {
  */
 export function messagesFromPersisted(rows: PersistedMessageRow[]): ChatMessage[] {
   return rows.map((row): ChatMessage => {
-    if (row.role === "user") {
-      return { role: "user", id: row.id, content: row.content };
-    }
     const meta = (row.meta ?? {}) as Record<string, any>;
+    if (row.role === "compaction" || meta.is_compaction) {
+      return {
+        role: "compaction",
+        id: row.id,
+        summary: typeof meta.summary === "string" ? meta.summary : (row.content || ""),
+        shadowedItemCount: typeof meta.shadowed_messages_count === "number" ? meta.shadowed_messages_count : undefined,
+        shadowedTokenCount: typeof meta.shadowed_token_count === "number" ? meta.shadowed_token_count : undefined,
+        compactedAt: typeof meta.compacted_at === "string" ? meta.compacted_at : undefined,
+      };
+    }
+    if (row.role === "user") {
+      const rowMeta = (row.meta ?? {}) as Record<string, any>;
+      const attachments: UserAttachment[] | undefined = Array.isArray(rowMeta.attachments)
+        ? rowMeta.attachments
+        : undefined;
+      return { role: "user", id: row.id, content: row.content, ...(attachments?.length ? { attachments } : {}) };
+    }
     let n = 0;
     const genId = () => `${row.id}-p${n++}`;
     const reasoning = typeof meta.reasoning === "string" ? meta.reasoning : "";
@@ -452,12 +598,14 @@ export function messagesFromPersisted(rows: PersistedMessageRow[]): ChatMessage[
     const latencyMs = numOrUndef(meta.latency_ms);
     const model = strOrUndef(meta.model);
     const finalization = strOrUndef(meta.finalization);
-    if (costUsd != null || latencyMs != null || numOrUndef(meta.in_tokens) != null || model || finalization) {
+    const tokensIn = numOrUndef(meta.input_tokens) ?? numOrUndef(meta.in_tokens);
+    const tokensOut = numOrUndef(meta.output_tokens) ?? numOrUndef(meta.out_tokens);
+    if (costUsd != null || latencyMs != null || tokensIn != null || model || finalization) {
       blocks.push({
         kind: "stats",
         id: genId(),
-        tokensIn: numOrUndef(meta.in_tokens),
-        tokensOut: numOrUndef(meta.out_tokens),
+        tokensIn,
+        tokensOut,
         costUsd,
         latencyMs,
         model,
@@ -466,6 +614,14 @@ export function messagesFromPersisted(rows: PersistedMessageRow[]): ChatMessage[
         noAnswer: !row.content?.trim() && !reasoning.trim(),
       });
     }
-    return { role: "assistant", id: row.id, blocks };
+    const artifacts: ArtifactItem[] | undefined = Array.isArray(meta.artifacts) && meta.artifacts.length > 0
+      ? (meta.artifacts as ArtifactItem[])
+      : undefined;
+    return {
+      role: "assistant",
+      id: row.id,
+      blocks,
+      ...(artifacts?.length ? { artifacts } : {}),
+    };
   });
 }
